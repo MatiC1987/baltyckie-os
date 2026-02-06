@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertApartmentSchema, type InsertApartment, type Apartment, type Lease, type Attachment, type Owner } from "@shared/schema";
+import { insertApartmentSchema, type InsertApartment, type Apartment, type Attachment, type Owner } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +43,6 @@ function normalizeKey(loc: string): string {
 
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
-  const { data: leases } = useQuery<Lease[]>({ queryKey: ['/api/leases'] });
   const { data: ownersList } = useOwners();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
@@ -54,28 +53,6 @@ export default function Apartments() {
     return map;
   }, [ownersList]);
 
-  const leaseMap = useMemo(() => {
-    if (!leases) return new Map<number, Lease>();
-    const map = new Map<number, Lease>();
-    const today = new Date().toISOString().split('T')[0];
-    for (const l of leases) {
-      if (l.apartmentId && l.startDate <= today && (!l.endDate || l.endDate >= today)) {
-        if (!map.has(l.apartmentId) || l.startDate > (map.get(l.apartmentId)!.startDate)) {
-          map.set(l.apartmentId, l);
-        }
-      }
-    }
-    if (leases.length > 0) {
-      for (const l of leases) {
-        if (l.apartmentId && !map.has(l.apartmentId)) {
-          if (!map.has(l.apartmentId) || l.startDate > (map.get(l.apartmentId)!.startDate)) {
-            map.set(l.apartmentId, l);
-          }
-        }
-      }
-    }
-    return map;
-  }, [leases]);
 
   const groupedApartments = useMemo(() => {
     const groups: { label: string; apartments: Apartment[] }[] = LOCATIONS.map(loc => ({
@@ -136,25 +113,20 @@ export default function Apartments() {
       }
     },
     {
-      header: "Umowa najmu",
-      cell: (apt: any) => {
-        const lease = leaseMap.get(apt.id);
-        if (!lease) return <span className="text-xs text-muted-foreground">Brak umowy</span>;
-        const today = new Date().toISOString().split('T')[0];
-        const isActive = lease.startDate <= today && (!lease.endDate || lease.endDate >= today);
-        return (
-          <div className="text-xs" data-testid={`text-lease-dates-${apt.id}`}>
-            <div className="flex items-center gap-1">
-              <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
-                {isActive ? "Aktywna" : "Nieaktywna"}
-              </Badge>
-            </div>
-            <div className="text-muted-foreground mt-1">
-              {lease.startDate} — {lease.endDate || "bezterminowo"}
-            </div>
-          </div>
-        );
-      }
+      header: "Początek najmu",
+      cell: (apt: any) => (
+        <span className="text-sm" data-testid={`text-lease-start-${apt.id}`}>
+          {apt.leaseStartDate || <span className="text-muted-foreground text-xs">—</span>}
+        </span>
+      )
+    },
+    {
+      header: "Koniec najmu",
+      cell: (apt: any) => (
+        <span className="text-sm" data-testid={`text-lease-end-${apt.id}`}>
+          {apt.leaseEndDate || <span className="text-muted-foreground text-xs">—</span>}
+        </span>
+      )
     },
     {
       header: "Status",
@@ -398,11 +370,18 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
       address: apartment.address || "",
       ownerId: apartment.ownerId || null,
       active: apartment.active,
+      leaseStartDate: apartment.leaseStartDate || "",
+      leaseEndDate: apartment.leaseEndDate || "",
     }
   });
 
   const onSubmit = (data: InsertApartment) => {
-    updateApartment.mutate({ id: apartment.id, ...data }, {
+    const payload = {
+      ...data,
+      leaseStartDate: data.leaseStartDate || null,
+      leaseEndDate: data.leaseEndDate || null,
+    };
+    updateApartment.mutate({ id: apartment.id, ...payload }, {
       onSuccess: () => onSuccess()
     });
   };
@@ -468,13 +447,33 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
           )}
         />
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="edit-leaseStartDate">Początek najmu</Label>
+          <Input
+            id="edit-leaseStartDate"
+            type="date"
+            {...form.register("leaseStartDate")}
+            data-testid="input-edit-lease-start"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit-leaseEndDate">Koniec najmu</Label>
+          <Input
+            id="edit-leaseEndDate"
+            type="date"
+            {...form.register("leaseEndDate")}
+            data-testid="input-edit-lease-end"
+          />
+        </div>
+      </div>
       <div className="flex items-center gap-3">
         <Controller
           control={form.control}
           name="active"
           render={({ field }) => (
             <Switch
-              checked={field.value}
+              checked={field.value ?? true}
               onCheckedChange={field.onChange}
               data-testid="switch-edit-apartment-active"
             />

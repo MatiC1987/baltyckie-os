@@ -22,6 +22,8 @@ export const apartments = pgTable("apartments", {
   ownerId: integer("owner_id").references(() => owners.id),
   active: boolean("active").default(true),
   photoUrl: text("photo_url"),
+  leaseStartDate: date("lease_start_date"),
+  leaseEndDate: date("lease_end_date"),
 });
 
 export const reservations = pgTable("reservations", {
