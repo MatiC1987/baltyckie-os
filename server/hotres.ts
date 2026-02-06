@@ -255,19 +255,28 @@ export async function fetchReservations(dateFrom?: string, dateTo?: string): Pro
   const baseUrl = config.baseUrl || discoveredBaseUrl || "https://panel.hotres.pl/api";
 
   const reservationEndpoints = ["/reservations", "/bookings", "/rezerwacje"];
-  const params: Record<string, string> = {};
-  if (dateFrom) params.from = dateFrom;
-  if (dateTo) params.to = dateTo;
+  const dateParamVariants = dateFrom || dateTo ? [
+    { from: dateFrom, to: dateTo },
+    { date_from: dateFrom, date_to: dateTo },
+    { start: dateFrom, end: dateTo },
+    { checkin: dateFrom, checkout: dateTo },
+    { arrival: dateFrom, departure: dateTo },
+  ] : [{}];
 
-  const queryString = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+  const diagnostics: Array<{ url: string; status: number; dataPreview: string; parsed: number }> = [];
 
   for (const endpoint of reservationEndpoints) {
-    const url = queryString ? `${baseUrl}${endpoint}?${queryString}` : `${baseUrl}${endpoint}`;
-    try {
-      const result = await makeRequest(url, config);
-      if (result.status >= 200 && result.status < 300) {
+    for (const params of dateParamVariants) {
+      const filteredParams = Object.fromEntries(Object.entries(params).filter(([, v]) => v));
+      const queryString = Object.entries(filteredParams).map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join("&");
+      const url = queryString ? `${baseUrl}${endpoint}?${queryString}` : `${baseUrl}${endpoint}`;
+      try {
+        const result = await makeRequest(url, config);
         const reservations = parseReservationsFromResponse(result.data);
-        if (reservations.length > 0) {
+        const preview = typeof result.data === 'string' ? result.data.substring(0, 300) : JSON.stringify(result.data).substring(0, 300);
+        diagnostics.push({ url, status: result.status, dataPreview: preview, parsed: reservations.length });
+
+        if (result.status >= 200 && result.status < 300 && reservations.length > 0) {
           return {
             success: true,
             reservations,
@@ -275,9 +284,69 @@ export async function fetchReservations(dateFrom?: string, dateTo?: string): Pro
             rawResponse: result.data,
           };
         }
+
+        if (result.status >= 200 && result.status < 300 && reservations.length === 0) {
+          const data = result.data;
+          if (data && typeof data === 'object' && !Array.isArray(data)) {
+            const allArrayKeys = Object.entries(data)
+              .filter(([, v]) => Array.isArray(v))
+              .map(([k, v]) => ({ key: k, count: (v as any[]).length }));
+            if (allArrayKeys.length > 0) {
+              for (const arrInfo of allArrayKeys) {
+                const items = (data as any)[arrInfo.key];
+                const mapped = items.map((item: any) => ({
+                  reservationNumber: String(
+                    item.reservationNumber || item.reservation_number || item.numer_rezerwacji ||
+                    item.booking_number || item.id || item.nr || item.numer || item.number ||
+                    `HR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+                  ),
+                  apartmentName: String(
+                    item.apartmentName || item.apartment_name || item.room_name || item.nazwa_pokoju ||
+                    item.room || item.pokoj || item.pokój || item.unit || item.apartment ||
+                    item.nazwa || item.obiekt || item.nazwa_obiektu || ""
+                  ),
+                  startDate: normalizeDate(
+                    item.startDate || item.start_date || item.check_in || item.checkin ||
+                    item.data_przyjazdu || item.arrival || item.from || item.od ||
+                    item.data_od || item.poczatek || item.start || ""
+                  ),
+                  endDate: normalizeDate(
+                    item.endDate || item.end_date || item.check_out || item.checkout ||
+                    item.data_wyjazdu || item.departure || item.to || item.do ||
+                    item.data_do || item.koniec || item.end || ""
+                  ),
+                  guestName: String(
+                    item.guestName || item.guest_name || item.guest || item.gosc || item.gość ||
+                    item.name || item.imie_nazwisko || item.client || item.klient ||
+                    item.nazwisko || item.imie || item.osoba || "Nieznany"
+                  ),
+                  price: String(
+                    item.price || item.total || item.cena || item.kwota || item.amount ||
+                    item.total_price || item.wartosc || item.wartość || item.netto || item.brutto || "0"
+                  ),
+                  prepayment: String(
+                    item.prepayment || item.deposit || item.zaliczka || item.przedplata ||
+                    item.przedpłata || item.advance || "0"
+                  ),
+                  status: normalizeStatus(item.status || item.stan || ""),
+                }));
+                const valid = mapped.filter((r: HotResReservation) => r.startDate && r.endDate);
+                if (valid.length > 0) {
+                  return {
+                    success: true,
+                    reservations: valid,
+                    message: `Pobrano ${valid.length} rezerwacji z HotRes (klucz: ${arrInfo.key})`,
+                    rawResponse: result.data,
+                  };
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        continue;
       }
-    } catch {
-      continue;
+      if (diagnostics.length > 0 && !dateFrom && !dateTo) break;
     }
   }
 
@@ -285,5 +354,6 @@ export async function fetchReservations(dateFrom?: string, dateTo?: string): Pro
     success: false,
     reservations: [],
     message: "Nie udało się pobrać rezerwacji z HotRes. Sprawdź klucze API i adres URL.",
+    rawResponse: { diagnostics },
   };
 }
