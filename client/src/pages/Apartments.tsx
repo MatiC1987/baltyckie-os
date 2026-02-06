@@ -4,7 +4,7 @@ import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2 } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,9 +17,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertApartmentSchema, type InsertApartment, type Apartment } from "@shared/schema";
+import { insertApartmentSchema, type InsertApartment, type Apartment, type Lease, type Attachment } from "@shared/schema";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUpload } from "@/hooks/use-upload";
+import { useToast } from "@/hooks/use-toast";
 
 const LOCATIONS = [
   "BULWAR PORTOWY",
@@ -38,8 +42,32 @@ function normalizeKey(loc: string): string {
 
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
+  const { data: leases } = useQuery<Lease[]>({ queryKey: ['/api/leases'] });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
+
+  const leaseMap = useMemo(() => {
+    if (!leases) return new Map<number, Lease>();
+    const map = new Map<number, Lease>();
+    const today = new Date().toISOString().split('T')[0];
+    for (const l of leases) {
+      if (l.apartmentId && l.startDate <= today && (!l.endDate || l.endDate >= today)) {
+        if (!map.has(l.apartmentId) || l.startDate > (map.get(l.apartmentId)!.startDate)) {
+          map.set(l.apartmentId, l);
+        }
+      }
+    }
+    if (leases.length > 0) {
+      for (const l of leases) {
+        if (l.apartmentId && !map.has(l.apartmentId)) {
+          if (!map.has(l.apartmentId) || l.startDate > (map.get(l.apartmentId)!.startDate)) {
+            map.set(l.apartmentId, l);
+          }
+        }
+      }
+    }
+    return map;
+  }, [leases]);
 
   const groupedApartments = useMemo(() => {
     const groups: { label: string; apartments: Apartment[] }[] = LOCATIONS.map(loc => ({
@@ -82,6 +110,27 @@ export default function Apartments() {
     {
       header: "Właściciel",
       accessorKey: "ownerName" as const,
+    },
+    {
+      header: "Umowa najmu",
+      cell: (apt: any) => {
+        const lease = leaseMap.get(apt.id);
+        if (!lease) return <span className="text-xs text-muted-foreground">Brak umowy</span>;
+        const today = new Date().toISOString().split('T')[0];
+        const isActive = lease.startDate <= today && (!lease.endDate || lease.endDate >= today);
+        return (
+          <div className="text-xs" data-testid={`text-lease-dates-${apt.id}`}>
+            <div className="flex items-center gap-1">
+              <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
+                {isActive ? "Aktywna" : "Nieaktywna"}
+              </Badge>
+            </div>
+            <div className="text-muted-foreground mt-1">
+              {lease.startDate} — {lease.endDate || "bezterminowo"}
+            </div>
+          </div>
+        );
+      }
     },
     {
       header: "Status",
@@ -195,15 +244,28 @@ export default function Apartments() {
       ))}
 
       <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edytuj apartament</DialogTitle>
+            <DialogTitle>Edytuj apartament — {editingApartment?.name}</DialogTitle>
           </DialogHeader>
           {editingApartment && (
-            <EditApartmentForm
-              apartment={editingApartment}
-              onSuccess={() => setEditingApartment(null)}
-            />
+            <Tabs defaultValue="details">
+              <TabsList className="w-full">
+                <TabsTrigger value="details" className="flex-1" data-testid="tab-edit-details">Dane</TabsTrigger>
+                <TabsTrigger value="attachments" className="flex-1" data-testid="tab-edit-attachments">
+                  <Paperclip className="h-4 w-4 mr-1" /> Załączniki
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="details">
+                <EditApartmentForm
+                  apartment={editingApartment}
+                  onSuccess={() => setEditingApartment(null)}
+                />
+              </TabsContent>
+              <TabsContent value="attachments">
+                <AttachmentsSection apartmentId={editingApartment.id} />
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
@@ -367,5 +429,137 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+function AttachmentsSection({ apartmentId }: { apartmentId: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { uploadFile, isUploading } = useUpload({
+    onSuccess: async (response) => {
+      await fetch(`/api/apartments/${apartmentId}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          fileName: currentFileName,
+          objectPath: response.objectPath,
+          fileType: currentFileType,
+          category: selectedCategory,
+        }),
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartmentId, 'attachments'] });
+      toast({ title: "Sukces", description: "Załącznik został dodany" });
+      setCurrentFileName('');
+      setCurrentFileType('');
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się przesłać pliku", variant: "destructive" });
+    },
+  });
+
+  const [currentFileName, setCurrentFileName] = useState('');
+  const [currentFileType, setCurrentFileType] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('UMOWA');
+
+  const { data: attachmentsList } = useQuery<Attachment[]>({
+    queryKey: ['/api/apartments', apartmentId, 'attachments'],
+    queryFn: async () => {
+      const res = await fetch(`/api/apartments/${apartmentId}/attachments`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch attachments');
+      return res.json();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/attachments/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartmentId, 'attachments'] });
+      toast({ title: "Sukces", description: "Załącznik usunięty" });
+    },
+  });
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCurrentFileName(file.name);
+    setCurrentFileType(file.type);
+    await uploadFile(file);
+    e.target.value = '';
+  };
+
+  return (
+    <div className="space-y-4 py-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger className="w-40" data-testid="select-attachment-category">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="UMOWA">Umowa</SelectItem>
+            <SelectItem value="ANEKS">Aneks</SelectItem>
+            <SelectItem value="INNY">Inny</SelectItem>
+          </SelectContent>
+        </Select>
+        <Label htmlFor="file-attach" className="cursor-pointer">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm font-medium hover-elevate">
+            <Upload className="h-4 w-4" />
+            {isUploading ? "Przesyłanie..." : "Dodaj plik"}
+          </div>
+          <input
+            id="file-attach"
+            type="file"
+            className="hidden"
+            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            onChange={handleFileSelect}
+            disabled={isUploading}
+            data-testid="input-attachment-file"
+          />
+        </Label>
+      </div>
+
+      <div className="space-y-2">
+        {attachmentsList && attachmentsList.length > 0 ? (
+          attachmentsList.map((att) => (
+            <div key={att.id} className="flex items-center justify-between gap-2 p-3 rounded-lg bg-muted/50" data-testid={`row-attachment-${att.id}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                <div className="min-w-0">
+                  <a
+                    href={att.objectPath}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium hover:underline truncate block"
+                    data-testid={`link-attachment-${att.id}`}
+                  >
+                    {att.fileName}
+                  </a>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline" className="text-xs">{att.category}</Badge>
+                    {att.uploadedAt && <span>{new Date(att.uploadedAt).toLocaleDateString('pl-PL')}</span>}
+                  </div>
+                </div>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => deleteMutation.mutate(att.id)}
+                disabled={deleteMutation.isPending}
+                data-testid={`button-delete-attachment-${att.id}`}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-muted-foreground text-center py-6">
+            Brak załączników. Dodaj skan umowy lub aneks.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

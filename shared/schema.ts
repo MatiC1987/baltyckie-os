@@ -64,11 +64,22 @@ export const accountSnapshots = pgTable("account_snapshots", {
   notes: text("notes"),
 });
 
+export const attachments = pgTable("attachments", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  fileName: text("file_name").notNull(),
+  objectPath: text("object_path").notNull(),
+  fileType: text("file_type"),
+  category: text("category").default("UMOWA"),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
 // Relations
 export const apartmentsRelations = relations(apartments, ({ many }) => ({
   reservations: many(reservations),
   leases: many(leases),
   expenses: many(expenses),
+  attachments: many(attachments),
 }));
 
 export const reservationsRelations = relations(reservations, ({ one }) => ({
@@ -103,6 +114,13 @@ export const accountSnapshotsRelations = relations(accountSnapshots, ({ one }) =
   }),
 }));
 
+export const attachmentsRelations = relations(attachments, ({ one }) => ({
+  apartment: one(apartments, {
+    fields: [attachments.apartmentId],
+    references: [apartments.id],
+  }),
+}));
+
 // Insert Schemas
 export const insertApartmentSchema = createInsertSchema(apartments).omit({ id: true });
 export const insertReservationSchema = createInsertSchema(reservations).omit({ id: true, createdAt: true });
@@ -110,6 +128,7 @@ export const insertLeaseSchema = createInsertSchema(leases).omit({ id: true });
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
 export const insertAccountSchema = createInsertSchema(accounts).omit({ id: true });
 export const insertAccountSnapshotSchema = createInsertSchema(accountSnapshots).omit({ id: true });
+export const insertAttachmentSchema = createInsertSchema(attachments).omit({ id: true, uploadedAt: true });
 
 // Types
 export type Apartment = typeof apartments.$inferSelect;
@@ -124,3 +143,5 @@ export type Account = typeof accounts.$inferSelect;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type AccountSnapshot = typeof accountSnapshots.$inferSelect;
 export type InsertAccountSnapshot = z.infer<typeof insertAccountSnapshotSchema>;
+export type Attachment = typeof attachments.$inferSelect;
+export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;

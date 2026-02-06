@@ -5,7 +5,8 @@ import {
   leases, Lease, InsertLease,
   expenses, Expense, InsertExpense,
   accounts, Account, InsertAccount,
-  accountSnapshots, AccountSnapshot, InsertAccountSnapshot
+  accountSnapshots, AccountSnapshot, InsertAccountSnapshot,
+  attachments, Attachment, InsertAttachment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -45,6 +46,11 @@ export interface IStorage {
   getSnapshots(accountId?: number): Promise<AccountSnapshot[]>;
   createSnapshot(snapshot: InsertAccountSnapshot): Promise<AccountSnapshot>;
   
+  // Attachments
+  getAttachments(apartmentId: number): Promise<Attachment[]>;
+  createAttachment(attachment: InsertAttachment): Promise<Attachment>;
+  deleteAttachment(id: number): Promise<void>;
+
   // Stats
   getDashboardStats(): Promise<{
     totalRevenue: number;
@@ -184,6 +190,20 @@ export class DatabaseStorage implements IStorage {
     return newSnapshot;
   }
   
+  // Attachments
+  async getAttachments(apartmentId: number): Promise<Attachment[]> {
+    return await db.select().from(attachments).where(eq(attachments.apartmentId, apartmentId)).orderBy(desc(attachments.uploadedAt));
+  }
+
+  async createAttachment(attachment: InsertAttachment): Promise<Attachment> {
+    const [newAttachment] = await db.insert(attachments).values(attachment).returning();
+    return newAttachment;
+  }
+
+  async deleteAttachment(id: number): Promise<void> {
+    await db.delete(attachments).where(eq(attachments.id, id));
+  }
+
   // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)
   async getDashboardStats(): Promise<{
     totalRevenue: number;

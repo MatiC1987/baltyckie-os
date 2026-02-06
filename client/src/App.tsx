@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
 import Dashboard from "@/pages/Dashboard";
 import Apartments from "@/pages/Apartments";
+import Owners from "@/pages/Owners";
 import Reservations from "@/pages/Reservations";
 import Leases from "@/pages/Leases";
 import Finance from "@/pages/Finance";
@@ -46,6 +47,7 @@ function Router() {
     <Switch>
       <Route path="/" component={() => <AuthenticatedRoute component={Dashboard} />} />
       <Route path="/apartments" component={() => <AuthenticatedRoute component={Apartments} />} />
+      <Route path="/owners" component={() => <AuthenticatedRoute component={Owners} />} />
       <Route path="/reservations" component={() => <AuthenticatedRoute component={Reservations} />} />
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />

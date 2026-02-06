@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -47,6 +48,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   await setupAuth(app);
   registerAuthRoutes(app);
+  registerObjectStorageRoutes(app);
   seedData().catch(console.error);
 
   // Apartments
@@ -206,6 +208,35 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       throw err;
     }
+  });
+
+  // Attachments
+  app.get('/api/apartments/:id/attachments', isAuthenticated, async (req, res) => {
+    const atts = await storage.getAttachments(Number(req.params.id));
+    res.json(atts);
+  });
+
+  app.post('/api/apartments/:id/attachments', isAuthenticated, async (req, res) => {
+    try {
+      const { fileName, objectPath, fileType, category } = req.body;
+      if (!fileName || !objectPath) return res.status(400).json({ message: "Brak wymaganych pól" });
+      const attachment = await storage.createAttachment({
+        apartmentId: Number(req.params.id),
+        fileName,
+        objectPath,
+        fileType: fileType || null,
+        category: category || 'UMOWA',
+      });
+      res.status(201).json(attachment);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Błąd zapisu załącznika" });
+    }
+  });
+
+  app.delete('/api/attachments/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteAttachment(Number(req.params.id));
+    res.status(204).send();
   });
 
   // Stats

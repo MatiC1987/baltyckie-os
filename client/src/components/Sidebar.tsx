@@ -7,6 +7,7 @@ import {
   FileText, 
   Wallet, 
   Upload, 
+  Users,
   LogOut,
   Menu,
   X
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button";
 const navItems = [
   { href: "/", label: "Kokpit", icon: LayoutDashboard },
   { href: "/apartments", label: "Apartamenty", icon: Building2 },
+  { href: "/owners", label: "Właściciele", icon: Users },
   { href: "/reservations", label: "Rezerwacje", icon: CalendarDays },
   { href: "/leases", label: "Najem Długoterminowy", icon: FileText },
   { href: "/finance", label: "Finanse", icon: Wallet },
