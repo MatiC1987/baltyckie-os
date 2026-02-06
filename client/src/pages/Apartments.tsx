@@ -4,7 +4,7 @@ import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertApartmentSchema, type InsertApartment, type Apartment, type Attachment, type Owner } from "@shared/schema";
+import { insertApartmentSchema, insertOwnerPaymentSchema, type InsertApartment, type InsertOwnerPayment, type Apartment, type Attachment, type Owner, type OwnerPayment } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
 import { useToast } from "@/hooks/use-toast";
@@ -248,6 +248,9 @@ export default function Apartments() {
             <Tabs defaultValue="details">
               <TabsList className="w-full">
                 <TabsTrigger value="details" className="flex-1" data-testid="tab-edit-details">Dane</TabsTrigger>
+                <TabsTrigger value="payments" className="flex-1" data-testid="tab-edit-payments">
+                  <Wallet className="h-4 w-4 mr-1" /> Raty
+                </TabsTrigger>
                 <TabsTrigger value="photo" className="flex-1" data-testid="tab-edit-photo">
                   <Camera className="h-4 w-4 mr-1" /> Zdjęcie
                 </TabsTrigger>
@@ -260,6 +263,9 @@ export default function Apartments() {
                   apartment={editingApartment}
                   onSuccess={() => setEditingApartment(null)}
                 />
+              </TabsContent>
+              <TabsContent value="payments">
+                <PaymentsSection apartmentId={editingApartment.id} />
               </TabsContent>
               <TabsContent value="photo">
                 <PhotoSection apartment={editingApartment} />
@@ -498,6 +504,226 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+const PAYMENT_CATEGORIES = [
+  "Raty dla właścicieli",
+  "Czynsz do wspólnoty",
+  "Energia elektryczna",
+  "Woda",
+  "Wywóz śmieci",
+  "Gaz",
+  "Inne opłaty",
+];
+
+function PaymentsSection({ apartmentId }: { apartmentId: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: payments, isLoading } = useQuery<OwnerPayment[]>({
+    queryKey: ['/api/apartments', apartmentId, 'payments'],
+    queryFn: async () => {
+      const res = await fetch(`/api/apartments/${apartmentId}/payments`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch payments");
+      return res.json();
+    },
+  });
+
+  const createPayment = useMutation({
+    mutationFn: async (data: Omit<InsertOwnerPayment, 'apartmentId'>) => {
+      const res = await fetch(`/api/apartments/${apartmentId}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create payment");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartmentId, 'payments'] });
+      toast({ title: "Sukces", description: "Opłata została dodana" });
+      setShowForm(false);
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się dodać opłaty", variant: "destructive" });
+    },
+  });
+
+  const deletePayment = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/owner-payments/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete payment");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartmentId, 'payments'] });
+      toast({ title: "Sukces", description: "Opłata została usunięta" });
+    },
+  });
+
+  const form = useForm<Omit<InsertOwnerPayment, 'apartmentId'>>({
+    defaultValues: {
+      title: "",
+      category: "",
+      amount: "0",
+      paymentDate: new Date().toISOString().split('T')[0],
+    }
+  });
+
+  const onSubmit = (data: Omit<InsertOwnerPayment, 'apartmentId'>) => {
+    createPayment.mutate(data);
+  };
+
+  const groupedPayments = payments?.reduce<Record<string, OwnerPayment[]>>((acc, p) => {
+    if (!acc[p.category]) acc[p.category] = [];
+    acc[p.category].push(p);
+    return acc;
+  }, {}) || {};
+
+  const totalAmount = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+
+  return (
+    <div className="space-y-4 py-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-sm font-medium">Razem: {totalAmount.toFixed(2)} PLN</div>
+          <div className="text-xs text-muted-foreground">{payments?.length || 0} pozycji</div>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => setShowForm(!showForm)}
+          data-testid="button-add-payment"
+        >
+          <Plus className="h-4 w-4 mr-1" /> Dodaj opłatę
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card>
+          <CardContent className="pt-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="payment-title">Tytuł</Label>
+                <Input
+                  id="payment-title"
+                  {...form.register("title", { required: true })}
+                  placeholder="np. Rata za styczeń 2025"
+                  data-testid="input-payment-title"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Kategoria</Label>
+                  <Controller
+                    control={form.control}
+                    name="category"
+                    rules={{ required: true }}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <SelectTrigger data-testid="select-payment-category">
+                          <SelectValue placeholder="Wybierz kategorię" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PAYMENT_CATEGORIES.map(cat => (
+                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="payment-amount">Kwota (PLN)</Label>
+                  <Input
+                    id="payment-amount"
+                    type="number"
+                    step="0.01"
+                    {...form.register("amount", { required: true })}
+                    data-testid="input-payment-amount"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment-date">Data płatności</Label>
+                <Input
+                  id="payment-date"
+                  type="date"
+                  {...form.register("paymentDate", { required: true })}
+                  data-testid="input-payment-date"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 flex-wrap">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowForm(false)}>
+                  Anuluj
+                </Button>
+                <Button type="submit" size="sm" disabled={createPayment.isPending} data-testid="button-submit-payment">
+                  {createPayment.isPending ? "Dodawanie..." : "Dodaj"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-12 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+      ) : payments && payments.length > 0 ? (
+        <div className="space-y-4">
+          {Object.entries(groupedPayments).map(([category, items]) => {
+            const categoryTotal = items.reduce((s, p) => s + Number(p.amount), 0);
+            return (
+              <div key={category}>
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                  <div className="text-sm font-medium">{category}</div>
+                  <span className="text-xs text-muted-foreground">{categoryTotal.toFixed(2)} PLN</span>
+                </div>
+                <div className="space-y-1">
+                  {items.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-muted/50 flex-wrap gap-2"
+                      data-testid={`row-payment-${payment.id}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-sm truncate">{payment.title}</div>
+                          <div className="text-xs text-muted-foreground">{payment.paymentDate}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{Number(payment.amount).toFixed(2)} PLN</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deletePayment.mutate(payment.id)}
+                          data-testid={`button-delete-payment-${payment.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-sm text-muted-foreground">
+          Brak opłat. Kliknij "Dodaj opłatę" aby dodać pierwszą.
+        </div>
+      )}
+    </div>
   );
 }
 

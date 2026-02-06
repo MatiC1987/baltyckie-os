@@ -249,6 +249,31 @@ export async function registerRoutes(
     }
   });
 
+  // Owner Payments
+  app.get('/api/apartments/:apartmentId/payments', isAuthenticated, async (req, res) => {
+    const payments = await storage.getOwnerPayments(Number(req.params.apartmentId));
+    res.json(payments);
+  });
+
+  app.post('/api/apartments/:apartmentId/payments', isAuthenticated, async (req, res) => {
+    try {
+      const input = api.ownerPayments.create.input.parse({
+        ...req.body,
+        apartmentId: Number(req.params.apartmentId),
+      });
+      const payment = await storage.createOwnerPayment(input);
+      res.status(201).json(payment);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
+  });
+
+  app.delete('/api/owner-payments/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteOwnerPayment(Number(req.params.id));
+    res.status(204).send();
+  });
+
   // Attachments
   app.get('/api/apartments/:id/attachments', isAuthenticated, async (req, res) => {
     const atts = await storage.getAttachments(Number(req.params.id));

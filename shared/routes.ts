@@ -13,7 +13,9 @@ import {
   insertAccountSchema,
   accounts,
   insertAccountSnapshotSchema,
-  accountSnapshots
+  accountSnapshots,
+  insertOwnerPaymentSchema,
+  ownerPayments
 } from './schema';
 
 export const errorSchemas = {
@@ -259,6 +261,31 @@ export const api = {
         400: errorSchemas.validation,
       }
     }
+  },
+  ownerPayments: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/apartments/:apartmentId/payments',
+      responses: {
+        200: z.array(z.custom<typeof ownerPayments.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/apartments/:apartmentId/payments',
+      input: insertOwnerPaymentSchema,
+      responses: {
+        201: z.custom<typeof ownerPayments.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/owner-payments/:id',
+      responses: {
+        204: z.void(),
+      },
+    },
   },
   stats: {
     dashboard: {

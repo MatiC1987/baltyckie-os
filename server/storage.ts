@@ -7,7 +7,8 @@ import {
   expenses, Expense, InsertExpense,
   accounts, Account, InsertAccount,
   accountSnapshots, AccountSnapshot, InsertAccountSnapshot,
-  attachments, Attachment, InsertAttachment
+  attachments, Attachment, InsertAttachment,
+  ownerPayments, OwnerPayment, InsertOwnerPayment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -58,6 +59,11 @@ export interface IStorage {
   getAttachments(apartmentId: number): Promise<Attachment[]>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
   deleteAttachment(id: number): Promise<void>;
+
+  // Owner Payments
+  getOwnerPayments(apartmentId: number): Promise<OwnerPayment[]>;
+  createOwnerPayment(payment: InsertOwnerPayment): Promise<OwnerPayment>;
+  deleteOwnerPayment(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -235,6 +241,22 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAttachment(id: number): Promise<void> {
     await db.delete(attachments).where(eq(attachments.id, id));
+  }
+
+  // Owner Payments
+  async getOwnerPayments(apartmentId: number): Promise<OwnerPayment[]> {
+    return await db.select().from(ownerPayments)
+      .where(eq(ownerPayments.apartmentId, apartmentId))
+      .orderBy(desc(ownerPayments.paymentDate));
+  }
+
+  async createOwnerPayment(payment: InsertOwnerPayment): Promise<OwnerPayment> {
+    const [newPayment] = await db.insert(ownerPayments).values(payment).returning();
+    return newPayment;
+  }
+
+  async deleteOwnerPayment(id: number): Promise<void> {
+    await db.delete(ownerPayments).where(eq(ownerPayments.id, id));
   }
 
   // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)
