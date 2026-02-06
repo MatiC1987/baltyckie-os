@@ -12,6 +12,7 @@ export const apartments = pgTable("apartments", {
   address: text("address"),
   ownerName: text("owner_name"),
   active: boolean("active").default(true),
+  photoUrl: text("photo_url"),
 });
 
 export const reservations = pgTable("reservations", {

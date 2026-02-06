@@ -4,7 +4,7 @@ import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -97,9 +97,18 @@ export default function Apartments() {
       header: "Nazwa",
       cell: (apt: any) => (
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-            <Home className="h-5 w-5" />
-          </div>
+          {apt.photoUrl ? (
+            <img
+              src={apt.photoUrl}
+              alt={apt.name}
+              className="h-10 w-10 rounded-lg object-cover"
+              data-testid={`img-apartment-photo-${apt.id}`}
+            />
+          ) : (
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <Home className="h-5 w-5" />
+            </div>
+          )}
           <div>
             <div className="font-semibold" data-testid={`text-apartment-name-${apt.id}`}>{apt.name}</div>
             <div className="text-xs text-muted-foreground">{apt.address || `ID: #${apt.id}`}</div>
@@ -252,6 +261,9 @@ export default function Apartments() {
             <Tabs defaultValue="details">
               <TabsList className="w-full">
                 <TabsTrigger value="details" className="flex-1" data-testid="tab-edit-details">Dane</TabsTrigger>
+                <TabsTrigger value="photo" className="flex-1" data-testid="tab-edit-photo">
+                  <Camera className="h-4 w-4 mr-1" /> Zdjęcie
+                </TabsTrigger>
                 <TabsTrigger value="attachments" className="flex-1" data-testid="tab-edit-attachments">
                   <Paperclip className="h-4 w-4 mr-1" /> Załączniki
                 </TabsTrigger>
@@ -261,6 +273,9 @@ export default function Apartments() {
                   apartment={editingApartment}
                   onSuccess={() => setEditingApartment(null)}
                 />
+              </TabsContent>
+              <TabsContent value="photo">
+                <PhotoSection apartment={editingApartment} />
               </TabsContent>
               <TabsContent value="attachments">
                 <AttachmentsSection apartmentId={editingApartment.id} />
@@ -429,6 +444,99 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+function PhotoSection({ apartment }: { apartment: Apartment }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const updateApartment = useUpdateApartment();
+
+  const { uploadFile, isUploading } = useUpload({
+    onSuccess: (response) => {
+      updateApartment.mutate(
+        { id: apartment.id, photoUrl: response.objectPath },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['/api/apartments'] });
+            toast({ title: "Sukces", description: "Zdjęcie zostało zaktualizowane" });
+          },
+        }
+      );
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się przesłać zdjęcia", variant: "destructive" });
+    },
+  });
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadFile(file);
+    e.target.value = '';
+  };
+
+  const handleRemovePhoto = () => {
+    updateApartment.mutate(
+      { id: apartment.id, photoUrl: null },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['/api/apartments'] });
+          toast({ title: "Sukces", description: "Zdjęcie zostało usunięte" });
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="space-y-4 py-4">
+      <div className="flex flex-col items-center gap-4">
+        {apartment.photoUrl ? (
+          <div className="relative">
+            <img
+              src={apartment.photoUrl}
+              alt={apartment.name}
+              className="w-48 h-48 rounded-lg object-cover border"
+              data-testid="img-apartment-photo-preview"
+            />
+            <Button
+              size="icon"
+              variant="destructive"
+              className="absolute -top-2 -right-2"
+              onClick={handleRemovePhoto}
+              disabled={updateApartment.isPending}
+              data-testid="button-remove-photo"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="w-48 h-48 rounded-lg bg-muted flex flex-col items-center justify-center gap-2 border border-dashed" data-testid="placeholder-no-photo">
+            <ImageIcon className="h-12 w-12 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Brak zdjęcia</span>
+          </div>
+        )}
+
+        <Label htmlFor="photo-upload" className="cursor-pointer">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm font-medium hover-elevate">
+            <Camera className="h-4 w-4" />
+            {isUploading ? "Przesyłanie..." : apartment.photoUrl ? "Zmień zdjęcie" : "Dodaj zdjęcie"}
+          </div>
+          <input
+            id="photo-upload"
+            type="file"
+            className="hidden"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handlePhotoSelect}
+            disabled={isUploading}
+            data-testid="input-apartment-photo"
+          />
+        </Label>
+        <p className="text-xs text-muted-foreground text-center">
+          Obsługiwane formaty: JPG, PNG, WebP
+        </p>
+      </div>
+    </div>
   );
 }
 

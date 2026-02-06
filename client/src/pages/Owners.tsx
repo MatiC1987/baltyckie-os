@@ -101,7 +101,11 @@ export default function Owners() {
                       data-testid={`row-owner-apartment-${apt.id}`}
                     >
                       <div className="flex items-center gap-3">
-                        <Home className="h-4 w-4 text-muted-foreground" />
+                        {apt.photoUrl ? (
+                          <img src={apt.photoUrl} alt={apt.name} className="h-8 w-8 rounded-md object-cover" />
+                        ) : (
+                          <Home className="h-4 w-4 text-muted-foreground" />
+                        )}
                         <div>
                           <div className="font-medium text-sm">{apt.name}</div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">

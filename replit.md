@@ -30,14 +30,16 @@ shared/
 
 ## Key Features
 1. **Dashboard** - Revenue/expense stats, bar chart, recent reservations
-2. **Apartments** - CRUD management with name, location, address, owner
-3. **Reservations** - Short-term booking management with guest, dates, pricing
-4. **Leases** - Long-term rental contract management
-5. **Finance** - Expenses (with categories), bank accounts, balance snapshots (tabs UI)
-6. **Import** - Excel file upload parsing sheets: Rezerwacje, Umowy najmu, Saldo
+2. **Apartments** - CRUD with name, location (6 fixed categories), address, owner, presentation photo, lease dates display. Edit dialog with tabs: Dane, Zdjęcie, Załączniki
+3. **Owners** - View all owners grouped with their apartments, active lease info, apartment photos
+4. **Reservations** - Short-term booking management with guest, dates, pricing
+5. **Leases** - Long-term rental contract management
+6. **Finance** - Expenses (with categories), bank accounts, balance snapshots (tabs UI)
+7. **Import** - Excel file upload parsing sheets: Rezerwacje, Umowy najmu, Saldo
+8. **Attachments** - File uploads (UMOWA/ANEKS/INNY) via Object Storage with presigned URLs
 
 ## Database Tables
-- apartments (id serial PK, name, location, address, owner_name, active)
+- apartments (id serial PK, name, location, address, owner_name, active, photo_url)
 - reservations (id serial PK, reservation_number, apartment_id FK, start/end dates, guest_name, price/prepayment/surcharge decimal, status, created_at)
 - leases (id serial PK, apartment_id FK, start/end dates, rent_amount, community_fee, tenant_name, description)
 - expenses (id serial PK, date, category, amount, apartment_id FK, description, type FIXED/VARIABLE, vat_amount)
