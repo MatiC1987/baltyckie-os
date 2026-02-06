@@ -58,7 +58,7 @@ export function Sidebar() {
               const isActive = location === item.href;
               
               return (
-                <Link key={item.href} href={item.href}>
+                <Link key={item.href} href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`}>
                   <div className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer group",
                     isActive 
@@ -91,6 +91,7 @@ export function Sidebar() {
             <button 
               onClick={() => logout()}
               className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              data-testid="button-logout"
             >
               <LogOut className="h-4 w-4" />
               <span className="text-sm font-medium">Wyloguj</span>

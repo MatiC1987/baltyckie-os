@@ -55,12 +55,12 @@ export default function Reservations() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Rezerwacje</h2>
+          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-reservations-title">Rezerwacje</h2>
           <p className="text-muted-foreground">Lista wszystkich rezerwacji krótkoterminowych.</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" className="shadow-lg shadow-primary/20">
+            <Button size="lg" className="shadow-lg shadow-primary/20" data-testid="button-add-reservation">
               <Plus className="mr-2 h-4 w-4" /> Dodaj rezerwację
             </Button>
           </DialogTrigger>
@@ -111,7 +111,7 @@ function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
           name="apartmentId"
           render={({ field }) => (
             <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
-              <SelectTrigger>
+              <SelectTrigger data-testid="select-reservation-apartment">
                 <SelectValue placeholder="Wybierz apartament" />
               </SelectTrigger>
               <SelectContent>
@@ -126,33 +126,33 @@ function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
 
       <div className="space-y-2">
         <Label>Gość</Label>
-        <Input {...form.register("guestName")} placeholder="Imię i nazwisko" />
+        <Input {...form.register("guestName")} placeholder="Imię i nazwisko" data-testid="input-reservation-guest" />
       </div>
       <div className="space-y-2">
         <Label>Cena (PLN)</Label>
-        <Input type="number" step="0.01" {...form.register("price")} />
+        <Input type="number" step="0.01" {...form.register("price")} data-testid="input-reservation-price" />
       </div>
 
       <div className="space-y-2">
         <Label>Data przyjazdu</Label>
-        <Input type="date" {...form.register("startDate")} />
+        <Input type="date" {...form.register("startDate")} data-testid="input-reservation-start" />
       </div>
       <div className="space-y-2">
         <Label>Data wyjazdu</Label>
-        <Input type="date" {...form.register("endDate")} />
+        <Input type="date" {...form.register("endDate")} data-testid="input-reservation-end" />
       </div>
 
       <div className="space-y-2">
         <Label>Zaliczka</Label>
-        <Input type="number" step="0.01" {...form.register("prepayment")} />
+        <Input type="number" step="0.01" {...form.register("prepayment")} data-testid="input-reservation-prepayment" />
       </div>
       <div className="space-y-2">
         <Label>Dopłata</Label>
-        <Input type="number" step="0.01" {...form.register("surcharge")} />
+        <Input type="number" step="0.01" {...form.register("surcharge")} data-testid="input-reservation-surcharge" />
       </div>
       
       <div className="col-span-2 pt-4 flex justify-end">
-        <Button type="submit" disabled={createReservation.isPending}>
+        <Button type="submit" disabled={createReservation.isPending} data-testid="button-submit-reservation">
           {createReservation.isPending ? "Zapisywanie..." : "Zapisz rezerwację"}
         </Button>
       </div>

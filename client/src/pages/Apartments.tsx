@@ -63,12 +63,12 @@ export default function Apartments() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Apartamenty</h2>
+          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-apartments-title">Apartamenty</h2>
           <p className="text-muted-foreground">Zarządzaj swoją bazą nieruchomości.</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" className="shadow-lg shadow-primary/20">
+            <Button size="lg" className="shadow-lg shadow-primary/20" data-testid="button-add-apartment">
               <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
             </Button>
           </DialogTrigger>
@@ -114,24 +114,24 @@ function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
       <div className="space-y-2">
         <Label htmlFor="name">Nazwa apartamentu</Label>
-        <Input id="name" {...form.register("name")} placeholder="np. Apartament Widokowy" />
+        <Input id="name" {...form.register("name")} placeholder="np. Apartament Widokowy" data-testid="input-apartment-name" />
         {form.formState.errors.name && <span className="text-sm text-red-500">{form.formState.errors.name.message}</span>}
       </div>
       <div className="space-y-2">
         <Label htmlFor="location">Lokalizacja</Label>
-        <Input id="location" {...form.register("location")} placeholder="np. Gdańsk" />
+        <Input id="location" {...form.register("location")} placeholder="np. Gdańsk" data-testid="input-apartment-location" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="address">Adres</Label>
-        <Input id="address" {...form.register("address")} placeholder="ul. Długa 1/2" />
+        <Input id="address" {...form.register("address")} placeholder="ul. Długa 1/2" data-testid="input-apartment-address" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="ownerName">Właściciel</Label>
-        <Input id="ownerName" {...form.register("ownerName")} placeholder="Jan Kowalski" />
+        <Input id="ownerName" {...form.register("ownerName")} placeholder="Jan Kowalski" data-testid="input-apartment-owner" />
       </div>
       
       <DialogFooter>
-        <Button type="submit" disabled={createApartment.isPending}>
+        <Button type="submit" disabled={createApartment.isPending} data-testid="button-submit-apartment">
           {createApartment.isPending ? "Dodawanie..." : "Dodaj apartament"}
         </Button>
       </DialogFooter>

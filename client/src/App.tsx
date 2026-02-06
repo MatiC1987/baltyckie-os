@@ -8,34 +8,50 @@ import { useAuth } from "@/hooks/use-auth";
 import Dashboard from "@/pages/Dashboard";
 import Apartments from "@/pages/Apartments";
 import Reservations from "@/pages/Reservations";
+import Leases from "@/pages/Leases";
+import Finance from "@/pages/Finance";
+import Import from "@/pages/Import";
 import Landing from "@/pages/Landing";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { Layout } from "@/components/Layout";
+
+function AuthenticatedRoute({ component: Component }: { component: () => JSX.Element }) {
+  return (
+    <Layout>
+      <Component />
+    </Layout>
+  );
+}
 
 function Router() {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return null;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   if (!user) {
     return (
       <Switch>
         <Route path="/" component={Landing} />
-        <Route component={NotFound} />
+        <Route component={Landing} />
       </Switch>
     );
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-background">
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/apartments" component={Apartments} />
-        <Route path="/reservations" component={Reservations} />
-        <Route component={NotFound} />
-      </Switch>
-    </div>
+    <Switch>
+      <Route path="/" component={() => <AuthenticatedRoute component={Dashboard} />} />
+      <Route path="/apartments" component={() => <AuthenticatedRoute component={Apartments} />} />
+      <Route path="/reservations" component={() => <AuthenticatedRoute component={Reservations} />} />
+      <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
+      <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
+      <Route path="/import" component={() => <AuthenticatedRoute component={Import} />} />
+      <Route component={() => <AuthenticatedRoute component={NotFound} />} />
+    </Switch>
   );
 }
 
@@ -43,10 +59,8 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider>
-          <Toaster />
-          <Router />
-        </SidebarProvider>
+        <Toaster />
+        <Router />
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -54,7 +54,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Kokpit</h2>
+        <h2 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">Kokpit</h2>
         <p className="text-muted-foreground">Przegląd wyników finansowych i operacyjnych.</p>
       </div>
 
@@ -89,7 +89,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
+        <Card className="col-span-4" data-testid="card-revenue-chart">
           <CardHeader>
             <CardTitle>Przychody i Koszty</CardTitle>
           </CardHeader>
@@ -112,7 +112,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="col-span-3">
+        <Card className="col-span-3" data-testid="card-recent-reservations">
           <CardHeader>
             <CardTitle>Ostatnie Rezerwacje</CardTitle>
           </CardHeader>
