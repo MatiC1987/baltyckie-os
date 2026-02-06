@@ -7,6 +7,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import { testConnection, fetchReservations } from "./hotres";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -478,6 +479,108 @@ export async function registerRoutes(
     } catch (e: any) {
       console.error(e);
       res.status(500).json({ message: `Błąd importu: ${e.message}` });
+    }
+  });
+
+  // HotRes API Integration
+  app.get("/api/hotres/test", isAuthenticated, async (req, res) => {
+    try {
+      const result = await testConnection();
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post("/api/hotres/sync", isAuthenticated, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.body || {};
+      const result = await fetchReservations(dateFrom, dateTo);
+
+      if (!result.success || result.reservations.length === 0) {
+        return res.json({
+          success: result.success,
+          message: result.message,
+          imported: 0,
+          skipped: 0,
+          rawResponse: result.rawResponse,
+        });
+      }
+
+      const apartments = await storage.getApartments();
+      const apartmentMap = new Map(apartments.map(a => [a.name.trim().toLowerCase(), a.id]));
+
+      const existingReservations = await storage.getReservations();
+      const existingNumbers = new Set(existingReservations.map(r => r.reservationNumber));
+
+      let imported = 0;
+      let skipped = 0;
+      let duplicates = 0;
+      let newApartments = 0;
+      const log: string[] = [];
+
+      for (const hr of result.reservations) {
+        if (!hr.startDate || !hr.endDate) {
+          skipped++;
+          log.push(`Pominięto rezerwację ${hr.reservationNumber}: brak dat`);
+          continue;
+        }
+
+        if (existingNumbers.has(hr.reservationNumber)) {
+          duplicates++;
+          continue;
+        }
+
+        let aptId: number | undefined;
+        if (hr.apartmentName) {
+          const key = hr.apartmentName.trim().toLowerCase();
+          aptId = apartmentMap.get(key);
+          if (!aptId) {
+            const apt = await storage.createApartment({
+              name: hr.apartmentName.trim(),
+              location: "",
+              address: "",
+              ownerName: "",
+              active: true,
+            });
+            apartmentMap.set(key, apt.id);
+            aptId = apt.id;
+            newApartments++;
+            log.push(`Utworzono apartament: ${hr.apartmentName}`);
+          }
+        }
+
+        await storage.createReservation({
+          reservationNumber: hr.reservationNumber,
+          apartmentId: aptId || null,
+          startDate: hr.startDate,
+          endDate: hr.endDate,
+          guestName: hr.guestName,
+          price: hr.price,
+          prepayment: hr.prepayment || "0",
+          surcharge: "0",
+          status: hr.status,
+        });
+        imported++;
+      }
+
+      if (duplicates > 0) {
+        log.push(`Pominięto ${duplicates} duplikatów (już istnieją w bazie)`);
+      }
+      log.push(`Podsumowanie: zaimportowano=${imported}, pominięto=${skipped}, duplikaty=${duplicates}, nowe apartamenty=${newApartments}`);
+
+      res.json({
+        success: true,
+        message: `Zaimportowano ${imported} rezerwacji z HotRes${duplicates > 0 ? ` (${duplicates} duplikatów pominięto)` : ""}`,
+        imported,
+        skipped,
+        duplicates,
+        newApartments,
+        log,
+      });
+    } catch (e: any) {
+      console.error("HotRes sync error:", e);
+      res.status(500).json({ success: false, message: `Błąd synchronizacji: ${e.message}` });
     }
   });
 

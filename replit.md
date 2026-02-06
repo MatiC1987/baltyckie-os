@@ -30,13 +30,15 @@ shared/
 
 ## Key Features
 1. **Dashboard** - Revenue/expense stats, bar chart, recent reservations
-2. **Apartments** - CRUD with name, location (6 fixed categories), address, owner, presentation photo, lease dates display. Edit dialog with tabs: Dane, Zdjęcie, Załączniki
+2. **Apartments** - CRUD with name, location (6 fixed categories), address, owner, presentation photo, lease dates display. Edit dialog with tabs: Dane, Raty, Zdjęcie, Załączniki
 3. **Owners** - View all owners grouped with their apartments, active lease info, apartment photos
 4. **Reservations** - Short-term booking management with guest, dates, pricing
 5. **Leases** - Long-term rental contract management
 6. **Finance** - Expenses (with categories), bank accounts, balance snapshots (tabs UI)
-7. **Import** - Excel file upload parsing sheets: Rezerwacje, Umowy najmu, Saldo
+7. **Import** - Excel file upload + HotRes API sync for reservations
 8. **Attachments** - File uploads (UMOWA/ANEKS/INNY) via Object Storage with presigned URLs
+9. **Owner Payments** - Per-apartment payment tracking with 7 categories (Raty tab in apartment edit)
+10. **HotRes Integration** - API connection to HotRes reservation system with auto-discovery of endpoints
 
 ## Database Tables
 - apartments (id serial PK, name, location, address, owner_name, active, photo_url)
@@ -57,6 +59,8 @@ All require authentication. Defined in shared/routes.ts:
 - GET/POST /api/snapshots
 - GET /api/stats/dashboard
 - POST /api/import (multipart file upload)
+- GET/POST /api/apartments/:id/payments, DELETE /api/owner-payments/:id
+- GET /api/hotres/test, POST /api/hotres/sync
 
 ## User Preferences
 - Language: Polish (all UI text in Polish)
@@ -66,3 +70,5 @@ All require authentication. Defined in shared/routes.ts:
 
 ## Recent Changes
 - 2026-02-06: Built complete application with all pages, Excel import with detailed logging, data-testid attributes on all interactive elements
+- 2026-02-06: Added owner payments system (ownerPayments table, Raty tab in apartment edit dialog)
+- 2026-02-06: Added HotRes API integration for automatic reservation sync (server/hotres.ts, test connection + sync endpoints)
