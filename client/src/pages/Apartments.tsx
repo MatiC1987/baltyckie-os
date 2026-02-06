@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
-import { useApartments, useCreateApartment } from "@/hooks/use-apartments";
+import { useApartments, useCreateApartment, useUpdateApartment, useDeleteApartment } from "@/hooks/use-apartments";
 import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2 } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -38,6 +39,7 @@ function normalizeKey(loc: string): string {
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
 
   const groupedApartments = useMemo(() => {
     const groups: { label: string; apartments: Apartment[] }[] = LOCATIONS.map(loc => ({
@@ -87,6 +89,21 @@ export default function Apartments() {
         <Badge variant={apt.active ? "default" : "secondary"}>
           {apt.active ? "Aktywny" : "Nieaktywny"}
         </Badge>
+      )
+    },
+    {
+      header: "",
+      cell: (apt: any) => (
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setEditingApartment(apt)}
+            data-testid={`button-edit-apartment-${apt.id}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        </div>
       )
     }
   ];
@@ -176,6 +193,20 @@ export default function Apartments() {
           )}
         </div>
       ))}
+
+      <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edytuj apartament</DialogTitle>
+          </DialogHeader>
+          {editingApartment && (
+            <EditApartmentForm
+              apartment={editingApartment}
+              onSuccess={() => setEditingApartment(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -237,6 +268,102 @@ function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
       <DialogFooter>
         <Button type="submit" disabled={createApartment.isPending} data-testid="button-submit-apartment">
           {createApartment.isPending ? "Dodawanie..." : "Dodaj apartament"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onSuccess: () => void }) {
+  const updateApartment = useUpdateApartment();
+  const deleteApartment = useDeleteApartment();
+  const form = useForm<InsertApartment>({
+    resolver: zodResolver(insertApartmentSchema),
+    defaultValues: {
+      name: apartment.name,
+      location: apartment.location || "",
+      address: apartment.address || "",
+      ownerName: apartment.ownerName || "",
+      active: apartment.active,
+    }
+  });
+
+  const onSubmit = (data: InsertApartment) => {
+    updateApartment.mutate({ id: apartment.id, ...data }, {
+      onSuccess: () => onSuccess()
+    });
+  };
+
+  const handleDelete = () => {
+    if (window.confirm("Czy na pewno chcesz usunąć ten apartament?")) {
+      deleteApartment.mutate(apartment.id, {
+        onSuccess: () => onSuccess()
+      });
+    }
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+      <div className="space-y-2">
+        <Label htmlFor="edit-name">Nazwa apartamentu</Label>
+        <Input id="edit-name" {...form.register("name")} data-testid="input-edit-apartment-name" />
+        {form.formState.errors.name && <span className="text-sm text-destructive">{form.formState.errors.name.message}</span>}
+      </div>
+      <div className="space-y-2">
+        <Label>Lokalizacja</Label>
+        <Controller
+          control={form.control}
+          name="location"
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value || ""}>
+              <SelectTrigger data-testid="select-edit-apartment-location">
+                <SelectValue placeholder="Wybierz lokalizację" />
+              </SelectTrigger>
+              <SelectContent>
+                {LOCATIONS.map(loc => (
+                  <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-address">Adres</Label>
+        <Input id="edit-address" {...form.register("address")} data-testid="input-edit-apartment-address" />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-ownerName">Właściciel</Label>
+        <Input id="edit-ownerName" {...form.register("ownerName")} data-testid="input-edit-apartment-owner" />
+      </div>
+      <div className="flex items-center gap-3">
+        <Controller
+          control={form.control}
+          name="active"
+          render={({ field }) => (
+            <Switch
+              checked={field.value}
+              onCheckedChange={field.onChange}
+              data-testid="switch-edit-apartment-active"
+            />
+          )}
+        />
+        <Label>Aktywny</Label>
+      </div>
+
+      <DialogFooter className="flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="destructive"
+          onClick={handleDelete}
+          disabled={deleteApartment.isPending}
+          data-testid="button-delete-apartment"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          {deleteApartment.isPending ? "Usuwanie..." : "Usuń"}
+        </Button>
+        <Button type="submit" disabled={updateApartment.isPending} data-testid="button-save-apartment">
+          {updateApartment.isPending ? "Zapisywanie..." : "Zapisz zmiany"}
         </Button>
       </DialogFooter>
     </form>
