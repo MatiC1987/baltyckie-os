@@ -20,10 +20,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertApartmentSchema, type InsertApartment, type Apartment, type Lease, type Attachment } from "@shared/schema";
+import { insertApartmentSchema, type InsertApartment, type Apartment, type Lease, type Attachment, type Owner } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
 import { useToast } from "@/hooks/use-toast";
+import { useOwners } from "@/hooks/use-owners";
 
 const LOCATIONS = [
   "BULWAR PORTOWY",
@@ -43,8 +44,15 @@ function normalizeKey(loc: string): string {
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
   const { data: leases } = useQuery<Lease[]>({ queryKey: ['/api/leases'] });
+  const { data: ownersList } = useOwners();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
+
+  const ownersMap = useMemo(() => {
+    const map = new Map<number, Owner>();
+    if (ownersList) for (const o of ownersList) map.set(o.id, o);
+    return map;
+  }, [ownersList]);
 
   const leaseMap = useMemo(() => {
     if (!leases) return new Map<number, Lease>();
@@ -118,7 +126,14 @@ export default function Apartments() {
     },
     {
       header: "Właściciel",
-      accessorKey: "ownerName" as const,
+      cell: (apt: any) => {
+        const owner = apt.ownerId ? ownersMap.get(apt.ownerId) : null;
+        return owner ? (
+          <span data-testid={`text-apartment-owner-${apt.id}`}>{owner.name}</span>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        );
+      }
     },
     {
       header: "Umowa najmu",
@@ -290,13 +305,14 @@ export default function Apartments() {
 
 function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
   const createApartment = useCreateApartment();
+  const { data: ownersList } = useOwners();
   const form = useForm<InsertApartment>({
     resolver: zodResolver(insertApartmentSchema),
     defaultValues: {
       name: "",
       location: "",
       address: "",
-      ownerName: "",
+      ownerId: null,
       active: true,
     }
   });
@@ -338,8 +354,27 @@ function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
         <Input id="address" {...form.register("address")} placeholder="ul. Długa 1/2" data-testid="input-apartment-address" />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="ownerName">Właściciel</Label>
-        <Input id="ownerName" {...form.register("ownerName")} placeholder="Jan Kowalski" data-testid="input-apartment-owner" />
+        <Label>Właściciel</Label>
+        <Controller
+          control={form.control}
+          name="ownerId"
+          render={({ field }) => (
+            <Select
+              onValueChange={(val) => field.onChange(val === "__none__" ? null : Number(val))}
+              value={field.value ? String(field.value) : "__none__"}
+            >
+              <SelectTrigger data-testid="select-apartment-owner">
+                <SelectValue placeholder="Wybierz właściciela" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Brak właściciela</SelectItem>
+                {ownersList?.map(owner => (
+                  <SelectItem key={owner.id} value={String(owner.id)}>{owner.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </div>
 
       <DialogFooter>
@@ -352,6 +387,7 @@ function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onSuccess: () => void }) {
+  const { data: ownersList } = useOwners();
   const updateApartment = useUpdateApartment();
   const deleteApartment = useDeleteApartment();
   const form = useForm<InsertApartment>({
@@ -360,7 +396,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
       name: apartment.name,
       location: apartment.location || "",
       address: apartment.address || "",
-      ownerName: apartment.ownerName || "",
+      ownerId: apartment.ownerId || null,
       active: apartment.active,
     }
   });
@@ -410,8 +446,27 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
         <Input id="edit-address" {...form.register("address")} data-testid="input-edit-apartment-address" />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="edit-ownerName">Właściciel</Label>
-        <Input id="edit-ownerName" {...form.register("ownerName")} data-testid="input-edit-apartment-owner" />
+        <Label>Właściciel</Label>
+        <Controller
+          control={form.control}
+          name="ownerId"
+          render={({ field }) => (
+            <Select
+              onValueChange={(val) => field.onChange(val === "__none__" ? null : Number(val))}
+              value={field.value ? String(field.value) : "__none__"}
+            >
+              <SelectTrigger data-testid="select-edit-apartment-owner">
+                <SelectValue placeholder="Wybierz właściciela" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Brak właściciela</SelectItem>
+                {ownersList?.map(owner => (
+                  <SelectItem key={owner.id} value={String(owner.id)}>{owner.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </div>
       <div className="flex items-center gap-3">
         <Controller

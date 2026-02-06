@@ -1,5 +1,6 @@
 import { 
   users, User, InsertUser,
+  owners, Owner, InsertOwner,
   apartments, Apartment, InsertApartment,
   reservations, Reservation, InsertReservation,
   leases, Lease, InsertLease,
@@ -16,6 +17,13 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+
+  // Owners
+  getOwners(): Promise<Owner[]>;
+  getOwner(id: number): Promise<Owner | undefined>;
+  createOwner(owner: InsertOwner): Promise<Owner>;
+  updateOwner(id: number, owner: Partial<InsertOwner>): Promise<Owner>;
+  deleteOwner(id: number): Promise<void>;
 
   // Apartments
   getApartments(): Promise<Apartment[]>;
@@ -75,6 +83,31 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  // Owners
+  async getOwners(): Promise<Owner[]> {
+    return await db.select().from(owners).orderBy(owners.name);
+  }
+
+  async getOwner(id: number): Promise<Owner | undefined> {
+    const [owner] = await db.select().from(owners).where(eq(owners.id, id));
+    return owner;
+  }
+
+  async createOwner(owner: InsertOwner): Promise<Owner> {
+    const [newOwner] = await db.insert(owners).values(owner).returning();
+    return newOwner;
+  }
+
+  async updateOwner(id: number, owner: Partial<InsertOwner>): Promise<Owner> {
+    const [updated] = await db.update(owners).set(owner).where(eq(owners.id, id)).returning();
+    return updated;
+  }
+
+  async deleteOwner(id: number): Promise<void> {
+    await db.update(apartments).set({ ownerId: null }).where(eq(apartments.ownerId, id));
+    await db.delete(owners).where(eq(owners.id, id));
   }
 
   // Apartments

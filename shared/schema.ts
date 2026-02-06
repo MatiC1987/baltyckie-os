@@ -5,12 +5,21 @@ import { relations } from "drizzle-orm";
 // Export auth models as required by Replit Auth
 export * from "./models/auth";
 
+export const owners = pgTable("owners", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  notes: text("notes"),
+});
+
 export const apartments = pgTable("apartments", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   location: text("location"),
   address: text("address"),
   ownerName: text("owner_name"),
+  ownerId: integer("owner_id").references(() => owners.id),
   active: boolean("active").default(true),
   photoUrl: text("photo_url"),
 });
@@ -76,7 +85,15 @@ export const attachments = pgTable("attachments", {
 });
 
 // Relations
-export const apartmentsRelations = relations(apartments, ({ many }) => ({
+export const ownersRelations = relations(owners, ({ many }) => ({
+  apartments: many(apartments),
+}));
+
+export const apartmentsRelations = relations(apartments, ({ one, many }) => ({
+  owner: one(owners, {
+    fields: [apartments.ownerId],
+    references: [owners.id],
+  }),
   reservations: many(reservations),
   leases: many(leases),
   expenses: many(expenses),
@@ -123,6 +140,7 @@ export const attachmentsRelations = relations(attachments, ({ one }) => ({
 }));
 
 // Insert Schemas
+export const insertOwnerSchema = createInsertSchema(owners).omit({ id: true });
 export const insertApartmentSchema = createInsertSchema(apartments).omit({ id: true });
 export const insertReservationSchema = createInsertSchema(reservations).omit({ id: true, createdAt: true });
 export const insertLeaseSchema = createInsertSchema(leases).omit({ id: true });
@@ -132,6 +150,8 @@ export const insertAccountSnapshotSchema = createInsertSchema(accountSnapshots).
 export const insertAttachmentSchema = createInsertSchema(attachments).omit({ id: true, uploadedAt: true });
 
 // Types
+export type Owner = typeof owners.$inferSelect;
+export type InsertOwner = z.infer<typeof insertOwnerSchema>;
 export type Apartment = typeof apartments.$inferSelect;
 export type InsertApartment = z.infer<typeof insertApartmentSchema>;
 export type Reservation = typeof reservations.$inferSelect;

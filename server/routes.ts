@@ -51,6 +51,45 @@ export async function registerRoutes(
   registerObjectStorageRoutes(app);
   seedData().catch(console.error);
 
+  // Owners
+  app.get(api.owners.list.path, isAuthenticated, async (req, res) => {
+    const ownersList = await storage.getOwners();
+    res.json(ownersList);
+  });
+
+  app.get(api.owners.get.path, isAuthenticated, async (req, res) => {
+    const owner = await storage.getOwner(Number(req.params.id));
+    if (!owner) return res.status(404).json({ message: "Not found" });
+    res.json(owner);
+  });
+
+  app.post(api.owners.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.owners.create.input.parse(req.body);
+      const owner = await storage.createOwner(input);
+      res.status(201).json(owner);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
+  });
+
+  app.put(api.owners.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.owners.update.input.parse(req.body);
+      const owner = await storage.updateOwner(Number(req.params.id), input);
+      res.json(owner);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
+  });
+
+  app.delete(api.owners.delete.path, isAuthenticated, async (req, res) => {
+    await storage.deleteOwner(Number(req.params.id));
+    res.status(204).send();
+  });
+
   // Apartments
   app.get(api.apartments.list.path, isAuthenticated, async (req, res) => {
     const apartments = await storage.getApartments();

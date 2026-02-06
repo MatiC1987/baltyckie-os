@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { 
+  insertOwnerSchema,
+  owners,
   insertApartmentSchema, 
   apartments, 
   insertReservationSchema, 
@@ -28,6 +30,50 @@ export const errorSchemas = {
 };
 
 export const api = {
+  owners: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/owners',
+      responses: {
+        200: z.array(z.custom<typeof owners.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/owners/:id',
+      responses: {
+        200: z.custom<typeof owners.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/owners',
+      input: insertOwnerSchema,
+      responses: {
+        201: z.custom<typeof owners.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/owners/:id',
+      input: insertOwnerSchema.partial(),
+      responses: {
+        200: z.custom<typeof owners.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/owners/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
   apartments: {
     list: {
       method: 'GET' as const,
