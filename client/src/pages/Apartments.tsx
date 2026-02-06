@@ -20,8 +20,16 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertApartmentSchema, type InsertApartment, type Apartment } from "@shared/schema";
 
-const PRIORITY_LOCATION = "BULWAR PORTOWY";
-const OTHER_LABEL = "Inne";
+const LOCATIONS = [
+  "BULWAR PORTOWY",
+  "NA WYDMIE",
+  "WCZASOWA",
+  "GRAND BALTIC",
+  "PRZEWŁOKA",
+  "INNE",
+] as const;
+
+const OTHER_LABEL = "INNE";
 
 function normalizeKey(loc: string): string {
   return loc.trim().toUpperCase();
@@ -31,45 +39,27 @@ export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const { groupedApartments, locationOptions } = useMemo(() => {
-    const groups: Record<string, { label: string; apartments: Apartment[] }> = {};
-
-    groups[normalizeKey(PRIORITY_LOCATION)] = { label: PRIORITY_LOCATION, apartments: [] };
+  const groupedApartments = useMemo(() => {
+    const groups: { label: string; apartments: Apartment[] }[] = LOCATIONS.map(loc => ({
+      label: loc,
+      apartments: [],
+    }));
 
     if (apartments) {
       for (const apt of apartments) {
         const loc = apt.location?.trim() || "";
-        const key = loc ? normalizeKey(loc) : normalizeKey(OTHER_LABEL);
-        const label = loc || OTHER_LABEL;
-        if (!groups[key]) {
-          groups[key] = { label, apartments: [] };
+        const key = normalizeKey(loc);
+        const group = groups.find(g => normalizeKey(g.label) === key);
+        if (group) {
+          group.apartments.push(apt);
+        } else {
+          const otherGroup = groups.find(g => g.label === OTHER_LABEL);
+          if (otherGroup) otherGroup.apartments.push(apt);
         }
-        groups[key].apartments.push(apt);
       }
     }
 
-    const sortedKeys = Object.keys(groups).sort((a, b) => {
-      if (a === normalizeKey(PRIORITY_LOCATION)) return -1;
-      if (b === normalizeKey(PRIORITY_LOCATION)) return 1;
-      if (a === normalizeKey(OTHER_LABEL)) return 1;
-      if (b === normalizeKey(OTHER_LABEL)) return -1;
-      return a.localeCompare(b, 'pl');
-    });
-
-    const sorted: [string, { label: string; apartments: Apartment[] }][] = sortedKeys.map(k => [k, groups[k]]);
-
-    const opts = new Set<string>();
-    opts.add(PRIORITY_LOCATION);
-    if (apartments) {
-      for (const apt of apartments) {
-        if (apt.location?.trim()) opts.add(apt.location.trim());
-      }
-    }
-
-    return {
-      groupedApartments: sorted,
-      locationOptions: Array.from(opts),
-    };
+    return groups;
   }, [apartments]);
 
   const columns = [
@@ -136,10 +126,7 @@ export default function Apartments() {
             <DialogHeader>
               <DialogTitle>Dodaj nowy apartament</DialogTitle>
             </DialogHeader>
-            <ApartmentForm
-              onSuccess={() => setIsDialogOpen(false)}
-              locationOptions={locationOptions}
-            />
+            <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
           </DialogContent>
         </Dialog>
       </div>
@@ -159,14 +146,14 @@ export default function Apartments() {
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <div className="text-2xl font-bold" data-testid="text-stat-locations">{groupedApartments.filter(([, g]) => g.apartments.length > 0).length}</div>
+            <div className="text-2xl font-bold" data-testid="text-stat-locations">{groupedApartments.filter(g => g.apartments.length > 0).length}</div>
             <div className="text-xs text-muted-foreground">Lokalizacje</div>
           </CardContent>
         </Card>
       </div>
 
-      {groupedApartments.map(([key, group]) => (
-        <div key={key} className="space-y-3" data-testid={`group-location-${key.toLowerCase().replace(/\s+/g, '-')}`}>
+      {groupedApartments.map((group) => (
+        <div key={group.label} className="space-y-3" data-testid={`group-location-${group.label.toLowerCase().replace(/\s+/g, '-').replace(/ł/g, 'l')}`}>
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
               <Building2 className="h-4 w-4 text-primary" />
@@ -193,9 +180,8 @@ export default function Apartments() {
   );
 }
 
-function ApartmentForm({ onSuccess, locationOptions }: { onSuccess: () => void; locationOptions: string[] }) {
+function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
   const createApartment = useCreateApartment();
-  const [customLocation, setCustomLocation] = useState(false);
   const form = useForm<InsertApartment>({
     resolver: zodResolver(insertApartmentSchema),
     defaultValues: {
@@ -222,40 +208,22 @@ function ApartmentForm({ onSuccess, locationOptions }: { onSuccess: () => void; 
       </div>
       <div className="space-y-2">
         <Label>Lokalizacja</Label>
-        {customLocation ? (
-          <div className="flex gap-2">
-            <Input
-              {...form.register("location")}
-              placeholder="Wpisz lokalizację"
-              data-testid="input-apartment-location"
-            />
-            <Button type="button" variant="outline" onClick={() => setCustomLocation(false)} data-testid="button-select-location">
-              Lista
-            </Button>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <Controller
-              control={form.control}
-              name="location"
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value || ""}>
-                  <SelectTrigger data-testid="select-apartment-location" className="flex-1">
-                    <SelectValue placeholder="Wybierz lokalizację" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locationOptions.map(loc => (
-                      <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            <Button type="button" variant="outline" onClick={() => setCustomLocation(true)} data-testid="button-custom-location">
-              Inna
-            </Button>
-          </div>
-        )}
+        <Controller
+          control={form.control}
+          name="location"
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value || ""}>
+              <SelectTrigger data-testid="select-apartment-location">
+                <SelectValue placeholder="Wybierz lokalizację" />
+              </SelectTrigger>
+              <SelectContent>
+                {LOCATIONS.map(loc => (
+                  <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </div>
       <div className="space-y-2">
         <Label htmlFor="address">Adres</Label>
