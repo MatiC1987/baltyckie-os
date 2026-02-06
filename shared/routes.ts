@@ -1,0 +1,243 @@
+import { z } from 'zod';
+import { 
+  insertApartmentSchema, 
+  apartments, 
+  insertReservationSchema, 
+  reservations,
+  insertLeaseSchema,
+  leases,
+  insertExpenseSchema,
+  expenses,
+  insertAccountSchema,
+  accounts,
+  insertAccountSnapshotSchema,
+  accountSnapshots
+} from './schema';
+
+export const errorSchemas = {
+  validation: z.object({
+    message: z.string(),
+    field: z.string().optional(),
+  }),
+  notFound: z.object({
+    message: z.string(),
+  }),
+  internal: z.object({
+    message: z.string(),
+  }),
+};
+
+export const api = {
+  apartments: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/apartments',
+      responses: {
+        200: z.array(z.custom<typeof apartments.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/apartments/:id',
+      responses: {
+        200: z.custom<typeof apartments.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/apartments',
+      input: insertApartmentSchema,
+      responses: {
+        201: z.custom<typeof apartments.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/apartments/:id',
+      input: insertApartmentSchema.partial(),
+      responses: {
+        200: z.custom<typeof apartments.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/apartments/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  reservations: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/reservations',
+      input: z.object({
+        apartmentId: z.coerce.number().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }).optional(),
+      responses: {
+        200: z.array(z.custom<typeof reservations.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/reservations',
+      input: insertReservationSchema,
+      responses: {
+        201: z.custom<typeof reservations.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/reservations/:id',
+      input: insertReservationSchema.partial(),
+      responses: {
+        200: z.custom<typeof reservations.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/reservations/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  leases: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/leases',
+      input: z.object({
+        apartmentId: z.coerce.number().optional(),
+      }).optional(),
+      responses: {
+        200: z.array(z.custom<typeof leases.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/leases',
+      input: insertLeaseSchema,
+      responses: {
+        201: z.custom<typeof leases.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/leases/:id',
+      input: insertLeaseSchema.partial(),
+      responses: {
+        200: z.custom<typeof leases.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  expenses: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/expenses',
+      input: z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }).optional(),
+      responses: {
+        200: z.array(z.custom<typeof expenses.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/expenses',
+      input: insertExpenseSchema,
+      responses: {
+        201: z.custom<typeof expenses.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+  },
+  accounts: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/accounts',
+      responses: {
+        200: z.array(z.custom<typeof accounts.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/accounts',
+      input: insertAccountSchema,
+      responses: {
+        201: z.custom<typeof accounts.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+  },
+  snapshots: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/snapshots',
+      responses: {
+        200: z.array(z.custom<typeof accountSnapshots.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/snapshots',
+      input: insertAccountSnapshotSchema,
+      responses: {
+        201: z.custom<typeof accountSnapshots.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+  },
+  imports: {
+    upload: {
+      method: 'POST' as const,
+      path: '/api/import',
+      // No input schema for file upload (handled via multer/busboy manually usually or assumed separate)
+      // We can use a simplified schema for metadata if needed
+      responses: {
+        200: z.object({ message: z.string(), imported: z.object({ reservations: z.number(), apartments: z.number() }) }),
+        400: errorSchemas.validation,
+      }
+    }
+  },
+  stats: {
+    dashboard: {
+      method: 'GET' as const,
+      path: '/api/stats/dashboard',
+      responses: {
+        200: z.object({
+          totalRevenue: z.number(),
+          totalExpenses: z.number(),
+          netIncome: z.number(),
+          occupancyRate: z.number(),
+        }),
+      }
+    }
+  }
+};
+
+export function buildUrl(path: string, params?: Record<string, string | number>): string {
+  let url = path;
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (url.includes(`:${key}`)) {
+        url = url.replace(`:${key}`, String(value));
+      }
+    });
+  }
+  return url;
+}

@@ -1,38 +1,214 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { 
+  users, User, InsertUser,
+  apartments, Apartment, InsertApartment,
+  reservations, Reservation, InsertReservation,
+  leases, Lease, InsertLease,
+  expenses, Expense, InsertExpense,
+  accounts, Account, InsertAccount,
+  accountSnapshots, AccountSnapshot, InsertAccountSnapshot
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 
 export interface IStorage {
+  // Users (optional if auth handles it separately, but good to have)
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+
+  // Apartments
+  getApartments(): Promise<Apartment[]>;
+  getApartment(id: number): Promise<Apartment | undefined>;
+  createApartment(apartment: InsertApartment): Promise<Apartment>;
+  updateApartment(id: number, apartment: Partial<InsertApartment>): Promise<Apartment>;
+  deleteApartment(id: number): Promise<void>;
+
+  // Reservations
+  getReservations(filters?: { apartmentId?: number, startDate?: string, endDate?: string }): Promise<Reservation[]>;
+  createReservation(reservation: InsertReservation): Promise<Reservation>;
+  updateReservation(id: number, reservation: Partial<InsertReservation>): Promise<Reservation>;
+  deleteReservation(id: number): Promise<void>;
+  createReservationsBulk(reservationsData: InsertReservation[]): Promise<Reservation[]>;
+
+  // Leases
+  getLeases(apartmentId?: number): Promise<Lease[]>;
+  createLease(lease: InsertLease): Promise<Lease>;
+  updateLease(id: number, lease: Partial<InsertLease>): Promise<Lease>;
+
+  // Expenses
+  getExpenses(filters?: { startDate?: string, endDate?: string }): Promise<Expense[]>;
+  createExpense(expense: InsertExpense): Promise<Expense>;
+
+  // Accounts & Snapshots
+  getAccounts(): Promise<Account[]>;
+  createAccount(account: InsertAccount): Promise<Account>;
+  getSnapshots(accountId?: number): Promise<AccountSnapshot[]>;
+  createSnapshot(snapshot: InsertAccountSnapshot): Promise<AccountSnapshot>;
+  
+  // Stats
+  getDashboardStats(): Promise<{
+    totalRevenue: number;
+    totalExpenses: number;
+    netIncome: number;
+    occupancyRate: number;
+  }>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
+export class DatabaseStorage implements IStorage {
+  // Users
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  // Apartments
+  async getApartments(): Promise<Apartment[]> {
+    return await db.select().from(apartments).orderBy(apartments.name);
+  }
+
+  async getApartment(id: number): Promise<Apartment | undefined> {
+    const [apartment] = await db.select().from(apartments).where(eq(apartments.id, id));
+    return apartment;
+  }
+
+  async createApartment(apartment: InsertApartment): Promise<Apartment> {
+    const [newApartment] = await db.insert(apartments).values(apartment).returning();
+    return newApartment;
+  }
+
+  async updateApartment(id: number, apartment: Partial<InsertApartment>): Promise<Apartment> {
+    const [updated] = await db.update(apartments).set(apartment).where(eq(apartments.id, id)).returning();
+    return updated;
+  }
+
+  async deleteApartment(id: number): Promise<void> {
+    await db.delete(apartments).where(eq(apartments.id, id));
+  }
+
+  // Reservations
+  async getReservations(filters?: { apartmentId?: number, startDate?: string, endDate?: string }): Promise<Reservation[]> {
+    const conditions = [];
+    if (filters?.apartmentId) conditions.push(eq(reservations.apartmentId, filters.apartmentId));
+    if (filters?.startDate) conditions.push(gte(reservations.startDate, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(reservations.endDate, filters.endDate));
+
+    return await db.select()
+      .from(reservations)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(reservations.startDate));
+  }
+
+  async createReservation(reservation: InsertReservation): Promise<Reservation> {
+    const [newReservation] = await db.insert(reservations).values(reservation).returning();
+    return newReservation;
+  }
+  
+  async createReservationsBulk(reservationsData: InsertReservation[]): Promise<Reservation[]> {
+    if (reservationsData.length === 0) return [];
+    return await db.insert(reservations).values(reservationsData).returning();
+  }
+
+  async updateReservation(id: number, reservation: Partial<InsertReservation>): Promise<Reservation> {
+    const [updated] = await db.update(reservations).set(reservation).where(eq(reservations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteReservation(id: number): Promise<void> {
+    await db.delete(reservations).where(eq(reservations.id, id));
+  }
+
+  // Leases
+  async getLeases(apartmentId?: number): Promise<Lease[]> {
+    if (apartmentId) {
+      return await db.select().from(leases).where(eq(leases.apartmentId, apartmentId));
+    }
+    return await db.select().from(leases);
+  }
+
+  async createLease(lease: InsertLease): Promise<Lease> {
+    const [newLease] = await db.insert(leases).values(lease).returning();
+    return newLease;
+  }
+
+  async updateLease(id: number, lease: Partial<InsertLease>): Promise<Lease> {
+    const [updated] = await db.update(leases).set(lease).where(eq(leases.id, id)).returning();
+    return updated;
+  }
+
+  // Expenses
+  async getExpenses(filters?: { startDate?: string, endDate?: string }): Promise<Expense[]> {
+    const conditions = [];
+    if (filters?.startDate) conditions.push(gte(expenses.date, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(expenses.date, filters.endDate));
+
+    return await db.select()
+      .from(expenses)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(expenses.date));
+  }
+
+  async createExpense(expense: InsertExpense): Promise<Expense> {
+    const [newExpense] = await db.insert(expenses).values(expense).returning();
+    return newExpense;
+  }
+
+  // Accounts & Snapshots
+  async getAccounts(): Promise<Account[]> {
+    return await db.select().from(accounts);
+  }
+
+  async createAccount(account: InsertAccount): Promise<Account> {
+    const [newAccount] = await db.insert(accounts).values(account).returning();
+    return newAccount;
+  }
+
+  async getSnapshots(accountId?: number): Promise<AccountSnapshot[]> {
+    if (accountId) {
+      return await db.select().from(accountSnapshots).where(eq(accountSnapshots.accountId, accountId)).orderBy(desc(accountSnapshots.date));
+    }
+    return await db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.date));
+  }
+
+  async createSnapshot(snapshot: InsertAccountSnapshot): Promise<AccountSnapshot> {
+    const [newSnapshot] = await db.insert(accountSnapshots).values(snapshot).returning();
+    return newSnapshot;
+  }
+  
+  // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)
+  async getDashboardStats(): Promise<{
+    totalRevenue: number;
+    totalExpenses: number;
+    netIncome: number;
+    occupancyRate: number;
+  }> {
+    // This is a placeholder for complex logic requested by user. 
+    // In a real app we'd run aggregations.
+    // For now, let's just return some basic sums or 0s if empty.
+    
+    // We can do real SQL sums here easily
+    const revenueResult = await db.select({ value: sql<number>`sum(${reservations.price})` }).from(reservations).where(eq(reservations.status, 'ACCEPTED'));
+    const expenseResult = await db.select({ value: sql<number>`sum(${expenses.amount})` }).from(expenses);
+    
+    const totalRevenue = Number(revenueResult[0]?.value || 0);
+    const totalExpenses = Number(expenseResult[0]?.value || 0);
+    
+    return {
+      totalRevenue,
+      totalExpenses,
+      netIncome: totalRevenue - totalExpenses,
+      occupancyRate: 0, // Needs complex date range calculation
+    };
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
