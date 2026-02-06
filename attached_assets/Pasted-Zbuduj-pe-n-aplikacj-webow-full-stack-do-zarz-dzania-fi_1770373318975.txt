@@ -1,0 +1,110 @@
+Zbuduj pełną aplikację webową (full-stack) do zarządzania finansami firmy wynajmującej apartamenty, na podstawie mojego Excela "BAŁTYCKIE.xlsx". Aplikacja ma zastąpić analizę w Excelu: kontrola przychodów z rezerwacji krótkoterminowych, umów długoterminowego podnajmu, kosztów oraz prognozowanie salda na kolejne lata.
+
+TECHNOLOGIA (preferowana):
+- Next.js (TypeScript) + Tailwind UI
+- Baza: PostgreSQL (jeśli trudne w środowisku, użyj SQLite) + ORM Prisma
+- Auth: logowanie (admin) – proste hasło lub NextAuth
+- Import: upload pliku Excel (.xlsx) w panelu admina + parser (xlsx)
+- Dashboard: wykresy (np. recharts)
+- Wszystko uruchamialne w Replit (jedno repo)
+
+DANE ŹRÓDŁOWE Z EXCELA (kluczowe arkusze i kolumny):
+1) Arkusz "Rezerwacje (2025)" oraz "Rezerwacje (2020-24)" – tabela rezerwacji:
+   Kolumny: 
+   - Data Rezerwacji
+   - Numer Rezerwacji
+   - Apartament
+   - Data Przyjazdu
+   - Data Wyjazdu
+   - Gość
+   - Cena
+   - Przedpłata
+   - Dopłata
+   - Status (np. PRZYJĘTA, ANULOWANA)
+   Zasady:
+   - Do przychodów licz tylko rezerwacje o Status = "PRZYJĘTA" (anulowane pomijaj).
+   - Przychód licz jako Cena (lub Cena + Dopłata jeśli Dopłata ma znaczenie) – zrób to konfigurowalne w ustawieniach.
+
+2) Arkusz "Umowy najmu" – dane apartamentów i umów (podnajem/długoterminowe):
+   Kolumny m.in.:
+   - NAZWA APARTAMENTU
+   - LOKALIZACJA
+   - ADRES
+   - WŁAŚCICIEL
+   - POCZĄTEK UMOWY
+   - KONIEC UMOWY
+   - KWOTA NAJMU
+   - CZYNSZ DO WSPÓLNOTY
+   plus pola opisowe (mail, telefon, ubezpieczenia itd.)
+   Zasady:
+   - Umowa może nie mieć KONIEC UMOWY (traktuj jako bezterminową).
+   - Te dane mają zasilać bazę apartamentów i stałe koszty/obciążenia.
+
+3) Arkusz "Saldo" – punkt startowy sald kont / źródeł:
+   W arkuszu są nazwy typu: "PEKAO SA", "SANTANDER", "SANTANDER VAT", "POŻYCZKI" oraz wiersze z wartościami salda.
+   Zasady:
+   - Zrób moduł: Konta (Account) i wpisy sald (AccountBalanceSnapshot).
+   - Import ma próbować zmapować znane nazwy kont na rekordy w bazie.
+   - Pozwól w UI ręcznie poprawić mapowanie po imporcie.
+
+4) Arkusze "Opłaty" i/lub "Apartamenty" – są szerokie zestawienia kosztów/przychodów (układ raportowy), nie muszą być w 1:1 importowane.
+   Zasady:
+   - Nie próbuj odwzorować układu 700 kolumn. Zamiast tego stwórz NORMALNY model kosztów:
+     * Expense: data, kategoria, kwota, apartament (opcjonalnie), dostawca/opis, typ (stały/zmienny), VAT? (opcjonalnie)
+   - Dodaj możliwość importu kosztów z osobnego arkusza w przyszłości, ale na start zapewnij ręczne dodawanie + CSV/XLSX import w prostym formacie.
+
+CEL APLIKACJI – FUNKCJE:
+A) Baza danych / CRUD
+- Apartamenty: lista, dodaj/edytuj, powiązania z lokalizacją i umową
+- Rezerwacje: lista, filtrowanie po apartamencie, datach, statusie; import z Excela
+- Umowy najmu (długoterminowe/podnajem): dane z "Umowy najmu" + ręczna edycja
+- Koszty: stałe i zmienne, kategorie, przypisanie do apartamentu lub ogólne
+- Konta i salda: konta + snapshoty sald, możliwość ręcznego dodania wpisu
+
+B) Logika finansowa (liczenia)
+1) Przychody:
+- Przychody miesięczne z rezerwacji krótkoterminowych:
+  * rozbij przychód po miesiącach wg dni pobytu (proporcjonalnie do liczby nocy w danym miesiącu)
+  * alternatywnie przełącznik: księguj całość w miesiącu przyjazdu – ustawienie globalne
+- Przychody długoterminowe:
+  * z umów (KWOTA NAJMU) co miesiąc w zakresie POCZĄTEK–KONIEC (lub bezterminowo)
+
+2) Koszty:
+- Koszty stałe: np. KWOTA NAJMU / CZYNSZ DO WSPÓLNOTY (jeśli podane) + koszty dodane ręcznie
+- Koszty zmienne: ręcznie dodane (sprzątanie, naprawy, prowizje itd.)
+
+3) Wynik i saldo:
+- P&L miesięczny: przychody – koszty
+- Cashflow miesięczny i narastająco
+- Saldo startowe (z "Saldo") + narastający cashflow = prognozowane saldo
+
+C) Prognozowanie (kolejne lata)
+- Prognoza przychodów krótkoterminowych na bazie średniej historycznej per miesiąc:
+  * np. średnia z lat 2020-2024 + dane 2025 (jeśli są) – zrób konfigurację: które lata brać
+- Prognoza kosztów stałych: zdefiniowane stałe miesięczne
+- Prognoza kosztów zmiennych: średnia historyczna per miesiąc lub % przychodów (wybór w ustawieniach)
+- Wygeneruj prognozę 12/24/36 miesięcy do przodu
+
+D) Dashboard i raporty
+- Dashboard: saldo dziś (ostatni snapshot), przychód MTD/YTD, koszty MTD/YTD, wynik MTD/YTD
+- Wykresy: przychody miesięczne, koszty miesięczne, zysk, saldo narastająco
+- Widok per apartament: rentowność, obłożenie (liczba nocy z rezerwacji), przychód, koszty
+
+IMPORT – wymagania praktyczne
+- Panel: “Importuj Excel”
+- Po wgraniu pliku:
+  1) Parsuj arkusze "Rezerwacje (2020-24)" i "Rezerwacje (2025)" do tabeli reservations
+  2) Parsuj "Umowy najmu" do apartments + leases
+  3) Parsuj "Saldo" do kont + snapshotów (nawet jeśli układ jest nieregularny – zrób heurystykę i pokaż ekran mapowania)
+- Zapewnij walidację i log importu (ile rekordów dodano/pominięto, powody)
+
+JĘZYK UI: polski
+WALUTA: PLN
+DATY: Europe/Warsaw
+
+DODATKOWE:
+- Dodaj seed danych demo (opcjonalnie).
+- Dodaj testowy użytkownik admin.
+- Zadbaj o ładny, prosty interfejs (tabele, filtry, wyszukiwarka).
+
+Na końcu: podaj instrukcję uruchomienia i gdzie edytować mapowanie importu.
