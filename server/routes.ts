@@ -482,6 +482,106 @@ export async function registerRoutes(
     }
   });
 
+  // HotRes CSV Import
+  app.post("/api/hotres/import-csv", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: "Nie przesłano pliku CSV" });
+      }
+
+      const csvContent = req.file.buffer.toString("utf-8");
+      const { parseHotResCsv } = await import("./hotres");
+      const parsed = parseHotResCsv(csvContent);
+
+      if (parsed.length === 0) {
+        return res.json({
+          success: false,
+          message: "Nie znaleziono rezerwacji w pliku CSV. Sprawdź format pliku (nagłówki kolumn).",
+          imported: 0,
+          skipped: 0,
+        });
+      }
+
+      const apartments = await storage.getApartments();
+      const apartmentMap = new Map(apartments.map(a => [a.name.trim().toLowerCase(), a.id]));
+
+      const existingReservations = await storage.getReservations();
+      const existingNumbers = new Set(existingReservations.map(r => r.reservationNumber));
+
+      let imported = 0;
+      let skipped = 0;
+      let duplicates = 0;
+      let newApartments = 0;
+      const log: string[] = [];
+
+      log.push(`Znaleziono ${parsed.length} rezerwacji w pliku CSV`);
+
+      for (const hr of parsed) {
+        if (!hr.startDate || !hr.endDate) {
+          skipped++;
+          log.push(`Pominięto rezerwację ${hr.reservationNumber}: brak dat`);
+          continue;
+        }
+
+        if (existingNumbers.has(hr.reservationNumber)) {
+          duplicates++;
+          continue;
+        }
+
+        let aptId: number | undefined;
+        if (hr.apartmentName) {
+          const key = hr.apartmentName.trim().toLowerCase();
+          aptId = apartmentMap.get(key);
+          if (!aptId) {
+            const apt = await storage.createApartment({
+              name: hr.apartmentName.trim(),
+              location: "",
+              address: "",
+              ownerName: "",
+              active: true,
+            });
+            apartmentMap.set(key, apt.id);
+            aptId = apt.id;
+            newApartments++;
+            log.push(`Utworzono apartament: ${hr.apartmentName}`);
+          }
+        }
+
+        await storage.createReservation({
+          reservationNumber: hr.reservationNumber,
+          apartmentId: aptId || null,
+          startDate: hr.startDate,
+          endDate: hr.endDate,
+          guestName: hr.guestName,
+          price: hr.price,
+          prepayment: hr.prepayment || "0",
+          surcharge: "0",
+          status: hr.status,
+        });
+        imported++;
+        existingNumbers.add(hr.reservationNumber);
+      }
+
+      if (duplicates > 0) {
+        log.push(`Pominięto ${duplicates} duplikatów (już istnieją w bazie)`);
+      }
+      log.push(`Podsumowanie: zaimportowano=${imported}, pominięto=${skipped}, duplikaty=${duplicates}, nowe apartamenty=${newApartments}`);
+
+      res.json({
+        success: true,
+        message: `Zaimportowano ${imported} rezerwacji z pliku CSV HotRes${duplicates > 0 ? ` (${duplicates} duplikatów pominięto)` : ""}`,
+        imported,
+        skipped,
+        duplicates,
+        newApartments,
+        log,
+      });
+    } catch (e: any) {
+      console.error("HotRes CSV import error:", e);
+      res.status(500).json({ success: false, message: `Błąd importu CSV: ${e.message}` });
+    }
+  });
+
   // HotRes API Integration
   app.get("/api/hotres/test", isAuthenticated, async (req, res) => {
     try {

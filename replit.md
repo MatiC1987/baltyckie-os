@@ -60,7 +60,8 @@ All require authentication. Defined in shared/routes.ts:
 - GET /api/stats/dashboard
 - POST /api/import (multipart file upload)
 - GET/POST /api/apartments/:id/payments, DELETE /api/owner-payments/:id
-- GET /api/hotres/test, POST /api/hotres/sync
+- POST /api/hotres/import-csv (multipart CSV file upload from HotRes export)
+- GET /api/hotres/test, POST /api/hotres/sync (API integration - kept for future use)
 
 ## User Preferences
 - Language: Polish (all UI text in Polish)
@@ -71,4 +72,5 @@ All require authentication. Defined in shared/routes.ts:
 ## Recent Changes
 - 2026-02-06: Built complete application with all pages, Excel import with detailed logging, data-testid attributes on all interactive elements
 - 2026-02-06: Added owner payments system (ownerPayments table, Raty tab in apartment edit dialog)
-- 2026-02-06: Added HotRes API integration for automatic reservation sync (server/hotres.ts, test connection + sync endpoints)
+- 2026-02-06: Added HotRes integration - CSV import from HotRes export (Serwis > Rezerwacje > Eksport CSV), plus API connection test/sync endpoints for future use
+- 2026-02-06: HotRes CSV parser supports auto-detection of column names (PL/EN), separators (;/,/tab), and date formats
