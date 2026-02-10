@@ -152,6 +152,7 @@ export async function testConnection(): Promise<{
 export interface HotResReservation {
   reservationNumber: string;
   apartmentName: string;
+  addDate: string;
   startDate: string;
   endDate: string;
   guestName: string;
@@ -179,23 +180,27 @@ function parseReservationsFromResponse(data: any): HotResReservation[] {
   return items.map((item: any) => ({
     reservationNumber: String(
       item.reservationNumber || item.reservation_number || item.numer_rezerwacji ||
-      item.booking_number || item.id || item.nr || `HR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      item.booking_number || item.number || item.id || item.nr || `HR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     ),
     apartmentName: String(
       item.apartmentName || item.apartment_name || item.room_name || item.nazwa_pokoju ||
-      item.room || item.pokoj || item.pokój || item.unit || item.apartment || ""
+      item.room || item.pokoj || item.pokój || item.unit || item.apartment || item.roomscodes || ""
+    ),
+    addDate: normalizeDate(
+      item.addDate || item.add_date || item.created_at || item.data_dodania || ""
     ),
     startDate: normalizeDate(
       item.startDate || item.start_date || item.check_in || item.checkin ||
-      item.data_przyjazdu || item.arrival || item.from || item.od || ""
+      item.arrival_date || item.data_przyjazdu || item.arrival || item.from || item.od || ""
     ),
     endDate: normalizeDate(
       item.endDate || item.end_date || item.check_out || item.checkout ||
-      item.data_wyjazdu || item.departure || item.to || item.do || ""
+      item.departure_date || item.data_wyjazdu || item.departure || item.to || item.do || ""
     ),
     guestName: String(
       item.guestName || item.guest_name || item.guest || item.gosc || item.gość ||
-      item.name || item.imie_nazwisko || item.client || item.klient || "Nieznany"
+      item.name || item.imie_nazwisko || item.client || item.klient ||
+      [item.first_name, item.last_name].filter(Boolean).join(" ") || "Nieznany"
     ),
     price: String(
       item.price || item.total || item.cena || item.kwota || item.amount ||
@@ -203,7 +208,7 @@ function parseReservationsFromResponse(data: any): HotResReservation[] {
     ),
     prepayment: String(
       item.prepayment || item.deposit || item.zaliczka || item.przedplata ||
-      item.przedpłata || item.advance || "0"
+      item.przedpłata || item.advance || item.paid || "0"
     ),
     status: normalizeStatus(
       item.status || item.stan || ""
@@ -238,11 +243,11 @@ function normalizeDate(val: any): string {
 
 function normalizeStatus(val: any): string {
   const s = String(val).toUpperCase().trim();
-  if (s.includes("CONFIRM") || s.includes("ACCEPT") || s.includes("POTWIERDZ") || s.includes("PRZYJ")) return "ACCEPTED";
-  if (s.includes("CANCEL") || s.includes("ANUL") || s.includes("ANULOWA")) return "CANCELLED";
-  if (s.includes("PEND") || s.includes("OCZEK")) return "PENDING";
-  if (s.includes("COMPLET") || s.includes("ZAKON") || s.includes("ZREALI")) return "COMPLETED";
-  return s || "ACCEPTED";
+  if (s.includes("CANCEL") || s.includes("ANUL") || s.includes("ANULOWA") || s.includes("STORNO") || s === "ANULOWANA") return "ANULOWANA";
+  if (s.includes("CONFIRM") || s.includes("ACCEPT") || s.includes("POTWIERDZ") || s.includes("PRZYJ") || s === "PRZYJETA" || s === "PRZYJĘTA") return "PRZYJETA";
+  if (s.includes("PEND") || s.includes("OCZEK") || s.includes("OPLAC") || s.includes("OPŁAC") || s === "DO_OPLACENIA") return "DO_OPLACENIA";
+  if (s.includes("COMPLET") || s.includes("ZAKON") || s.includes("ZREALI")) return "PRZYJETA";
+  return s || "DO_OPLACENIA";
 }
 
 export async function fetchReservations(dateFrom?: string, dateTo?: string): Promise<{
@@ -374,13 +379,16 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
   const rawHeaders = parseCsvLine(headerLine, sep).map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
 
   const colMap = {
-    resNumber: findCol(rawHeaders, ['numer rezerwacji', 'numer', 'nr rezerwacji', 'nr', 'reservation number', 'booking number', 'id', 'lp']),
-    apartment: findCol(rawHeaders, ['apartament', 'pokój', 'pokoj', 'room', 'apartment', 'nazwa pokoju', 'obiekt', 'unit', 'nazwa']),
-    startDate: findCol(rawHeaders, ['data przyjazdu', 'przyjazd', 'check-in', 'checkin', 'data od', 'od', 'start', 'arrival', 'from']),
-    endDate: findCol(rawHeaders, ['data wyjazdu', 'wyjazd', 'check-out', 'checkout', 'data do', 'do', 'end', 'departure', 'to']),
-    guest: findCol(rawHeaders, ['gość', 'gosc', 'guest', 'nazwisko', 'imię i nazwisko', 'imie i nazwisko', 'klient', 'client', 'name', 'osoba']),
-    price: findCol(rawHeaders, ['cena', 'kwota', 'wartość', 'wartosc', 'price', 'total', 'amount', 'netto', 'brutto', 'suma']),
-    prepayment: findCol(rawHeaders, ['zaliczka', 'przedpłata', 'przedplata', 'prepayment', 'deposit', 'advance', 'wpłata', 'wplata']),
+    resNumber: findCol(rawHeaders, ['number', 'numer rezerwacji', 'numer', 'nr rezerwacji', 'nr', 'reservation number', 'booking number', 'id', 'lp']),
+    addDate: findCol(rawHeaders, ['add_date', 'data dodania', 'data_dodania', 'created', 'created_at']),
+    apartment: findCol(rawHeaders, ['roomscodes', 'apartament', 'pokój', 'pokoj', 'room', 'apartment', 'nazwa pokoju', 'obiekt', 'unit', 'nazwa', 'rate_title']),
+    startDate: findCol(rawHeaders, ['arrival_date', 'data przyjazdu', 'przyjazd', 'check-in', 'checkin', 'data od', 'od', 'start', 'arrival', 'from']),
+    endDate: findCol(rawHeaders, ['departure_date', 'data wyjazdu', 'wyjazd', 'check-out', 'checkout', 'data do', 'do', 'end', 'departure', 'to']),
+    lastName: findCol(rawHeaders, ['last_name', 'nazwisko']),
+    firstName: findCol(rawHeaders, ['first_name', 'imię', 'imie']),
+    guest: findCol(rawHeaders, ['gość', 'gosc', 'guest', 'imię i nazwisko', 'imie i nazwisko', 'klient', 'client', 'name', 'osoba']),
+    price: findCol(rawHeaders, ['amount', 'cena', 'kwota', 'wartość', 'wartosc', 'price', 'total', 'netto', 'brutto', 'suma']),
+    prepayment: findCol(rawHeaders, ['paid', 'zaliczka', 'przedpłata', 'przedplata', 'prepayment', 'deposit', 'advance', 'wpłata', 'wplata']),
     status: findCol(rawHeaders, ['status', 'stan']),
   };
 
@@ -398,16 +406,26 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) continue;
 
     const resNumber = getValue(colMap.resNumber) || `CSV-${i}-${Date.now().toString(36)}`;
+    const addDateRaw = getValue(colMap.addDate);
+    const addDate = addDateRaw ? normalizeDate(addDateRaw) : "";
 
     const priceStr = getValue(colMap.price).replace(/\s/g, '').replace(',', '.') || "0";
     const prepaymentStr = getValue(colMap.prepayment).replace(/\s/g, '').replace(',', '.') || "0";
 
+    let guestName = getValue(colMap.guest);
+    if (!guestName && (colMap.firstName >= 0 || colMap.lastName >= 0)) {
+      const firstName = getValue(colMap.firstName);
+      const lastName = getValue(colMap.lastName);
+      guestName = [firstName, lastName].filter(Boolean).join(" ");
+    }
+
     results.push({
       reservationNumber: resNumber,
       apartmentName: getValue(colMap.apartment),
+      addDate: addDate && /^\d{4}-\d{2}-\d{2}$/.test(addDate) ? addDate : "",
       startDate,
       endDate,
-      guestName: getValue(colMap.guest) || "Nieznany",
+      guestName: guestName || "Nieznany",
       price: isNaN(Number(priceStr)) ? "0" : priceStr,
       prepayment: isNaN(Number(prepaymentStr)) ? "0" : prepaymentStr,
       status: normalizeStatus(getValue(colMap.status)),

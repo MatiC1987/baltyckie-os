@@ -30,13 +30,15 @@ export const reservations = pgTable("reservations", {
   id: serial("id").primaryKey(),
   reservationNumber: text("reservation_number").notNull(),
   apartmentId: integer("apartment_id").references(() => apartments.id),
-  startDate: date("start_date").notNull(), // stored as YYYY-MM-DD string
+  addDate: date("add_date"),
+  startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   guestName: text("guest_name").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   prepayment: decimal("prepayment", { precision: 10, scale: 2 }).default("0"),
+  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).default("0"),
   surcharge: decimal("surcharge", { precision: 10, scale: 2 }).default("0"),
-  status: text("status").notNull(), // 'ACCEPTED', 'CANCELLED', etc.
+  status: text("status").notNull(), // 'DO_OPLACENIA', 'PRZYJETA', 'ANULOWANA'
   createdAt: timestamp("created_at").defaultNow(),
 });
 

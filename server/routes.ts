@@ -34,8 +34,8 @@ async function seedData() {
     console.log("Seeding database...");
     const apt1 = await storage.createApartment({ name: "Apartament Plazowy", location: "Gdansk", address: "ul. Morska 1", ownerName: "Jan Kowalski", active: true });
     const apt2 = await storage.createApartment({ name: "Apartament Centrum", location: "Sopot", address: "ul. Bohaterow Monte Cassino 15", ownerName: "Anna Nowak", active: true });
-    await storage.createReservation({ reservationNumber: "RES-2025-001", apartmentId: apt1.id, startDate: "2025-06-01", endDate: "2025-06-07", guestName: "Michal Wisniewski", price: "2500.00", prepayment: "500.00", surcharge: "0.00", status: "ACCEPTED" });
-    await storage.createReservation({ reservationNumber: "RES-2025-002", apartmentId: apt2.id, startDate: "2025-07-10", endDate: "2025-07-15", guestName: "Ewa Bem", price: "3200.00", prepayment: "1000.00", surcharge: "0.00", status: "ACCEPTED" });
+    await storage.createReservation({ reservationNumber: "RES-2025-001", apartmentId: apt1.id, addDate: "2025-05-15", startDate: "2025-06-01", endDate: "2025-06-07", guestName: "Michal Wisniewski", price: "2500.00", prepayment: "500.00", paidAmount: "0", surcharge: "0.00", status: "PRZYJETA" });
+    await storage.createReservation({ reservationNumber: "RES-2025-002", apartmentId: apt2.id, addDate: "2025-06-20", startDate: "2025-07-10", endDate: "2025-07-15", guestName: "Ewa Bem", price: "3200.00", prepayment: "1000.00", paidAmount: "0", surcharge: "0.00", status: "DO_OPLACENIA" });
     const acc1 = await storage.createAccount({ name: "PEKAO SA", type: "BANK" });
     await storage.createSnapshot({ accountId: acc1.id, date: "2025-01-01", balance: "15000.00", notes: "Saldo poczatkowe" });
     await storage.createExpense({ date: "2025-06-05", category: "Sprzatanie", amount: "200.00", apartmentId: apt1.id, description: "Sprzatanie po gosciach", type: "VARIABLE", vatAmount: "0.00" });
@@ -404,7 +404,7 @@ export async function registerRoutes(
 
           if (!startDate || !endDate) { skipped++; continue; }
 
-          const mappedStatus = status.includes('PRZYJ') ? 'ACCEPTED' : status.includes('ANUL') ? 'CANCELLED' : status || 'ACCEPTED';
+          const mappedStatus = status.includes('ANUL') ? 'ANULOWANA' : status.includes('PRZYJ') ? 'PRZYJETA' : status.includes('OPLAC') || status.includes('OPŁAC') ? 'DO_OPLACENIA' : status || 'DO_OPLACENIA';
 
           batch.push({
             reservationNumber: String(row['Numer Rezerwacji'] || row['NUMER REZERWACJI'] || `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
@@ -550,11 +550,13 @@ export async function registerRoutes(
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
           apartmentId: aptId || null,
+          addDate: hr.addDate || null,
           startDate: hr.startDate,
           endDate: hr.endDate,
           guestName: hr.guestName,
           price: hr.price,
           prepayment: hr.prepayment || "0",
+          paidAmount: "0",
           surcharge: "0",
           status: hr.status,
         });
@@ -653,11 +655,13 @@ export async function registerRoutes(
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
           apartmentId: aptId || null,
+          addDate: hr.addDate || null,
           startDate: hr.startDate,
           endDate: hr.endDate,
           guestName: hr.guestName,
           price: hr.price,
           prepayment: hr.prepayment || "0",
+          paidAmount: "0",
           surcharge: "0",
           status: hr.status,
         });

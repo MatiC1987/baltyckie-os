@@ -30,8 +30,6 @@ export function useCreateReservation() {
 
   return useMutation({
     mutationFn: async (data: InsertReservation) => {
-      // Ensure numeric fields are correctly formatted/typed if needed by schema
-      // Specifically for z.coerce in routes, we send strings or numbers, backend handles coerce
       const res = await fetch(api.reservations.create.path, {
         method: api.reservations.create.method,
         headers: { "Content-Type": "application/json" },
@@ -48,6 +46,32 @@ export function useCreateReservation() {
     },
     onError: () => {
       toast({ title: "Błąd", description: "Nie udało się dodać rezerwacji", variant: "destructive" });
+    }
+  });
+}
+
+export function useUpdateReservation() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertReservation> }) => {
+      const url = buildUrl(api.reservations.update.path, { id });
+      const res = await fetch(url, {
+        method: api.reservations.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update reservation");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.reservations.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się zaktualizować rezerwacji", variant: "destructive" });
     }
   });
 }

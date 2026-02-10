@@ -29,20 +29,25 @@ shared/
 ```
 
 ## Key Features
-1. **Dashboard** - Revenue/expense stats, bar chart, recent reservations
+1. **Dashboard** - Revenue/expense stats, bar chart, recent reservations, PRZYJAZDY tab (arrivals with PRZYJETA status)
 2. **Apartments** - CRUD with name, location (6 fixed categories), address, owner, presentation photo, lease dates display. Edit dialog with tabs: Dane, Raty, Zdjęcie, Załączniki
 3. **Owners** - View all owners grouped with their apartments, active lease info, apartment photos
-4. **Reservations** - Short-term booking management with guest, dates, pricing
+4. **Reservations** - Full reservation management with columns: Numer, Data dodania, Apartament, Przyjazd, Wyjazd, Imię i nazwisko, Kwota pobytu, Zaliczka, Wpłacona kwota (editable inline), Pozostało do zapłaty (calculated), Status (DO_OPLACENIA/PRZYJETA/ANULOWANA). Red highlight for ANULOWANA. Sortable columns, date & status filters.
 5. **Leases** - Long-term rental contract management
 6. **Finance** - Expenses (with categories), bank accounts, balance snapshots (tabs UI)
-7. **Import** - Excel file upload + HotRes API sync for reservations
+7. **Import** - Excel file upload + HotRes CSV import for reservations
 8. **Attachments** - File uploads (UMOWA/ANEKS/INNY) via Object Storage with presigned URLs
 9. **Owner Payments** - Per-apartment payment tracking with 7 categories (Raty tab in apartment edit)
-10. **HotRes Integration** - API connection to HotRes reservation system with auto-discovery of endpoints
+10. **HotRes Integration** - CSV import from HotRes export (exact format: number;status;add_date;arrival_date;departure_date;amount;paid;currency;rate_title;last_name;first_name;email;phone;address;city;zip;roomscodes;...)
+
+## Reservation Status Values
+- DO_OPLACENIA - payment pending
+- PRZYJETA - accepted/confirmed
+- ANULOWANA - cancelled (displayed in red)
 
 ## Database Tables
 - apartments (id serial PK, name, location, address, owner_name, active, photo_url)
-- reservations (id serial PK, reservation_number, apartment_id FK, start/end dates, guest_name, price/prepayment/surcharge decimal, status, created_at)
+- reservations (id serial PK, reservation_number, apartment_id FK, add_date, start/end dates, guest_name, price/prepayment/paid_amount/surcharge decimal, status, created_at)
 - leases (id serial PK, apartment_id FK, start/end dates, rent_amount, community_fee, tenant_name, description)
 - expenses (id serial PK, date, category, amount, apartment_id FK, description, type FIXED/VARIABLE, vat_amount)
 - accounts (id serial PK, name, type BANK/CASH/LOAN)
@@ -74,3 +79,7 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-06: Added owner payments system (ownerPayments table, Raty tab in apartment edit dialog)
 - 2026-02-06: Added HotRes integration - CSV import from HotRes export (Serwis > Rezerwacje > Eksport CSV), plus API connection test/sync endpoints for future use
 - 2026-02-06: HotRes CSV parser supports auto-detection of column names (PL/EN), separators (;/,/tab), and date formats
+- 2026-02-10: Updated reservation schema: added addDate, paidAmount fields; changed status values to DO_OPLACENIA/PRZYJETA/ANULOWANA
+- 2026-02-10: Updated HotRes CSV parser to match exact HotRes export format (number;status;add_date;arrival_date;departure_date;amount;paid;...;last_name;first_name;...;roomscodes;...)
+- 2026-02-10: Rebuilt Reservations page with full column set, sortable headers (asc/desc), date & status filters, inline paidAmount editing, status editing, red row highlight for ANULOWANA
+- 2026-02-10: Added PRZYJAZDY tab to Dashboard showing PRZYJETA reservations chronologically with sorting and date filtering

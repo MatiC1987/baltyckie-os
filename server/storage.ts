@@ -271,7 +271,7 @@ export class DatabaseStorage implements IStorage {
     // For now, let's just return some basic sums or 0s if empty.
     
     // We can do real SQL sums here easily
-    const revenueResult = await db.select({ value: sql<number>`sum(${reservations.price})` }).from(reservations).where(eq(reservations.status, 'ACCEPTED'));
+    const revenueResult = await db.select({ value: sql<number>`sum(${reservations.price})` }).from(reservations).where(eq(reservations.status, 'PRZYJETA'));
     const expenseResult = await db.select({ value: sql<number>`sum(${expenses.amount})` }).from(expenses);
     
     const totalRevenue = Number(revenueResult[0]?.value || 0);
