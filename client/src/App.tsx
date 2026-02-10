@@ -79,6 +79,8 @@ function Router() {
       <Route path="/contracts-services" component={() => <AuthenticatedPlaceholder title="Umowy (usługi)" description="Umowy na usługi." />} />
       <Route path="/contracts-other" component={() => <AuthenticatedPlaceholder title="Umowy (inne)" description="Pozostałe umowy." />} />
 
+      <Route path="/employees" component={() => <AuthenticatedPlaceholder title="Pracownicy" description="Zarządzanie pracownikami." />} />
+
       <Route path="/import" component={() => <AuthenticatedRoute component={Import} />} />
       <Route path="/export" component={() => <AuthenticatedPlaceholder title="Eksport rezerwacji" description="Eksport danych rezerwacji do pliku." />} />
       <Route path="/user-accounts" component={() => <AuthenticatedPlaceholder title="Konta użytkowników" description="Zarządzanie kontami użytkowników systemu." />} />

@@ -82,6 +82,7 @@ const sections: NavSection[] = [
     items: [
       { href: "/apartments", label: "Apartamenty", icon: Building2 },
       { href: "/owners", label: "Właściciele", icon: Users },
+      { href: "/employees", label: "Pracownicy", icon: Users },
     ],
   },
   {
