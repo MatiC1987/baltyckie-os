@@ -489,7 +489,7 @@ export default function Terminarz() {
 
                       {todayIndex >= 0 && (
                         <div
-                          className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-[4]"
+                          className="absolute top-0 bottom-0 z-[4] border-l-2 border-dashed border-red-500/50"
                           style={{ left: todayIndex * sz.dayWidth + sz.dayWidth / 2 }}
                         />
                       )}
