@@ -4,7 +4,7 @@ import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -102,6 +102,20 @@ export default function Apartments() {
 
   const [isMoving, setIsMoving] = useState(false);
   const [moveSelectKey, setMoveSelectKey] = useState(0);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("apartments-collapsed-groups");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+  const toggleCollapse = (label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      localStorage.setItem("apartments-collapsed-groups", JSON.stringify([...next]));
+      return next;
+    });
+  };
   const handleBulkMove = async (targetLocation: string) => {
     if (selectedIds.size === 0) return;
     setIsMoving(true);
@@ -341,39 +355,54 @@ export default function Apartments() {
         </Card>
       </div>
 
-      {groupedApartments.map((group) => (
-        <div key={group.label} className="space-y-3" data-testid={`group-location-${group.label.toLowerCase().replace(/\s+/g, '-').replace(/ł/g, 'l')}`}>
-          <div className="flex items-center gap-3">
-            {group.apartments.length > 0 && (
-              <input
-                type="checkbox"
-                checked={group.apartments.length > 0 && group.apartments.every(a => selectedIds.has(a.id))}
-                onChange={() => toggleGroupSelect(group.apartments)}
-                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                data-testid={`checkbox-select-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
-              />
+      {groupedApartments.map((group) => {
+        const isCollapsed = collapsedGroups.has(group.label);
+        return (
+          <div key={group.label} className="space-y-3" data-testid={`group-location-${group.label.toLowerCase().replace(/\s+/g, '-').replace(/ł/g, 'l')}`}>
+            <div
+              className="flex items-center gap-3 cursor-pointer select-none"
+              onClick={() => toggleCollapse(group.label)}
+              data-testid={`button-toggle-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              {group.apartments.length > 0 && (
+                <input
+                  type="checkbox"
+                  checked={group.apartments.length > 0 && group.apartments.every(a => selectedIds.has(a.id))}
+                  onChange={() => toggleGroupSelect(group.apartments)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                  data-testid={`checkbox-select-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
+                />
+              )}
+              {isCollapsed ? (
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              )}
+              <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
+                <Building2 className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold">{group.label}</h3>
+                <Badge variant="secondary" className="text-xs">{group.apartments.length}</Badge>
+              </div>
+            </div>
+            {!isCollapsed && (
+              group.apartments.length > 0 ? (
+                <DataTable
+                  data={group.apartments}
+                  columns={columns}
+                  emptyMessage="Brak apartamentów w tej lokalizacji."
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground pl-11">
+                  Brak apartamentów w tej lokalizacji.
+                </div>
+              )
             )}
-            <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
-              <Building2 className="h-4 w-4 text-primary" />
-            </div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold">{group.label}</h3>
-              <Badge variant="secondary" className="text-xs">{group.apartments.length}</Badge>
-            </div>
           </div>
-          {group.apartments.length > 0 ? (
-            <DataTable
-              data={group.apartments}
-              columns={columns}
-              emptyMessage="Brak apartamentów w tej lokalizacji."
-            />
-          ) : (
-            <div className="text-sm text-muted-foreground pl-11">
-              Brak apartamentów w tej lokalizacji.
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
 
       <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
         <DialogContent className="max-w-2xl">
