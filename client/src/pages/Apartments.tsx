@@ -418,9 +418,20 @@ export default function Apartments() {
         );
       })}
 
-      {expiringContracts.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-bold" data-testid="text-expiring-contracts-title">Kończące się umowy</h3>
+      {expiringContracts.length > 0 && (() => {
+        const today = new Date().toISOString().split('T')[0];
+        const withDays = expiringContracts.map(c => {
+          const daysLeft = Math.ceil((new Date(c.leaseEndDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+          return { ...c, daysLeft };
+        });
+        const sections = [
+          { title: "Do 30 dni", suffix: "!!!", items: withDays.filter(c => c.daysLeft <= 30), variant: "destructive" as const },
+          { title: "Do 3 miesięcy", suffix: "!!", items: withDays.filter(c => c.daysLeft > 30 && c.daysLeft <= 90), variant: "secondary" as const },
+          { title: "Do 6 miesięcy", suffix: "!", items: withDays.filter(c => c.daysLeft > 90 && c.daysLeft <= 180), variant: "secondary" as const },
+          { title: "Powyżej 6 miesięcy", suffix: "", items: withDays.filter(c => c.daysLeft > 180), variant: "secondary" as const },
+        ].filter(s => s.items.length > 0);
+
+        const renderTable = (items: typeof withDays) => (
           <Card>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -429,40 +440,52 @@ export default function Apartments() {
                     <th className="py-2 px-3 font-medium">Nazwa apartamentu</th>
                     <th className="py-2 px-3 font-medium">Właściciel</th>
                     <th className="py-2 px-3 font-medium">Data końca umowy</th>
+                    <th className="py-2 px-3 font-medium">Pozostało</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {expiringContracts.map((c) => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const daysLeft = Math.ceil((new Date(c.leaseEndDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
-                    const isExpired = daysLeft < 0;
-                    const isExpiringSoon = daysLeft >= 0 && daysLeft <= 30;
-                    return (
-                      <tr key={c.id} className="border-b last:border-b-0" data-testid={`row-expiring-${c.id}`}>
-                        <td className="py-2 px-3 font-medium">{c.name}</td>
-                        <td className="py-2 px-3 text-muted-foreground">{c.ownerName}</td>
-                        <td className="py-2 px-3">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span>{c.leaseEndDate}</span>
-                            {isExpired && (
-                              <Badge variant="destructive">Wygasła</Badge>
-                            )}
-                            {isExpiringSoon && (
-                              <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                                {daysLeft === 0 ? "Dziś" : `za ${daysLeft} dni`}
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {items.map((c) => (
+                    <tr key={c.id} className="border-b last:border-b-0" data-testid={`row-expiring-${c.id}`}>
+                      <td className="py-2 px-3 font-medium">{c.name}</td>
+                      <td className="py-2 px-3 text-muted-foreground">{c.ownerName}</td>
+                      <td className="py-2 px-3">{c.leaseEndDate}</td>
+                      <td className="py-2 px-3">
+                        {c.daysLeft < 0 ? (
+                          <Badge variant="destructive">Wygasła ({Math.abs(c.daysLeft)} dni temu)</Badge>
+                        ) : c.daysLeft === 0 ? (
+                          <Badge variant="destructive">Dziś</Badge>
+                        ) : (
+                          <span className={c.daysLeft <= 30 ? "text-destructive font-medium" : "text-muted-foreground"}>
+                            {c.daysLeft} dni
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           </Card>
-        </div>
-      )}
+        );
+
+        return (
+          <div className="space-y-6">
+            <h3 className="text-lg font-bold" data-testid="text-expiring-contracts-title">Kończące się umowy</h3>
+            {sections.map((section) => (
+              <div key={section.title} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-muted-foreground">
+                    {section.title}
+                    {section.suffix && <span className="text-destructive ml-1">{section.suffix}</span>}
+                  </h4>
+                  <Badge variant={section.variant}>{section.items.length}</Badge>
+                </div>
+                {renderTable(section.items)}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
         <DialogContent className="max-w-2xl">
