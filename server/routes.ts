@@ -739,6 +739,7 @@ export async function registerRoutes(
 
       const apartments = await storage.getApartments();
       const apartmentMap = new Map(apartments.map(a => [a.name.trim().toLowerCase(), a.id]));
+      const hotresNameMap = new Map(apartments.filter(a => a.hotresName).map(a => [a.hotresName!.trim().toLowerCase(), a.id]));
 
       const existingReservations = await storage.getReservations();
       const existingNumbers = new Set(existingReservations.map(r => r.reservationNumber));
@@ -766,7 +767,7 @@ export async function registerRoutes(
         let aptId: number | undefined;
         if (hr.apartmentName) {
           const key = hr.apartmentName.trim().toLowerCase();
-          aptId = apartmentMap.get(key);
+          aptId = hotresNameMap.get(key) || apartmentMap.get(key);
           if (!aptId) {
             const apt = await storage.createApartment({
               name: hr.apartmentName.trim(),
@@ -846,6 +847,7 @@ export async function registerRoutes(
 
       const apartments = await storage.getApartments();
       const apartmentMap = new Map(apartments.map(a => [a.name.trim().toLowerCase(), a.id]));
+      const hotresNameMap = new Map(apartments.filter(a => a.hotresName).map(a => [a.hotresName!.trim().toLowerCase(), a.id]));
 
       const existingReservations = await storage.getReservations();
       const existingNumbers = new Set(existingReservations.map(r => r.reservationNumber));
@@ -871,7 +873,7 @@ export async function registerRoutes(
         let aptId: number | undefined;
         if (hr.apartmentName) {
           const key = hr.apartmentName.trim().toLowerCase();
-          aptId = apartmentMap.get(key);
+          aptId = hotresNameMap.get(key) || apartmentMap.get(key);
           if (!aptId) {
             const apt = await storage.createApartment({
               name: hr.apartmentName.trim(),

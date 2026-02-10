@@ -16,6 +16,7 @@ export const owners = pgTable("owners", {
 export const apartments = pgTable("apartments", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  hotresName: text("hotres_name"),
   location: text("location"),
   address: text("address"),
   ownerName: text("owner_name"),

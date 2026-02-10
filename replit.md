@@ -113,3 +113,4 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Added company balance section to Dashboard top - shows total sum across all money sources with individual account cards
 - 2026-02-10: Seeded 7 company accounts: Pekao SA, Santander, Gotówka, Saldo - M. Latasiewicz, Saldo - J. Głodkowska, Kryptowaluty, Pożyczki
 - 2026-02-10: Added GET /api/company-balance endpoint returning latest balance per account + total
+- 2026-02-10: Added hotresName field to apartments table - "Nazwa w HotRes" field in apartment edit (Dane tab) for matching imported HotRes reservations to apartments. HotRes CSV import now checks hotresName first, then falls back to regular name matching.

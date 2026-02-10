@@ -372,6 +372,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
     resolver: zodResolver(insertApartmentSchema),
     defaultValues: {
       name: apartment.name,
+      hotresName: apartment.hotresName || "",
       location: apartment.location || "",
       address: apartment.address || "",
       ownerId: apartment.ownerId || null,
@@ -384,6 +385,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
   const onSubmit = (data: InsertApartment) => {
     const payload = {
       ...data,
+      hotresName: data.hotresName?.trim() || null,
       leaseStartDate: data.leaseStartDate || null,
       leaseEndDate: data.leaseEndDate || null,
     };
@@ -406,6 +408,11 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
         <Label htmlFor="edit-name">Nazwa apartamentu</Label>
         <Input id="edit-name" {...form.register("name")} data-testid="input-edit-apartment-name" />
         {form.formState.errors.name && <span className="text-sm text-destructive">{form.formState.errors.name.message}</span>}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-hotresName">Nazwa w HotRes</Label>
+        <Input id="edit-hotresName" {...form.register("hotresName")} placeholder="Nazwa apartamentu w systemie HotRes" data-testid="input-edit-apartment-hotres-name" />
+        <p className="text-xs text-muted-foreground">Używana do automatycznego parowania rezerwacji importowanych z HotRes.</p>
       </div>
       <div className="space-y-2">
         <Label>Lokalizacja</Label>
