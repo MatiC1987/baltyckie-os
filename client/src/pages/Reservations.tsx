@@ -325,8 +325,16 @@ function ReservationRow({ reservation: r, apartments }: { reservation: Reservati
       <TableCell className="text-xs whitespace-nowrap" data-testid={`text-res-adddate-${r.id}`}>
         {r.addDate || "—"}
       </TableCell>
-      <TableCell className="text-xs whitespace-nowrap" data-testid={`text-res-apartment-${r.id}`}>
-        {aptName}
+      <TableCell className="text-xs" data-testid={`text-res-apartment-${r.id}`}>
+        {aptName.includes(",") ? (
+          <div className="flex flex-col gap-0.5">
+            {aptName.split(",").map((name, i) => (
+              <span key={i} className="whitespace-nowrap">{name.trim()}</span>
+            ))}
+          </div>
+        ) : (
+          <span className="whitespace-nowrap">{aptName}</span>
+        )}
       </TableCell>
       <TableCell className="text-xs whitespace-nowrap" data-testid={`text-res-start-${r.id}`}>
         {r.startDate}
