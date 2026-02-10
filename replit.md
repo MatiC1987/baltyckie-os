@@ -89,3 +89,5 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Added Employee management system - employees table (16 fields: name, phone, email, pesel, birthDate, cooperationType ETAT/PRACA_NA_H, contractType, contractStart/End, position, hourlyRate, comment, status AKTYWNY/NIEAKTYWNY, photoUrl), full CRUD API, Employees page with table view, add/edit dialog with conditional fields
 - 2026-02-10: Added employee preview dialog with tabs: Dane Identyfikacyjne (all employee fields displayed) and Medycyna Pracy (medical exams tracking with exam name, date, validity, remaining days calculation, color-coded warnings)
 - 2026-02-10: Added medicalExams table (employeeId FK, examName, examDate, validUntil) with full CRUD API
+- 2026-02-10: Added Terminarz (graphical calendar) - Gantt-chart timeline view for reservations with apartment rows, colored reservation bars, blockade support, date range navigation, 1-6 month view selector, location filter, add reservation/blockade dialogs, today line marker, hover tooltips
+- 2026-02-10: Added blockades table (apartmentId FK, startDate, endDate, reason) with full CRUD API for blocking apartment periods

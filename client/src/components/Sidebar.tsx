@@ -46,7 +46,7 @@ const sections: NavSection[] = [
     items: [
       { href: "/", label: "Kokpit", icon: LayoutDashboard },
       { href: "/finance-forecast", label: "Finanse / Prognoza", icon: TrendingUp },
-      { href: "/calendar", label: "Kalendarz", icon: CalendarDays },
+      { href: "/calendar", label: "Terminarz", icon: CalendarDays },
     ],
   },
   {

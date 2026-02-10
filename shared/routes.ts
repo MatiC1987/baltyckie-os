@@ -19,7 +19,9 @@ import {
   insertMedicalExamSchema,
   medicalExams,
   insertOwnerPaymentSchema,
-  ownerPayments
+  ownerPayments,
+  insertBlockadeSchema,
+  blockades
 } from './schema';
 
 export const errorSchemas = {
@@ -355,6 +357,31 @@ export const api = {
     delete: {
       method: 'DELETE' as const,
       path: '/api/owner-payments/:id',
+      responses: {
+        204: z.void(),
+      },
+    },
+  },
+  blockades: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/blockades',
+      responses: {
+        200: z.array(z.custom<typeof blockades.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/blockades',
+      input: insertBlockadeSchema,
+      responses: {
+        201: z.custom<typeof blockades.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/blockades/:id',
       responses: {
         204: z.void(),
       },

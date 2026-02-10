@@ -10,7 +10,8 @@ import {
   attachments, Attachment, InsertAttachment,
   employees, Employee, InsertEmployee,
   medicalExams, MedicalExam, InsertMedicalExam,
-  ownerPayments, OwnerPayment, InsertOwnerPayment
+  ownerPayments, OwnerPayment, InsertOwnerPayment,
+  blockades, Blockade, InsertBlockade
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -78,6 +79,11 @@ export interface IStorage {
   getOwnerPayments(apartmentId: number): Promise<OwnerPayment[]>;
   createOwnerPayment(payment: InsertOwnerPayment): Promise<OwnerPayment>;
   deleteOwnerPayment(id: number): Promise<void>;
+
+  // Blockades
+  getBlockades(): Promise<Blockade[]>;
+  createBlockade(blockade: InsertBlockade): Promise<Blockade>;
+  deleteBlockade(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -311,6 +317,20 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOwnerPayment(id: number): Promise<void> {
     await db.delete(ownerPayments).where(eq(ownerPayments.id, id));
+  }
+
+  // Blockades
+  async getBlockades(): Promise<Blockade[]> {
+    return await db.select().from(blockades).orderBy(blockades.startDate);
+  }
+
+  async createBlockade(blockade: InsertBlockade): Promise<Blockade> {
+    const [newBlockade] = await db.insert(blockades).values(blockade).returning();
+    return newBlockade;
+  }
+
+  async deleteBlockade(id: number): Promise<void> {
+    await db.delete(blockades).where(eq(blockades.id, id));
   }
 
   // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)

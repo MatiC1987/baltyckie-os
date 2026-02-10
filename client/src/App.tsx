@@ -15,6 +15,7 @@ import Finance from "@/pages/Finance";
 import Import from "@/pages/Import";
 import Landing from "@/pages/Landing";
 import Employees from "@/pages/Employees";
+import Terminarz from "@/pages/Terminarz";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -58,7 +59,7 @@ function Router() {
     <Switch>
       <Route path="/" component={() => <AuthenticatedRoute component={Dashboard} />} />
       <Route path="/finance-forecast" component={() => <AuthenticatedPlaceholder title="Finanse / Prognoza" description="Przegląd finansowy i prognoza przychodów." />} />
-      <Route path="/calendar" component={() => <AuthenticatedPlaceholder title="Kalendarz" description="Kalendarz rezerwacji i wydarzeń." />} />
+      <Route path="/calendar" component={() => <AuthenticatedRoute component={Terminarz} />} />
 
       <Route path="/apartments" component={() => <AuthenticatedRoute component={Apartments} />} />
       <Route path="/owners" component={() => <AuthenticatedRoute component={Owners} />} />

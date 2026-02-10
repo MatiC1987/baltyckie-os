@@ -126,6 +126,15 @@ export const ownerPayments = pgTable("owner_payments", {
   paymentDate: date("payment_date").notNull(),
 });
 
+export const blockades = pgTable("blockades", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const ownersRelations = relations(owners, ({ many }) => ({
   apartments: many(apartments),
@@ -200,6 +209,13 @@ export const ownerPaymentsRelations = relations(ownerPayments, ({ one }) => ({
   }),
 }));
 
+export const blockadesRelations = relations(blockades, ({ one }) => ({
+  apartment: one(apartments, {
+    fields: [blockades.apartmentId],
+    references: [apartments.id],
+  }),
+}));
+
 // Insert Schemas
 export const insertOwnerSchema = createInsertSchema(owners).omit({ id: true });
 export const insertApartmentSchema = createInsertSchema(apartments).omit({ id: true });
@@ -212,6 +228,7 @@ export const insertAttachmentSchema = createInsertSchema(attachments).omit({ id:
 export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true, createdAt: true });
 export const insertMedicalExamSchema = createInsertSchema(medicalExams).omit({ id: true, createdAt: true });
 export const insertOwnerPaymentSchema = createInsertSchema(ownerPayments).omit({ id: true });
+export const insertBlockadeSchema = createInsertSchema(blockades).omit({ id: true, createdAt: true });
 
 // Types
 export type Owner = typeof owners.$inferSelect;
@@ -236,3 +253,5 @@ export type MedicalExam = typeof medicalExams.$inferSelect;
 export type InsertMedicalExam = z.infer<typeof insertMedicalExamSchema>;
 export type OwnerPayment = typeof ownerPayments.$inferSelect;
 export type InsertOwnerPayment = z.infer<typeof insertOwnerPaymentSchema>;
+export type Blockade = typeof blockades.$inferSelect;
+export type InsertBlockade = z.infer<typeof insertBlockadeSchema>;

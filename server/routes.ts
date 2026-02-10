@@ -4,6 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
+import { insertBlockadeSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -272,6 +273,34 @@ export async function registerRoutes(
 
   app.delete('/api/owner-payments/:id', isAuthenticated, async (req, res) => {
     await storage.deleteOwnerPayment(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Blockades
+  app.get('/api/blockades', isAuthenticated, async (req, res) => {
+    const allBlockades = await storage.getBlockades();
+    res.json(allBlockades);
+  });
+
+  app.post('/api/blockades', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertBlockadeSchema.parse(req.body);
+      if (parsed.startDate > parsed.endDate) {
+        return res.status(400).json({ message: "Data rozpoczęcia musi być przed datą zakończenia" });
+      }
+      const blockade = await storage.createBlockade(parsed);
+      res.status(201).json(blockade);
+    } catch (err: any) {
+      if (err?.name === "ZodError") {
+        return res.status(400).json({ message: "Nieprawidłowe dane", errors: err.errors });
+      }
+      console.error(err);
+      res.status(500).json({ message: "Błąd serwera" });
+    }
+  });
+
+  app.delete('/api/blockades/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteBlockade(Number(req.params.id));
     res.status(204).send();
   });
 
