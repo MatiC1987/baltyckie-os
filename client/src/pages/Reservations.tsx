@@ -3,7 +3,7 @@ import { useReservations, useCreateReservation, useUpdateReservation } from "@/h
 import { useApartments } from "@/hooks/use-apartments";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter } from "lucide-react";
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
@@ -49,13 +49,32 @@ function statusLabel(status: string): string {
   }
 }
 
-function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+function StatusBadge({ status }: { status: string }) {
   switch (status) {
-    case "PRZYJETA": return "default";
-    case "ANULOWANA": return "destructive";
-    case "DO_OPLACENIA": return "secondary";
-    default: return "outline";
+    case "PRZYJETA":
+      return <Badge className="text-xs whitespace-nowrap bg-green-600 hover:bg-green-700 text-white border-green-600">{statusLabel(status)}</Badge>;
+    case "ANULOWANA":
+      return <Badge variant="destructive" className="text-xs whitespace-nowrap">{statusLabel(status)}</Badge>;
+    case "DO_OPLACENIA":
+      return <Badge variant="secondary" className="text-xs whitespace-nowrap">{statusLabel(status)}</Badge>;
+    default:
+      return <Badge variant="outline" className="text-xs whitespace-nowrap">{statusLabel(status)}</Badge>;
   }
+}
+
+function calcNights(startDate: string, endDate: string): number {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function InfoRow({ label, value, highlight }: { label: string; value: string | null | undefined; highlight?: boolean }) {
+  return (
+    <div className="flex items-start gap-2 py-2.5 border-b border-border last:border-b-0">
+      <span className="text-xs text-muted-foreground w-44 shrink-0 pt-0.5">{label}</span>
+      <span className={`text-sm ${highlight ? "font-bold" : "font-medium"}`}>{value || "—"}</span>
+    </div>
+  );
 }
 
 export default function Reservations() {
@@ -64,10 +83,11 @@ export default function Reservations() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>("startDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [showFilters, setShowFilters] = useState(false);
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("ALL");
-  const [showFilters, setShowFilters] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("ALL");
+  const [previewReservation, setPreviewReservation] = useState<Reservation | null>(null);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -76,13 +96,6 @@ export default function Reservations() {
       setSortField(field);
       setSortDir("asc");
     }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
-    return sortDir === "asc"
-      ? <ArrowUp className="h-3 w-3 ml-1" />
-      : <ArrowDown className="h-3 w-3 ml-1" />;
   };
 
   const filteredAndSorted = useMemo(() => {
@@ -229,6 +242,7 @@ export default function Reservations() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
+              <TableHead className="w-10"></TableHead>
               <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <SortableHeader field="addDate" label="Data dodania" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <SortableHeader field="apartmentName" label="Apartament" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
@@ -245,13 +259,13 @@ export default function Reservations() {
           <TableBody>
             {filteredAndSorted.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                   Brak rezerwacji
                 </TableCell>
               </TableRow>
             )}
             {filteredAndSorted.map(r => (
-              <ReservationRow key={r.id} reservation={r} apartments={apartments || []} />
+              <ReservationRow key={r.id} reservation={r} apartments={apartments || []} onPreview={setPreviewReservation} />
             ))}
           </TableBody>
         </Table>
@@ -259,6 +273,12 @@ export default function Reservations() {
       <div className="text-sm text-muted-foreground" data-testid="text-reservations-count">
         Wyświetlono {filteredAndSorted.length} z {reservations?.length || 0} rezerwacji
       </div>
+
+      <ReservationPreviewDialog
+        reservation={previewReservation}
+        apartments={apartments || []}
+        onClose={() => setPreviewReservation(null)}
+      />
     </div>
   );
 }
@@ -288,7 +308,7 @@ function SortableHeader({ field, label, sortField, sortDir, onSort }: {
   );
 }
 
-function ReservationRow({ reservation: r, apartments }: { reservation: Reservation; apartments: any[] }) {
+function ReservationRow({ reservation: r, apartments, onPreview }: { reservation: Reservation; apartments: any[]; onPreview: (r: Reservation) => void }) {
   const updateReservation = useUpdateReservation();
   const { toast } = useToast();
   const [editingPaid, setEditingPaid] = useState(false);
@@ -319,13 +339,18 @@ function ReservationRow({ reservation: r, apartments }: { reservation: Reservati
       className={isCancelled ? "bg-red-50 dark:bg-red-950/30" : ""}
       data-testid={`row-reservation-${r.id}`}
     >
+      <TableCell>
+        <Button size="icon" variant="ghost" onClick={() => onPreview(r)} data-testid={`button-preview-res-${r.id}`}>
+          <Eye className="h-4 w-4" />
+        </Button>
+      </TableCell>
       <TableCell className="font-medium text-xs whitespace-nowrap" data-testid={`text-res-number-${r.id}`}>
         {r.reservationNumber}
       </TableCell>
       <TableCell className="text-xs whitespace-nowrap" data-testid={`text-res-adddate-${r.id}`}>
         {r.addDate || "—"}
       </TableCell>
-      <TableCell className="text-xs" data-testid={`text-res-apartment-${r.id}`}>
+      <TableCell className="text-xs font-bold" data-testid={`text-res-apartment-${r.id}`}>
         {aptName.includes(",") ? (
           <div className="flex flex-col gap-0.5">
             {aptName.split(",").map((name, i) => (
@@ -393,13 +418,101 @@ function ReservationRow({ reservation: r, apartments }: { reservation: Reservati
           </Select>
         ) : (
           <button onClick={() => setEditingStatus(true)} data-testid={`button-edit-status-${r.id}`}>
-            <Badge variant={statusVariant(r.status)} className="text-xs whitespace-nowrap">
-              {statusLabel(r.status)}
-            </Badge>
+            <StatusBadge status={r.status} />
           </button>
         )}
       </TableCell>
     </TableRow>
+  );
+}
+
+function ReservationPreviewDialog({ reservation, apartments, onClose }: {
+  reservation: Reservation | null;
+  apartments: any[];
+  onClose: () => void;
+}) {
+  if (!reservation) return null;
+
+  const r = reservation;
+  const aptName = getApartmentName(r, apartments);
+  const remaining = calcRemaining(r);
+  const nights = calcNights(r.startDate, r.endDate);
+  const pricePerNight = nights > 0 ? Number(r.price) / nights : 0;
+
+  return (
+    <Dialog open={!!reservation} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between gap-2 flex-wrap" data-testid="text-preview-title">
+            <span>Rezerwacja #{r.reservationNumber}</span>
+            <StatusBadge status={r.status} />
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 pt-2">
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <Home className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Apartament</span>
+            </div>
+            {aptName.includes(",") ? (
+              <div className="flex flex-col gap-1 pl-6">
+                {aptName.split(",").map((name, i) => (
+                  <span key={i} className="text-sm font-bold">{name.trim()}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm font-bold pl-6">{aptName}</p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <User className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Gość</span>
+            </div>
+            <InfoRow label="Imię i nazwisko" value={r.guestName} highlight />
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Termin pobytu</span>
+            </div>
+            <InfoRow label="Data dodania" value={r.addDate} />
+            <InfoRow label="Przyjazd" value={r.startDate} highlight />
+            <InfoRow label="Wyjazd" value={r.endDate} highlight />
+            <InfoRow label="Liczba noclegów" value={`${nights}`} />
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <CreditCard className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Rozliczenie</span>
+            </div>
+            <InfoRow label="Kwota pobytu" value={`${Number(r.price).toFixed(2)} zł`} highlight />
+            <InfoRow label="Cena za noc" value={`${pricePerNight.toFixed(2)} zł`} />
+            <InfoRow label="Zaliczka" value={`${Number(r.prepayment).toFixed(2)} zł`} />
+            <InfoRow label="Wpłacona kwota" value={`${Number(r.paidAmount).toFixed(2)} zł`} />
+            <div className="flex items-start gap-2 py-2.5 border-b border-border last:border-b-0">
+              <span className="text-xs text-muted-foreground w-44 shrink-0 pt-0.5">Pozostało do zapłaty</span>
+              <span className={`text-sm font-bold ${remaining > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
+                {remaining.toFixed(2)} zł
+              </span>
+            </div>
+            {Number(r.surcharge) > 0 && (
+              <InfoRow label="Dopłata" value={`${Number(r.surcharge).toFixed(2)} zł`} />
+            )}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={onClose} data-testid="button-close-preview">
+              Zamknij
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -447,12 +560,12 @@ function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <Label>Imię i nazwisko</Label>
-        <Input {...form.register("guestName")} placeholder="Imię i nazwisko" data-testid="input-reservation-guest" />
+        <Label>Numer rezerwacji</Label>
+        <Input {...form.register("reservationNumber")} data-testid="input-reservation-number" />
       </div>
       <div className="space-y-2">
-        <Label>Kwota pobytu (PLN)</Label>
-        <Input type="number" step="0.01" {...form.register("price")} data-testid="input-reservation-price" />
+        <Label>Gość</Label>
+        <Input {...form.register("guestName")} placeholder="Imię i nazwisko" data-testid="input-reservation-guest" />
       </div>
 
       <div className="space-y-2">
@@ -465,9 +578,14 @@ function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="space-y-2">
+        <Label>Kwota pobytu (PLN)</Label>
+        <Input type="number" step="0.01" {...form.register("price")} data-testid="input-reservation-price" />
+      </div>
+      <div className="space-y-2">
         <Label>Zaliczka (PLN)</Label>
         <Input type="number" step="0.01" {...form.register("prepayment")} data-testid="input-reservation-prepayment" />
       </div>
+
       <div className="space-y-2">
         <Label>Status</Label>
         <Controller
@@ -488,7 +606,7 @@ function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
         />
       </div>
 
-      <div className="col-span-2 pt-4 flex justify-end">
+      <div className="col-span-2 flex justify-end">
         <Button type="submit" disabled={createReservation.isPending} data-testid="button-submit-reservation">
           {createReservation.isPending ? "Zapisywanie..." : "Zapisz rezerwację"}
         </Button>
