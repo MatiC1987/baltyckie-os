@@ -4,7 +4,7 @@ import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -44,15 +44,66 @@ function normalizeKey(loc: string): string {
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
   const { data: ownersList } = useOwners();
+  const deleteApartmentMutation = useDeleteApartment();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+  const { toast } = useToast();
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroupSelect = (groupApartments: Apartment[]) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const allSelected = groupApartments.every(a => next.has(a.id));
+      if (allSelected) {
+        groupApartments.forEach(a => next.delete(a.id));
+      } else {
+        groupApartments.forEach(a => next.add(a.id));
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (!apartments) return;
+    setSelectedIds(prev => {
+      const allSelected = apartments.every(a => prev.has(a.id));
+      return allSelected ? new Set() : new Set(apartments.map(a => a.id));
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Czy na pewno chcesz usunąć ${selectedIds.size} apartament(ów)? Wszystkie powiązane rezerwacje, umowy, koszty i blokady zostaną również usunięte.`)) return;
+    setIsDeletingBulk(true);
+    try {
+      for (const id of selectedIds) {
+        await new Promise<void>((resolve, reject) => {
+          deleteApartmentMutation.mutate(id, { onSuccess: () => resolve(), onError: (err) => reject(err) });
+        });
+      }
+      setSelectedIds(new Set());
+      toast({ title: "Sukces", description: `Usunięto ${selectedIds.size} apartament(ów).` });
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się usunąć niektórych apartamentów.", variant: "destructive" });
+    } finally {
+      setIsDeletingBulk(false);
+    }
+  };
 
   const ownersMap = useMemo(() => {
     const map = new Map<number, Owner>();
     if (ownersList) for (const o of ownersList) map.set(o.id, o);
     return map;
   }, [ownersList]);
-
 
   const groupedApartments = useMemo(() => {
     const groups: { label: string; apartments: Apartment[] }[] = LOCATIONS.map(loc => ({
@@ -78,6 +129,20 @@ export default function Apartments() {
   }, [apartments]);
 
   const columns = [
+    {
+      header: "",
+      className: "w-10",
+      cell: (apt: any) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(apt.id)}
+          onChange={() => toggleSelect(apt.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+          data-testid={`checkbox-select-apartment-${apt.id}`}
+        />
+      )
+    },
     {
       header: "Nazwa",
       cell: (apt: any) => (
@@ -178,19 +243,36 @@ export default function Apartments() {
           <h2 className="text-3xl font-bold tracking-tight" data-testid="text-apartments-title">Apartamenty</h2>
           <p className="text-muted-foreground">Zarządzaj swoją bazą nieruchomości.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-apartment">
-              <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={selectAll} data-testid="button-select-all">
+            <CheckSquare className="mr-2 h-4 w-4" />
+            {apartments && apartments.every(a => selectedIds.has(a.id)) && selectedIds.size > 0 ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
+          </Button>
+          {selectedIds.size > 0 && (
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={isDeletingBulk}
+              data-testid="button-delete-selected"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isDeletingBulk ? "Usuwanie..." : `Usuń wybrane (${selectedIds.size})`}
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Dodaj nowy apartament</DialogTitle>
-            </DialogHeader>
-            <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
-          </DialogContent>
-        </Dialog>
+          )}
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-apartment">
+                <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Dodaj nowy apartament</DialogTitle>
+              </DialogHeader>
+              <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -217,6 +299,15 @@ export default function Apartments() {
       {groupedApartments.map((group) => (
         <div key={group.label} className="space-y-3" data-testid={`group-location-${group.label.toLowerCase().replace(/\s+/g, '-').replace(/ł/g, 'l')}`}>
           <div className="flex items-center gap-3">
+            {group.apartments.length > 0 && (
+              <input
+                type="checkbox"
+                checked={group.apartments.length > 0 && group.apartments.every(a => selectedIds.has(a.id))}
+                onChange={() => toggleGroupSelect(group.apartments)}
+                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                data-testid={`checkbox-select-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
+              />
+            )}
             <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
               <Building2 className="h-4 w-4 text-primary" />
             </div>
