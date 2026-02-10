@@ -88,6 +88,24 @@ export const attachments = pgTable("attachments", {
   uploadedAt: timestamp("uploaded_at").defaultNow(),
 });
 
+export const employees = pgTable("employees", {
+  id: serial("id").primaryKey(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  cooperationType: text("cooperation_type").notNull(), // 'ETAT', 'PRACA_NA_H'
+  contractType: text("contract_type"), // 'CZAS_OKRESLONY', 'CZAS_NIEOKRESLONY'
+  contractStart: date("contract_start"),
+  contractEnd: date("contract_end"),
+  position: text("position").notNull(), // 'KIEROWNIK_RECEPCJI', 'PRACOWNIK_RECEPCJI', 'KONSERWATOR', 'OSOBA_SPRZATAJACA'
+  hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }),
+  comment: text("comment"),
+  status: text("status").notNull().default("AKTYWNY"), // 'AKTYWNY', 'NIEAKTYWNY'
+  photoUrl: text("photo_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const ownerPayments = pgTable("owner_payments", {
   id: serial("id").primaryKey(),
   apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
@@ -169,6 +187,7 @@ export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true 
 export const insertAccountSchema = createInsertSchema(accounts).omit({ id: true });
 export const insertAccountSnapshotSchema = createInsertSchema(accountSnapshots).omit({ id: true });
 export const insertAttachmentSchema = createInsertSchema(attachments).omit({ id: true, uploadedAt: true });
+export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true, createdAt: true });
 export const insertOwnerPaymentSchema = createInsertSchema(ownerPayments).omit({ id: true });
 
 // Types
@@ -188,5 +207,7 @@ export type AccountSnapshot = typeof accountSnapshots.$inferSelect;
 export type InsertAccountSnapshot = z.infer<typeof insertAccountSnapshotSchema>;
 export type Attachment = typeof attachments.$inferSelect;
 export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
+export type Employee = typeof employees.$inferSelect;
+export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type OwnerPayment = typeof ownerPayments.$inferSelect;
 export type InsertOwnerPayment = z.infer<typeof insertOwnerPaymentSchema>;

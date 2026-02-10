@@ -14,6 +14,8 @@ import {
   accounts,
   insertAccountSnapshotSchema,
   accountSnapshots,
+  insertEmployeeSchema,
+  employees,
   insertOwnerPaymentSchema,
   ownerPayments
 } from './schema';
@@ -261,6 +263,50 @@ export const api = {
         400: errorSchemas.validation,
       }
     }
+  },
+  employees: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/employees',
+      responses: {
+        200: z.array(z.custom<typeof employees.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/employees/:id',
+      responses: {
+        200: z.custom<typeof employees.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/employees',
+      input: insertEmployeeSchema,
+      responses: {
+        201: z.custom<typeof employees.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/employees/:id',
+      input: insertEmployeeSchema.partial(),
+      responses: {
+        200: z.custom<typeof employees.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/employees/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   ownerPayments: {
     list: {

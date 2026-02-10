@@ -86,3 +86,4 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Added Przyjazdy as separate page (/arrivals) with sidebar navigation
 - 2026-02-10: Restructured sidebar into sections: Kokpit/Finanse-Prognoza/Kalendarz, REZERWACJE, FINANSE, UMOWY, USTAWIENIA with separators and section titles
 - 2026-02-10: Added company logo to sidebar, created placeholder pages for future sections
+- 2026-02-10: Added Employee management system - employees table (14 fields: name, phone, email, cooperationType ETAT/PRACA_NA_H, contractType, contractStart/End, position, hourlyRate, comment, status AKTYWNY/NIEAKTYWNY, photoUrl), full CRUD API, Employees page with table view, add/edit dialog with conditional fields

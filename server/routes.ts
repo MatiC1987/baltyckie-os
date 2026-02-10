@@ -304,6 +304,44 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Employees
+  app.get(api.employees.list.path, isAuthenticated, async (req, res) => {
+    const emps = await storage.getEmployees();
+    res.json(emps);
+  });
+
+  app.get('/api/employees/:id', isAuthenticated, async (req, res) => {
+    const emp = await storage.getEmployee(Number(req.params.id));
+    if (!emp) return res.status(404).json({ message: "Nie znaleziono pracownika" });
+    res.json(emp);
+  });
+
+  app.post(api.employees.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const data = api.employees.create.input.parse(req.body);
+      const emp = await storage.createEmployee(data);
+      res.status(201).json(emp);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.put('/api/employees/:id', isAuthenticated, async (req, res) => {
+    try {
+      const data = api.employees.update.input.parse(req.body);
+      const emp = await storage.updateEmployee(Number(req.params.id), data);
+      if (!emp) return res.status(404).json({ message: "Nie znaleziono pracownika" });
+      res.json(emp);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.delete('/api/employees/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteEmployee(Number(req.params.id));
+    res.status(204).send();
+  });
+
   // Stats
   app.get(api.stats.dashboard.path, isAuthenticated, async (req, res) => {
     const stats = await storage.getDashboardStats();

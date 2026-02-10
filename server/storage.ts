@@ -8,6 +8,7 @@ import {
   accounts, Account, InsertAccount,
   accountSnapshots, AccountSnapshot, InsertAccountSnapshot,
   attachments, Attachment, InsertAttachment,
+  employees, Employee, InsertEmployee,
   ownerPayments, OwnerPayment, InsertOwnerPayment
 } from "@shared/schema";
 import { db } from "./db";
@@ -59,6 +60,13 @@ export interface IStorage {
   getAttachments(apartmentId: number): Promise<Attachment[]>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
   deleteAttachment(id: number): Promise<void>;
+
+  // Employees
+  getEmployees(): Promise<Employee[]>;
+  getEmployee(id: number): Promise<Employee | undefined>;
+  createEmployee(employee: InsertEmployee): Promise<Employee>;
+  updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee>;
+  deleteEmployee(id: number): Promise<void>;
 
   // Owner Payments
   getOwnerPayments(apartmentId: number): Promise<OwnerPayment[]>;
@@ -241,6 +249,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAttachment(id: number): Promise<void> {
     await db.delete(attachments).where(eq(attachments.id, id));
+  }
+
+  // Employees
+  async getEmployees(): Promise<Employee[]> {
+    return await db.select().from(employees).orderBy(employees.lastName);
+  }
+
+  async getEmployee(id: number): Promise<Employee | undefined> {
+    const [employee] = await db.select().from(employees).where(eq(employees.id, id));
+    return employee;
+  }
+
+  async createEmployee(employee: InsertEmployee): Promise<Employee> {
+    const [newEmployee] = await db.insert(employees).values(employee).returning();
+    return newEmployee;
+  }
+
+  async updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee> {
+    const [updated] = await db.update(employees).set(employee).where(eq(employees.id, id)).returning();
+    return updated;
+  }
+
+  async deleteEmployee(id: number): Promise<void> {
+    await db.delete(employees).where(eq(employees.id, id));
   }
 
   // Owner Payments
