@@ -168,6 +168,20 @@ export default function Apartments() {
     return groups;
   }, [apartments]);
 
+  const expiringContracts = useMemo(() => {
+    if (!apartments || !ownersList) return [];
+    const ownersMap = new Map(ownersList.map(o => [o.id, o.name]));
+    return apartments
+      .filter(apt => apt.leaseEndDate)
+      .map(apt => ({
+        id: apt.id,
+        name: apt.name,
+        ownerName: apt.ownerId ? (ownersMap.get(apt.ownerId) || "—") : "—",
+        leaseEndDate: apt.leaseEndDate!,
+      }))
+      .sort((a, b) => a.leaseEndDate.localeCompare(b.leaseEndDate));
+  }, [apartments, ownersList]);
+
   const columns = [
     {
       header: "",
@@ -403,6 +417,52 @@ export default function Apartments() {
           </div>
         );
       })}
+
+      {expiringContracts.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-bold" data-testid="text-expiring-contracts-title">Kończące się umowy</h3>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-2 px-3 font-medium">Nazwa apartamentu</th>
+                    <th className="py-2 px-3 font-medium">Właściciel</th>
+                    <th className="py-2 px-3 font-medium">Data końca umowy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expiringContracts.map((c) => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const daysLeft = Math.ceil((new Date(c.leaseEndDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+                    const isExpired = daysLeft < 0;
+                    const isExpiringSoon = daysLeft >= 0 && daysLeft <= 30;
+                    return (
+                      <tr key={c.id} className="border-b last:border-b-0" data-testid={`row-expiring-${c.id}`}>
+                        <td className="py-2 px-3 font-medium">{c.name}</td>
+                        <td className="py-2 px-3 text-muted-foreground">{c.ownerName}</td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{c.leaseEndDate}</span>
+                            {isExpired && (
+                              <Badge variant="destructive">Wygasła</Badge>
+                            )}
+                            {isExpiringSoon && (
+                              <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                                {daysLeft === 0 ? "Dziś" : `za ${daysLeft} dni`}
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
 
       <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
         <DialogContent className="max-w-2xl">
