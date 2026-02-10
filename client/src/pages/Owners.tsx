@@ -15,7 +15,8 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Users, Home, MapPin, Plus, Pencil, Trash2, Phone, Mail } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Home, MapPin, Plus, Pencil, Trash2, Phone, Mail, Building2 } from "lucide-react";
 import { type Owner, type Apartment, type InsertOwner, insertOwnerSchema } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { type Lease } from "@shared/schema";
@@ -130,8 +131,18 @@ export default function Owners() {
                       <Users className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-lg" data-testid={`text-owner-name-${owner.id}`}>{owner.name}</CardTitle>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-lg" data-testid={`text-owner-name-${owner.id}`}>{owner.name}</CardTitle>
+                        <Badge variant={owner.ownerType === "firma" ? "default" : "secondary"} data-testid={`badge-owner-type-${owner.id}`}>
+                          {owner.ownerType === "firma" ? "Firma" : "Osoba fizyczna"}
+                        </Badge>
+                      </div>
                       <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                        {owner.ownerType === "firma" && owner.nip && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3" /> NIP: {owner.nip}
+                          </span>
+                        )}
                         {owner.phone && (
                           <span className="flex items-center gap-1">
                             <Phone className="h-3 w-3" /> {owner.phone}
@@ -235,13 +246,20 @@ function OwnerForm({ onSuccess }: { onSuccess: () => void }) {
     resolver: zodResolver(insertOwnerSchema),
     defaultValues: {
       name: "",
+      ownerType: "osoba_fizyczna",
+      nip: "",
       phone: "",
       email: "",
       notes: "",
     }
   });
 
+  const ownerType = form.watch("ownerType");
+
   const onSubmit = (data: InsertOwner) => {
+    if (data.ownerType === "osoba_fizyczna") {
+      data.nip = null;
+    }
     createOwner.mutate(data, {
       onSuccess: () => onSuccess()
     });
@@ -250,10 +268,32 @@ function OwnerForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
       <div className="space-y-2">
-        <Label htmlFor="owner-name">Imię i nazwisko</Label>
-        <Input id="owner-name" {...form.register("name")} placeholder="Jan Kowalski" data-testid="input-owner-name" />
+        <Label>Typ właściciela</Label>
+        <Select
+          value={ownerType || "osoba_fizyczna"}
+          onValueChange={(val) => form.setValue("ownerType", val)}
+          data-testid="select-owner-type"
+        >
+          <SelectTrigger data-testid="select-owner-type-trigger">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="osoba_fizyczna">Osoba fizyczna</SelectItem>
+            <SelectItem value="firma">Firma</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="owner-name">{ownerType === "firma" ? "Nazwa firmy" : "Imię i nazwisko"}</Label>
+        <Input id="owner-name" {...form.register("name")} placeholder={ownerType === "firma" ? "Nazwa firmy Sp. z o.o." : "Jan Kowalski"} data-testid="input-owner-name" />
         {form.formState.errors.name && <span className="text-sm text-destructive">{form.formState.errors.name.message}</span>}
       </div>
+      {ownerType === "firma" && (
+        <div className="space-y-2">
+          <Label htmlFor="owner-nip">NIP</Label>
+          <Input id="owner-nip" {...form.register("nip")} placeholder="1234567890" data-testid="input-owner-nip" />
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="owner-phone">Telefon</Label>
         <Input id="owner-phone" {...form.register("phone")} placeholder="+48 123 456 789" data-testid="input-owner-phone" />
@@ -282,13 +322,20 @@ function EditOwnerForm({ owner, onSuccess }: { owner: Owner; onSuccess: () => vo
     resolver: zodResolver(insertOwnerSchema),
     defaultValues: {
       name: owner.name,
+      ownerType: owner.ownerType || "osoba_fizyczna",
+      nip: owner.nip || "",
       phone: owner.phone || "",
       email: owner.email || "",
       notes: owner.notes || "",
     }
   });
 
+  const ownerType = form.watch("ownerType");
+
   const onSubmit = (data: InsertOwner) => {
+    if (data.ownerType === "osoba_fizyczna") {
+      data.nip = null;
+    }
     updateOwner.mutate({ id: owner.id, ...data }, {
       onSuccess: () => onSuccess()
     });
@@ -305,10 +352,32 @@ function EditOwnerForm({ owner, onSuccess }: { owner: Owner; onSuccess: () => vo
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
       <div className="space-y-2">
-        <Label htmlFor="edit-owner-name">Imię i nazwisko</Label>
+        <Label>Typ właściciela</Label>
+        <Select
+          value={ownerType || "osoba_fizyczna"}
+          onValueChange={(val) => form.setValue("ownerType", val)}
+          data-testid="select-edit-owner-type"
+        >
+          <SelectTrigger data-testid="select-edit-owner-type-trigger">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="osoba_fizyczna">Osoba fizyczna</SelectItem>
+            <SelectItem value="firma">Firma</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-owner-name">{ownerType === "firma" ? "Nazwa firmy" : "Imię i nazwisko"}</Label>
         <Input id="edit-owner-name" {...form.register("name")} data-testid="input-edit-owner-name" />
         {form.formState.errors.name && <span className="text-sm text-destructive">{form.formState.errors.name.message}</span>}
       </div>
+      {ownerType === "firma" && (
+        <div className="space-y-2">
+          <Label htmlFor="edit-owner-nip">NIP</Label>
+          <Input id="edit-owner-nip" {...form.register("nip")} placeholder="1234567890" data-testid="input-edit-owner-nip" />
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="edit-owner-phone">Telefon</Label>
         <Input id="edit-owner-phone" {...form.register("phone")} data-testid="input-edit-owner-phone" />

@@ -8,6 +8,8 @@ export * from "./models/auth";
 export const owners = pgTable("owners", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  ownerType: text("owner_type").default("osoba_fizyczna"),
+  nip: text("nip"),
   phone: text("phone"),
   email: text("email"),
   notes: text("notes"),
