@@ -12,6 +12,7 @@ import Reservations from "@/pages/Reservations";
 import Leases from "@/pages/Leases";
 import Finance from "@/pages/Finance";
 import Import from "@/pages/Import";
+import Arrivals from "@/pages/Arrivals";
 import Landing from "@/pages/Landing";
 import { Layout } from "@/components/Layout";
 
@@ -49,6 +50,7 @@ function Router() {
       <Route path="/apartments" component={() => <AuthenticatedRoute component={Apartments} />} />
       <Route path="/owners" component={() => <AuthenticatedRoute component={Owners} />} />
       <Route path="/reservations" component={() => <AuthenticatedRoute component={Reservations} />} />
+      <Route path="/arrivals" component={() => <AuthenticatedRoute component={Arrivals} />} />
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
       <Route path="/import" component={() => <AuthenticatedRoute component={Import} />} />

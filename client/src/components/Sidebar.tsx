@@ -8,6 +8,7 @@ import {
   Wallet, 
   Upload, 
   Users,
+  Plane,
   LogOut,
   Menu,
   X
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/apartments", label: "Apartamenty", icon: Building2 },
   { href: "/owners", label: "Właściciele", icon: Users },
   { href: "/reservations", label: "Rezerwacje", icon: CalendarDays },
+  { href: "/arrivals", label: "Przyjazdy", icon: Plane },
   { href: "/leases", label: "Najem Długoterminowy", icon: FileText },
   { href: "/finance", label: "Finanse", icon: Wallet },
   { href: "/import", label: "Import", icon: Upload },
