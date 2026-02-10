@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ServiceContract, ServiceContractCategory } from "@shared/schema";
 
@@ -34,6 +34,7 @@ export default function ServiceContracts() {
   const [activeTab, setActiveTab] = useState("all");
   const [showAddContract, setShowAddContract] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [editingContract, setEditingContract] = useState<ServiceContract | null>(null);
 
   const createCategoryMutation = useMutation({
     mutationFn: async (data: { name: string }) => {
@@ -59,6 +60,19 @@ export default function ServiceContracts() {
       setShowAddContract(false);
     },
     onError: () => toast({ title: "Błąd", description: "Nie udało się dodać umowy", variant: "destructive" }),
+  });
+
+  const updateContractMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PUT", `/api/service-contracts/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-contracts"] });
+      toast({ title: "Sukces", description: "Umowa zaktualizowana" });
+      setEditingContract(null);
+    },
+    onError: () => toast({ title: "Błąd", description: "Nie udało się zaktualizować umowy", variant: "destructive" }),
   });
 
   const deleteContractMutation = useMutation({
@@ -151,9 +165,14 @@ export default function ServiceContracts() {
                       {contract.monthlyPrice ? `${Number(contract.monthlyPrice).toFixed(2)} PLN` : "—"}
                     </TableCell>
                     <TableCell>
-                      <Button size="icon" variant="ghost" onClick={() => deleteContractMutation.mutate(contract.id)} data-testid={`button-delete-contract-${contract.id}`}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setEditingContract(contract)} data-testid={`button-edit-contract-${contract.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => deleteContractMutation.mutate(contract.id)} data-testid={`button-delete-contract-${contract.id}`}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -182,6 +201,16 @@ export default function ServiceContracts() {
         onClose={() => setShowAddContract(false)}
         onSubmit={(data) => createContractMutation.mutate(data)}
         isPending={createContractMutation.isPending}
+        categories={categories || []}
+      />
+
+      <EditContractDialog
+        contract={editingContract}
+        onClose={() => setEditingContract(null)}
+        onSubmit={(data) => {
+          if (editingContract) updateContractMutation.mutate({ id: editingContract.id, data });
+        }}
+        isPending={updateContractMutation.isPending}
         categories={categories || []}
       />
     </div>
@@ -313,6 +342,118 @@ function AddContractDialog({ open, onClose, onSubmit, isPending, categories }: {
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" type="button" onClick={onClose}>Anuluj</Button>
             <Button type="submit" disabled={isPending} data-testid="button-submit-contract">
+              {isPending ? "Zapisywanie..." : "Zapisz"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditContractDialog({ contract, onClose, onSubmit, isPending, categories }: {
+  contract: ServiceContract | null;
+  onClose: () => void;
+  onSubmit: (data: any) => void;
+  isPending: boolean;
+  categories: ServiceContractCategory[];
+}) {
+  const [name, setName] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [signDate, setSignDate] = useState("");
+  const [duration, setDuration] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [serviceAddress, setServiceAddress] = useState("");
+  const [monthlyPrice, setMonthlyPrice] = useState("");
+
+  useEffect(() => {
+    if (contract) {
+      setName(contract.name);
+      setCategoryId(contract.categoryId ? contract.categoryId.toString() : "");
+      setSignDate(contract.signDate || "");
+      setDuration(contract.duration || "");
+      setEndDate(contract.endDate || "");
+      setServiceAddress(contract.serviceAddress || "");
+      setMonthlyPrice(contract.monthlyPrice ? contract.monthlyPrice.toString() : "");
+    }
+  }, [contract]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onSubmit({
+      name: name.trim(),
+      categoryId: categoryId ? Number(categoryId) : null,
+      signDate: signDate || null,
+      duration: duration.trim() || null,
+      endDate: endDate || null,
+      serviceAddress: serviceAddress.trim() || null,
+      monthlyPrice: monthlyPrice ? monthlyPrice : null,
+    });
+  };
+
+  const handleClose = () => {
+    setName("");
+    setCategoryId("");
+    setSignDate("");
+    setDuration("");
+    setEndDate("");
+    setServiceAddress("");
+    setMonthlyPrice("");
+    onClose();
+  };
+
+  return (
+    <Dialog open={!!contract} onOpenChange={(o) => { if (!o) handleClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle data-testid="text-edit-contract-title">Edytuj umowę</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Nazwa</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nazwa umowy" data-testid="edit-input-contract-name" />
+          </div>
+          <div className="space-y-2">
+            <Label>Kategoria</Label>
+            <Select value={categoryId} onValueChange={setCategoryId}>
+              <SelectTrigger data-testid="edit-select-contract-category">
+                <SelectValue placeholder="Wybierz kategorię" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(cat => (
+                  <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Data podpisania umowy</Label>
+              <Input type="date" value={signDate} onChange={e => setSignDate(e.target.value)} data-testid="edit-input-contract-sign-date" />
+            </div>
+            <div className="space-y-2">
+              <Label>Długość umowy</Label>
+              <Input value={duration} onChange={e => setDuration(e.target.value)} placeholder="np. 24 miesiące" data-testid="edit-input-contract-duration" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Data zakończenia umowy</Label>
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="edit-input-contract-end-date" />
+            </div>
+            <div className="space-y-2">
+              <Label>Cena usługi (/miesiąc)</Label>
+              <Input type="number" step="0.01" value={monthlyPrice} onChange={e => setMonthlyPrice(e.target.value)} placeholder="0.00" data-testid="edit-input-contract-price" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Adres świadczenia usługi</Label>
+            <Input value={serviceAddress} onChange={e => setServiceAddress(e.target.value)} placeholder="Adres" data-testid="edit-input-contract-address" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" type="button" onClick={handleClose} data-testid="button-cancel-edit-contract">Anuluj</Button>
+            <Button type="submit" disabled={isPending} data-testid="button-submit-edit-contract">
               {isPending ? "Zapisywanie..." : "Zapisz"}
             </Button>
           </div>
