@@ -4,7 +4,7 @@ import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +44,7 @@ function normalizeKey(loc: string): string {
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
   const { data: ownersList } = useOwners();
+  const updateApartmentMutation = useUpdateApartment();
   const deleteApartmentMutation = useDeleteApartment();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
@@ -96,6 +97,31 @@ export default function Apartments() {
       toast({ title: "Błąd", description: "Nie udało się usunąć niektórych apartamentów.", variant: "destructive" });
     } finally {
       setIsDeletingBulk(false);
+    }
+  };
+
+  const [isMoving, setIsMoving] = useState(false);
+  const [moveSelectKey, setMoveSelectKey] = useState(0);
+  const handleBulkMove = async (targetLocation: string) => {
+    if (selectedIds.size === 0) return;
+    setIsMoving(true);
+    try {
+      for (const id of selectedIds) {
+        await new Promise<void>((resolve, reject) => {
+          updateApartmentMutation.mutate(
+            { id, location: targetLocation },
+            { onSuccess: () => resolve(), onError: (err) => reject(err) }
+          );
+        });
+      }
+      const count = selectedIds.size;
+      setSelectedIds(new Set());
+      setMoveSelectKey(k => k + 1);
+      toast({ title: "Sukces", description: `Przeniesiono ${count} apartament(ów) do ${targetLocation}.` });
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się przenieść niektórych apartamentów.", variant: "destructive" });
+    } finally {
+      setIsMoving(false);
     }
   };
 
@@ -249,15 +275,34 @@ export default function Apartments() {
             {apartments && apartments.every(a => selectedIds.has(a.id)) && selectedIds.size > 0 ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
           </Button>
           {selectedIds.size > 0 && (
-            <Button
-              variant="destructive"
-              onClick={handleBulkDelete}
-              disabled={isDeletingBulk}
-              data-testid="button-delete-selected"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {isDeletingBulk ? "Usuwanie..." : `Usuń wybrane (${selectedIds.size})`}
-            </Button>
+            <>
+              <Select
+                key={moveSelectKey}
+                onValueChange={handleBulkMove}
+                disabled={isMoving}
+              >
+                <SelectTrigger className="w-auto min-w-[200px]" data-testid="select-move-to-location">
+                  <FolderInput className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder={isMoving ? "Przenoszenie..." : `Przenieś do... (${selectedIds.size})`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOCATIONS.map(loc => (
+                    <SelectItem key={loc} value={loc} data-testid={`option-move-${loc.toLowerCase().replace(/\s+/g, '-')}`}>
+                      {loc}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="destructive"
+                onClick={handleBulkDelete}
+                disabled={isDeletingBulk}
+                data-testid="button-delete-selected"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {isDeletingBulk ? "Usuwanie..." : `Usuń wybrane (${selectedIds.size})`}
+              </Button>
+            </>
           )}
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
