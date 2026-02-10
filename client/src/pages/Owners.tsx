@@ -3,7 +3,7 @@ import { useOwners, useCreateOwner, useUpdateOwner, useDeleteOwner } from "@/hoo
 import { useApartments } from "@/hooks/use-apartments";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,19 +16,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Home, MapPin, Plus, Pencil, Trash2, Phone, Mail, Building2 } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { type Owner, type Apartment, type InsertOwner, insertOwnerSchema } from "@shared/schema";
-import { useQuery } from "@tanstack/react-query";
-import { type Lease } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 export default function Owners() {
   const { data: ownersList, isLoading: ownersLoading } = useOwners();
   const { data: apartments } = useApartments();
-  const { data: leases } = useQuery<Lease[]>({
-    queryKey: ['/api/leases'],
-  });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOwner, setEditingOwner] = useState<Owner | null>(null);
 
@@ -50,15 +45,6 @@ export default function Owners() {
     return apartments.filter(apt => !apt.ownerId);
   }, [apartments]);
 
-  const getActiveLease = (aptId: number) => {
-    if (!leases) return null;
-    const today = new Date().toISOString().split('T')[0];
-    return leases.find(l =>
-      l.apartmentId === aptId &&
-      l.startDate <= today &&
-      (!l.endDate || l.endDate >= today)
-    );
-  };
 
   if (ownersLoading) {
     return (
@@ -119,109 +105,83 @@ export default function Owners() {
         </Card>
       </div>
 
-      <div className="space-y-6">
-        {ownersList?.map((owner) => {
-          const ownerApts = ownerApartmentsMap.get(owner.id) || [];
-          return (
-            <Card key={owner.id} data-testid={`card-owner-${owner.id}`}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <CardTitle className="text-lg" data-testid={`text-owner-name-${owner.id}`}>{owner.name}</CardTitle>
-                        <Badge variant={owner.ownerType === "firma" ? "default" : "secondary"} data-testid={`badge-owner-type-${owner.id}`}>
-                          {owner.ownerType === "firma" ? "Firma" : "Osoba fizyczna"}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                        {owner.ownerType === "firma" && owner.nip && (
-                          <span className="flex items-center gap-1">
-                            <Building2 className="h-3 w-3" /> NIP: {owner.nip}
-                          </span>
-                        )}
-                        {owner.phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {owner.phone}
-                          </span>
-                        )}
-                        {owner.email && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {owner.email}
-                          </span>
-                        )}
-                        <span>{ownerApts.length} {ownerApts.length === 1 ? 'apartament' : ownerApts.length < 5 ? 'apartamenty' : 'apartamentów'}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setEditingOwner(owner)}
-                    data-testid={`button-edit-owner-${owner.id}`}
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="py-2 px-3 font-medium">Właściciel</th>
+                <th className="py-2 px-3 font-medium">Typ</th>
+                <th className="py-2 px-3 font-medium">NIP</th>
+                <th className="py-2 px-3 font-medium">Telefon</th>
+                <th className="py-2 px-3 font-medium">Email</th>
+                <th className="py-2 px-3 font-medium">Apartamenty</th>
+                <th className="py-2 px-3 font-medium">Notatki</th>
+                <th className="py-2 px-3 font-medium w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {ownersList?.map((owner) => {
+                const ownerApts = ownerApartmentsMap.get(owner.id) || [];
+                return (
+                  <tr
+                    key={owner.id}
+                    className="border-b last:border-b-0 hover-elevate"
+                    data-testid={`card-owner-${owner.id}`}
                   >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              {(ownerApts.length > 0 || owner.notes) && (
-                <CardContent>
-                  {owner.notes && (
-                    <p className="text-sm text-muted-foreground mb-3">{owner.notes}</p>
-                  )}
-                  <div className="space-y-3">
-                    {ownerApts.map((apt) => {
-                      const lease = getActiveLease(apt.id);
-                      return (
-                        <div
-                          key={apt.id}
-                          className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-lg bg-muted/50"
-                          data-testid={`row-owner-apartment-${apt.id}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            {apt.photoUrl ? (
-                              <img src={apt.photoUrl} alt={apt.name} className="h-8 w-8 rounded-md object-cover" />
-                            ) : (
-                              <Home className="h-4 w-4 text-muted-foreground" />
-                            )}
-                            <div>
-                              <div className="font-medium text-sm">{apt.name}</div>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <MapPin className="h-3 w-3" />
-                                {apt.location || "Brak lokalizacji"}
-                                {apt.address && <span>| {apt.address}</span>}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {lease && (
-                              <Badge variant="outline" className="text-xs">
-                                Najem: {lease.startDate} — {lease.endDate || "bezterminowo"}
-                              </Badge>
-                            )}
-                            <Badge variant={apt.active ? "default" : "secondary"}>
-                              {apt.active ? "Aktywny" : "Nieaktywny"}
-                            </Badge>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          );
-        })}
-
+                    <td className="py-2 px-3 font-medium whitespace-nowrap" data-testid={`text-owner-name-${owner.id}`}>
+                      {owner.name}
+                    </td>
+                    <td className="py-2 px-3" data-testid={`badge-owner-type-${owner.id}`}>
+                      <Badge variant={owner.ownerType === "firma" ? "default" : "secondary"}>
+                        {owner.ownerType === "firma" ? "Firma" : "Osoba fiz."}
+                      </Badge>
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                      {owner.ownerType === "firma" && owner.nip ? owner.nip : "—"}
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                      {owner.phone || "—"}
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                      {owner.email || "—"}
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {ownerApts.length > 0 ? ownerApts.map((apt) => (
+                          <Badge key={apt.id} variant="outline" className="text-xs" data-testid={`row-owner-apartment-${apt.id}`}>
+                            {apt.name}
+                          </Badge>
+                        )) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground max-w-[200px] truncate" title={owner.notes || ""}>
+                      {owner.notes || "—"}
+                    </td>
+                    <td className="py-2 px-3">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setEditingOwner(owner)}
+                        data-testid={`button-edit-owner-${owner.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         {(!ownersList || ownersList.length === 0) && (
           <div className="text-center py-12 text-muted-foreground">
             Brak właścicieli. Kliknij "Dodaj właściciela" aby dodać pierwszego.
           </div>
         )}
-      </div>
+      </Card>
 
       <Dialog open={!!editingOwner} onOpenChange={(open) => { if (!open) setEditingOwner(null); }}>
         <DialogContent>
