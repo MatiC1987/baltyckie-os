@@ -31,7 +31,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import logoSrc from "@assets/logobaltyckie_1770719337266.png";
+import logoSrc from "@assets/base_logo_white_background_1770751806017.png";
 import {
   DndContext,
   closestCenter,
