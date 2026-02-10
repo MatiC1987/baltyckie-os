@@ -13,7 +13,7 @@ Full-stack Polish-language apartment rental financial management application. Ma
 ## Project Structure
 ```
 client/src/
-  pages/          - Dashboard, Apartments, Reservations, Leases, Finance, Import, Landing
+  pages/          - Dashboard, Apartments, Owners, Reservations, Arrivals, Leases, Finance, Import, Placeholder, Landing
   components/     - Layout, Sidebar, DataTable, ui/ (shadcn components)
   hooks/          - use-auth, use-apartments, use-reservations, use-leases, use-expenses, use-accounts, use-stats
   lib/            - queryClient (TanStack Query v5)
@@ -83,3 +83,6 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Updated HotRes CSV parser to match exact HotRes export format (number;status;add_date;arrival_date;departure_date;amount;paid;...;last_name;first_name;...;roomscodes;...)
 - 2026-02-10: Rebuilt Reservations page with full column set, sortable headers (asc/desc), date & status filters, inline paidAmount editing, status editing, red row highlight for ANULOWANA
 - 2026-02-10: Added PRZYJAZDY tab to Dashboard showing PRZYJETA reservations chronologically with sorting and date filtering
+- 2026-02-10: Added Przyjazdy as separate page (/arrivals) with sidebar navigation
+- 2026-02-10: Restructured sidebar into sections: Kokpit/Finanse-Prognoza/Kalendarz, REZERWACJE, FINANSE, UMOWY, USTAWIENIA with separators and section titles
+- 2026-02-10: Added company logo to sidebar, created placeholder pages for future sections
