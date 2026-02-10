@@ -1,7 +1,13 @@
 import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
+} from "@/components/ui/dialog";
 
 interface CostItem {
   name: string;
@@ -15,7 +21,20 @@ interface CostCategory {
   items: CostItem[];
 }
 
-const CATEGORIES: CostCategory[] = [
+const CATEGORY_COLORS = [
+  { label: "Niebieski", value: "bg-blue-600 dark:bg-blue-700" },
+  { label: "Czerwony", value: "bg-red-600 dark:bg-red-700" },
+  { label: "Fioletowy", value: "bg-purple-600 dark:bg-purple-700" },
+  { label: "Zielony", value: "bg-emerald-600 dark:bg-emerald-700" },
+  { label: "Bursztynowy", value: "bg-amber-600 dark:bg-amber-700" },
+  { label: "Różowy", value: "bg-pink-600 dark:bg-pink-700" },
+  { label: "Błękitny", value: "bg-cyan-600 dark:bg-cyan-700" },
+  { label: "Szary", value: "bg-slate-600 dark:bg-slate-700" },
+  { label: "Indygo", value: "bg-indigo-600 dark:bg-indigo-700" },
+  { label: "Pomarańczowy", value: "bg-orange-600 dark:bg-orange-700" },
+];
+
+const DEFAULT_CATEGORIES: CostCategory[] = [
   {
     id: "wynagrodzenia",
     title: "WYNAGRODZENIA",
@@ -147,12 +166,6 @@ function makeCellKey(catId: string, itemIdx: number, month: number, field: "prog
   return `${catId}__${itemIdx}__${month}__${field}`;
 }
 
-type NameKey = string;
-
-function makeNameKey(catId: string, itemIdx: number): NameKey {
-  return `${catId}__${itemIdx}`;
-}
-
 function getStorageKey(year: number) {
   return `oplaty-data-${year}`;
 }
@@ -169,29 +182,42 @@ function saveData(year: number, data: Record<CellKey, number>) {
   localStorage.setItem(getStorageKey(year), JSON.stringify(data));
 }
 
-function loadNameOverrides(): Record<NameKey, { name: string; subLabel?: string }> {
+function loadCategories(): CostCategory[] {
   try {
-    const raw = localStorage.getItem("oplaty-names");
+    const raw = localStorage.getItem("oplaty-categories");
     if (raw) return JSON.parse(raw);
   } catch {}
-  return {};
+  return DEFAULT_CATEGORIES;
 }
 
-function saveNameOverrides(data: Record<NameKey, { name: string; subLabel?: string }>) {
-  localStorage.setItem("oplaty-names", JSON.stringify(data));
+function saveCategories(cats: CostCategory[]) {
+  localStorage.setItem("oplaty-categories", JSON.stringify(cats));
 }
 
 export default function CostsExpenses() {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(currentYear));
+  const [categories, setCategories] = useState<CostCategory[]>(() => loadCategories());
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [nameOverrides, setNameOverrides] = useState<Record<NameKey, { name: string; subLabel?: string }>>(() => loadNameOverrides());
-  const [editingName, setEditingName] = useState<NameKey | null>(null);
+  const [editingName, setEditingName] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState("");
   const [editSubLabelValue, setEditSubLabelValue] = useState("");
+
+  const [addItemCatId, setAddItemCatId] = useState<string | null>(null);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemSubLabel, setNewItemSubLabel] = useState("");
+
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCatTitle, setNewCatTitle] = useState("");
+  const [newCatColor, setNewCatColor] = useState(CATEGORY_COLORS[0].value);
+
+  const updateCategories = useCallback((newCats: CostCategory[]) => {
+    setCategories(newCats);
+    saveCategories(newCats);
+  }, []);
 
   const handleYearChange = useCallback((year: string) => {
     const y = parseInt(year);
@@ -236,41 +262,78 @@ export default function CostsExpenses() {
     setEditingCell(null);
   }, []);
 
-  const getItemDisplay = useCallback((catId: string, itemIdx: number, defaultItem: CostItem) => {
-    const key = makeNameKey(catId, itemIdx);
-    const override = nameOverrides[key];
-    return override || { name: defaultItem.name, subLabel: defaultItem.subLabel };
-  }, [nameOverrides]);
-
-  const startEditingName = useCallback((catId: string, itemIdx: number, defaultItem: CostItem) => {
-    const key = makeNameKey(catId, itemIdx);
-    const current = nameOverrides[key] || { name: defaultItem.name, subLabel: defaultItem.subLabel };
+  const startEditingName = useCallback((catId: string, itemIdx: number) => {
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return;
+    const item = cat.items[itemIdx];
+    const key = `${catId}__${itemIdx}`;
     setEditingName(key);
-    setEditNameValue(current.name);
-    setEditSubLabelValue(current.subLabel || "");
-  }, [nameOverrides]);
+    setEditNameValue(item.name);
+    setEditSubLabelValue(item.subLabel || "");
+  }, [categories]);
 
   const commitNameEdit = useCallback(() => {
-    if (editingName) {
-      const newOverrides = { ...nameOverrides };
-      const trimmedName = editNameValue.trim();
-      if (trimmedName) {
-        newOverrides[editingName] = {
-          name: trimmedName,
-          subLabel: editSubLabelValue.trim() || undefined,
-        };
-      } else {
-        delete newOverrides[editingName];
-      }
-      setNameOverrides(newOverrides);
-      saveNameOverrides(newOverrides);
-      setEditingName(null);
-    }
-  }, [editingName, editNameValue, editSubLabelValue, nameOverrides]);
+    if (!editingName) return;
+    const [catId, idxStr] = editingName.split("__");
+    const idx = parseInt(idxStr);
+    const trimmedName = editNameValue.trim();
+    if (!trimmedName) { setEditingName(null); return; }
+    const newCats = categories.map(cat => {
+      if (cat.id !== catId) return cat;
+      const newItems = [...cat.items];
+      newItems[idx] = { name: trimmedName, subLabel: editSubLabelValue.trim() || undefined };
+      return { ...cat, items: newItems };
+    });
+    updateCategories(newCats);
+    setEditingName(null);
+  }, [editingName, editNameValue, editSubLabelValue, categories, updateCategories]);
 
   const cancelNameEdit = useCallback(() => {
     setEditingName(null);
   }, []);
+
+  const handleAddItem = useCallback(() => {
+    if (!addItemCatId || !newItemName.trim()) return;
+    const newCats = categories.map(cat => {
+      if (cat.id !== addItemCatId) return cat;
+      return {
+        ...cat,
+        items: [...cat.items, { name: newItemName.trim(), subLabel: newItemSubLabel.trim() || undefined }],
+      };
+    });
+    updateCategories(newCats);
+    setNewItemName("");
+    setNewItemSubLabel("");
+    setAddItemCatId(null);
+  }, [addItemCatId, newItemName, newItemSubLabel, categories, updateCategories]);
+
+  const handleDeleteItem = useCallback((catId: string, itemIdx: number) => {
+    const newCats = categories.map(cat => {
+      if (cat.id !== catId) return cat;
+      const newItems = cat.items.filter((_, i) => i !== itemIdx);
+      return { ...cat, items: newItems };
+    });
+    updateCategories(newCats);
+  }, [categories, updateCategories]);
+
+  const handleAddCategory = useCallback(() => {
+    if (!newCatTitle.trim()) return;
+    const id = newCatTitle.trim().toLowerCase().replace(/[^a-z0-9ąćęłńóśźż]/g, "-").replace(/-+/g, "-");
+    const newCat: CostCategory = {
+      id: `${id}-${Date.now()}`,
+      title: newCatTitle.trim().toUpperCase(),
+      color: newCatColor,
+      items: [],
+    };
+    updateCategories([...categories, newCat]);
+    setNewCatTitle("");
+    setNewCatColor(CATEGORY_COLORS[0].value);
+    setShowAddCategory(false);
+  }, [newCatTitle, newCatColor, categories, updateCategories]);
+
+  const handleDeleteCategory = useCallback((catId: string) => {
+    updateCategories(categories.filter(c => c.id !== catId));
+  }, [categories, updateCategories]);
 
   const getCategorySummary = useCallback((cat: CostCategory, month: number) => {
     let prognoza = 0;
@@ -306,13 +369,13 @@ export default function CostsExpenses() {
   const grandTotal = useMemo(() => {
     let prognoza = 0;
     let rzeczywiste = 0;
-    CATEGORIES.forEach(cat => {
+    categories.forEach(cat => {
       const s = getCategoryAnnualSummary(cat);
       prognoza += s.prognoza;
       rzeczywiste += s.rzeczywiste;
     });
     return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
-  }, [getCategoryAnnualSummary]);
+  }, [categories, getCategoryAnnualSummary]);
 
   const formatNum = (n: number) => {
     if (n === 0) return "";
@@ -334,7 +397,10 @@ export default function CostsExpenses() {
           <h2 className="text-3xl font-bold tracking-tight" data-testid="text-costs-title">Opłaty</h2>
           <p className="text-muted-foreground">Zestawienie kosztów operacyjnych: prognoza vs rzeczywiste</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
+            <Plus className="mr-1 h-4 w-4" /> Kategoria
+          </Button>
           <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
             <SelectTrigger className="w-[120px]" data-testid="select-year">
               <SelectValue />
@@ -371,7 +437,7 @@ export default function CostsExpenses() {
         <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
           <thead className="sticky top-0 z-[100]">
             <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1.5 text-left font-bold w-[200px] min-w-[200px]" rowSpan={2}>
+              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1.5 text-left font-bold w-[220px] min-w-[220px]" rowSpan={2}>
                 Pozycja
               </th>
               {MONTHS_SHORT.map((m, i) => (
@@ -394,19 +460,43 @@ export default function CostsExpenses() {
             </tr>
           </thead>
           <tbody>
-            {CATEGORIES.map(cat => {
+            {categories.map(cat => {
               const isCollapsed = collapsedCategories.has(cat.id);
               const annualCat = getCategoryAnnualSummary(cat);
               return (
                 <Fragment key={cat.id}>
                   <tr
-                    className={`${cat.color} text-white cursor-pointer select-none`}
-                    onClick={() => toggleCategory(cat.id)}
+                    className={`${cat.color} text-white select-none`}
                     data-testid={`row-category-${cat.id}`}
                   >
-                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-2 py-1.5 font-bold flex items-center gap-1`}>
-                      {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      {cat.title}
+                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-2 py-1.5 font-bold`}>
+                      <div className="flex items-center gap-1">
+                        <span className="cursor-pointer flex items-center gap-1 flex-1" onClick={() => toggleCategory(cat.id)}>
+                          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          {cat.title}
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setAddItemCatId(cat.id); }}
+                          className="opacity-60 hover:opacity-100 p-0.5 rounded"
+                          title="Dodaj pozycję"
+                          data-testid={`button-add-item-${cat.id}`}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Usunąć kategorię "${cat.title}" i wszystkie jej pozycje?`)) {
+                              handleDeleteCategory(cat.id);
+                            }
+                          }}
+                          className="opacity-40 hover:opacity-100 p-0.5 rounded"
+                          title="Usuń kategorię"
+                          data-testid={`button-delete-category-${cat.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
                     </td>
                     {Array.from({ length: 12 }, (_, m) => {
                       const s = getCategorySummary(cat, m);
@@ -424,13 +514,12 @@ export default function CostsExpenses() {
                   </tr>
                   {!isCollapsed && cat.items.map((item, idx) => {
                     const annualItem = getItemAnnualSummary(cat.id, idx);
-                    const nameKey = makeNameKey(cat.id, idx);
-                    const display = getItemDisplay(cat.id, idx, item);
+                    const nameKey = `${cat.id}__${idx}`;
                     const isEditingThisName = editingName === nameKey;
                     return (
                       <tr
                         key={idx}
-                        className="hover:bg-muted/30 dark:hover:bg-muted/20"
+                        className="hover:bg-muted/30 dark:hover:bg-muted/20 group"
                         data-testid={`row-item-${cat.id}-${idx}`}
                       >
                         <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-2 py-1 text-left">
@@ -462,13 +551,26 @@ export default function CostsExpenses() {
                               />
                             </div>
                           ) : (
-                            <div
-                              className="cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 -mx-0.5"
-                              onDoubleClick={() => startEditingName(cat.id, idx, item)}
-                              data-testid={`name-${nameKey}`}
-                            >
-                              <div className="font-medium truncate">{display.name}</div>
-                              {display.subLabel && <div className="text-[10px] text-muted-foreground truncate">{display.subLabel}</div>}
+                            <div className="flex items-center gap-1">
+                              <div
+                                className="flex-1 cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 -mx-0.5 min-w-0"
+                                onDoubleClick={() => startEditingName(cat.id, idx)}
+                                data-testid={`name-${nameKey}`}
+                              >
+                                <div className="font-medium truncate">{item.name}</div>
+                                {item.subLabel && <div className="text-[10px] text-muted-foreground truncate">{item.subLabel}</div>}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Usunąć pozycję "${item.name}"?`)) {
+                                    handleDeleteItem(cat.id, idx);
+                                  }
+                                }}
+                                className="invisible group-hover:visible text-muted-foreground hover:text-destructive p-0.5 shrink-0"
+                                data-testid={`button-delete-item-${cat.id}-${idx}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
                             </div>
                           )}
                         </td>
@@ -524,7 +626,7 @@ export default function CostsExpenses() {
               {Array.from({ length: 12 }, (_, m) => {
                 let prognoza = 0;
                 let rzeczywiste = 0;
-                CATEGORIES.forEach(cat => {
+                categories.forEach(cat => {
                   const s = getCategorySummary(cat, m);
                   prognoza += s.prognoza;
                   rzeczywiste += s.rzeczywiste;
@@ -545,6 +647,80 @@ export default function CostsExpenses() {
           </tbody>
         </table>
       </div>
+
+      <Dialog open={addItemCatId !== null} onOpenChange={(open) => { if (!open) setAddItemCatId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Dodaj pozycję kosztową</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Nazwa</Label>
+              <Input
+                value={newItemName}
+                onChange={e => setNewItemName(e.target.value)}
+                placeholder="np. NOWY PRACOWNIK"
+                onKeyDown={e => { if (e.key === "Enter") handleAddItem(); }}
+                data-testid="input-new-item-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Podtytuł (opcjonalnie)</Label>
+              <Input
+                value={newItemSubLabel}
+                onChange={e => setNewItemSubLabel(e.target.value)}
+                placeholder="np. Dział, firma"
+                onKeyDown={e => { if (e.key === "Enter") handleAddItem(); }}
+                data-testid="input-new-item-sublabel"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleAddItem} disabled={!newItemName.trim()} data-testid="button-confirm-add-item">
+              Dodaj
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddCategory} onOpenChange={setShowAddCategory}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nowa kategoria kosztów</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Nazwa kategorii</Label>
+              <Input
+                value={newCatTitle}
+                onChange={e => setNewCatTitle(e.target.value)}
+                placeholder="np. TRANSPORT"
+                onKeyDown={e => { if (e.key === "Enter") handleAddCategory(); }}
+                data-testid="input-new-category-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Kolor</Label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_COLORS.map(c => (
+                  <button
+                    key={c.value}
+                    onClick={() => setNewCatColor(c.value)}
+                    className={`w-8 h-8 rounded-md ${c.value} ${newCatColor === c.value ? "ring-2 ring-offset-2 ring-[#5ADBFA]" : ""}`}
+                    title={c.label}
+                    data-testid={`color-${c.label}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleAddCategory} disabled={!newCatTitle.trim()} data-testid="button-confirm-add-category">
+              Dodaj kategorię
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
