@@ -51,12 +51,12 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
       <Table>
-        <TableHeader className="bg-slate-50">
+        <TableHeader className="bg-slate-50 dark:bg-muted/50 sticky top-0 z-[100]">
           <TableRow>
             {columns.map((col, index) => (
-              <TableHead key={index} className={cn("font-semibold text-slate-700", col.className)}>
+              <TableHead key={index} className={cn("font-semibold text-slate-700 dark:text-slate-300", col.className)}>
                 {col.header}
               </TableHead>
             ))}
