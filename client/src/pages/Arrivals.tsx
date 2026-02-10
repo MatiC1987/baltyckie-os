@@ -186,7 +186,20 @@ export default function Arrivals() {
                 <TableRow key={r.id} data-testid={`row-arrival-page-${r.id}`}>
                   <TableCell className="font-medium text-xs whitespace-nowrap">{r.reservationNumber}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.addDate || "—"}</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{getApartmentName(r, apartments || [])}</TableCell>
+                  <TableCell className="text-xs font-bold">
+                    {(() => {
+                      const name = getApartmentName(r, apartments || []);
+                      return name.includes(",") ? (
+                        <div className="flex flex-col gap-0.5">
+                          {name.split(",").map((n, i) => (
+                            <span key={i} className="whitespace-nowrap">{n.trim()}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="whitespace-nowrap">{name}</span>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell className="text-xs whitespace-nowrap font-semibold">{r.startDate}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.endDate}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.guestName}</TableCell>
