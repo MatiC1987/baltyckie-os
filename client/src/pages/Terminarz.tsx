@@ -170,7 +170,7 @@ export default function Terminarz() {
   const sz = compact ? COMPACT : NORMAL;
 
   const locationNames = useMemo(() => {
-    if (!dbLocations || dbLocations.length === 0) return ["GRAND BALTIC", "BULWAR PORTOWY", "WCZASOWA", "NA WYDMIE", "PRZEWŁOKA", "INNE"];
+    if (!dbLocations || dbLocations.length === 0) return ["GRAND BALTIC", "BULWAR PORTOWY", "WCZASOWA", "PRZEWŁOKA", "NA WYDMIE", "INNE"];
     return [...dbLocations.map(l => l.name), "INNE"];
   }, [dbLocations]);
 
@@ -329,168 +329,176 @@ export default function Terminarz() {
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden relative">
-        <div className="flex">
-          <div className="shrink-0 border-r border-border bg-muted/50 z-10" style={{ width: sz.aptColWidth }}>
-            <div className="border-b border-border flex items-end px-2 pb-1" style={{ height: sz.headerHeight }}>
+      <div className="rounded-lg border border-border bg-card shadow-sm overflow-auto relative" ref={scrollContainerRef} style={{ maxHeight: "calc(100vh - 220px)" }}>
+        <div style={{ width: sz.aptColWidth + totalWidth, minWidth: sz.aptColWidth + totalWidth }}>
+          <div className="flex sticky top-0 z-20 bg-card">
+            <div className="shrink-0 border-r border-b border-border bg-muted/50 flex items-end px-2 pb-1 sticky left-0 z-30" style={{ width: sz.aptColWidth, minWidth: sz.aptColWidth, height: sz.headerHeight }}>
               <span className="font-semibold text-muted-foreground uppercase" style={{ fontSize: sz.monthLabelSize }}>Apartament</span>
             </div>
-            {filteredApartments.map((apt) => (
-              <div
-                key={apt.id}
-                className="flex items-center px-2 border-b border-border"
-                style={{ height: sz.rowHeight }}
-                data-testid={`apt-row-label-${apt.id}`}
-              >
-                <span className="font-semibold truncate" style={{ fontSize: sz.aptFontSize }} title={apt.name}>{apt.name}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-x-auto" ref={scrollContainerRef}>
-            <div style={{ width: totalWidth, minWidth: "100%" }}>
-              <div className="flex border-b border-border sticky top-0 bg-card z-[5]" style={{ height: sz.headerHeight }}>
-                {monthGroups.map((group, gi) => (
-                  <div key={gi}>
-                    <div
-                      className="font-bold text-center border-b border-border bg-muted/30 text-muted-foreground uppercase tracking-wide flex items-center justify-center"
-                      style={{ width: group.days.length * sz.dayWidth, height: sz.monthLabelHeight, fontSize: sz.monthLabelSize }}
-                    >
-                      {group.label}
-                    </div>
-                    <div className="flex" style={{ height: sz.dayHeaderHeight }}>
-                      {group.days.map((day, di) => {
-                        const dow = day.getDay();
-                        const isWeekend = dow === 0 || dow === 6;
-                        const isToday = isSameDay(day, new Date());
-                        return (
-                          <div
-                            key={di}
-                            className={`flex flex-col items-center justify-center border-r border-border ${isWeekend ? "bg-muted/50" : ""} ${isToday ? "bg-primary/10" : ""}`}
-                            style={{ width: sz.dayWidth, minWidth: sz.dayWidth }}
-                          >
-                            <span className={`leading-tight ${isWeekend ? "font-bold text-muted-foreground" : "text-muted-foreground"}`} style={{ fontSize: sz.dayNameSize }}>
-                              {DAY_NAMES_PL[dow]}
-                            </span>
-                            <span className={`leading-tight ${isToday ? "font-bold text-primary" : ""}`} style={{ fontSize: sz.dayNumSize }}>
-                              {day.getDate().toString().padStart(2, "0")}{compact ? "" : `.${(day.getMonth() + 1).toString().padStart(2, "0")}`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+            <div className="flex border-b border-border" style={{ height: sz.headerHeight }}>
+              {monthGroups.map((group, gi) => (
+                <div key={gi}>
+                  <div
+                    className="font-bold text-center border-b border-border bg-muted/30 text-muted-foreground uppercase tracking-wide flex items-center justify-center"
+                    style={{ width: group.days.length * sz.dayWidth, height: sz.monthLabelHeight, fontSize: sz.monthLabelSize }}
+                  >
+                    {group.label}
                   </div>
-                ))}
-              </div>
-
-              {filteredApartments.map((apt) => {
-                const aptReservations = (reservations || []).filter(r => r.status !== "ANULOWANA" && (r.apartmentId === apt.id || (r.apartmentIds && r.apartmentIds.includes(apt.id))));
-                const aptBlockades = (blockades || []).filter((b: any) => b.apartmentId === apt.id);
-
-                return (
-                  <div key={apt.id} className="relative border-b border-border" style={{ height: sz.rowHeight }} data-testid={`apt-row-${apt.id}`}>
-                    {days.map((day, di) => {
+                  <div className="flex" style={{ height: sz.dayHeaderHeight }}>
+                    {group.days.map((day, di) => {
                       const dow = day.getDay();
                       const isWeekend = dow === 0 || dow === 6;
                       const isToday = isSameDay(day, new Date());
                       return (
                         <div
                           key={di}
-                          className={`absolute top-0 bottom-0 border-r border-border/30 ${isWeekend ? "bg-muted/30" : ""} ${isToday ? "bg-primary/5" : ""}`}
-                          style={{ left: di * sz.dayWidth, width: sz.dayWidth }}
-                        />
-                      );
-                    })}
-
-                    {aptBlockades.map((blk: any) => {
-                      const blkStart = new Date(blk.startDate);
-                      const blkEnd = new Date(blk.endDate);
-                      const startIdx = days.findIndex(d => isSameDay(d, blkStart));
-                      const endIdx = days.findIndex(d => isSameDay(d, blkEnd));
-
-                      const effectiveStart = startIdx >= 0 ? startIdx : (blkStart < rangeStart ? 0 : -1);
-                      const effectiveEnd = endIdx >= 0 ? endIdx : (blkEnd > rangeEnd ? days.length - 1 : -1);
-
-                      if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
-
-                      const left = effectiveStart * sz.dayWidth;
-                      const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
-
-                      return (
-                        <div
-                          key={`blk-${blk.id}`}
-                          className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
-                          style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.BLOKADA, opacity: 0.7 }}
-                          onMouseEnter={(e) => {
-                            setHoveredBlockade(blk);
-                            setTooltipPos({ x: e.clientX, y: e.clientY });
-                          }}
-                          onMouseLeave={() => setHoveredBlockade(null)}
-                          data-testid={`blockade-${blk.id}`}
+                          className={`flex flex-col items-center justify-center border-r border-border ${isWeekend ? "bg-muted/50" : ""} ${isToday ? "bg-primary/10" : ""}`}
+                          style={{ width: sz.dayWidth, minWidth: sz.dayWidth }}
                         >
-                          {width > (compact ? 40 : 60) && (
-                            <span className="text-gray-700 dark:text-gray-300 font-medium truncate px-1" style={{ fontSize: sz.barFontSize }}>
-                              {blk.reason || "Blokada"}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {aptReservations.map((res) => {
-                      const resStart = new Date(res.startDate);
-                      const resEnd = new Date(res.endDate);
-                      const startIdx = days.findIndex(d => isSameDay(d, resStart));
-                      const endIdx = days.findIndex(d => isSameDay(d, resEnd));
-
-                      const effectiveStart = startIdx >= 0 ? startIdx : (resStart < rangeStart ? 0 : -1);
-                      const effectiveEnd = endIdx >= 0 ? endIdx : (resEnd > rangeEnd ? days.length - 1 : -1);
-
-                      if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
-
-                      const left = effectiveStart * sz.dayWidth;
-                      const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
-                      const barColor = getColorForStatus(res.status || "PRZYJETA", colors);
-
-                      return (
-                        <div
-                          key={`res-${res.id}`}
-                          className="absolute rounded-md z-[3] flex items-center cursor-pointer shadow-sm border border-black/10"
-                          style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: barColor }}
-                          onClick={() => setPreviewRes(res)}
-                          onMouseEnter={(e) => {
-                            setHoveredRes(res);
-                            setTooltipPos({ x: e.clientX, y: e.clientY });
-                          }}
-                          onMouseMove={(e) => {
-                            setTooltipPos({ x: e.clientX, y: e.clientY });
-                          }}
-                          onMouseLeave={() => setHoveredRes(null)}
-                          data-testid={`cal-res-${res.id}`}
-                        >
-                          {res.apartmentIds && res.apartmentIds.length > 1 && (
-                            <span className="bg-white/30 text-white font-bold rounded-sm px-0.5 ml-0.5 flex-shrink-0" style={{ fontSize: compact ? "7px" : "8px", lineHeight: "1.2" }}>
-                              {res.apartmentIds.length}
-                            </span>
-                          )}
-                          <span className="text-white font-semibold truncate px-1 drop-shadow-sm" style={{ fontSize: sz.barFontSize }}>
-                            {res.guestName}
+                          <span className={`leading-tight ${isWeekend ? "font-bold text-muted-foreground" : "text-muted-foreground"}`} style={{ fontSize: sz.dayNameSize }}>
+                            {DAY_NAMES_PL[dow]}
+                          </span>
+                          <span className={`leading-tight ${isToday ? "font-bold text-primary" : ""}`} style={{ fontSize: sz.dayNumSize }}>
+                            {day.getDate().toString().padStart(2, "0")}{compact ? "" : `.${(day.getMonth() + 1).toString().padStart(2, "0")}`}
                           </span>
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
-                    {todayIndex >= 0 && (
-                      <div
-                        className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-[4]"
-                        style={{ left: todayIndex * sz.dayWidth + sz.dayWidth / 2 }}
-                      />
-                    )}
+          {apartmentsByLocation.map((group) => (
+            <div key={group.location}>
+              <div className="flex sticky left-0 z-10">
+                <div
+                  className="flex items-center px-2 gap-2 border-b border-border bg-muted/70 font-bold text-muted-foreground uppercase tracking-wide"
+                  style={{ height: sz.rowHeight, width: sz.aptColWidth + totalWidth, minWidth: sz.aptColWidth + totalWidth, fontSize: sz.aptFontSize }}
+                  data-testid={`terminarz-location-${group.location.toLowerCase().replace(/\s+/g, '-')}`}
+                >
+                  <span>{group.location}</span>
+                  <Badge variant="secondary" className="text-xs">{group.apartments.length}</Badge>
+                </div>
+              </div>
+              {group.apartments.map((apt) => {
+                const aptReservations = (reservations || []).filter(r => r.status !== "ANULOWANA" && (r.apartmentId === apt.id || (r.apartmentIds && r.apartmentIds.includes(apt.id))));
+                const aptBlockades = (blockades || []).filter((b: any) => b.apartmentId === apt.id);
+
+                return (
+                  <div key={apt.id} className="flex" data-testid={`apt-row-${apt.id}`}>
+                    <div
+                      className="shrink-0 border-r border-b border-border bg-card flex items-center px-2 sticky left-0 z-10"
+                      style={{ width: sz.aptColWidth, minWidth: sz.aptColWidth, height: sz.rowHeight }}
+                      data-testid={`apt-row-label-${apt.id}`}
+                    >
+                      <span className="font-semibold truncate" style={{ fontSize: sz.aptFontSize }} title={apt.name}>{apt.name}</span>
+                    </div>
+                    <div className="relative border-b border-border flex-1" style={{ height: sz.rowHeight, width: totalWidth, minWidth: totalWidth }}>
+                      {days.map((day, di) => {
+                        const dow = day.getDay();
+                        const isWeekend = dow === 0 || dow === 6;
+                        const isToday = isSameDay(day, new Date());
+                        return (
+                          <div
+                            key={di}
+                            className={`absolute top-0 bottom-0 border-r border-border/30 ${isWeekend ? "bg-muted/30" : ""} ${isToday ? "bg-primary/5" : ""}`}
+                            style={{ left: di * sz.dayWidth, width: sz.dayWidth }}
+                          />
+                        );
+                      })}
+
+                      {aptBlockades.map((blk: any) => {
+                        const blkStart = new Date(blk.startDate);
+                        const blkEnd = new Date(blk.endDate);
+                        const startIdx = days.findIndex(d => isSameDay(d, blkStart));
+                        const endIdx = days.findIndex(d => isSameDay(d, blkEnd));
+
+                        const effectiveStart = startIdx >= 0 ? startIdx : (blkStart < rangeStart ? 0 : -1);
+                        const effectiveEnd = endIdx >= 0 ? endIdx : (blkEnd > rangeEnd ? days.length - 1 : -1);
+
+                        if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
+
+                        const left = effectiveStart * sz.dayWidth;
+                        const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
+
+                        return (
+                          <div
+                            key={`blk-${blk.id}`}
+                            className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
+                            style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.BLOKADA, opacity: 0.7 }}
+                            onMouseEnter={(e) => {
+                              setHoveredBlockade(blk);
+                              setTooltipPos({ x: e.clientX, y: e.clientY });
+                            }}
+                            onMouseLeave={() => setHoveredBlockade(null)}
+                            data-testid={`blockade-${blk.id}`}
+                          >
+                            {width > (compact ? 40 : 60) && (
+                              <span className="text-gray-700 dark:text-gray-300 font-medium truncate px-1" style={{ fontSize: sz.barFontSize }}>
+                                {blk.reason || "Blokada"}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {aptReservations.map((res) => {
+                        const resStart = new Date(res.startDate);
+                        const resEnd = new Date(res.endDate);
+                        const startIdx = days.findIndex(d => isSameDay(d, resStart));
+                        const endIdx = days.findIndex(d => isSameDay(d, resEnd));
+
+                        const effectiveStart = startIdx >= 0 ? startIdx : (resStart < rangeStart ? 0 : -1);
+                        const effectiveEnd = endIdx >= 0 ? endIdx : (resEnd > rangeEnd ? days.length - 1 : -1);
+
+                        if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
+
+                        const left = effectiveStart * sz.dayWidth;
+                        const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
+                        const barColor = getColorForStatus(res.status || "PRZYJETA", colors);
+
+                        return (
+                          <div
+                            key={`res-${res.id}`}
+                            className="absolute rounded-md z-[3] flex items-center cursor-pointer shadow-sm border border-black/10"
+                            style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: barColor }}
+                            onClick={() => setPreviewRes(res)}
+                            onMouseEnter={(e) => {
+                              setHoveredRes(res);
+                              setTooltipPos({ x: e.clientX, y: e.clientY });
+                            }}
+                            onMouseMove={(e) => {
+                              setTooltipPos({ x: e.clientX, y: e.clientY });
+                            }}
+                            onMouseLeave={() => setHoveredRes(null)}
+                            data-testid={`cal-res-${res.id}`}
+                          >
+                            {res.apartmentIds && res.apartmentIds.length > 1 && (
+                              <span className="bg-white/30 text-white font-bold rounded-sm px-0.5 ml-0.5 flex-shrink-0" style={{ fontSize: compact ? "7px" : "8px", lineHeight: "1.2" }}>
+                                {res.apartmentIds.length}
+                              </span>
+                            )}
+                            <span className="text-white font-semibold truncate px-1 drop-shadow-sm" style={{ fontSize: sz.barFontSize }}>
+                              {res.guestName}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                      {todayIndex >= 0 && (
+                        <div
+                          className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-[4]"
+                          style={{ left: todayIndex * sz.dayWidth + sz.dayWidth / 2 }}
+                        />
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          ))}
         </div>
       </div>
 
