@@ -94,6 +94,9 @@ export function useDeleteApartment() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.apartments.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/blockades"] });
       toast({ title: "Sukces", description: "Apartament został usunięty" });
     },
     onError: () => {

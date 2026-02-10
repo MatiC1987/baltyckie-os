@@ -187,8 +187,13 @@ export async function registerRoutes(
   });
 
   app.delete(api.apartments.delete.path, isAuthenticated, async (req, res) => {
-    await storage.deleteApartment(Number(req.params.id));
-    res.status(204).send();
+    try {
+      await storage.deleteApartment(Number(req.params.id));
+      res.status(204).send();
+    } catch (err: any) {
+      console.error("Error deleting apartment:", err);
+      res.status(500).json({ message: "Nie udało się usunąć apartamentu." });
+    }
   });
 
   // Reservations

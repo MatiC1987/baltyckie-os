@@ -395,7 +395,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
   };
 
   const handleDelete = () => {
-    if (window.confirm("Czy na pewno chcesz usunąć ten apartament?")) {
+    if (window.confirm("Czy na pewno chcesz usunąć ten apartament? Wszystkie powiązane rezerwacje, umowy najmu, koszty i blokady zostaną również usunięte.")) {
       deleteApartment.mutate(apartment.id, {
         onSuccess: () => onSuccess()
       });
