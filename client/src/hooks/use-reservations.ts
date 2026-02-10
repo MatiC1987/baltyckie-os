@@ -69,6 +69,7 @@ export function useUpdateReservation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.reservations.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
     },
     onError: () => {
       toast({ title: "Błąd", description: "Nie udało się zaktualizować rezerwacji", variant: "destructive" });

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useDashboardStats } from "@/hooks/use-stats";
 import { useReservations } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
@@ -28,8 +29,28 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Users, CreditCard, Home, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Users, CreditCard, Home, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins } from "lucide-react";
 import type { Reservation } from "@shared/schema";
+
+type CompanyBalance = {
+  accounts: { id: number; name: string; type: string | null; latestBalance: string }[];
+  totalBalance: string;
+};
+
+function useCompanyBalance() {
+  return useQuery<CompanyBalance>({
+    queryKey: ["/api/company-balance"],
+  });
+}
+
+function getAccountIcon(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes("pekao") || lower.includes("santander")) return Landmark;
+  if (lower.includes("gotówka")) return Banknote;
+  if (lower.includes("krypto")) return Bitcoin;
+  if (lower.includes("pożyczki")) return HandCoins;
+  return Wallet;
+}
 
 type SortField = "reservationNumber" | "addDate" | "apartmentName" | "startDate" | "endDate" | "guestName" | "price" | "prepayment" | "paidAmount" | "remaining" | "status";
 type SortDir = "asc" | "desc";
@@ -69,6 +90,7 @@ export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: reservations, isLoading: reservationsLoading } = useReservations();
   const { data: apartments } = useApartments();
+  const { data: companyBalance, isLoading: balanceLoading } = useCompanyBalance();
 
   const chartData = [
     { name: 'Sty', revenue: 4000, expenses: 2400 },
@@ -107,6 +129,50 @@ export default function Dashboard() {
         <h2 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h2>
         <p className="text-muted-foreground">Przegląd wyników finansowych i operacyjnych.</p>
       </div>
+
+      <Card data-testid="card-company-balance">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 flex-wrap">
+            <Wallet className="h-5 w-5" />
+            Saldo firmowe
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {balanceLoading ? (
+            <div className="h-20 bg-muted animate-pulse rounded-lg" />
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-3xl font-bold" data-testid="text-total-balance">
+                  {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                </span>
+                <span className="text-sm text-muted-foreground">suma wszystkich źródeł</span>
+              </div>
+              <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+                {companyBalance?.accounts.map(acc => {
+                  const Icon = getAccountIcon(acc.name);
+                  const balance = Number(acc.latestBalance);
+                  return (
+                    <div
+                      key={acc.id}
+                      className="rounded-lg border border-border p-3 space-y-1"
+                      data-testid={`card-account-balance-${acc.id}`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground truncate">{acc.name}</span>
+                      </div>
+                      <div className={`text-sm font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                        {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList data-testid="dashboard-tabs">

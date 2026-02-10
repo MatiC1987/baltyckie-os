@@ -109,3 +109,7 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Enhanced Terminarz: rounded-md corners on reservation/blockade bars, status-based colors (DO_OPLACENIA=#f59e0b, PRZYJETA=#22c55e, ANULOWANA=#ef4444, BLOKADA=#9ca3af), Settings icon with color customization dialog (saved to localStorage), reservation preview dialog on click, apartments dynamically grouped by database locations
 - 2026-02-10: Added collapsible sidebar sections - click section title to expand/collapse, state persisted in localStorage (key: sidebar-collapsed-v1), smooth animation with chevron rotation
 - 2026-02-10: Sidebar accent color #5ADBFA for active navigation items
+- 2026-02-10: Added reservation edit dialog (full form) to both Reservations and Arrivals pages, data syncs between tabs via shared useUpdateReservation hook + query cache invalidation
+- 2026-02-10: Added company balance section to Dashboard top - shows total sum across all money sources with individual account cards
+- 2026-02-10: Seeded 7 company accounts: Pekao SA, Santander, Gotówka, Saldo - M. Latasiewicz, Saldo - J. Głodkowska, Kryptowaluty, Pożyczki
+- 2026-02-10: Added GET /api/company-balance endpoint returning latest balance per account + total

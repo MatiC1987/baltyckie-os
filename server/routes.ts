@@ -66,6 +66,28 @@ async function seedServiceContractCategories() {
   }
 }
 
+async function seedAccounts() {
+  const existingAccounts = await storage.getAccounts();
+  const requiredAccounts = [
+    { name: "Pekao SA", type: "BANK" },
+    { name: "Santander", type: "BANK" },
+    { name: "Gotówka", type: "CASH" },
+    { name: "Saldo - M. Latasiewicz", type: "BANK" },
+    { name: "Saldo - J. Głodkowska", type: "BANK" },
+    { name: "Kryptowaluty", type: "BANK" },
+    { name: "Pożyczki", type: "LOAN" },
+  ];
+  const existingNames = existingAccounts.map(a => a.name.toLowerCase());
+  for (const acc of requiredAccounts) {
+    if (!existingNames.includes(acc.name.toLowerCase())) {
+      await storage.createAccount(acc);
+    }
+  }
+  if (requiredAccounts.some(a => !existingNames.includes(a.name.toLowerCase()))) {
+    console.log("Company accounts seeded!");
+  }
+}
+
 async function seedData() {
   const existingApts = await storage.getApartments();
   if (existingApts.length === 0) {
@@ -74,8 +96,6 @@ async function seedData() {
     const apt2 = await storage.createApartment({ name: "Apartament Centrum", location: "Sopot", address: "ul. Bohaterow Monte Cassino 15", ownerName: "Anna Nowak", active: true });
     await storage.createReservation({ reservationNumber: "RES-2025-001", apartmentId: apt1.id, addDate: "2025-05-15", startDate: "2025-06-01", endDate: "2025-06-07", guestName: "Michal Wisniewski", price: "2500.00", prepayment: "500.00", paidAmount: "0", surcharge: "0.00", status: "PRZYJETA" });
     await storage.createReservation({ reservationNumber: "RES-2025-002", apartmentId: apt2.id, addDate: "2025-06-20", startDate: "2025-07-10", endDate: "2025-07-15", guestName: "Ewa Bem", price: "3200.00", prepayment: "1000.00", paidAmount: "0", surcharge: "0.00", status: "DO_OPLACENIA" });
-    const acc1 = await storage.createAccount({ name: "PEKAO SA", type: "BANK" });
-    await storage.createSnapshot({ accountId: acc1.id, date: "2025-01-01", balance: "15000.00", notes: "Saldo poczatkowe" });
     await storage.createExpense({ date: "2025-06-05", category: "Sprzatanie", amount: "200.00", apartmentId: apt1.id, description: "Sprzatanie po gosciach", type: "VARIABLE", vatAmount: "0.00" });
     console.log("Seeding complete!");
   }
@@ -91,6 +111,7 @@ export async function registerRoutes(
   seedData().catch(console.error);
   seedLocations().catch(console.error);
   seedServiceContractCategories().catch(console.error);
+  seedAccounts().catch(console.error);
 
   // Owners
   app.get(api.owners.list.path, isAuthenticated, async (req, res) => {
@@ -254,6 +275,12 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       throw err;
     }
+  });
+
+  // Company Balance
+  app.get("/api/company-balance", isAuthenticated, async (req, res) => {
+    const balance = await storage.getCompanyBalance();
+    res.json(balance);
   });
 
   // Accounts

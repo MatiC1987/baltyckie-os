@@ -60,6 +60,7 @@ export interface IStorage {
   createAccount(account: InsertAccount): Promise<Account>;
   getSnapshots(accountId?: number): Promise<AccountSnapshot[]>;
   createSnapshot(snapshot: InsertAccountSnapshot): Promise<AccountSnapshot>;
+  getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; latestBalance: string }[]; totalBalance: string }>;
   
   // Attachments
   getAttachments(apartmentId: number): Promise<Attachment[]>;
@@ -267,6 +268,28 @@ export class DatabaseStorage implements IStorage {
   async createSnapshot(snapshot: InsertAccountSnapshot): Promise<AccountSnapshot> {
     const [newSnapshot] = await db.insert(accountSnapshots).values(snapshot).returning();
     return newSnapshot;
+  }
+
+  async getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; latestBalance: string }[]; totalBalance: string }> {
+    const allAccounts = await db.select().from(accounts);
+    const allSnapshots = await db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.date));
+
+    const accountBalances = allAccounts.map(acc => {
+      const latestSnapshot = allSnapshots.find(s => s.accountId === acc.id);
+      return {
+        id: acc.id,
+        name: acc.name,
+        type: acc.type,
+        latestBalance: latestSnapshot?.balance ?? "0.00",
+      };
+    });
+
+    const total = accountBalances.reduce((sum, a) => sum + Number(a.latestBalance), 0);
+
+    return {
+      accounts: accountBalances,
+      totalBalance: total.toFixed(2),
+    };
   }
   
   // Attachments

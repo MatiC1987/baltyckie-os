@@ -3,7 +3,7 @@ import { useReservations, useCreateReservation, useUpdateReservation } from "@/h
 import { useApartments } from "@/hooks/use-apartments";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X } from "lucide-react";
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X, Pencil } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
@@ -88,6 +88,7 @@ export default function Reservations() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [previewReservation, setPreviewReservation] = useState<Reservation | null>(null);
+  const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -265,7 +266,7 @@ export default function Reservations() {
               </TableRow>
             )}
             {filteredAndSorted.map(r => (
-              <ReservationRow key={r.id} reservation={r} apartments={apartments || []} onPreview={setPreviewReservation} />
+              <ReservationRow key={r.id} reservation={r} apartments={apartments || []} onPreview={setPreviewReservation} onEdit={setEditingReservation} />
             ))}
           </TableBody>
         </Table>
@@ -278,6 +279,11 @@ export default function Reservations() {
         reservation={previewReservation}
         apartments={apartments || []}
         onClose={() => setPreviewReservation(null)}
+      />
+
+      <EditReservationDialog
+        reservation={editingReservation}
+        onClose={() => setEditingReservation(null)}
       />
     </div>
   );
@@ -308,7 +314,7 @@ function SortableHeader({ field, label, sortField, sortDir, onSort }: {
   );
 }
 
-function ReservationRow({ reservation: r, apartments, onPreview }: { reservation: Reservation; apartments: any[]; onPreview: (r: Reservation) => void }) {
+function ReservationRow({ reservation: r, apartments, onPreview, onEdit }: { reservation: Reservation; apartments: any[]; onPreview: (r: Reservation) => void; onEdit: (r: Reservation) => void }) {
   const updateReservation = useUpdateReservation();
   const { toast } = useToast();
   const [editingPaid, setEditingPaid] = useState(false);
@@ -340,9 +346,14 @@ function ReservationRow({ reservation: r, apartments, onPreview }: { reservation
       data-testid={`row-reservation-${r.id}`}
     >
       <TableCell>
-        <Button size="icon" variant="ghost" onClick={() => onPreview(r)} data-testid={`button-preview-res-${r.id}`}>
-          <Eye className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button size="icon" variant="ghost" onClick={() => onPreview(r)} data-testid={`button-preview-res-${r.id}`}>
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={() => onEdit(r)} data-testid={`button-edit-res-${r.id}`}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        </div>
       </TableCell>
       <TableCell className="font-medium text-xs whitespace-nowrap" data-testid={`text-res-number-${r.id}`}>
         {r.reservationNumber}
@@ -513,6 +524,150 @@ function ReservationPreviewDialog({ reservation, apartments, onClose }: {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EditReservationDialog({ reservation, onClose }: {
+  reservation: Reservation | null;
+  onClose: () => void;
+}) {
+  if (!reservation) return null;
+  return (
+    <Dialog open={!!reservation} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle data-testid="text-edit-reservation-title">
+            Edytuj rezerwację #{reservation.reservationNumber}
+          </DialogTitle>
+        </DialogHeader>
+        <EditReservationForm reservation={reservation} onSuccess={onClose} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditReservationForm({ reservation, onSuccess }: { reservation: Reservation; onSuccess: () => void }) {
+  const updateReservation = useUpdateReservation();
+  const { data: apartments } = useApartments();
+  const { toast } = useToast();
+
+  const form = useForm<InsertReservation>({
+    resolver: zodResolver(insertReservationSchema),
+    defaultValues: {
+      reservationNumber: reservation.reservationNumber,
+      apartmentId: reservation.apartmentId ?? undefined,
+      addDate: reservation.addDate ?? undefined,
+      startDate: reservation.startDate,
+      endDate: reservation.endDate,
+      guestName: reservation.guestName,
+      price: reservation.price,
+      prepayment: reservation.prepayment ?? "0",
+      paidAmount: reservation.paidAmount ?? "0",
+      surcharge: reservation.surcharge ?? "0",
+      status: reservation.status,
+    }
+  });
+
+  const onSubmit = (data: InsertReservation) => {
+    updateReservation.mutate({ id: reservation.id, data }, {
+      onSuccess: () => {
+        toast({ title: "Sukces", description: "Rezerwacja zaktualizowana" });
+        onSuccess();
+      }
+    });
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 grid grid-cols-2 gap-4">
+      <div className="space-y-2 col-span-2">
+        <Label>Apartament</Label>
+        <Controller
+          control={form.control}
+          name="apartmentId"
+          render={({ field }) => (
+            <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
+              <SelectTrigger data-testid="edit-select-reservation-apartment">
+                <SelectValue placeholder="Wybierz apartament" />
+              </SelectTrigger>
+              <SelectContent>
+                {apartments?.map((apt) => (
+                  <SelectItem key={apt.id} value={apt.id.toString()}>{apt.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Numer rezerwacji</Label>
+        <Input {...form.register("reservationNumber")} data-testid="edit-input-reservation-number" />
+      </div>
+      <div className="space-y-2">
+        <Label>Gość</Label>
+        <Input {...form.register("guestName")} placeholder="Imię i nazwisko" data-testid="edit-input-reservation-guest" />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Data dodania</Label>
+        <Input type="date" {...form.register("addDate")} data-testid="edit-input-reservation-adddate" />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Data przyjazdu</Label>
+        <Input type="date" {...form.register("startDate")} data-testid="edit-input-reservation-start" />
+      </div>
+      <div className="space-y-2">
+        <Label>Data wyjazdu</Label>
+        <Input type="date" {...form.register("endDate")} data-testid="edit-input-reservation-end" />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Kwota pobytu (PLN)</Label>
+        <Input type="number" step="0.01" {...form.register("price")} data-testid="edit-input-reservation-price" />
+      </div>
+      <div className="space-y-2">
+        <Label>Zaliczka (PLN)</Label>
+        <Input type="number" step="0.01" {...form.register("prepayment")} data-testid="edit-input-reservation-prepayment" />
+      </div>
+      <div className="space-y-2">
+        <Label>Wpłacona kwota (PLN)</Label>
+        <Input type="number" step="0.01" {...form.register("paidAmount")} data-testid="edit-input-reservation-paidamount" />
+      </div>
+      <div className="space-y-2">
+        <Label>Dopłata (PLN)</Label>
+        <Input type="number" step="0.01" {...form.register("surcharge")} data-testid="edit-input-reservation-surcharge" />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Status</Label>
+        <Controller
+          control={form.control}
+          name="status"
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value}>
+              <SelectTrigger data-testid="edit-select-reservation-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DO_OPLACENIA">DO OPŁACENIA</SelectItem>
+                <SelectItem value="PRZYJETA">PRZYJĘTA</SelectItem>
+                <SelectItem value="ANULOWANA">ANULOWANA</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+
+      <div className="col-span-2 flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={onSuccess} data-testid="button-cancel-edit-reservation">
+          Anuluj
+        </Button>
+        <Button type="submit" disabled={updateReservation.isPending} data-testid="button-submit-edit-reservation">
+          {updateReservation.isPending ? "Zapisywanie..." : "Zapisz zmiany"}
+        </Button>
+      </div>
+    </form>
   );
 }
 
