@@ -434,7 +434,13 @@ export default function Apartments() {
         const renderTable = (items: typeof withDays) => (
           <Card>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm table-fixed">
+                <colgroup>
+                  <col className="w-[30%]" />
+                  <col className="w-[25%]" />
+                  <col className="w-[25%]" />
+                  <col className="w-[20%]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 px-3 font-medium">Nazwa apartamentu</th>
