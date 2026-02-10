@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import type { Employee, InsertEmployee } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { useUpload } from "@/hooks/use-upload";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Phone, Mail, UserCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X } from "lucide-react";
 
 const POSITIONS: Record<string, string> = {
   KIEROWNIK_RECEPCJI: "Kierownik recepcji",
@@ -82,6 +83,17 @@ export default function Employees() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [form, setForm] = useState<InsertEmployee>({ ...emptyForm });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { uploadFile, isUploading } = useUpload({
+    onSuccess: (response) => {
+      setForm(prev => ({ ...prev, photoUrl: response.objectPath }));
+      toast({ title: "Sukces", description: "Zdjęcie zostało przesłane" });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się przesłać zdjęcia", variant: "destructive" });
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEmployee) => {
@@ -336,13 +348,43 @@ export default function Employees() {
                 )}
               </div>
               <div className="flex-1 space-y-1">
-                <Label className="text-xs text-muted-foreground">URL zdjęcia profilowego</Label>
-                <Input
-                  placeholder="https://..."
-                  value={form.photoUrl || ""}
-                  onChange={e => setField("photoUrl", e.target.value)}
-                  data-testid="input-employee-photo"
-                />
+                <Label className="text-xs text-muted-foreground">Zdjęcie profilowe</Label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="button-upload-employee-photo"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {isUploading ? "Przesyłanie..." : form.photoUrl ? "Zmień zdjęcie" : "Dodaj zdjęcie"}
+                  </Button>
+                  {form.photoUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setField("photoUrl", "")}
+                      data-testid="button-remove-employee-photo"
+                    >
+                      <X className="mr-1 h-3 w-3" /> Usuń
+                    </Button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) await uploadFile(file);
+                      e.target.value = "";
+                    }}
+                    data-testid="input-employee-photo"
+                  />
+                </div>
               </div>
             </div>
 
