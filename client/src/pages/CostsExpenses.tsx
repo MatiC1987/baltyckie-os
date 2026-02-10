@@ -147,6 +147,12 @@ function makeCellKey(catId: string, itemIdx: number, month: number, field: "prog
   return `${catId}__${itemIdx}__${month}__${field}`;
 }
 
+type NameKey = string;
+
+function makeNameKey(catId: string, itemIdx: number): NameKey {
+  return `${catId}__${itemIdx}`;
+}
+
 function getStorageKey(year: number) {
   return `oplaty-data-${year}`;
 }
@@ -163,6 +169,18 @@ function saveData(year: number, data: Record<CellKey, number>) {
   localStorage.setItem(getStorageKey(year), JSON.stringify(data));
 }
 
+function loadNameOverrides(): Record<NameKey, { name: string; subLabel?: string }> {
+  try {
+    const raw = localStorage.getItem("oplaty-names");
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function saveNameOverrides(data: Record<NameKey, { name: string; subLabel?: string }>) {
+  localStorage.setItem("oplaty-names", JSON.stringify(data));
+}
+
 export default function CostsExpenses() {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -170,6 +188,10 @@ export default function CostsExpenses() {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [nameOverrides, setNameOverrides] = useState<Record<NameKey, { name: string; subLabel?: string }>>(() => loadNameOverrides());
+  const [editingName, setEditingName] = useState<NameKey | null>(null);
+  const [editNameValue, setEditNameValue] = useState("");
+  const [editSubLabelValue, setEditSubLabelValue] = useState("");
 
   const handleYearChange = useCallback((year: string) => {
     const y = parseInt(year);
@@ -212,6 +234,42 @@ export default function CostsExpenses() {
 
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
+  }, []);
+
+  const getItemDisplay = useCallback((catId: string, itemIdx: number, defaultItem: CostItem) => {
+    const key = makeNameKey(catId, itemIdx);
+    const override = nameOverrides[key];
+    return override || { name: defaultItem.name, subLabel: defaultItem.subLabel };
+  }, [nameOverrides]);
+
+  const startEditingName = useCallback((catId: string, itemIdx: number, defaultItem: CostItem) => {
+    const key = makeNameKey(catId, itemIdx);
+    const current = nameOverrides[key] || { name: defaultItem.name, subLabel: defaultItem.subLabel };
+    setEditingName(key);
+    setEditNameValue(current.name);
+    setEditSubLabelValue(current.subLabel || "");
+  }, [nameOverrides]);
+
+  const commitNameEdit = useCallback(() => {
+    if (editingName) {
+      const newOverrides = { ...nameOverrides };
+      const trimmedName = editNameValue.trim();
+      if (trimmedName) {
+        newOverrides[editingName] = {
+          name: trimmedName,
+          subLabel: editSubLabelValue.trim() || undefined,
+        };
+      } else {
+        delete newOverrides[editingName];
+      }
+      setNameOverrides(newOverrides);
+      saveNameOverrides(newOverrides);
+      setEditingName(null);
+    }
+  }, [editingName, editNameValue, editSubLabelValue, nameOverrides]);
+
+  const cancelNameEdit = useCallback(() => {
+    setEditingName(null);
   }, []);
 
   const getCategorySummary = useCallback((cat: CostCategory, month: number) => {
@@ -366,6 +424,9 @@ export default function CostsExpenses() {
                   </tr>
                   {!isCollapsed && cat.items.map((item, idx) => {
                     const annualItem = getItemAnnualSummary(cat.id, idx);
+                    const nameKey = makeNameKey(cat.id, idx);
+                    const display = getItemDisplay(cat.id, idx, item);
+                    const isEditingThisName = editingName === nameKey;
                     return (
                       <tr
                         key={idx}
@@ -373,8 +434,43 @@ export default function CostsExpenses() {
                         data-testid={`row-item-${cat.id}-${idx}`}
                       >
                         <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-2 py-1 text-left">
-                          <div className="font-medium truncate">{item.name}</div>
-                          {item.subLabel && <div className="text-[10px] text-muted-foreground truncate">{item.subLabel}</div>}
+                          {isEditingThisName ? (
+                            <div className="space-y-0.5">
+                              <input
+                                autoFocus
+                                value={editNameValue}
+                                onChange={e => setEditNameValue(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") commitNameEdit();
+                                  if (e.key === "Escape") cancelNameEdit();
+                                }}
+                                className="w-full px-1 py-0.5 text-xs font-medium bg-background border-0 outline-none ring-2 ring-[#5ADBFA] rounded-sm"
+                                placeholder="Nazwa"
+                                data-testid={`input-name-${nameKey}`}
+                              />
+                              <input
+                                value={editSubLabelValue}
+                                onChange={e => setEditSubLabelValue(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") commitNameEdit();
+                                  if (e.key === "Escape") cancelNameEdit();
+                                }}
+                                onBlur={commitNameEdit}
+                                className="w-full px-1 py-0.5 text-[10px] text-muted-foreground bg-background border-0 outline-none ring-1 ring-border rounded-sm"
+                                placeholder="Podtytuł (opcjonalnie)"
+                                data-testid={`input-sublabel-${nameKey}`}
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              className="cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 -mx-0.5"
+                              onDoubleClick={() => startEditingName(cat.id, idx, item)}
+                              data-testid={`name-${nameKey}`}
+                            >
+                              <div className="font-medium truncate">{display.name}</div>
+                              {display.subLabel && <div className="text-[10px] text-muted-foreground truncate">{display.subLabel}</div>}
+                            </div>
+                          )}
                         </td>
                         {Array.from({ length: 12 }, (_, m) => {
                           const pKey = makeCellKey(cat.id, idx, m, "prognoza");
