@@ -114,3 +114,4 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Seeded 7 company accounts: Pekao SA, Santander, Gotówka, Saldo - M. Latasiewicz, Saldo - J. Głodkowska, Kryptowaluty, Pożyczki
 - 2026-02-10: Added GET /api/company-balance endpoint returning latest balance per account + total
 - 2026-02-10: Added hotresName field to apartments table - "Nazwa w HotRes" field in apartment edit (Dane tab) for matching imported HotRes reservations to apartments. HotRes CSV import now checks hotresName first, then falls back to regular name matching.
+- 2026-02-10: Added group reservation support - apartmentIds integer[] column in reservations table. HotRes CSV import splits comma/plus/slash-separated roomscodes into individual apartments, stores all IDs in apartmentIds. Terminarz shows group reservations on all their apartments' rows with count badge. Reservations/Arrivals pages display all apartment names for group reservations.

@@ -28,9 +28,19 @@ type SortField = "reservationNumber" | "addDate" | "apartmentName" | "startDate"
 type SortDir = "asc" | "desc";
 
 function getApartmentName(reservation: Reservation, apartments: any[]): string {
+  if (reservation.apartmentIds && reservation.apartmentIds.length > 1) {
+    return reservation.apartmentIds.map(id => {
+      const apt = apartments.find((a: any) => a.id === id);
+      return apt?.name || `#${id}`;
+    }).join(", ");
+  }
   if (!reservation.apartmentId) return "—";
   const apt = apartments.find((a: any) => a.id === reservation.apartmentId);
   return apt?.name || "—";
+}
+
+function isGroupReservation(reservation: Reservation): boolean {
+  return !!(reservation.apartmentIds && reservation.apartmentIds.length > 1);
 }
 
 function calcRemaining(r: Reservation): number {

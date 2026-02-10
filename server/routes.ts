@@ -764,28 +764,38 @@ export async function registerRoutes(
           continue;
         }
 
-        let aptId: number | undefined;
+        const resolvedAptIds: number[] = [];
         if (hr.apartmentName) {
-          const key = hr.apartmentName.trim().toLowerCase();
-          aptId = hotresNameMap.get(key) || apartmentMap.get(key);
-          if (!aptId) {
-            const apt = await storage.createApartment({
-              name: hr.apartmentName.trim(),
-              location: "",
-              address: "",
-              ownerName: "",
-              active: true,
-            });
-            apartmentMap.set(key, apt.id);
-            aptId = apt.id;
-            newApartments++;
-            log.push(`Utworzono apartament: ${hr.apartmentName}`);
+          const aptNames = hr.apartmentName.split(/[,+\/]/).map(s => s.trim()).filter(Boolean);
+          for (const aptName of aptNames) {
+            const key = aptName.toLowerCase();
+            let foundId = hotresNameMap.get(key) || apartmentMap.get(key);
+            if (!foundId) {
+              const apt = await storage.createApartment({
+                name: aptName,
+                location: "",
+                address: "",
+                ownerName: "",
+                active: true,
+              });
+              apartmentMap.set(key, apt.id);
+              foundId = apt.id;
+              newApartments++;
+              log.push(`Utworzono apartament: ${aptName}`);
+            }
+            if (!resolvedAptIds.includes(foundId)) {
+              resolvedAptIds.push(foundId);
+            }
           }
         }
 
+        const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
+        const isGroupReservation = resolvedAptIds.length > 1;
+
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
-          apartmentId: aptId || null,
+          apartmentId: primaryAptId,
+          apartmentIds: isGroupReservation ? resolvedAptIds : null,
           addDate: hr.addDate || null,
           startDate: hr.startDate,
           endDate: hr.endDate,
@@ -797,6 +807,13 @@ export async function registerRoutes(
           status: hr.status,
         });
         imported++;
+        if (isGroupReservation) {
+          const aptNamesList = resolvedAptIds.map(id => {
+            const apt = apartments.find(a => a.id === id);
+            return apt?.name || `ID:${id}`;
+          }).join(", ");
+          log.push(`Rezerwacja grupowa ${hr.reservationNumber}: ${aptNamesList}`);
+        }
         existingNumbers.add(hr.reservationNumber);
       }
 
@@ -870,28 +887,38 @@ export async function registerRoutes(
           continue;
         }
 
-        let aptId: number | undefined;
+        const resolvedAptIds: number[] = [];
         if (hr.apartmentName) {
-          const key = hr.apartmentName.trim().toLowerCase();
-          aptId = hotresNameMap.get(key) || apartmentMap.get(key);
-          if (!aptId) {
-            const apt = await storage.createApartment({
-              name: hr.apartmentName.trim(),
-              location: "",
-              address: "",
-              ownerName: "",
-              active: true,
-            });
-            apartmentMap.set(key, apt.id);
-            aptId = apt.id;
-            newApartments++;
-            log.push(`Utworzono apartament: ${hr.apartmentName}`);
+          const aptNames = hr.apartmentName.split(/[,+\/]/).map(s => s.trim()).filter(Boolean);
+          for (const aptName of aptNames) {
+            const key = aptName.toLowerCase();
+            let foundId = hotresNameMap.get(key) || apartmentMap.get(key);
+            if (!foundId) {
+              const apt = await storage.createApartment({
+                name: aptName,
+                location: "",
+                address: "",
+                ownerName: "",
+                active: true,
+              });
+              apartmentMap.set(key, apt.id);
+              foundId = apt.id;
+              newApartments++;
+              log.push(`Utworzono apartament: ${aptName}`);
+            }
+            if (!resolvedAptIds.includes(foundId)) {
+              resolvedAptIds.push(foundId);
+            }
           }
         }
 
+        const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
+        const isGroupReservation = resolvedAptIds.length > 1;
+
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
-          apartmentId: aptId || null,
+          apartmentId: primaryAptId,
+          apartmentIds: isGroupReservation ? resolvedAptIds : null,
           addDate: hr.addDate || null,
           startDate: hr.startDate,
           endDate: hr.endDate,

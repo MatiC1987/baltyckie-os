@@ -384,7 +384,7 @@ export default function Terminarz() {
               </div>
 
               {filteredApartments.map((apt) => {
-                const aptReservations = (reservations || []).filter(r => r.apartmentId === apt.id && r.status !== "ANULOWANA");
+                const aptReservations = (reservations || []).filter(r => r.status !== "ANULOWANA" && (r.apartmentId === apt.id || (r.apartmentIds && r.apartmentIds.includes(apt.id))));
                 const aptBlockades = (blockades || []).filter((b: any) => b.apartmentId === apt.id);
 
                 return (
@@ -468,7 +468,12 @@ export default function Terminarz() {
                           onMouseLeave={() => setHoveredRes(null)}
                           data-testid={`cal-res-${res.id}`}
                         >
-                          <span className="text-white font-semibold truncate px-1.5 drop-shadow-sm" style={{ fontSize: sz.barFontSize }}>
+                          {res.apartmentIds && res.apartmentIds.length > 1 && (
+                            <span className="bg-white/30 text-white font-bold rounded-sm px-0.5 ml-0.5 flex-shrink-0" style={{ fontSize: compact ? "7px" : "8px", lineHeight: "1.2" }}>
+                              {res.apartmentIds.length}
+                            </span>
+                          )}
+                          <span className="text-white font-semibold truncate px-1 drop-shadow-sm" style={{ fontSize: sz.barFontSize }}>
                             {res.guestName}
                           </span>
                         </div>
@@ -542,6 +547,14 @@ export default function Terminarz() {
             <p className="text-xs mt-0.5 font-semibold">
               {Number(hoveredRes.price).toFixed(2)} zł
             </p>
+            {hoveredRes.apartmentIds && hoveredRes.apartmentIds.length > 1 && (
+              <p className="text-xs mt-1 text-muted-foreground">
+                Rezerwacja grupowa ({hoveredRes.apartmentIds.length} apt.): {hoveredRes.apartmentIds.map(id => {
+                  const a = apartments?.find(a => a.id === id);
+                  return a?.name || `#${id}`;
+                }).join(", ")}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -615,6 +628,17 @@ export default function Terminarz() {
                     {previewRes.status}
                   </span>
                 </div>
+                {previewRes.apartmentIds && previewRes.apartmentIds.length > 1 && (
+                  <>
+                    <div className="text-muted-foreground">Apartamenty:</div>
+                    <div className="font-medium" data-testid="preview-res-apartments">
+                      {previewRes.apartmentIds.map(id => {
+                        const a = apartments?.find(a => a.id === id);
+                        return a?.name || `#${id}`;
+                      }).join(", ")}
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex justify-end pt-2">
                 <Button variant="ghost" onClick={() => setPreviewRes(null)}>Zamknij</Button>

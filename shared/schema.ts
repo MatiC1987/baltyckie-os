@@ -31,6 +31,7 @@ export const reservations = pgTable("reservations", {
   id: serial("id").primaryKey(),
   reservationNumber: text("reservation_number").notNull(),
   apartmentId: integer("apartment_id").references(() => apartments.id),
+  apartmentIds: integer("apartment_ids").array(),
   addDate: date("add_date"),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
