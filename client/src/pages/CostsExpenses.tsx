@@ -1,499 +1,513 @@
-import { useState, useMemo } from "react";
-import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/use-expenses";
-import { useApartments } from "@/hooks/use-apartments";
-import { Button } from "@/components/ui/button";
+import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Filter, TrendingDown, BarChart3 } from "lucide-react";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { insertExpenseSchema, type InsertExpense, type Expense } from "@shared/schema";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
-const CATEGORIES = [
-  "Sprzątanie", "Media", "Energia", "Internet", "Telewizja",
-  "Remont", "Wyposażenie", "Ubezpieczenie", "Podatki",
-  "Marketing", "Opłaty administracyjne", "Konserwacja", "Inne"
+interface CostItem {
+  name: string;
+  subLabel?: string;
+}
+
+interface CostCategory {
+  id: string;
+  title: string;
+  color: string;
+  items: CostItem[];
+}
+
+const CATEGORIES: CostCategory[] = [
+  {
+    id: "wynagrodzenia",
+    title: "WYNAGRODZENIA",
+    color: "bg-blue-600 dark:bg-blue-700",
+    items: [
+      { name: "MATEUSZ CIEŚLAK" },
+      { name: "KRZYSZTOF CIEŚLAK" },
+      { name: "JOLANTA GŁODKOWSKA" },
+      { name: "KAROLINA ŁAŹDZIN" },
+      { name: "MAŁGORZATA LATASIEWICZ" },
+      { name: "MATEUSZ MADEJ" },
+      { name: "BARBARA MAZUREK" },
+      { name: "INNE" },
+    ],
+  },
+  {
+    id: "zus-podatki",
+    title: "ZUS & PODATKI",
+    color: "bg-red-600 dark:bg-red-700",
+    items: [
+      { name: "ZUS", subLabel: "Apartamenty Bałtyckie" },
+      { name: "VAT-7", subLabel: "Apartamenty Bałtyckie" },
+      { name: "PIT-5L", subLabel: "Apartamenty Bałtyckie" },
+      { name: "PIT-4", subLabel: "Apartamenty Bałtyckie" },
+      { name: "ZUS", subLabel: "Reservon" },
+      { name: "VAT-7", subLabel: "Reservon" },
+      { name: "PIT-5L", subLabel: "Reservon" },
+      { name: "PIT-4", subLabel: "Reservon" },
+    ],
+  },
+  {
+    id: "kredyty",
+    title: "KREDYTY & POŻYCZKI",
+    color: "bg-purple-600 dark:bg-purple-700",
+    items: [
+      { name: "PFP - POŻYCZKA PŁYNNOŚCIOWA", subLabel: "AB" },
+      { name: "PFR - SUBWENCJA", subLabel: "AB" },
+      { name: "LEASING - MAZDA 3", subLabel: "Multirent" },
+      { name: "LEASING - AUDI Q7", subLabel: "VW Leasing" },
+      { name: "LEASING - AUDI A7", subLabel: "VW Leasing" },
+      { name: "LEASING - VW TIGUAN", subLabel: "VW Leasing" },
+      { name: "PFP - POŻYCZKA INWESTYCYJNA", subLabel: "Reservon" },
+      { name: "PFP - POŻYCZKA PŁYNNOŚCIOWA", subLabel: "Reservon" },
+    ],
+  },
+  {
+    id: "nieruchomosci",
+    title: "NIERUCHOMOŚCI",
+    color: "bg-emerald-600 dark:bg-emerald-700",
+    items: [
+      { name: "CZYNSZ - OSiR", subLabel: "Magazyn PKS" },
+      { name: "CZYNSZ - OSiR", subLabel: "Biuro PKS" },
+      { name: "OGRZEWANIE - OSiR" },
+      { name: "ENERGA - OSiR" },
+      { name: "CZYNSZ (GS SAMOPOMOC)" },
+      { name: "ENERGIA+WODA (GS SAMOPOMOC)" },
+      { name: "OGRZEWANIE (GS SAMOPOMOC)" },
+      { name: "WYWÓZ ŚMIECI" },
+      { name: "CZYNSZ DO WSPÓLNOTY" },
+      { name: "ENERGA" },
+    ],
+  },
+  {
+    id: "ksiegowosc",
+    title: "OBSŁUGA PRAWNO-KSIĘGOWA",
+    color: "bg-amber-600 dark:bg-amber-700",
+    items: [
+      { name: "PERFEKT - BIURO KSIĘGOWE", subLabel: "AB" },
+      { name: "ARTUR BARYŁO - OBSŁUGA PRAWNA" },
+      { name: "OPŁATY SĄDOWE" },
+      { name: "KRD - KRAJOWY REJESTR DŁUGÓW" },
+      { name: "PERFEKT - BIURO KSIĘGOWE", subLabel: "Reservon" },
+    ],
+  },
+  {
+    id: "reklama",
+    title: "MARKETING & REKLAMA",
+    color: "bg-pink-600 dark:bg-pink-700",
+    items: [
+      { name: "BOOKING.COM", subLabel: "Prowizja" },
+      { name: "PROFITROOM", subLabel: "Channel Manager" },
+      { name: "PROFITLAB", subLabel: "Marketing Automation" },
+      { name: "GOOGLE ADS", subLabel: "Adrian Ginda" },
+      { name: "GOOGLE ADS" },
+      { name: "AGENT" },
+    ],
+  },
+  {
+    id: "uslugi",
+    title: "USŁUGI",
+    color: "bg-cyan-600 dark:bg-cyan-700",
+    items: [
+      { name: "VECTRA" },
+      { name: "NC+" },
+      { name: "WP TV", subLabel: "Luxuro+Modern" },
+      { name: "INTERARENA", subLabel: "Grand Baltic+Luxuro" },
+      { name: "ORANGE" },
+      { name: "T-MOBILE" },
+      { name: "MICROSOFT OFFICE" },
+      { name: "ORANGE", subLabel: "Reservon" },
+      { name: "T-MOBILE", subLabel: "Reservon" },
+    ],
+  },
+  {
+    id: "pozostale",
+    title: "POZOSTAŁE",
+    color: "bg-slate-600 dark:bg-slate-700",
+    items: [
+      { name: "CHEMIA + BHP" },
+      { name: "DOPOSAŻENIA APARTAMENTÓW" },
+      { name: "REMONTY APARTAMENTÓW" },
+      { name: "POLISY & UBEZPIECZENIA" },
+      { name: "PRALNIA MIETER (KOSZALIN)" },
+      { name: "INNE" },
+      { name: "INNE", subLabel: "Reservon" },
+      { name: "INNE", subLabel: "Inne" },
+    ],
+  },
 ];
 
+const MONTHS_SHORT = [
+  "STY", "LUT", "MAR", "KWI", "MAJ", "CZE",
+  "LIP", "SIE", "WRZ", "PAŹ", "LIS", "GRU",
+];
+
+type CellKey = string;
+
+function makeCellKey(catId: string, itemIdx: number, month: number, field: "prognoza" | "rzeczywiste"): CellKey {
+  return `${catId}__${itemIdx}__${month}__${field}`;
+}
+
+function getStorageKey(year: number) {
+  return `oplaty-data-${year}`;
+}
+
+function loadData(year: number): Record<CellKey, number> {
+  try {
+    const raw = localStorage.getItem(getStorageKey(year));
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function saveData(year: number, data: Record<CellKey, number>) {
+  localStorage.setItem(getStorageKey(year), JSON.stringify(data));
+}
+
 export default function CostsExpenses() {
-  const { data: expenses, isLoading } = useExpenses();
-  const { data: apartments } = useApartments();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const deleteExpense = useDeleteExpense();
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(currentYear));
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [editingCell, setEditingCell] = useState<CellKey | null>(null);
+  const [editValue, setEditValue] = useState("");
 
-  const [filterStartDate, setFilterStartDate] = useState("");
-  const [filterEndDate, setFilterEndDate] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterType, setFilterType] = useState<string>("ALL");
-  const [filterForecast, setFilterForecast] = useState<string>("ALL");
+  const handleYearChange = useCallback((year: string) => {
+    const y = parseInt(year);
+    setSelectedYear(y);
+    setCellData(loadData(y));
+  }, []);
 
-  const filteredExpenses = useMemo(() => {
-    if (!expenses) return [];
-    return expenses.filter(e => {
-      if (filterStartDate && e.date < filterStartDate) return false;
-      if (filterEndDate && e.date > filterEndDate) return false;
-      if (filterCategory && filterCategory !== "ALL" && e.category !== filterCategory) return false;
-      if (filterType !== "ALL" && e.type !== filterType) return false;
-      if (filterForecast === "FORECAST" && !e.isForecast) return false;
-      if (filterForecast === "ACTUAL" && e.isForecast) return false;
-      return true;
-    }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [expenses, filterStartDate, filterEndDate, filterCategory, filterType, filterForecast]);
+  const toggleCategory = useCallback((catId: string) => {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(catId)) next.delete(catId);
+      else next.add(catId);
+      return next;
+    });
+  }, []);
 
-  const stats = useMemo(() => {
-    const total = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-    const forecast = filteredExpenses.filter(e => e.isForecast).reduce((sum, e) => sum + Number(e.amount), 0);
-    const actual = total - forecast;
-    return { total, forecast, actual, count: filteredExpenses.length };
-  }, [filteredExpenses]);
+  const getCellValue = useCallback((key: CellKey): number => {
+    return cellData[key] || 0;
+  }, [cellData]);
 
-  const getApartmentName = (id: number | null) => {
-    if (!id || !apartments) return null;
-    return apartments.find(a => a.id === id)?.name || null;
-  };
+  const startEditing = useCallback((key: CellKey) => {
+    setEditingCell(key);
+    setEditValue(cellData[key]?.toString() || "");
+  }, [cellData]);
 
-  const handleDelete = (id: number) => {
-    if (window.confirm("Czy na pewno chcesz usunąć ten koszt?")) {
-      deleteExpense.mutate(id);
+  const commitEdit = useCallback(() => {
+    if (editingCell) {
+      const val = parseFloat(editValue) || 0;
+      const newData = { ...cellData };
+      if (val === 0) {
+        delete newData[editingCell];
+      } else {
+        newData[editingCell] = val;
+      }
+      setCellData(newData);
+      saveData(selectedYear, newData);
+      setEditingCell(null);
     }
+  }, [editingCell, editValue, cellData, selectedYear]);
+
+  const cancelEdit = useCallback(() => {
+    setEditingCell(null);
+  }, []);
+
+  const getCategorySummary = useCallback((cat: CostCategory, month: number) => {
+    let prognoza = 0;
+    let rzeczywiste = 0;
+    cat.items.forEach((_, idx) => {
+      prognoza += getCellValue(makeCellKey(cat.id, idx, month, "prognoza"));
+      rzeczywiste += getCellValue(makeCellKey(cat.id, idx, month, "rzeczywiste"));
+    });
+    return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
+  }, [getCellValue]);
+
+  const getCategoryAnnualSummary = useCallback((cat: CostCategory) => {
+    let prognoza = 0;
+    let rzeczywiste = 0;
+    for (let m = 0; m < 12; m++) {
+      const s = getCategorySummary(cat, m);
+      prognoza += s.prognoza;
+      rzeczywiste += s.rzeczywiste;
+    }
+    return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
+  }, [getCategorySummary]);
+
+  const getItemAnnualSummary = useCallback((catId: string, itemIdx: number) => {
+    let prognoza = 0;
+    let rzeczywiste = 0;
+    for (let m = 0; m < 12; m++) {
+      prognoza += getCellValue(makeCellKey(catId, itemIdx, m, "prognoza"));
+      rzeczywiste += getCellValue(makeCellKey(catId, itemIdx, m, "rzeczywiste"));
+    }
+    return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
+  }, [getCellValue]);
+
+  const grandTotal = useMemo(() => {
+    let prognoza = 0;
+    let rzeczywiste = 0;
+    CATEGORIES.forEach(cat => {
+      const s = getCategoryAnnualSummary(cat);
+      prognoza += s.prognoza;
+      rzeczywiste += s.rzeczywiste;
+    });
+    return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
+  }, [getCategoryAnnualSummary]);
+
+  const formatNum = (n: number) => {
+    if (n === 0) return "";
+    return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const handleEdit = (expense: Expense) => {
-    setEditingExpense(expense);
-    setIsDialogOpen(true);
+  const saldoColor = (n: number) => {
+    if (n > 0) return "text-emerald-600 dark:text-emerald-400";
+    if (n < 0) return "text-red-600 dark:text-red-400";
+    return "";
   };
 
-  const handleAddNew = () => {
-    setEditingExpense(null);
-    setIsDialogOpen(true);
-  };
-
-  const clearFilters = () => {
-    setFilterStartDate("");
-    setFilterEndDate("");
-    setFilterCategory("");
-    setFilterType("ALL");
-    setFilterForecast("ALL");
-  };
-
-  const hasFilters = filterStartDate || filterEndDate || filterCategory || filterType !== "ALL" || filterForecast !== "ALL";
-
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-costs-title">Koszty</h2>
-          <p className="text-muted-foreground">Zarządzaj kosztami operacyjnymi i prognozami.</p>
-        </div>
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-16 w-full bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const years = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-costs-title">Koszty</h2>
-          <p className="text-muted-foreground">Zarządzaj kosztami operacyjnymi i prognozami.</p>
+          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-costs-title">Opłaty</h2>
+          <p className="text-muted-foreground">Zestawienie kosztów operacyjnych: prognoza vs rzeczywiste</p>
         </div>
-        <Button onClick={handleAddNew} data-testid="button-add-expense">
-          <Plus className="mr-2 h-4 w-4" /> Dodaj koszt
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="text-2xl font-bold" data-testid="text-stat-total-costs">{stats.total.toFixed(2)} zł</div>
-            <div className="text-xs text-muted-foreground">Suma kosztów</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="text-2xl font-bold" data-testid="text-stat-actual-costs">{stats.actual.toFixed(2)} zł</div>
-            <div className="text-xs text-muted-foreground">Rzeczywiste</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="text-2xl font-bold text-muted-foreground" data-testid="text-stat-forecast-costs">{stats.forecast.toFixed(2)} zł</div>
-            <div className="text-xs text-muted-foreground">Prognoza</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="text-2xl font-bold" data-testid="text-stat-count">{stats.count}</div>
-            <div className="text-xs text-muted-foreground">Pozycji</div>
-          </CardContent>
-        </Card>
+        <div className="flex items-center gap-3">
+          <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
+            <SelectTrigger className="w-[120px]" data-testid="select-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map(y => (
+                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card>
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Filtry</span>
-            {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
-                Wyczyść
-              </Button>
-            )}
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Od daty</Label>
-              <Input
-                type="date"
-                value={filterStartDate}
-                onChange={e => setFilterStartDate(e.target.value)}
-                data-testid="input-filter-start-date"
-              />
+        <CardContent className="p-3">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Prognoza roczna</div>
+              <div className="text-xl font-bold mt-1" data-testid="text-total-prognoza">{grandTotal.prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Do daty</Label>
-              <Input
-                type="date"
-                value={filterEndDate}
-                onChange={e => setFilterEndDate(e.target.value)}
-                data-testid="input-filter-end-date"
-              />
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Rzeczywiste roczne</div>
+              <div className="text-xl font-bold mt-1" data-testid="text-total-rzeczywiste">{grandTotal.rzeczywiste.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Kategoria</Label>
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger data-testid="select-filter-category">
-                  <SelectValue placeholder="Wszystkie" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Wszystkie</SelectItem>
-                  {CATEGORIES.map(c => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Typ</Label>
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger data-testid="select-filter-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Wszystkie</SelectItem>
-                  <SelectItem value="FIXED">Stały</SelectItem>
-                  <SelectItem value="VARIABLE">Zmienny</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Dane/Prognoza</Label>
-              <Select value={filterForecast} onValueChange={setFilterForecast}>
-                <SelectTrigger data-testid="select-filter-forecast">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Wszystkie</SelectItem>
-                  <SelectItem value="ACTUAL">Rzeczywiste</SelectItem>
-                  <SelectItem value="FORECAST">Prognoza</SelectItem>
-                </SelectContent>
-              </Select>
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Saldo roczne</div>
+              <div className={`text-xl font-bold mt-1 ${saldoColor(grandTotal.saldo)}`} data-testid="text-total-saldo">{grandTotal.saldo >= 0 ? "+" : ""}{grandTotal.saldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 dark:bg-muted/50 sticky top-0 z-[100]">
-            <tr className="border-b">
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">Data</th>
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">Kategoria</th>
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">Nazwa / Dostawca</th>
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">Opis</th>
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">Apartament</th>
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">Faktura</th>
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">VAT</th>
-              <th className="py-2.5 px-3 text-right font-semibold text-slate-700 dark:text-slate-300">Kwota</th>
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-700 dark:text-slate-300">Typ</th>
-              <th className="py-2.5 px-3 text-right font-semibold text-slate-700 dark:text-slate-300 w-20"></th>
+      <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-oplaty">
+        <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
+          <thead className="sticky top-0 z-[100]">
+            <tr className="bg-muted/80 dark:bg-muted/50">
+              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1.5 text-left font-bold w-[200px] min-w-[200px]" rowSpan={2}>
+                Pozycja
+              </th>
+              {MONTHS_SHORT.map((m, i) => (
+                <th key={i} colSpan={3} className="border-b border-r border-border px-1 py-1.5 text-center font-bold">
+                  {m}
+                </th>
+              ))}
+              <th colSpan={3} className="border-b border-border px-1 py-1.5 text-center font-bold bg-muted dark:bg-muted/70">
+                ROCZNIE
+              </th>
+            </tr>
+            <tr className="bg-muted/60 dark:bg-muted/40">
+              {[...Array(13)].map((_, mi) => (
+                <Fragment key={mi}>
+                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px]">P</th>
+                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px]">R</th>
+                  <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px] ${mi < 12 ? "border-r" : ""}`}>S</th>
+                </Fragment>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {filteredExpenses.length === 0 ? (
-              <tr>
-                <td colSpan={10} className="py-8 text-center text-muted-foreground">
-                  Brak kosztów do wyświetlenia.
-                </td>
-              </tr>
-            ) : (
-              filteredExpenses.map(expense => {
-                const aptName = getApartmentName(expense.apartmentId);
-                return (
-                  <tr key={expense.id} className="border-b last:border-b-0 hover-elevate" data-testid={`row-expense-${expense.id}`}>
-                    <td className="py-2 px-3 whitespace-nowrap">{expense.date}</td>
-                    <td className="py-2 px-3">
-                      <Badge variant="secondary">{expense.category}</Badge>
+            {CATEGORIES.map(cat => {
+              const isCollapsed = collapsedCategories.has(cat.id);
+              const annualCat = getCategoryAnnualSummary(cat);
+              return (
+                <Fragment key={cat.id}>
+                  <tr
+                    className={`${cat.color} text-white cursor-pointer select-none`}
+                    onClick={() => toggleCategory(cat.id)}
+                    data-testid={`row-category-${cat.id}`}
+                  >
+                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-2 py-1.5 font-bold flex items-center gap-1`}>
+                      {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      {cat.title}
                     </td>
-                    <td className="py-2 px-3">
-                      {expense.vendor || <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="py-2 px-3 text-muted-foreground max-w-[200px] truncate">
-                      {expense.description || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-muted-foreground text-xs">
-                      {aptName || <span className="text-muted-foreground">Ogólny</span>}
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      {expense.invoiceIssued ? (
-                        <span className="text-xs">{expense.invoiceNumber || "TAK"}</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 whitespace-nowrap text-xs">
-                      {expense.vatAmount && Number(expense.vatAmount) > 0 ? `${expense.vatAmount} zł` : "—"}
-                    </td>
-                    <td className="py-2 px-3 text-right whitespace-nowrap font-bold text-destructive">
-                      {Number(expense.amount).toFixed(2)} zł
-                    </td>
-                    <td className="py-2 px-3">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <Badge variant="secondary" className={expense.type === 'FIXED' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'}>
-                          {expense.type === 'FIXED' ? 'Stały' : 'Zmienny'}
-                        </Badge>
-                        {expense.isForecast && (
-                          <Badge variant="outline" className="text-xs">
-                            <BarChart3 className="h-3 w-3 mr-1" />
-                            Prognoza
-                          </Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => handleEdit(expense)}
-                          data-testid={`button-edit-expense-${expense.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => handleDelete(expense.id)}
-                          disabled={deleteExpense.isPending}
-                          data-testid={`button-delete-expense-${expense.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
+                    {Array.from({ length: 12 }, (_, m) => {
+                      const s = getCategorySummary(cat, m);
+                      return (
+                        <Fragment key={m}>
+                          <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
+                          <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-semibold tabular-nums">{formatNum(s.rzeczywiste)}</td>
+                          <td className={`border-b border-r border-border/30 px-1 py-1.5 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
+                        </Fragment>
+                      );
+                    })}
+                    <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-bold tabular-nums">{formatNum(annualCat.prognoza)}</td>
+                    <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-bold tabular-nums">{formatNum(annualCat.rzeczywiste)}</td>
+                    <td className={`border-b border-border/30 px-1 py-1.5 text-right font-bold tabular-nums ${annualCat.saldo > 0 ? "text-green-200" : annualCat.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(annualCat.saldo)}</td>
                   </tr>
+                  {!isCollapsed && cat.items.map((item, idx) => {
+                    const annualItem = getItemAnnualSummary(cat.id, idx);
+                    return (
+                      <tr
+                        key={idx}
+                        className="hover:bg-muted/30 dark:hover:bg-muted/20"
+                        data-testid={`row-item-${cat.id}-${idx}`}
+                      >
+                        <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-2 py-1 text-left">
+                          <div className="font-medium truncate">{item.name}</div>
+                          {item.subLabel && <div className="text-[10px] text-muted-foreground truncate">{item.subLabel}</div>}
+                        </td>
+                        {Array.from({ length: 12 }, (_, m) => {
+                          const pKey = makeCellKey(cat.id, idx, m, "prognoza");
+                          const rKey = makeCellKey(cat.id, idx, m, "rzeczywiste");
+                          const pVal = getCellValue(pKey);
+                          const rVal = getCellValue(rKey);
+                          const saldo = pVal - rVal;
+                          return (
+                            <Fragment key={m}>
+                              <EditableCell
+                                cellKey={pKey}
+                                value={pVal}
+                                editingCell={editingCell}
+                                editValue={editValue}
+                                setEditValue={setEditValue}
+                                startEditing={startEditing}
+                                commitEdit={commitEdit}
+                                cancelEdit={cancelEdit}
+                                className="border-b border-r border-border"
+                              />
+                              <EditableCell
+                                cellKey={rKey}
+                                value={rVal}
+                                editingCell={editingCell}
+                                editValue={editValue}
+                                setEditValue={setEditValue}
+                                startEditing={startEditing}
+                                commitEdit={commitEdit}
+                                cancelEdit={cancelEdit}
+                                className="border-b border-r border-border"
+                              />
+                              <td className={`border-b border-r border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>
+                                {formatNum(saldo)}
+                              </td>
+                            </Fragment>
+                          );
+                        })}
+                        <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.prognoza)}</td>
+                        <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.rzeczywiste)}</td>
+                        <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(annualItem.saldo)}`}>{formatNum(annualItem.saldo)}</td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
+            <tr className="bg-muted/80 dark:bg-muted/50 font-bold">
+              <td className="sticky left-0 z-[105] bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-2 text-left">
+                SUMA
+              </td>
+              {Array.from({ length: 12 }, (_, m) => {
+                let prognoza = 0;
+                let rzeczywiste = 0;
+                CATEGORIES.forEach(cat => {
+                  const s = getCategorySummary(cat, m);
+                  prognoza += s.prognoza;
+                  rzeczywiste += s.rzeczywiste;
+                });
+                const saldo = prognoza - rzeczywiste;
+                return (
+                  <Fragment key={m}>
+                    <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums">{formatNum(prognoza)}</td>
+                    <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums">{formatNum(rzeczywiste)}</td>
+                    <td className={`border-t-2 border-r border-border px-1 py-2 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                  </Fragment>
                 );
-              })
-            )}
+              })}
+              <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.prognoza)}</td>
+              <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.rzeczywiste)}</td>
+              <td className={`border-t-2 border-border px-1 py-2 text-right tabular-nums bg-muted dark:bg-muted/70 ${saldoColor(grandTotal.saldo)}`}>{formatNum(grandTotal.saldo)}</td>
+            </tr>
           </tbody>
         </table>
       </div>
-
-      <Dialog open={isDialogOpen} onOpenChange={(open) => {
-        if (!open) {
-          setIsDialogOpen(false);
-          setEditingExpense(null);
-        }
-      }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingExpense ? "Edytuj koszt" : "Nowy koszt"}</DialogTitle>
-          </DialogHeader>
-          <ExpenseForm
-            expense={editingExpense}
-            onSuccess={() => {
-              setIsDialogOpen(false);
-              setEditingExpense(null);
-            }}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-function ExpenseForm({ expense, onSuccess }: { expense: Expense | null; onSuccess: () => void }) {
-  const createExpense = useCreateExpense();
-  const updateExpense = useUpdateExpense();
-  const { data: apartments } = useApartments();
-  const isEditing = !!expense;
+function Fragment({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
 
-  const form = useForm<InsertExpense>({
-    resolver: zodResolver(insertExpenseSchema),
-    defaultValues: {
-      date: expense?.date || new Date().toISOString().split('T')[0],
-      category: expense?.category || "",
-      amount: expense?.amount || "0",
-      description: expense?.description || "",
-      type: expense?.type || "VARIABLE",
-      vatAmount: expense?.vatAmount || "0",
-      apartmentId: expense?.apartmentId || null,
-      isForecast: expense?.isForecast || false,
-      vendor: expense?.vendor || "",
-      invoiceIssued: expense?.invoiceIssued || false,
-      invoiceNumber: expense?.invoiceNumber || "",
-    }
-  });
+function EditableCell({
+  cellKey,
+  value,
+  editingCell,
+  editValue,
+  setEditValue,
+  startEditing,
+  commitEdit,
+  cancelEdit,
+  className,
+}: {
+  cellKey: CellKey;
+  value: number;
+  editingCell: string | null;
+  editValue: string;
+  setEditValue: (v: string) => void;
+  startEditing: (key: CellKey) => void;
+  commitEdit: () => void;
+  cancelEdit: () => void;
+  className?: string;
+}) {
+  const isEditing = editingCell === cellKey;
 
-  const invoiceIssued = form.watch("invoiceIssued");
-
-  const onSubmit = (data: InsertExpense) => {
-    if (isEditing) {
-      updateExpense.mutate({ id: expense.id, data }, { onSuccess: () => onSuccess() });
-    } else {
-      createExpense.mutate(data, { onSuccess: () => onSuccess() });
-    }
-  };
+  if (isEditing) {
+    return (
+      <td className={`${className} p-0`}>
+        <input
+          type="number"
+          step="0.01"
+          autoFocus
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={e => {
+            if (e.key === "Enter") commitEdit();
+            if (e.key === "Escape") cancelEdit();
+          }}
+          className="w-full h-full px-1 py-1 text-right text-xs bg-background border-0 outline-none ring-2 ring-[#5ADBFA] tabular-nums"
+          data-testid={`input-cell-${cellKey}`}
+        />
+      </td>
+    );
+  }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Data</Label>
-          <Input type="date" {...form.register("date")} data-testid="input-expense-date" />
-        </div>
-        <div className="space-y-2">
-          <Label>Kategoria</Label>
-          <Controller
-            control={form.control}
-            name="category"
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger data-testid="select-expense-category">
-                  <SelectValue placeholder="Wybierz kategorię" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(c => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Nazwa / Dostawca</Label>
-          <Input {...form.register("vendor")} placeholder="np. IKEA" data-testid="input-expense-vendor" />
-        </div>
-        <div className="space-y-2">
-          <Label>Kwota (PLN)</Label>
-          <Input type="number" step="0.01" {...form.register("amount")} data-testid="input-expense-amount" />
-        </div>
-        <div className="space-y-2">
-          <Label>Typ kosztu</Label>
-          <Controller
-            control={form.control}
-            name="type"
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger data-testid="select-expense-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="FIXED">Stały</SelectItem>
-                  <SelectItem value="VARIABLE">Zmienny</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>VAT (PLN)</Label>
-          <Input type="number" step="0.01" {...form.register("vatAmount")} data-testid="input-expense-vat" />
-        </div>
-        <div className="space-y-2 col-span-2">
-          <Label>Apartament (opcjonalnie)</Label>
-          <Controller
-            control={form.control}
-            name="apartmentId"
-            render={({ field }) => (
-              <Select onValueChange={(val) => field.onChange(val === "none" ? null : Number(val))} value={field.value?.toString() || "none"}>
-                <SelectTrigger data-testid="select-expense-apartment">
-                  <SelectValue placeholder="Ogólny koszt" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Ogólny koszt</SelectItem>
-                  {apartments?.map((apt) => (
-                    <SelectItem key={apt.id} value={apt.id.toString()}>{apt.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </div>
-        <div className="space-y-2 col-span-2">
-          <Label>Opis</Label>
-          <Textarea {...form.register("description")} placeholder="Dodatkowe informacje" data-testid="input-expense-description" className="resize-none" />
-        </div>
-
-        <div className="col-span-2 flex items-center gap-6 py-2 border-t pt-4">
-          <Controller
-            control={form.control}
-            name="isForecast"
-            render={({ field }) => (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="isForecast"
-                  checked={field.value || false}
-                  onCheckedChange={field.onChange}
-                  data-testid="checkbox-forecast"
-                />
-                <Label htmlFor="isForecast" className="cursor-pointer text-sm">Prognoza (planowany koszt)</Label>
-              </div>
-            )}
-          />
-          <Controller
-            control={form.control}
-            name="invoiceIssued"
-            render={({ field }) => (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="invoiceIssued"
-                  checked={field.value || false}
-                  onCheckedChange={field.onChange}
-                  data-testid="checkbox-invoice"
-                />
-                <Label htmlFor="invoiceIssued" className="cursor-pointer text-sm">Faktura</Label>
-              </div>
-            )}
-          />
-        </div>
-
-        {invoiceIssued && (
-          <div className="space-y-2 col-span-2">
-            <Label>Numer faktury</Label>
-            <Input {...form.register("invoiceNumber")} placeholder="np. FV/2026/001" data-testid="input-invoice-number" />
-          </div>
-        )}
-      </div>
-      <DialogFooter>
-        <Button type="submit" disabled={createExpense.isPending || updateExpense.isPending} data-testid="button-submit-expense">
-          {(createExpense.isPending || updateExpense.isPending) ? "Zapisywanie..." : (isEditing ? "Zapisz zmiany" : "Dodaj koszt")}
-        </Button>
-      </DialogFooter>
-    </form>
+    <td
+      className={`${className} px-1 py-1 text-right tabular-nums cursor-pointer hover:bg-accent/50`}
+      onDoubleClick={() => startEditing(cellKey)}
+      data-testid={`cell-${cellKey}`}
+    >
+      {value !== 0 ? value.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
+    </td>
   );
 }

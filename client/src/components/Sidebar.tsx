@@ -106,7 +106,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   "income-subrent": { id: "income-subrent", href: "/income-subrent", label: "Przychody Podnajem", iconName: "HandCoins" },
   forecast: { id: "forecast", href: "/forecast", label: "Prognoza", iconName: "BarChart3" },
   "costs-apartments": { id: "costs-apartments", href: "/costs-apartments", label: "Koszty (Apartamenty)", iconName: "Building2" },
-  "costs-expenses": { id: "costs-expenses", href: "/costs-expenses", label: "Koszty (Koszty)", iconName: "Receipt" },
+  "costs-expenses": { id: "costs-expenses", href: "/costs-expenses", label: "Opłaty", iconName: "Receipt" },
   "saldo-ml": { id: "saldo-ml", href: "/saldo-ml", label: "Saldo - M. Latasiewicz", iconName: "Scale" },
   "saldo-jg": { id: "saldo-jg", href: "/saldo-jg", label: "Saldo - J. Głodkowska", iconName: "Coins" },
   "contracts-rent": { id: "contracts-rent", href: "/contracts-rent", label: "Umowy Najmu", iconName: "FileText" },
