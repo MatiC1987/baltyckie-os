@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import type { Employee, InsertEmployee } from "@shared/schema";
+import type { Employee, InsertEmployee, MedicalExam } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@/hooks/use-upload";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -25,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X, Eye, AlertTriangle, CheckCircle } from "lucide-react";
 
 const POSITIONS: Record<string, string> = {
   KIEROWNIK_RECEPCJI: "Kierownik recepcji",
@@ -61,11 +62,33 @@ function useEmployees() {
   });
 }
 
+function useMedicalExams(employeeId: number | null) {
+  return useQuery<MedicalExam[]>({
+    queryKey: ['/api/employees', employeeId, 'medical-exams'],
+    queryFn: async () => {
+      const res = await fetch(buildUrl('/api/employees/:employeeId/medical-exams', { employeeId: employeeId! }), { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch medical exams");
+      return res.json();
+    },
+    enabled: !!employeeId,
+  });
+}
+
+function calcRemainingDays(validUntil: string): number {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const end = new Date(validUntil);
+  end.setHours(0, 0, 0, 0);
+  return Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 const emptyForm: InsertEmployee = {
   firstName: "",
   lastName: "",
   phone: "",
   email: "",
+  pesel: "",
+  birthDate: "",
   cooperationType: "ETAT",
   contractType: "CZAS_NIEOKRESLONY",
   contractStart: "",
@@ -77,14 +100,29 @@ const emptyForm: InsertEmployee = {
   photoUrl: "",
 };
 
+function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="flex items-start gap-2 py-2 border-b border-border last:border-b-0">
+      <span className="text-xs text-muted-foreground w-40 shrink-0 pt-0.5">{label}</span>
+      <span className="text-sm font-medium">{value || "—"}</span>
+    </div>
+  );
+}
+
 export default function Employees() {
   const { data: employees, isLoading } = useEmployees();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [previewEmployee, setPreviewEmployee] = useState<Employee | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [form, setForm] = useState<InsertEmployee>({ ...emptyForm });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [examForm, setExamForm] = useState({ examName: "", examDate: "", validUntil: "" });
+
+  const { data: medicalExams } = useMedicalExams(previewEmployee?.id ?? null);
 
   const { uploadFile, isUploading } = useUpload({
     onSuccess: (response) => {
@@ -155,6 +193,41 @@ export default function Employees() {
     },
   });
 
+  const createExamMutation = useMutation({
+    mutationFn: async ({ employeeId, data }: { employeeId: number; data: typeof examForm }) => {
+      const res = await fetch(buildUrl('/api/employees/:employeeId/medical-exams', { employeeId }), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create exam");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/employees', previewEmployee?.id, 'medical-exams'] });
+      toast({ title: "Sukces", description: "Badanie zostało dodane" });
+      setExamForm({ examName: "", examDate: "", validUntil: "" });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się dodać badania", variant: "destructive" });
+    },
+  });
+
+  const deleteExamMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(buildUrl('/api/medical-exams/:id', { id }), {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete exam");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/employees', previewEmployee?.id, 'medical-exams'] });
+      toast({ title: "Sukces", description: "Badanie zostało usunięte" });
+    },
+  });
+
   function openAdd() {
     setEditingEmployee(null);
     setForm({ ...emptyForm });
@@ -168,6 +241,8 @@ export default function Employees() {
       lastName: emp.lastName,
       phone: emp.phone || "",
       email: emp.email || "",
+      pesel: emp.pesel || "",
+      birthDate: emp.birthDate || "",
       cooperationType: emp.cooperationType,
       contractType: emp.contractType || "CZAS_NIEOKRESLONY",
       contractStart: emp.contractStart || "",
@@ -179,6 +254,11 @@ export default function Employees() {
       photoUrl: emp.photoUrl || "",
     });
     setDialogOpen(true);
+  }
+
+  function openPreview(emp: Employee) {
+    setPreviewEmployee(emp);
+    setPreviewOpen(true);
   }
 
   function closeDialog() {
@@ -198,6 +278,8 @@ export default function Employees() {
       ...form,
       phone: form.phone || null,
       email: form.email || null,
+      pesel: form.pesel || null,
+      birthDate: form.birthDate || null,
       contractType: form.cooperationType === "ETAT" ? form.contractType : null,
       contractStart: form.cooperationType === "ETAT" ? (form.contractStart || null) : null,
       contractEnd: form.cooperationType === "ETAT" && form.contractType === "CZAS_OKRESLONY" ? (form.contractEnd || null) : null,
@@ -211,6 +293,15 @@ export default function Employees() {
     } else {
       createMutation.mutate(cleanedData as InsertEmployee);
     }
+  }
+
+  function handleAddExam(e: React.FormEvent) {
+    e.preventDefault();
+    if (!previewEmployee || !examForm.examName || !examForm.examDate || !examForm.validUntil) {
+      toast({ title: "Błąd", description: "Wszystkie pola badania są wymagane", variant: "destructive" });
+      return;
+    }
+    createExamMutation.mutate({ employeeId: previewEmployee.id, data: examForm });
   }
 
   function setField(field: keyof InsertEmployee, value: string) {
@@ -263,7 +354,7 @@ export default function Employees() {
                 <TableHead className="text-xs font-semibold">Umowa</TableHead>
                 <TableHead className="text-xs font-semibold">Stawka/h</TableHead>
                 <TableHead className="text-xs font-semibold">Status</TableHead>
-                <TableHead className="text-xs font-semibold w-20">Akcje</TableHead>
+                <TableHead className="text-xs font-semibold w-28">Akcje</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -311,6 +402,9 @@ export default function Employees() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" onClick={() => openPreview(emp)} data-testid={`button-preview-employee-${emp.id}`}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
                       <Button size="icon" variant="ghost" onClick={() => openEdit(emp)} data-testid={`button-edit-employee-${emp.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -330,6 +424,175 @@ export default function Employees() {
         Łącznie {employees?.length || 0} pracowników
       </div>
 
+      {/* Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-employee-preview-title">
+              {previewEmployee ? `${previewEmployee.firstName} ${previewEmployee.lastName}` : "Podgląd pracownika"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {previewEmployee && (
+            <div className="pt-2">
+              <div className="flex items-center gap-4 mb-5">
+                {previewEmployee.photoUrl ? (
+                  <img src={previewEmployee.photoUrl} alt="" className="h-16 w-16 rounded-full object-cover border border-border" />
+                ) : (
+                  <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                    {previewEmployee.firstName.charAt(0)}{previewEmployee.lastName.charAt(0)}
+                  </div>
+                )}
+                <div>
+                  <p className="text-lg font-semibold">{previewEmployee.firstName} {previewEmployee.lastName}</p>
+                  <p className="text-sm text-muted-foreground">{POSITIONS[previewEmployee.position] || previewEmployee.position}</p>
+                </div>
+                <div className="ml-auto">
+                  <Badge variant={previewEmployee.status === "AKTYWNY" ? "default" : "secondary"}>
+                    {STATUS_LABELS[previewEmployee.status] || previewEmployee.status}
+                  </Badge>
+                </div>
+              </div>
+
+              <Tabs defaultValue="dane" className="w-full">
+                <TabsList className="w-full grid grid-cols-2">
+                  <TabsTrigger value="dane" data-testid="tab-preview-dane">Dane identyfikacyjne</TabsTrigger>
+                  <TabsTrigger value="medycyna" data-testid="tab-preview-medycyna">Medycyna pracy</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="dane" className="mt-4">
+                  <div className="space-y-0">
+                    <InfoRow label="Imię i nazwisko" value={`${previewEmployee.firstName} ${previewEmployee.lastName}`} />
+                    <InfoRow label="Numer telefonu" value={previewEmployee.phone} />
+                    <InfoRow label="PESEL" value={previewEmployee.pesel} />
+                    <InfoRow label="Data urodzenia" value={previewEmployee.birthDate} />
+                    <InfoRow label="E-mail" value={previewEmployee.email} />
+                    <InfoRow label="Zakres współpracy" value={COOPERATION_TYPES[previewEmployee.cooperationType] || previewEmployee.cooperationType} />
+                    {previewEmployee.cooperationType === "ETAT" && (
+                      <>
+                        <InfoRow label="Rodzaj umowy" value={CONTRACT_TYPES[previewEmployee.contractType || ""] || null} />
+                        <InfoRow label="Początek umowy" value={previewEmployee.contractStart} />
+                        {previewEmployee.contractType === "CZAS_OKRESLONY" && (
+                          <InfoRow label="Koniec umowy" value={previewEmployee.contractEnd} />
+                        )}
+                      </>
+                    )}
+                    <InfoRow label="Stanowisko" value={POSITIONS[previewEmployee.position] || previewEmployee.position} />
+                    <InfoRow label="Stawka godzinowa" value={previewEmployee.hourlyRate ? `${Number(previewEmployee.hourlyRate).toFixed(2)} zł` : null} />
+                    <InfoRow label="Dodatkowy komentarz" value={previewEmployee.comment} />
+                    <InfoRow label="Status pracownika" value={STATUS_LABELS[previewEmployee.status] || previewEmployee.status} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="medycyna" className="mt-4 space-y-5">
+                  <form onSubmit={handleAddExam} className="space-y-3">
+                    <p className="text-sm font-semibold">Dodaj nowe badanie</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Nazwa badania</Label>
+                        <Input
+                          value={examForm.examName}
+                          onChange={e => setExamForm(prev => ({ ...prev, examName: e.target.value }))}
+                          placeholder="np. Badanie okresowe"
+                          required
+                          data-testid="input-exam-name"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Termin wykonania</Label>
+                        <Input
+                          type="date"
+                          value={examForm.examDate}
+                          onChange={e => setExamForm(prev => ({ ...prev, examDate: e.target.value }))}
+                          required
+                          data-testid="input-exam-date"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Ważność badania do</Label>
+                        <Input
+                          type="date"
+                          value={examForm.validUntil}
+                          onChange={e => setExamForm(prev => ({ ...prev, validUntil: e.target.value }))}
+                          required
+                          data-testid="input-exam-valid-until"
+                        />
+                      </div>
+                    </div>
+                    <Button type="submit" size="sm" disabled={createExamMutation.isPending} data-testid="button-add-exam">
+                      <Plus className="mr-1 h-4 w-4" /> Dodaj badanie
+                    </Button>
+                  </form>
+
+                  {(!medicalExams || medicalExams.length === 0) ? (
+                    <div className="text-sm text-muted-foreground py-8 text-center">
+                      Brak zarejestrowanych badań lekarskich.
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-border overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="text-xs font-semibold">Nazwa badania</TableHead>
+                            <TableHead className="text-xs font-semibold">Termin wykonania</TableHead>
+                            <TableHead className="text-xs font-semibold">Ważność do</TableHead>
+                            <TableHead className="text-xs font-semibold">Pozostało dni</TableHead>
+                            <TableHead className="text-xs font-semibold w-12"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {medicalExams.map(exam => {
+                            const remaining = calcRemainingDays(exam.validUntil);
+                            const isExpired = remaining < 0;
+                            const isExpiringSoon = remaining >= 0 && remaining <= 30;
+                            return (
+                              <TableRow key={exam.id} data-testid={`row-exam-${exam.id}`}>
+                                <TableCell className="text-sm font-medium">{exam.examName}</TableCell>
+                                <TableCell className="text-sm">{exam.examDate}</TableCell>
+                                <TableCell className="text-sm">{exam.validUntil}</TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1.5">
+                                    {isExpired ? (
+                                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                                    ) : isExpiringSoon ? (
+                                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                    ) : (
+                                      <CheckCircle className="h-4 w-4 text-green-500" />
+                                    )}
+                                    <span className={`text-sm font-semibold ${isExpired ? "text-destructive" : isExpiringSoon ? "text-yellow-600 dark:text-yellow-400" : "text-green-600 dark:text-green-400"}`}>
+                                      {isExpired ? `Wygasło ${Math.abs(remaining)} dni temu` : `${remaining} dni`}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Button size="icon" variant="ghost" onClick={() => deleteExamMutation.mutate(exam.id)} data-testid={`button-delete-exam-${exam.id}`}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => { setPreviewOpen(false); openEdit(previewEmployee); }} data-testid="button-preview-edit">
+                  <Pencil className="mr-2 h-4 w-4" /> Edytuj dane
+                </Button>
+                <Button variant="ghost" onClick={() => setPreviewOpen(false)} data-testid="button-close-preview">
+                  Zamknij
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -428,6 +691,28 @@ export default function Employees() {
                   onChange={e => setField("email", e.target.value)}
                   placeholder="adres@email.pl"
                   data-testid="input-employee-email"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">PESEL</Label>
+                <Input
+                  value={form.pesel || ""}
+                  onChange={e => setField("pesel", e.target.value)}
+                  placeholder="00000000000"
+                  maxLength={11}
+                  data-testid="input-employee-pesel"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Data urodzenia</Label>
+                <Input
+                  type="date"
+                  value={form.birthDate || ""}
+                  onChange={e => setField("birthDate", e.target.value)}
+                  data-testid="input-employee-birth-date"
                 />
               </div>
             </div>

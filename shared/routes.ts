@@ -16,6 +16,8 @@ import {
   accountSnapshots,
   insertEmployeeSchema,
   employees,
+  insertMedicalExamSchema,
+  medicalExams,
   insertOwnerPaymentSchema,
   ownerPayments
 } from './schema';
@@ -305,6 +307,31 @@ export const api = {
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+  medicalExams: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/employees/:employeeId/medical-exams',
+      responses: {
+        200: z.array(z.custom<typeof medicalExams.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/employees/:employeeId/medical-exams',
+      input: insertMedicalExamSchema,
+      responses: {
+        201: z.custom<typeof medicalExams.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/medical-exams/:id',
+      responses: {
+        204: z.void(),
       },
     },
   },

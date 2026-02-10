@@ -342,6 +342,30 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Medical Exams
+  app.get('/api/employees/:employeeId/medical-exams', isAuthenticated, async (req, res) => {
+    const exams = await storage.getMedicalExams(Number(req.params.employeeId));
+    res.json(exams);
+  });
+
+  app.post('/api/employees/:employeeId/medical-exams', isAuthenticated, async (req, res) => {
+    try {
+      const input = api.medicalExams.create.input.parse({
+        ...req.body,
+        employeeId: Number(req.params.employeeId),
+      });
+      const exam = await storage.createMedicalExam(input);
+      res.status(201).json(exam);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.delete('/api/medical-exams/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteMedicalExam(Number(req.params.id));
+    res.status(204).send();
+  });
+
   // Stats
   app.get(api.stats.dashboard.path, isAuthenticated, async (req, res) => {
     const stats = await storage.getDashboardStats();

@@ -94,15 +94,26 @@ export const employees = pgTable("employees", {
   lastName: text("last_name").notNull(),
   phone: text("phone"),
   email: text("email"),
+  pesel: text("pesel"),
+  birthDate: date("birth_date"),
   cooperationType: text("cooperation_type").notNull(), // 'ETAT', 'PRACA_NA_H'
   contractType: text("contract_type"), // 'CZAS_OKRESLONY', 'CZAS_NIEOKRESLONY'
   contractStart: date("contract_start"),
   contractEnd: date("contract_end"),
-  position: text("position").notNull(), // 'KIEROWNIK_RECEPCJI', 'PRACOWNIK_RECEPCJI', 'KONSERWATOR', 'OSOBA_SPRZATAJACA'
+  position: text("position").notNull(), // 'KIEROWNIK_RECEPCJI', 'PRACOWNIK_RECEPCJI', 'KONSERWATOR', 'OSOBA_SPRZATAJACA', 'FINANCIAL_MANAGER'
   hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }),
   comment: text("comment"),
   status: text("status").notNull().default("AKTYWNY"), // 'AKTYWNY', 'NIEAKTYWNY'
   photoUrl: text("photo_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const medicalExams = pgTable("medical_exams", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  examName: text("exam_name").notNull(),
+  examDate: date("exam_date").notNull(),
+  validUntil: date("valid_until").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -171,6 +182,17 @@ export const attachmentsRelations = relations(attachments, ({ one }) => ({
   }),
 }));
 
+export const employeesRelations = relations(employees, ({ many }) => ({
+  medicalExams: many(medicalExams),
+}));
+
+export const medicalExamsRelations = relations(medicalExams, ({ one }) => ({
+  employee: one(employees, {
+    fields: [medicalExams.employeeId],
+    references: [employees.id],
+  }),
+}));
+
 export const ownerPaymentsRelations = relations(ownerPayments, ({ one }) => ({
   apartment: one(apartments, {
     fields: [ownerPayments.apartmentId],
@@ -188,6 +210,7 @@ export const insertAccountSchema = createInsertSchema(accounts).omit({ id: true 
 export const insertAccountSnapshotSchema = createInsertSchema(accountSnapshots).omit({ id: true });
 export const insertAttachmentSchema = createInsertSchema(attachments).omit({ id: true, uploadedAt: true });
 export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true, createdAt: true });
+export const insertMedicalExamSchema = createInsertSchema(medicalExams).omit({ id: true, createdAt: true });
 export const insertOwnerPaymentSchema = createInsertSchema(ownerPayments).omit({ id: true });
 
 // Types
@@ -209,5 +232,7 @@ export type Attachment = typeof attachments.$inferSelect;
 export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
 export type Employee = typeof employees.$inferSelect;
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+export type MedicalExam = typeof medicalExams.$inferSelect;
+export type InsertMedicalExam = z.infer<typeof insertMedicalExamSchema>;
 export type OwnerPayment = typeof ownerPayments.$inferSelect;
 export type InsertOwnerPayment = z.infer<typeof insertOwnerPaymentSchema>;

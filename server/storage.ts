@@ -9,6 +9,7 @@ import {
   accountSnapshots, AccountSnapshot, InsertAccountSnapshot,
   attachments, Attachment, InsertAttachment,
   employees, Employee, InsertEmployee,
+  medicalExams, MedicalExam, InsertMedicalExam,
   ownerPayments, OwnerPayment, InsertOwnerPayment
 } from "@shared/schema";
 import { db } from "./db";
@@ -67,6 +68,11 @@ export interface IStorage {
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee>;
   deleteEmployee(id: number): Promise<void>;
+
+  // Medical Exams
+  getMedicalExams(employeeId: number): Promise<MedicalExam[]>;
+  createMedicalExam(exam: InsertMedicalExam): Promise<MedicalExam>;
+  deleteMedicalExam(id: number): Promise<void>;
 
   // Owner Payments
   getOwnerPayments(apartmentId: number): Promise<OwnerPayment[]>;
@@ -273,6 +279,22 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEmployee(id: number): Promise<void> {
     await db.delete(employees).where(eq(employees.id, id));
+  }
+
+  // Medical Exams
+  async getMedicalExams(employeeId: number): Promise<MedicalExam[]> {
+    return await db.select().from(medicalExams)
+      .where(eq(medicalExams.employeeId, employeeId))
+      .orderBy(desc(medicalExams.validUntil));
+  }
+
+  async createMedicalExam(exam: InsertMedicalExam): Promise<MedicalExam> {
+    const [newExam] = await db.insert(medicalExams).values(exam).returning();
+    return newExam;
+  }
+
+  async deleteMedicalExam(id: number): Promise<void> {
+    await db.delete(medicalExams).where(eq(medicalExams.id, id));
   }
 
   // Owner Payments
