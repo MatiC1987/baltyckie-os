@@ -203,9 +203,10 @@ function SortableNavItem({ item, isActive, onClick }: { item: NavItem; isActive:
           className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer group",
             isActive
-              ? "bg-primary text-white shadow-lg shadow-primary/25"
+              ? "text-white shadow-lg"
               : "text-slate-400 hover:text-white hover:bg-white/10"
           )}
+          style={isActive ? { backgroundColor: "#5ADBFA", boxShadow: "0 4px 14px rgba(90, 219, 250, 0.3)" } : undefined}
         >
           <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-white" : "text-slate-400 group-hover:text-white")} />
           <span className="font-medium text-xs truncate">{item.label}</span>
