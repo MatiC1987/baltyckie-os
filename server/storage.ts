@@ -11,7 +11,10 @@ import {
   employees, Employee, InsertEmployee,
   medicalExams, MedicalExam, InsertMedicalExam,
   ownerPayments, OwnerPayment, InsertOwnerPayment,
-  blockades, Blockade, InsertBlockade
+  blockades, Blockade, InsertBlockade,
+  locations, Location, InsertLocation,
+  serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
+  serviceContracts, ServiceContract, InsertServiceContract
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -84,6 +87,23 @@ export interface IStorage {
   getBlockades(): Promise<Blockade[]>;
   createBlockade(blockade: InsertBlockade): Promise<Blockade>;
   deleteBlockade(id: number): Promise<void>;
+
+  // Locations
+  getLocations(): Promise<Location[]>;
+  createLocation(location: InsertLocation): Promise<Location>;
+  updateLocation(id: number, location: Partial<InsertLocation>): Promise<Location>;
+  deleteLocation(id: number): Promise<void>;
+
+  // Service Contract Categories
+  getServiceContractCategories(): Promise<ServiceContractCategory[]>;
+  createServiceContractCategory(cat: InsertServiceContractCategory): Promise<ServiceContractCategory>;
+  deleteServiceContractCategory(id: number): Promise<void>;
+
+  // Service Contracts
+  getServiceContracts(): Promise<ServiceContract[]>;
+  createServiceContract(contract: InsertServiceContract): Promise<ServiceContract>;
+  updateServiceContract(id: number, contract: Partial<InsertServiceContract>): Promise<ServiceContract>;
+  deleteServiceContract(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -331,6 +351,59 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBlockade(id: number): Promise<void> {
     await db.delete(blockades).where(eq(blockades.id, id));
+  }
+
+  // Locations
+  async getLocations(): Promise<Location[]> {
+    return await db.select().from(locations).orderBy(locations.sortOrder);
+  }
+
+  async createLocation(location: InsertLocation): Promise<Location> {
+    const [newLocation] = await db.insert(locations).values(location).returning();
+    return newLocation;
+  }
+
+  async updateLocation(id: number, location: Partial<InsertLocation>): Promise<Location> {
+    const [updated] = await db.update(locations).set(location).where(eq(locations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLocation(id: number): Promise<void> {
+    await db.delete(locations).where(eq(locations.id, id));
+  }
+
+  // Service Contract Categories
+  async getServiceContractCategories(): Promise<ServiceContractCategory[]> {
+    return await db.select().from(serviceContractCategories).orderBy(serviceContractCategories.sortOrder);
+  }
+
+  async createServiceContractCategory(cat: InsertServiceContractCategory): Promise<ServiceContractCategory> {
+    const [newCat] = await db.insert(serviceContractCategories).values(cat).returning();
+    return newCat;
+  }
+
+  async deleteServiceContractCategory(id: number): Promise<void> {
+    await db.delete(serviceContracts).where(eq(serviceContracts.categoryId, id));
+    await db.delete(serviceContractCategories).where(eq(serviceContractCategories.id, id));
+  }
+
+  // Service Contracts
+  async getServiceContracts(): Promise<ServiceContract[]> {
+    return await db.select().from(serviceContracts).orderBy(desc(serviceContracts.createdAt));
+  }
+
+  async createServiceContract(contract: InsertServiceContract): Promise<ServiceContract> {
+    const [newContract] = await db.insert(serviceContracts).values(contract).returning();
+    return newContract;
+  }
+
+  async updateServiceContract(id: number, contract: Partial<InsertServiceContract>): Promise<ServiceContract> {
+    const [updated] = await db.update(serviceContracts).set(contract).where(eq(serviceContracts.id, id)).returning();
+    return updated;
+  }
+
+  async deleteServiceContract(id: number): Promise<void> {
+    await db.delete(serviceContracts).where(eq(serviceContracts.id, id));
   }
 
   // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)

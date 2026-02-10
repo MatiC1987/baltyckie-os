@@ -16,6 +16,8 @@ import Import from "@/pages/Import";
 import Landing from "@/pages/Landing";
 import Employees from "@/pages/Employees";
 import Terminarz from "@/pages/Terminarz";
+import Lokalizacje from "@/pages/Lokalizacje";
+import ServiceContracts from "@/pages/ServiceContracts";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -78,7 +80,7 @@ function Router() {
 
       <Route path="/contracts-rent" component={() => <AuthenticatedPlaceholder title="Umowy Najmu" description="Zarządzanie umowami najmu." />} />
       <Route path="/contracts-subrent" component={() => <AuthenticatedPlaceholder title="Umowy Podnajmu" description="Zarządzanie umowami podnajmu." />} />
-      <Route path="/contracts-services" component={() => <AuthenticatedPlaceholder title="Umowy (usługi)" description="Umowy na usługi." />} />
+      <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
       <Route path="/contracts-other" component={() => <AuthenticatedPlaceholder title="Umowy (inne)" description="Pozostałe umowy." />} />
 
       <Route path="/employees" component={() => <AuthenticatedRoute component={Employees} />} />
@@ -86,6 +88,7 @@ function Router() {
       <Route path="/import" component={() => <AuthenticatedRoute component={Import} />} />
       <Route path="/export" component={() => <AuthenticatedPlaceholder title="Eksport rezerwacji" description="Eksport danych rezerwacji do pliku." />} />
       <Route path="/user-accounts" component={() => <AuthenticatedPlaceholder title="Konta użytkowników" description="Zarządzanie kontami użytkowników systemu." />} />
+      <Route path="/locations" component={() => <AuthenticatedRoute component={Lokalizacje} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

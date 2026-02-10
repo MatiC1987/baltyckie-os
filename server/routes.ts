@@ -29,6 +29,43 @@ function excelDateToISO(val: any): string | null {
   return null;
 }
 
+async function seedLocations() {
+  const existingLocs = await storage.getLocations();
+  if (existingLocs.length === 0) {
+    console.log("Seeding default locations...");
+    const defaultLocs = [
+      { name: "GRAND BALTIC", sortOrder: 0 },
+      { name: "BULWAR PORTOWY", sortOrder: 1 },
+      { name: "WCZASOWA", sortOrder: 2 },
+      { name: "NA WYDMIE", sortOrder: 3 },
+      { name: "PRZEWŁOKA", sortOrder: 4 },
+    ];
+    for (const loc of defaultLocs) {
+      await storage.createLocation(loc);
+    }
+    console.log("Default locations seeded!");
+  }
+}
+
+async function seedServiceContractCategories() {
+  const existingCats = await storage.getServiceContractCategories();
+  if (existingCats.length === 0) {
+    console.log("Seeding default service contract categories...");
+    const defaultCats = [
+      { name: "Vectra", sortOrder: 0 },
+      { name: "Media", sortOrder: 1 },
+      { name: "Energa", sortOrder: 2 },
+      { name: "Marketing&Reklama", sortOrder: 3 },
+      { name: "Canal+", sortOrder: 4 },
+      { name: "Inne", sortOrder: 5 },
+    ];
+    for (const cat of defaultCats) {
+      await storage.createServiceContractCategory(cat);
+    }
+    console.log("Default service contract categories seeded!");
+  }
+}
+
 async function seedData() {
   const existingApts = await storage.getApartments();
   if (existingApts.length === 0) {
@@ -52,6 +89,8 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
   seedData().catch(console.error);
+  seedLocations().catch(console.error);
+  seedServiceContractCategories().catch(console.error);
 
   // Owners
   app.get(api.owners.list.path, isAuthenticated, async (req, res) => {
@@ -392,6 +431,84 @@ export async function registerRoutes(
 
   app.delete('/api/medical-exams/:id', isAuthenticated, async (req, res) => {
     await storage.deleteMedicalExam(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Locations
+  app.get('/api/locations', isAuthenticated, async (req, res) => {
+    const locs = await storage.getLocations();
+    res.json(locs);
+  });
+
+  app.post('/api/locations', isAuthenticated, async (req, res) => {
+    try {
+      const loc = await storage.createLocation(req.body);
+      res.status(201).json(loc);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.put('/api/locations/:id', isAuthenticated, async (req, res) => {
+    try {
+      const loc = await storage.updateLocation(Number(req.params.id), req.body);
+      res.json(loc);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.delete('/api/locations/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteLocation(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Service Contract Categories
+  app.get('/api/service-contract-categories', isAuthenticated, async (req, res) => {
+    const cats = await storage.getServiceContractCategories();
+    res.json(cats);
+  });
+
+  app.post('/api/service-contract-categories', isAuthenticated, async (req, res) => {
+    try {
+      const cat = await storage.createServiceContractCategory(req.body);
+      res.status(201).json(cat);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.delete('/api/service-contract-categories/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteServiceContractCategory(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Service Contracts
+  app.get('/api/service-contracts', isAuthenticated, async (req, res) => {
+    const contracts = await storage.getServiceContracts();
+    res.json(contracts);
+  });
+
+  app.post('/api/service-contracts', isAuthenticated, async (req, res) => {
+    try {
+      const contract = await storage.createServiceContract(req.body);
+      res.status(201).json(contract);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.put('/api/service-contracts/:id', isAuthenticated, async (req, res) => {
+    try {
+      const contract = await storage.updateServiceContract(Number(req.params.id), req.body);
+      res.json(contract);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd walidacji" });
+    }
+  });
+
+  app.delete('/api/service-contracts/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteServiceContract(Number(req.params.id));
     res.status(204).send();
   });
 

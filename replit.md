@@ -13,7 +13,7 @@ Full-stack Polish-language apartment rental financial management application. Ma
 ## Project Structure
 ```
 client/src/
-  pages/          - Dashboard, Apartments, Owners, Reservations, Arrivals, Leases, Finance, Import, Placeholder, Landing
+  pages/          - Dashboard, Apartments, Owners, Reservations, Arrivals, Leases, Finance, Import, Employees, Terminarz, Lokalizacje, ServiceContracts, Placeholder, Landing
   components/     - Layout, Sidebar, DataTable, ui/ (shadcn components)
   hooks/          - use-auth, use-apartments, use-reservations, use-leases, use-expenses, use-accounts, use-stats
   lib/            - queryClient (TanStack Query v5)
@@ -23,7 +23,7 @@ server/
   db.ts           - Drizzle database connection
   replit_integrations/ - Auth setup
 shared/
-  schema.ts       - Drizzle schema (apartments, reservations, leases, expenses, accounts, accountSnapshots)
+  schema.ts       - Drizzle schema (apartments, reservations, leases, expenses, accounts, accountSnapshots, employees, medicalExams, blockades, locations, serviceContracts, serviceContractCategories, ownerPayments)
   routes.ts       - API contract with Zod schemas
   models/auth.ts  - User model for Replit Auth
 ```
@@ -52,6 +52,13 @@ shared/
 - expenses (id serial PK, date, category, amount, apartment_id FK, description, type FIXED/VARIABLE, vat_amount)
 - accounts (id serial PK, name, type BANK/CASH/LOAN)
 - account_snapshots (id serial PK, account_id FK, date, balance, notes)
+- employees (id serial PK, firstName, lastName, phone, email, pesel, birthDate, cooperationType, contractType, contractStart, contractEnd, position, hourlyRate, comment, status, photoUrl)
+- medical_exams (id serial PK, employee_id FK, examName, examDate, validUntil)
+- blockades (id serial PK, apartment_id FK, startDate, endDate, reason)
+- locations (id serial PK, name, address, photoUrl, sortOrder) - dynamic apartment location categories
+- service_contracts (id serial PK, name, categoryId FK, signDate, duration, endDate, serviceAddress, monthlyPrice)
+- service_contract_categories (id serial PK, name, sortOrder) - categories for service contracts (Vectra, Media, Energa, etc.)
+- owner_payments (id serial PK, apartment_id FK, category, amount, date, description)
 - users (Replit Auth managed)
 
 ## API Endpoints
@@ -67,6 +74,12 @@ All require authentication. Defined in shared/routes.ts:
 - GET/POST /api/apartments/:id/payments, DELETE /api/owner-payments/:id
 - POST /api/hotres/import-csv (multipart CSV file upload from HotRes export)
 - GET /api/hotres/test, POST /api/hotres/sync (API integration - kept for future use)
+- GET/POST /api/employees, PUT/DELETE /api/employees/:id
+- GET/POST /api/employees/:id/medical-exams, DELETE /api/medical-exams/:id
+- GET/POST /api/blockades, DELETE /api/blockades/:id
+- GET/POST /api/locations, PUT/DELETE /api/locations/:id
+- GET/POST /api/service-contracts, PUT/DELETE /api/service-contracts/:id
+- GET/POST /api/service-contract-categories, DELETE /api/service-contract-categories/:id
 
 ## User Preferences
 - Language: Polish (all UI text in Polish)
@@ -91,3 +104,8 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Added medicalExams table (employeeId FK, examName, examDate, validUntil) with full CRUD API
 - 2026-02-10: Added Terminarz (graphical calendar) - Gantt-chart timeline view for reservations with apartment rows, colored reservation bars, blockade support, date range navigation, 1-6 month view selector, location filter, add reservation/blockade dialogs, today line marker, hover tooltips
 - 2026-02-10: Added blockades table (apartmentId FK, startDate, endDate, reason) with full CRUD API for blocking apartment periods
+- 2026-02-10: Added Locations management system - locations table with CRUD API, Lokalizacje page under USTAWIENIA, 5 default seeded locations (GRAND BALTIC, BULWAR PORTOWY, WCZASOWA, NA WYDMIE, PRZEWŁOKA)
+- 2026-02-10: Added Service Contracts system - serviceContracts + serviceContractCategories tables, full CRUD API, tabs-based UI with dynamic categories (seeded: Vectra, Media, Energa, Marketing&Reklama, Canal+, Inne), add contract form with fields (name, sign date, duration, end date, service address, monthly price)
+- 2026-02-10: Enhanced Terminarz: rounded-md corners on reservation/blockade bars, status-based colors (DO_OPLACENIA=#f59e0b, PRZYJETA=#22c55e, ANULOWANA=#ef4444, BLOKADA=#9ca3af), Settings icon with color customization dialog (saved to localStorage), reservation preview dialog on click, apartments dynamically grouped by database locations
+- 2026-02-10: Added collapsible sidebar sections - click section title to expand/collapse, state persisted in localStorage (key: sidebar-collapsed-v1), smooth animation with chevron rotation
+- 2026-02-10: Sidebar accent color #5ADBFA for active navigation items

@@ -135,6 +135,34 @@ export const blockades = pgTable("blockades", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const locations = pgTable("locations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  address: text("address"),
+  photoUrl: text("photo_url"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const serviceContractCategories = pgTable("service_contract_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const serviceContracts = pgTable("service_contracts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  categoryId: integer("category_id").references(() => serviceContractCategories.id),
+  signDate: date("sign_date"),
+  duration: text("duration"),
+  endDate: date("end_date"),
+  serviceAddress: text("service_address"),
+  monthlyPrice: decimal("monthly_price", { precision: 10, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const ownersRelations = relations(owners, ({ many }) => ({
   apartments: many(apartments),
@@ -216,6 +244,19 @@ export const blockadesRelations = relations(blockades, ({ one }) => ({
   }),
 }));
 
+export const locationsRelations = relations(locations, () => ({}));
+
+export const serviceContractCategoriesRelations = relations(serviceContractCategories, ({ many }) => ({
+  contracts: many(serviceContracts),
+}));
+
+export const serviceContractsRelations = relations(serviceContracts, ({ one }) => ({
+  category: one(serviceContractCategories, {
+    fields: [serviceContracts.categoryId],
+    references: [serviceContractCategories.id],
+  }),
+}));
+
 // Insert Schemas
 export const insertOwnerSchema = createInsertSchema(owners).omit({ id: true });
 export const insertApartmentSchema = createInsertSchema(apartments).omit({ id: true });
@@ -229,6 +270,9 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: tru
 export const insertMedicalExamSchema = createInsertSchema(medicalExams).omit({ id: true, createdAt: true });
 export const insertOwnerPaymentSchema = createInsertSchema(ownerPayments).omit({ id: true });
 export const insertBlockadeSchema = createInsertSchema(blockades).omit({ id: true, createdAt: true });
+export const insertLocationSchema = createInsertSchema(locations).omit({ id: true, createdAt: true });
+export const insertServiceContractCategorySchema = createInsertSchema(serviceContractCategories).omit({ id: true, createdAt: true });
+export const insertServiceContractSchema = createInsertSchema(serviceContracts).omit({ id: true, createdAt: true });
 
 // Types
 export type Owner = typeof owners.$inferSelect;
@@ -255,3 +299,9 @@ export type OwnerPayment = typeof ownerPayments.$inferSelect;
 export type InsertOwnerPayment = z.infer<typeof insertOwnerPaymentSchema>;
 export type Blockade = typeof blockades.$inferSelect;
 export type InsertBlockade = z.infer<typeof insertBlockadeSchema>;
+export type Location = typeof locations.$inferSelect;
+export type InsertLocation = z.infer<typeof insertLocationSchema>;
+export type ServiceContractCategory = typeof serviceContractCategories.$inferSelect;
+export type InsertServiceContractCategory = z.infer<typeof insertServiceContractCategorySchema>;
+export type ServiceContract = typeof serviceContracts.$inferSelect;
+export type InsertServiceContract = z.infer<typeof insertServiceContractSchema>;

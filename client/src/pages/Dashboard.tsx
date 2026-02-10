@@ -104,7 +104,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">Kokpit</h2>
+        <h2 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h2>
         <p className="text-muted-foreground">Przegląd wyników finansowych i operacyjnych.</p>
       </div>
 

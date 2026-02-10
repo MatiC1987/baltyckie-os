@@ -21,10 +21,12 @@ import {
   Download,
   Users,
   Settings,
+  MapPin,
   LogOut,
   Menu,
   X,
-  GripVertical
+  GripVertical,
+  ChevronDown
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback, useEffect, useMemo } from "react";
@@ -91,10 +93,11 @@ const ICON_MAP: Record<string, any> = {
   Download,
   Users,
   Settings,
+  MapPin,
 };
 
 const DEFAULT_ITEMS: Record<string, NavItem> = {
-  kokpit: { id: "kokpit", href: "/", label: "Kokpit", iconName: "LayoutDashboard" },
+  kokpit: { id: "kokpit", href: "/", label: "Dashboard", iconName: "LayoutDashboard" },
   "finance-forecast": { id: "finance-forecast", href: "/finance-forecast", label: "Finanse / Prognoza", iconName: "TrendingUp" },
   calendar: { id: "calendar", href: "/calendar", label: "Terminarz", iconName: "CalendarDays" },
   reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
@@ -116,6 +119,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   import: { id: "import", href: "/import", label: "Import rezerwacji", iconName: "Upload" },
   export: { id: "export", href: "/export", label: "Eksport rezerwacji", iconName: "Download" },
   "user-accounts": { id: "user-accounts", href: "/user-accounts", label: "Konta użytkowników", iconName: "Users" },
+  locations: { id: "locations", href: "/locations", label: "Lokalizacje", iconName: "MapPin" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
@@ -124,10 +128,23 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "finanse", title: "FINANSE", itemIds: ["income-rent", "income-subrent", "forecast", "costs-apartments", "costs-expenses", "saldo-ml", "saldo-jg"] },
   { id: "umowy", title: "UMOWY", itemIds: ["contracts-rent", "contracts-subrent", "contracts-services", "contracts-other"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
-  { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts"] },
+  { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations"] },
 ];
 
 const STORAGE_KEY = "sidebar-layout-v1";
+const COLLAPSED_KEY = "sidebar-collapsed-v1";
+
+function loadCollapsed(): Set<string> {
+  try {
+    const stored = localStorage.getItem(COLLAPSED_KEY);
+    if (stored) return new Set(JSON.parse(stored));
+  } catch {}
+  return new Set();
+}
+
+function saveCollapsed(collapsed: Set<string>) {
+  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed])); } catch {}
+}
 
 function loadLayout(): SidebarLayout {
   try {
@@ -237,6 +254,17 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const [layout, setLayout] = useState<SidebarLayout>(loadLayout);
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
+
+  const toggleSection = useCallback((sectionId: string) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      saveCollapsed(next);
+      return next;
+    });
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -358,40 +386,56 @@ export function Sidebar() {
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              {layout.sections.map((section, sIdx) => (
-                <div key={section.id} data-testid={`nav-section-${section.id}`}>
-                  {sIdx > 0 && (
-                    <div className="my-3 border-t border-white/10" />
-                  )}
-                  {section.title && (
-                    <div className="px-3 pt-1 pb-2">
-                      <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">{section.title}</span>
+              {layout.sections.map((section, sIdx) => {
+                const isCollapsed = section.title ? collapsedSections.has(section.id) : false;
+                return (
+                  <div key={section.id} data-testid={`nav-section-${section.id}`}>
+                    {sIdx > 0 && (
+                      <div className="my-3 border-t border-white/10" />
+                    )}
+                    {section.title && (
+                      <div
+                        className="px-3 pt-1 pb-2 flex items-center justify-between cursor-pointer select-none group"
+                        onClick={() => toggleSection(section.id)}
+                        data-testid={`toggle-section-${section.id}`}
+                      >
+                        <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">{section.title}</span>
+                        <ChevronDown className={cn(
+                          "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:text-slate-300",
+                          isCollapsed ? "-rotate-90" : ""
+                        )} />
+                      </div>
+                    )}
+                    <div className={cn(
+                      "transition-all duration-200 overflow-hidden",
+                      isCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
+                    )}>
+                      <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy} id={section.id}>
+                        {section.itemIds.map((itemId) => {
+                          const item = layout.items[itemId];
+                          if (!item) return null;
+                          return (
+                            <SortableNavItem
+                              key={item.id}
+                              item={item}
+                              isActive={location === item.href}
+                              onClick={() => setIsOpen(false)}
+                            />
+                          );
+                        })}
+                      </SortableContext>
+                      {section.itemIds.length === 0 && (
+                        <div
+                          className="mx-2 py-3 border border-dashed border-white/10 rounded-lg flex items-center justify-center"
+                          data-testid={`empty-section-${section.id}`}
+                        >
+                          <span className="text-[10px] text-slate-600">Przeciągnij tutaj</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy} id={section.id}>
-                    {section.itemIds.map((itemId) => {
-                      const item = layout.items[itemId];
-                      if (!item) return null;
-                      return (
-                        <SortableNavItem
-                          key={item.id}
-                          item={item}
-                          isActive={location === item.href}
-                          onClick={() => setIsOpen(false)}
-                        />
-                      );
-                    })}
-                  </SortableContext>
-                  {section.itemIds.length === 0 && (
-                    <div
-                      className="mx-2 py-3 border border-dashed border-white/10 rounded-lg flex items-center justify-center"
-                      data-testid={`empty-section-${section.id}`}
-                    >
-                      <span className="text-[10px] text-slate-600">Przeciągnij tutaj</span>
-                    </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
 
               <DragOverlay>
                 {activeItem ? <DragOverlayItem item={activeItem} /> : null}

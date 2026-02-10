@@ -13,29 +13,54 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Lock, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Plus, Lock, ChevronLeft, ChevronRight, X, Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-const LOCATIONS = ["BULWAR PORTOWY", "NA WYDMIE", "WCZASOWA", "GRAND BALTIC", "PRZEWŁOKA", "INNE"];
+import type { Location } from "@shared/schema";
+
 const MONTH_NAMES_PL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 const DAY_NAMES_PL = ["Nd", "Pn", "Wt", "Śr", "Cz", "Pt", "So"];
 
-const RESERVATION_COLORS = [
-  "bg-violet-400 dark:bg-violet-600",
-  "bg-green-400 dark:bg-green-600",
-  "bg-blue-400 dark:bg-blue-600",
-  "bg-amber-400 dark:bg-amber-600",
-  "bg-pink-400 dark:bg-pink-600",
-  "bg-cyan-400 dark:bg-cyan-600",
-  "bg-orange-400 dark:bg-orange-600",
-  "bg-teal-400 dark:bg-teal-600",
-  "bg-rose-400 dark:bg-rose-600",
-  "bg-indigo-400 dark:bg-indigo-600",
-];
+interface TerminarzColors {
+  DO_OPLACENIA: string;
+  PRZYJETA: string;
+  ANULOWANA: string;
+  BLOKADA: string;
+}
 
-function getColorForReservation(id: number): string {
-  return RESERVATION_COLORS[id % RESERVATION_COLORS.length];
+const DEFAULT_COLORS: TerminarzColors = {
+  DO_OPLACENIA: "#f59e0b",
+  PRZYJETA: "#22c55e",
+  ANULOWANA: "#ef4444",
+  BLOKADA: "#9ca3af",
+};
+
+const COLORS_STORAGE_KEY = "terminarz-colors-v1";
+
+function loadColors(): TerminarzColors {
+  try {
+    const stored = localStorage.getItem(COLORS_STORAGE_KEY);
+    if (stored) return { ...DEFAULT_COLORS, ...JSON.parse(stored) };
+  } catch {}
+  return DEFAULT_COLORS;
+}
+
+function saveColors(colors: TerminarzColors) {
+  try { localStorage.setItem(COLORS_STORAGE_KEY, JSON.stringify(colors)); } catch {}
+}
+
+function getColorForStatus(status: string, colors: TerminarzColors): string {
+  switch (status) {
+    case "DO_OPLACENIA": return colors.DO_OPLACENIA;
+    case "PRZYJETA": return colors.PRZYJETA;
+    case "ANULOWANA": return colors.ANULOWANA;
+    default: return colors.PRZYJETA;
+  }
+}
+
+function useLocations() {
+  return useQuery<Location[]>({ queryKey: ["/api/locations"] });
 }
 
 function useBlockades() {
@@ -122,6 +147,7 @@ export default function Terminarz() {
   const { data: reservations, isLoading: loadingRes } = useReservations();
   const { data: apartments, isLoading: loadingApts } = useApartments();
   const { data: blockades, isLoading: loadingBlk } = useBlockades();
+  const { data: dbLocations } = useLocations();
 
   const [monthsToShow, setMonthsToShow] = useState(2);
   const [startDate, setStartDate] = useState(() => {
@@ -136,9 +162,17 @@ export default function Terminarz() {
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [hoveredBlockade, setHoveredBlockade] = useState<any>(null);
   const [compact, setCompact] = useState(false);
+  const [colors, setColors] = useState<TerminarzColors>(loadColors);
+  const [showSettings, setShowSettings] = useState(false);
+  const [previewRes, setPreviewRes] = useState<Reservation | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sz = compact ? COMPACT : NORMAL;
+
+  const locationNames = useMemo(() => {
+    if (!dbLocations || dbLocations.length === 0) return ["GRAND BALTIC", "BULWAR PORTOWY", "WCZASOWA", "NA WYDMIE", "PRZEWŁOKA", "INNE"];
+    return [...dbLocations.map(l => l.name), "INNE"];
+  }, [dbLocations]);
 
   const rangeStart = useMemo(() => new Date(startDate), [startDate]);
   const rangeEnd = useMemo(() => {
@@ -153,16 +187,32 @@ export default function Terminarz() {
     if (!apartments) return [];
     let apts = [...apartments].filter(a => a.active !== false);
     if (locationFilter !== "ALL") {
-      apts = apts.filter(a => a.location === locationFilter);
+      apts = apts.filter(a => (a.location || "INNE") === locationFilter);
     }
     apts.sort((a, b) => {
       const locA = a.location || "INNE";
       const locB = b.location || "INNE";
-      if (locA !== locB) return LOCATIONS.indexOf(locA) - LOCATIONS.indexOf(locB);
+      const idxA = locationNames.indexOf(locA);
+      const idxB = locationNames.indexOf(locB);
+      if (idxA !== idxB) return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
       return a.name.localeCompare(b.name, "pl");
     });
     return apts;
-  }, [apartments, locationFilter]);
+  }, [apartments, locationFilter, locationNames]);
+
+  const apartmentsByLocation = useMemo(() => {
+    const groups: { location: string; apartments: typeof filteredApartments }[] = [];
+    const seen = new Set<string>();
+    for (const apt of filteredApartments) {
+      const loc = apt.location || "INNE";
+      if (!seen.has(loc)) {
+        seen.add(loc);
+        groups.push({ location: loc, apartments: [] });
+      }
+      groups.find(g => g.location === loc)!.apartments.push(apt);
+    }
+    return groups;
+  }, [filteredApartments]);
 
   const monthGroups = useMemo(() => {
     const groups: { label: string; days: Date[] }[] = [];
@@ -267,12 +317,16 @@ export default function Terminarz() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Wszystkie</SelectItem>
-              {LOCATIONS.map(loc => (
+              {locationNames.map(loc => (
                 <SelectItem key={loc} value={loc}>{loc}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+
+        <Button size="icon" variant="ghost" onClick={() => setShowSettings(true)} data-testid="button-terminarz-settings">
+          <Settings2 className="h-4 w-4" />
+        </Button>
       </div>
 
       <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden relative">
@@ -365,8 +419,8 @@ export default function Terminarz() {
                       return (
                         <div
                           key={`blk-${blk.id}`}
-                          className="absolute bg-gray-400/50 dark:bg-gray-600/50 rounded-sm z-[2] flex items-center justify-center cursor-pointer border border-gray-500/30"
-                          style={{ left, width, top: sz.barTop, height: sz.barHeight }}
+                          className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
+                          style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.BLOKADA, opacity: 0.7 }}
                           onMouseEnter={(e) => {
                             setHoveredBlockade(blk);
                             setTooltipPos({ x: e.clientX, y: e.clientY });
@@ -396,13 +450,14 @@ export default function Terminarz() {
 
                       const left = effectiveStart * sz.dayWidth;
                       const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
-                      const colorClass = getColorForReservation(res.id);
+                      const barColor = getColorForStatus(res.status || "PRZYJETA", colors);
 
                       return (
                         <div
                           key={`res-${res.id}`}
-                          className={`absolute ${colorClass} rounded-sm z-[3] flex items-center cursor-pointer shadow-sm border border-black/10`}
-                          style={{ left, width, top: sz.barTop, height: sz.barHeight }}
+                          className="absolute rounded-md z-[3] flex items-center cursor-pointer shadow-sm border border-black/10"
+                          style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: barColor }}
+                          onClick={() => setPreviewRes(res)}
                           onMouseEnter={(e) => {
                             setHoveredRes(res);
                             setTooltipPos({ x: e.clientX, y: e.clientY });
@@ -438,11 +493,19 @@ export default function Terminarz() {
         <div className="flex items-center gap-4 flex-wrap">
           <span>Wyświetlono {filteredApartments.length} apartamentów</span>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-violet-400 dark:bg-violet-600" />
-            <span>Rezerwacja</span>
+            <div className="w-3 h-3 rounded-md" style={{ backgroundColor: colors.DO_OPLACENIA }} />
+            <span>Do opłacenia</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-gray-400/50 dark:bg-gray-600/50 border border-gray-500/30" />
+            <div className="w-3 h-3 rounded-md" style={{ backgroundColor: colors.PRZYJETA }} />
+            <span>Przyjęta</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-md" style={{ backgroundColor: colors.ANULOWANA }} />
+            <span>Anulowana</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-md" style={{ backgroundColor: colors.BLOKADA, opacity: 0.7 }} />
             <span>Blokada</span>
           </div>
           <div className="flex items-center gap-1">
@@ -510,6 +573,56 @@ export default function Terminarz() {
         onClose={() => setShowNewBlockade(false)}
         apartments={filteredApartments}
       />
+
+      <ColorSettingsDialog
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        colors={colors}
+        onChange={(newColors) => {
+          setColors(newColors);
+          saveColors(newColors);
+        }}
+      />
+
+      {previewRes && (
+        <Dialog open={!!previewRes} onOpenChange={(o) => { if (!o) setPreviewRes(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Podgląd rezerwacji</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <div className="text-muted-foreground">Numer:</div>
+                <div className="font-medium" data-testid="preview-res-number">{previewRes.reservationNumber}</div>
+                <div className="text-muted-foreground">Gość:</div>
+                <div className="font-medium" data-testid="preview-res-guest">{previewRes.guestName}</div>
+                <div className="text-muted-foreground">Przyjazd:</div>
+                <div>{previewRes.startDate}</div>
+                <div className="text-muted-foreground">Wyjazd:</div>
+                <div>{previewRes.endDate}</div>
+                <div className="text-muted-foreground">Kwota pobytu:</div>
+                <div className="font-semibold">{Number(previewRes.price || 0).toFixed(2)} PLN</div>
+                <div className="text-muted-foreground">Zaliczka:</div>
+                <div>{Number(previewRes.prepayment || 0).toFixed(2)} PLN</div>
+                <div className="text-muted-foreground">Wpłacona kwota:</div>
+                <div>{Number(previewRes.paidAmount || 0).toFixed(2)} PLN</div>
+                <div className="text-muted-foreground">Status:</div>
+                <div>
+                  <span
+                    className="inline-block px-2 py-0.5 rounded-md text-white text-xs font-semibold"
+                    style={{ backgroundColor: getColorForStatus(previewRes.status || "PRZYJETA", colors) }}
+                  >
+                    {previewRes.status}
+                  </span>
+                </div>
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button variant="ghost" onClick={() => setPreviewRes(null)}>Zamknij</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -676,6 +789,68 @@ function NewBlockadeDialog({ open, onClose, apartments }: { open: boolean; onClo
             </Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ColorSettingsDialog({ open, onClose, colors, onChange }: {
+  open: boolean;
+  onClose: () => void;
+  colors: TerminarzColors;
+  onChange: (colors: TerminarzColors) => void;
+}) {
+  const [local, setLocal] = useState<TerminarzColors>(colors);
+
+  const handleSave = () => {
+    onChange(local);
+    onClose();
+  };
+
+  const handleReset = () => {
+    setLocal(DEFAULT_COLORS);
+  };
+
+  const colorFields: { key: keyof TerminarzColors; label: string }[] = [
+    { key: "DO_OPLACENIA", label: "Do opłacenia" },
+    { key: "PRZYJETA", label: "Przyjęta" },
+    { key: "ANULOWANA", label: "Anulowana" },
+    { key: "BLOKADA", label: "Blokada" },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Ustawienia kolorów</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {colorFields.map(({ key, label }) => (
+            <div key={key} className="flex items-center justify-between gap-3">
+              <Label className="text-sm">{label}</Label>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded-md border border-border cursor-pointer"
+                  style={{ backgroundColor: local[key] }}
+                />
+                <Input
+                  type="color"
+                  value={local[key]}
+                  onChange={e => setLocal({ ...local, [key]: e.target.value })}
+                  className="w-12 h-8 p-0 border-0 cursor-pointer"
+                  data-testid={`color-${key}`}
+                />
+              </div>
+            </div>
+          ))}
+          <div className="flex justify-between pt-2">
+            <Button variant="ghost" size="sm" onClick={handleReset}>Resetuj kolory</Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={onClose}>Anuluj</Button>
+              <Button onClick={handleSave} data-testid="button-save-colors">Zapisz</Button>
+            </div>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
