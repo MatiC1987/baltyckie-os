@@ -14,7 +14,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Eye, Calendar, User, Home, CreditCard } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle
+} from "@/components/ui/dialog";
 import type { Reservation } from "@shared/schema";
 
 type SortField = "reservationNumber" | "addDate" | "apartmentName" | "startDate" | "endDate" | "guestName" | "price" | "prepayment" | "paidAmount" | "remaining";
@@ -42,6 +45,7 @@ export default function Arrivals() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [previewReservation, setPreviewReservation] = useState<Reservation | null>(null);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -160,6 +164,7 @@ export default function Arrivals() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
+              <TableHead className="w-10"></TableHead>
               <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <SortableHeader field="addDate" label="Data dodania" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <SortableHeader field="apartmentName" label="Apartament" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
@@ -175,7 +180,7 @@ export default function Arrivals() {
           <TableBody>
             {arrivals.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                   Brak przyjętych rezerwacji
                 </TableCell>
               </TableRow>
@@ -184,6 +189,11 @@ export default function Arrivals() {
               const remaining = calcRemaining(r);
               return (
                 <TableRow key={r.id} data-testid={`row-arrival-page-${r.id}`}>
+                  <TableCell>
+                    <Button size="icon" variant="ghost" onClick={() => setPreviewReservation(r)} data-testid={`button-preview-arrival-${r.id}`}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                   <TableCell className="font-medium text-xs whitespace-nowrap">{r.reservationNumber}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.addDate || "—"}</TableCell>
                   <TableCell className="text-xs font-bold">
@@ -218,6 +228,12 @@ export default function Arrivals() {
       <div className="text-sm text-muted-foreground" data-testid="text-arrivals-page-count">
         Wyświetlono {arrivals.length} przyjętych rezerwacji
       </div>
+
+      <ArrivalPreviewDialog
+        reservation={previewReservation}
+        apartments={apartments || []}
+        onClose={() => setPreviewReservation(null)}
+      />
     </div>
   );
 }
@@ -244,5 +260,110 @@ function SortableHeader({ field, label, sortField, sortDir, onSort }: {
         }
       </button>
     </TableHead>
+  );
+}
+
+function calcNights(startDate: string, endDate: string): number {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function InfoRow({ label, value, highlight }: { label: string; value: string | null | undefined; highlight?: boolean }) {
+  return (
+    <div className="flex items-start gap-2 py-2.5 border-b border-border last:border-b-0">
+      <span className="text-xs text-muted-foreground w-44 shrink-0 pt-0.5">{label}</span>
+      <span className={`text-sm ${highlight ? "font-bold" : "font-medium"}`}>{value || "—"}</span>
+    </div>
+  );
+}
+
+function ArrivalPreviewDialog({ reservation, apartments, onClose }: {
+  reservation: Reservation | null;
+  apartments: any[];
+  onClose: () => void;
+}) {
+  if (!reservation) return null;
+
+  const r = reservation;
+  const aptName = getApartmentName(r, apartments);
+  const remaining = calcRemaining(r);
+  const nights = calcNights(r.startDate, r.endDate);
+  const pricePerNight = nights > 0 ? Number(r.price) / nights : 0;
+
+  return (
+    <Dialog open={!!reservation} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between gap-2 flex-wrap" data-testid="text-arrival-preview-title">
+            <span>Rezerwacja #{r.reservationNumber}</span>
+            <Badge className="text-xs whitespace-nowrap bg-green-600 hover:bg-green-700 text-white border-green-600">PRZYJĘTA</Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 pt-2">
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <Home className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Apartament</span>
+            </div>
+            {aptName.includes(",") ? (
+              <div className="flex flex-col gap-1 pl-6">
+                {aptName.split(",").map((name, i) => (
+                  <span key={i} className="text-sm font-bold">{name.trim()}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm font-bold pl-6">{aptName}</p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <User className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Gość</span>
+            </div>
+            <InfoRow label="Imię i nazwisko" value={r.guestName} highlight />
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Termin pobytu</span>
+            </div>
+            <InfoRow label="Data dodania" value={r.addDate} />
+            <InfoRow label="Przyjazd" value={r.startDate} highlight />
+            <InfoRow label="Wyjazd" value={r.endDate} highlight />
+            <InfoRow label="Liczba noclegów" value={`${nights}`} />
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-0">
+            <div className="flex items-center gap-2 mb-3">
+              <CreditCard className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-primary">Rozliczenie</span>
+            </div>
+            <InfoRow label="Kwota pobytu" value={`${Number(r.price).toFixed(2)} zł`} highlight />
+            <InfoRow label="Cena za noc" value={`${pricePerNight.toFixed(2)} zł`} />
+            <InfoRow label="Zaliczka" value={`${Number(r.prepayment).toFixed(2)} zł`} />
+            <InfoRow label="Wpłacona kwota" value={`${Number(r.paidAmount).toFixed(2)} zł`} />
+            <div className="flex items-start gap-2 py-2.5 border-b border-border last:border-b-0">
+              <span className="text-xs text-muted-foreground w-44 shrink-0 pt-0.5">Pozostało do zapłaty</span>
+              <span className={`text-sm font-bold ${remaining > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
+                {remaining.toFixed(2)} zł
+              </span>
+            </div>
+            {Number(r.surcharge) > 0 && (
+              <InfoRow label="Dopłata" value={`${Number(r.surcharge).toFixed(2)} zł`} />
+            )}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" onClick={onClose} data-testid="button-close-arrival-preview">
+              Zamknij
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
