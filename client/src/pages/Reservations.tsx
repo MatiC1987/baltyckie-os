@@ -91,7 +91,7 @@ export default function Reservations() {
   const { data: reservations, isLoading } = useReservations();
   const { data: apartments } = useApartments();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [sortField, setSortField] = useState<SortField>("startDate");
+  const [sortField, setSortField] = useState<SortField>("reservationNumber");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showFilters, setShowFilters] = useState(false);
   const [filterDateFrom, setFilterDateFrom] = useState("");

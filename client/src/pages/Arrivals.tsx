@@ -51,7 +51,7 @@ export default function Arrivals() {
   const { data: apartments } = useApartments();
 
   const [sortField, setSortField] = useState<SortField>("startDate");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
