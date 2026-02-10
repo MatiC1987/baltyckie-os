@@ -618,7 +618,7 @@ export async function registerRoutes(
           guestName: hr.guestName,
           price: hr.price,
           prepayment: hr.prepayment || "0",
-          paidAmount: "0",
+          paidAmount: hr.paidAmount || "0",
           surcharge: "0",
           status: hr.status,
         });
@@ -723,7 +723,7 @@ export async function registerRoutes(
           guestName: hr.guestName,
           price: hr.price,
           prepayment: hr.prepayment || "0",
-          paidAmount: "0",
+          paidAmount: hr.paidAmount || "0",
           surcharge: "0",
           status: hr.status,
         });

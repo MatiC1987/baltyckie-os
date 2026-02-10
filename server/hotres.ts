@@ -158,6 +158,7 @@ export interface HotResReservation {
   guestName: string;
   price: string;
   prepayment: string;
+  paidAmount: string;
   status: string;
 }
 
@@ -208,7 +209,11 @@ function parseReservationsFromResponse(data: any): HotResReservation[] {
     ),
     prepayment: String(
       item.prepayment || item.deposit || item.zaliczka || item.przedplata ||
-      item.przedpłata || item.advance || item.paid || "0"
+      item.przedpłata || item.advance || "0"
+    ),
+    paidAmount: String(
+      item.paid || item.paidAmount || item.paid_amount || item.wplacona ||
+      item.wpłacona || item.zaplacono || item.zapłacono || "0"
     ),
     status: normalizeStatus(
       item.status || item.stan || ""
@@ -243,10 +248,10 @@ function normalizeDate(val: any): string {
 
 function normalizeStatus(val: any): string {
   const s = String(val).toUpperCase().trim();
-  if (s.includes("CANCEL") || s.includes("ANUL") || s.includes("ANULOWA") || s.includes("STORNO") || s === "ANULOWANA") return "ANULOWANA";
+  if (s === "CANCELED" || s === "CANCELLED" || s.includes("CANCEL") || s.includes("ANUL") || s.includes("ANULOWA") || s.includes("STORNO") || s === "ANULOWANA") return "ANULOWANA";
+  if (s === "COMPLETE" || s === "COMPLETED" || s === "CHECKOUT" || s === "CHECKIN" || s.includes("COMPLET") || s.includes("ZAKON") || s.includes("ZREALI")) return "PRZYJETA";
   if (s.includes("CONFIRM") || s.includes("ACCEPT") || s.includes("POTWIERDZ") || s.includes("PRZYJ") || s === "PRZYJETA" || s === "PRZYJĘTA") return "PRZYJETA";
-  if (s.includes("PEND") || s.includes("OCZEK") || s.includes("OPLAC") || s.includes("OPŁAC") || s === "DO_OPLACENIA") return "DO_OPLACENIA";
-  if (s.includes("COMPLET") || s.includes("ZAKON") || s.includes("ZREALI")) return "PRZYJETA";
+  if (s === "NEW" || s.includes("PEND") || s.includes("OCZEK") || s.includes("OPLAC") || s.includes("OPŁAC") || s === "DO_OPLACENIA") return "DO_OPLACENIA";
   return s || "DO_OPLACENIA";
 }
 
@@ -363,72 +368,152 @@ export async function fetchReservations(dateFrom?: string, dateTo?: string): Pro
   };
 }
 
+function isHeaderRow(cells: string[]): boolean {
+  if (cells.length < 5) return false;
+  const first = cells[0].trim().toLowerCase();
+  const knownHeaders = ['number', 'numer', 'nr', 'id', 'lp', 'numer rezerwacji', 'reservation'];
+  if (knownHeaders.some(h => first === h || first.includes(h))) return true;
+  if (/^\d+$/.test(cells[0].trim())) return false;
+  const datePatterns = /^\d{4}-\d{2}-\d{2}|^\d{2}[./-]\d{2}[./-]\d{4}/;
+  if (datePatterns.test(cells[0].trim())) return false;
+  return true;
+}
+
 export function parseHotResCsv(csvContent: string): HotResReservation[] {
   const lines = csvContent.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
+  if (lines.length === 0) return [];
 
   const separators = [';', ',', '\t'];
   let sep = ';';
-  const headerLine = lines[0];
   let maxCols = 0;
   for (const s of separators) {
-    const cols = parseCsvLine(headerLine, s).length;
+    const cols = parseCsvLine(lines[0], s).length;
     if (cols > maxCols) { maxCols = cols; sep = s; }
   }
 
-  const rawHeaders = parseCsvLine(headerLine, sep).map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+  const firstRowCells = parseCsvLine(lines[0], sep);
+  const hasHeader = isHeaderRow(firstRowCells);
+  let dataStartIdx = hasHeader ? 1 : 0;
 
-  const colMap = {
-    resNumber: findCol(rawHeaders, ['number', 'numer rezerwacji', 'numer', 'nr rezerwacji', 'nr', 'reservation number', 'booking number', 'id', 'lp']),
-    addDate: findCol(rawHeaders, ['add_date', 'data dodania', 'data_dodania', 'created', 'created_at']),
-    apartment: findCol(rawHeaders, ['roomscodes', 'apartament', 'pokój', 'pokoj', 'room', 'apartment', 'nazwa pokoju', 'obiekt', 'unit', 'nazwa', 'rate_title']),
-    startDate: findCol(rawHeaders, ['arrival_date', 'data przyjazdu', 'przyjazd', 'check-in', 'checkin', 'data od', 'od', 'start', 'arrival', 'from']),
-    endDate: findCol(rawHeaders, ['departure_date', 'data wyjazdu', 'wyjazd', 'check-out', 'checkout', 'data do', 'do', 'end', 'departure', 'to']),
-    lastName: findCol(rawHeaders, ['last_name', 'nazwisko']),
-    firstName: findCol(rawHeaders, ['first_name', 'imię', 'imie']),
-    guest: findCol(rawHeaders, ['gość', 'gosc', 'guest', 'imię i nazwisko', 'imie i nazwisko', 'klient', 'client', 'name', 'osoba']),
-    price: findCol(rawHeaders, ['amount', 'cena', 'kwota', 'wartość', 'wartosc', 'price', 'total', 'netto', 'brutto', 'suma']),
-    prepayment: findCol(rawHeaders, ['paid', 'zaliczka', 'przedpłata', 'przedplata', 'prepayment', 'deposit', 'advance', 'wpłata', 'wplata']),
-    status: findCol(rawHeaders, ['status', 'stan']),
+  if (hasHeader) {
+    const rawHeaders = firstRowCells.map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+
+    const colMap = {
+      resNumber: findCol(rawHeaders, ['number', 'numer rezerwacji', 'numer', 'nr rezerwacji', 'nr', 'reservation number', 'booking number', 'id', 'lp']),
+      addDate: findCol(rawHeaders, ['add_date', 'data dodania', 'data_dodania', 'created', 'created_at']),
+      apartment: findCol(rawHeaders, ['roomscodes', 'apartament', 'pokój', 'pokoj', 'room', 'apartment', 'nazwa pokoju', 'obiekt', 'unit', 'nazwa', 'rate_title']),
+      startDate: findCol(rawHeaders, ['arrival_date', 'data przyjazdu', 'przyjazd', 'check-in', 'checkin', 'data od', 'od', 'start', 'arrival', 'from']),
+      endDate: findCol(rawHeaders, ['departure_date', 'data wyjazdu', 'wyjazd', 'check-out', 'checkout', 'data do', 'do', 'end', 'departure', 'to']),
+      lastName: findCol(rawHeaders, ['last_name', 'nazwisko']),
+      firstName: findCol(rawHeaders, ['first_name', 'imię', 'imie']),
+      guest: findCol(rawHeaders, ['gość', 'gosc', 'guest', 'imię i nazwisko', 'imie i nazwisko', 'klient', 'client', 'name', 'osoba']),
+      price: findCol(rawHeaders, ['amount', 'cena', 'kwota', 'wartość', 'wartosc', 'price', 'total', 'netto', 'brutto', 'suma']),
+      paid: findCol(rawHeaders, ['paid', 'wpłacona', 'wplacona', 'wpłata', 'wplata', 'zapłacono', 'zaplacono']),
+      prepayment: findCol(rawHeaders, ['zaliczka', 'przedpłata', 'przedplata', 'prepayment', 'deposit', 'advance']),
+      status: findCol(rawHeaders, ['status', 'stan']),
+    };
+
+    const results: HotResReservation[] = [];
+
+    for (let i = dataStartIdx; i < lines.length; i++) {
+      const cells = parseCsvLine(lines[i], sep);
+      if (cells.length < 3) continue;
+
+      const getValue = (idx: number) => idx >= 0 && idx < cells.length ? cells[idx].trim().replace(/^["']|["']$/g, '') : '';
+
+      const startDate = normalizeDate(getValue(colMap.startDate));
+      const endDate = normalizeDate(getValue(colMap.endDate));
+      if (!startDate || !endDate) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) continue;
+
+      const resNumber = getValue(colMap.resNumber) || `CSV-${i}-${Date.now().toString(36)}`;
+      const addDateRaw = getValue(colMap.addDate);
+      const addDate = addDateRaw ? normalizeDate(addDateRaw) : "";
+
+      const priceStr = getValue(colMap.price).replace(/\s/g, '').replace(',', '.') || "0";
+      const paidStr = getValue(colMap.paid).replace(/\s/g, '').replace(',', '.') || "0";
+      const prepaymentStr = getValue(colMap.prepayment).replace(/\s/g, '').replace(',', '.') || "0";
+
+      let guestName = getValue(colMap.guest);
+      if (!guestName && (colMap.firstName >= 0 || colMap.lastName >= 0)) {
+        const firstName = getValue(colMap.firstName);
+        const lastName = getValue(colMap.lastName);
+        guestName = [firstName, lastName].filter(Boolean).join(" ");
+      }
+
+      results.push({
+        reservationNumber: resNumber,
+        apartmentName: getValue(colMap.apartment),
+        addDate: addDate && /^\d{4}-\d{2}-\d{2}$/.test(addDate) ? addDate : "",
+        startDate,
+        endDate,
+        guestName: guestName || "Nieznany",
+        price: isNaN(Number(priceStr)) ? "0" : priceStr,
+        prepayment: isNaN(Number(prepaymentStr)) ? "0" : prepaymentStr,
+        paidAmount: isNaN(Number(paidStr)) ? "0" : paidStr,
+        status: normalizeStatus(getValue(colMap.status)),
+      });
+    }
+
+    return results;
+  }
+
+  // Headerless CSV - fixed column positions matching HotRes export format:
+  // 0:number 1:status 2:add_date 3:arrival 4:departure 5:amount 6:paid 7:currency
+  // 8:rate_title 9:last_name 10:first_name 11:email 12:phone 13:address 14:city
+  // 15:zip 16:roomscodes 17:source 18:source_portal 19:source_commission
+  // 20:referer_url 21:discount_code 22:rate_board 23:message 24:comments
+  const COL = {
+    NUMBER: 0,
+    STATUS: 1,
+    ADD_DATE: 2,
+    ARRIVAL: 3,
+    DEPARTURE: 4,
+    AMOUNT: 5,
+    PAID: 6,
+    CURRENCY: 7,
+    LAST_NAME: 9,
+    FIRST_NAME: 10,
+    ROOMSCODES: 16,
   };
 
   const results: HotResReservation[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = dataStartIdx; i < lines.length; i++) {
     const cells = parseCsvLine(lines[i], sep);
-    if (cells.length < 3) continue;
+    if (cells.length < 7) continue;
 
     const getValue = (idx: number) => idx >= 0 && idx < cells.length ? cells[idx].trim().replace(/^["']|["']$/g, '') : '';
 
-    const startDate = normalizeDate(getValue(colMap.startDate));
-    const endDate = normalizeDate(getValue(colMap.endDate));
+    const startDate = normalizeDate(getValue(COL.ARRIVAL));
+    const endDate = normalizeDate(getValue(COL.DEPARTURE));
     if (!startDate || !endDate) continue;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) continue;
 
-    const resNumber = getValue(colMap.resNumber) || `CSV-${i}-${Date.now().toString(36)}`;
-    const addDateRaw = getValue(colMap.addDate);
+    const resNumber = getValue(COL.NUMBER) || `CSV-${i}-${Date.now().toString(36)}`;
+    const addDateRaw = getValue(COL.ADD_DATE);
     const addDate = addDateRaw ? normalizeDate(addDateRaw) : "";
 
-    const priceStr = getValue(colMap.price).replace(/\s/g, '').replace(',', '.') || "0";
-    const prepaymentStr = getValue(colMap.prepayment).replace(/\s/g, '').replace(',', '.') || "0";
+    const priceStr = getValue(COL.AMOUNT).replace(/\s/g, '').replace(',', '.') || "0";
+    const paidStr = getValue(COL.PAID).replace(/\s/g, '').replace(',', '.') || "0";
 
-    let guestName = getValue(colMap.guest);
-    if (!guestName && (colMap.firstName >= 0 || colMap.lastName >= 0)) {
-      const firstName = getValue(colMap.firstName);
-      const lastName = getValue(colMap.lastName);
-      guestName = [firstName, lastName].filter(Boolean).join(" ");
-    }
+    const firstName = getValue(COL.FIRST_NAME);
+    const lastName = getValue(COL.LAST_NAME);
+    const guestName = [firstName, lastName].filter(Boolean).join(" ") || "Nieznany";
+
+    const apartmentName = getValue(COL.ROOMSCODES);
 
     results.push({
       reservationNumber: resNumber,
-      apartmentName: getValue(colMap.apartment),
+      apartmentName,
       addDate: addDate && /^\d{4}-\d{2}-\d{2}$/.test(addDate) ? addDate : "",
       startDate,
       endDate,
-      guestName: guestName || "Nieznany",
+      guestName,
       price: isNaN(Number(priceStr)) ? "0" : priceStr,
-      prepayment: isNaN(Number(prepaymentStr)) ? "0" : prepaymentStr,
-      status: normalizeStatus(getValue(colMap.status)),
+      prepayment: "0",
+      paidAmount: isNaN(Number(paidStr)) ? "0" : paidStr,
+      status: normalizeStatus(getValue(COL.STATUS)),
     });
   }
 
