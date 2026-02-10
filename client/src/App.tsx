@@ -18,6 +18,7 @@ import Employees from "@/pages/Employees";
 import Terminarz from "@/pages/Terminarz";
 import Lokalizacje from "@/pages/Lokalizacje";
 import ServiceContracts from "@/pages/ServiceContracts";
+import CostsExpenses from "@/pages/CostsExpenses";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -74,7 +75,7 @@ function Router() {
       <Route path="/income-subrent" component={() => <AuthenticatedPlaceholder title="Przychody Podnajem" description="Przychody z podnajmu apartamentów." />} />
       <Route path="/forecast" component={() => <AuthenticatedPlaceholder title="Prognoza" description="Prognoza finansowa." />} />
       <Route path="/costs-apartments" component={() => <AuthenticatedPlaceholder title="Koszty (Apartamenty)" description="Koszty związane z apartamentami." />} />
-      <Route path="/costs-expenses" component={() => <AuthenticatedPlaceholder title="Koszty (Koszty)" description="Pozostałe koszty operacyjne." />} />
+      <Route path="/costs-expenses" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
       <Route path="/saldo-ml" component={() => <AuthenticatedPlaceholder title="Saldo - Małgorzata Latasiewicz" description="Rozliczenie salda." />} />
       <Route path="/saldo-jg" component={() => <AuthenticatedPlaceholder title="Saldo - Jolanta Głodkowska" description="Rozliczenie salda." />} />
 

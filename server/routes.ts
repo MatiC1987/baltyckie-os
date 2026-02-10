@@ -264,7 +264,10 @@ export async function registerRoutes(
 
   // Expenses
   app.get(api.expenses.list.path, isAuthenticated, async (req, res) => {
-    const expenses = await storage.getExpenses();
+    const filters: { startDate?: string; endDate?: string } = {};
+    if (req.query.startDate) filters.startDate = req.query.startDate as string;
+    if (req.query.endDate) filters.endDate = req.query.endDate as string;
+    const expenses = await storage.getExpenses(Object.keys(filters).length ? filters : undefined);
     res.json(expenses);
   });
 
@@ -280,6 +283,29 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       throw err;
     }
+  });
+
+  app.put("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const bodySchema = api.expenses.update.input.extend({
+        amount: z.coerce.string().optional(),
+        vatAmount: z.coerce.string().optional(),
+      });
+      const input = bodySchema.parse(req.body);
+      const expense = await storage.updateExpense(id, input);
+      if (!expense) return res.status(404).json({ message: "Koszt nie znaleziony" });
+      res.json(expense);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
+  });
+
+  app.delete("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.deleteExpense(id);
+    res.status(204).send();
   });
 
   // Company Balance

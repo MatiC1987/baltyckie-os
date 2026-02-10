@@ -66,6 +66,10 @@ export const expenses = pgTable("expenses", {
   description: text("description"),
   type: text("type").notNull(), // 'FIXED', 'VARIABLE'
   vatAmount: decimal("vat_amount", { precision: 10, scale: 2 }),
+  isForecast: boolean("is_forecast").default(false),
+  vendor: text("vendor"),
+  invoiceIssued: boolean("invoice_issued").default(false),
+  invoiceNumber: text("invoice_number"),
 });
 
 export const accounts = pgTable("accounts", {

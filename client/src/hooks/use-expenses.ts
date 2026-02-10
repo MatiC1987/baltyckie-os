@@ -40,10 +40,59 @@ export function useCreateExpense() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
-      toast({ title: "Sukces", description: "Wydatek został dodany" });
+      toast({ title: "Sukces", description: "Koszt został dodany" });
     },
     onError: () => {
-      toast({ title: "Błąd", description: "Nie udało się dodać wydatku", variant: "destructive" });
+      toast({ title: "Błąd", description: "Nie udało się dodać kosztu", variant: "destructive" });
+    }
+  });
+}
+
+export function useUpdateExpense() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertExpense> }) => {
+      const res = await fetch(`/api/expenses/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update expense");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
+      toast({ title: "Sukces", description: "Koszt został zaktualizowany" });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się zaktualizować kosztu", variant: "destructive" });
+    }
+  });
+}
+
+export function useDeleteExpense() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/expenses/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete expense");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
+      toast({ title: "Sukces", description: "Koszt został usunięty" });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się usunąć kosztu", variant: "destructive" });
     }
   });
 }

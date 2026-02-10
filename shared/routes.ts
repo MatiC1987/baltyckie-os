@@ -219,6 +219,24 @@ export const api = {
         400: errorSchemas.validation,
       },
     },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/expenses/:id',
+      input: insertExpenseSchema.partial(),
+      responses: {
+        200: z.custom<typeof expenses.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/expenses/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   accounts: {
     list: {
