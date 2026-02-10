@@ -78,6 +78,13 @@ const sections: NavSection[] = [
     ],
   },
   {
+    title: "DANE",
+    items: [
+      { href: "/apartments", label: "Apartamenty", icon: Building2 },
+      { href: "/owners", label: "Właściciele", icon: Users },
+    ],
+  },
+  {
     title: "USTAWIENIA",
     items: [
       { href: "/import", label: "Import rezerwacji", icon: Upload },
