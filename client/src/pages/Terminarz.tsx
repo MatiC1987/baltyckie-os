@@ -12,6 +12,7 @@ import { insertReservationSchema, type InsertReservation, type Reservation, type
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Lock, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -114,8 +115,8 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-const DAY_WIDTH = 36;
-const APT_COL_WIDTH = 140;
+const NORMAL = { dayWidth: 36, aptColWidth: 140, rowHeight: 36, headerHeight: 52, monthLabelHeight: 20, dayHeaderHeight: 32, barTop: 4, barHeight: 28, aptFontSize: "11px", dayNameSize: "9px", dayNumSize: "10px", barFontSize: "10px", monthLabelSize: "10px" };
+const COMPACT = { dayWidth: 22, aptColWidth: 100, rowHeight: 22, headerHeight: 36, monthLabelHeight: 14, dayHeaderHeight: 22, barTop: 2, barHeight: 18, aptFontSize: "9px", dayNameSize: "7px", dayNumSize: "8px", barFontSize: "8px", monthLabelSize: "8px" };
 
 export default function Terminarz() {
   const { data: reservations, isLoading: loadingRes } = useReservations();
@@ -134,8 +135,10 @@ export default function Terminarz() {
   const [hoveredRes, setHoveredRes] = useState<Reservation | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [hoveredBlockade, setHoveredBlockade] = useState<any>(null);
+  const [compact, setCompact] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const sz = compact ? COMPACT : NORMAL;
 
   const rangeStart = useMemo(() => new Date(startDate), [startDate]);
   const rangeEnd = useMemo(() => {
@@ -202,7 +205,7 @@ export default function Terminarz() {
     );
   }
 
-  const totalWidth = days.length * DAY_WIDTH;
+  const totalWidth = days.length * sz.dayWidth;
   const todayIndex = days.findIndex(d => isSameDay(d, new Date()));
 
   return (
@@ -274,33 +277,34 @@ export default function Terminarz() {
 
       <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden relative">
         <div className="flex">
-          <div className="shrink-0 border-r border-border bg-muted/50 z-10" style={{ width: APT_COL_WIDTH }}>
-            <div className="h-[52px] border-b border-border flex items-end px-2 pb-1">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase">Apartament</span>
+          <div className="shrink-0 border-r border-border bg-muted/50 z-10" style={{ width: sz.aptColWidth }}>
+            <div className="border-b border-border flex items-end px-2 pb-1" style={{ height: sz.headerHeight }}>
+              <span className="font-semibold text-muted-foreground uppercase" style={{ fontSize: sz.monthLabelSize }}>Apartament</span>
             </div>
             {filteredApartments.map((apt) => (
               <div
                 key={apt.id}
-                className="h-[36px] flex items-center px-2 border-b border-border"
+                className="flex items-center px-2 border-b border-border"
+                style={{ height: sz.rowHeight }}
                 data-testid={`apt-row-label-${apt.id}`}
               >
-                <span className="text-[11px] font-semibold truncate" title={apt.name}>{apt.name}</span>
+                <span className="font-semibold truncate" style={{ fontSize: sz.aptFontSize }} title={apt.name}>{apt.name}</span>
               </div>
             ))}
           </div>
 
           <div className="flex-1 overflow-x-auto" ref={scrollContainerRef}>
             <div style={{ width: totalWidth, minWidth: "100%" }}>
-              <div className="h-[52px] flex border-b border-border sticky top-0 bg-card z-[5]">
+              <div className="flex border-b border-border sticky top-0 bg-card z-[5]" style={{ height: sz.headerHeight }}>
                 {monthGroups.map((group, gi) => (
                   <div key={gi}>
                     <div
-                      className="text-[10px] font-bold text-center border-b border-border bg-muted/30 text-muted-foreground uppercase tracking-wide"
-                      style={{ width: group.days.length * DAY_WIDTH, height: 20 }}
+                      className="font-bold text-center border-b border-border bg-muted/30 text-muted-foreground uppercase tracking-wide flex items-center justify-center"
+                      style={{ width: group.days.length * sz.dayWidth, height: sz.monthLabelHeight, fontSize: sz.monthLabelSize }}
                     >
                       {group.label}
                     </div>
-                    <div className="flex" style={{ height: 32 }}>
+                    <div className="flex" style={{ height: sz.dayHeaderHeight }}>
                       {group.days.map((day, di) => {
                         const dow = day.getDay();
                         const isWeekend = dow === 0 || dow === 6;
@@ -309,13 +313,13 @@ export default function Terminarz() {
                           <div
                             key={di}
                             className={`flex flex-col items-center justify-center border-r border-border ${isWeekend ? "bg-muted/50" : ""} ${isToday ? "bg-primary/10" : ""}`}
-                            style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
+                            style={{ width: sz.dayWidth, minWidth: sz.dayWidth }}
                           >
-                            <span className={`text-[9px] leading-tight ${isWeekend ? "font-bold text-muted-foreground" : "text-muted-foreground"}`}>
+                            <span className={`leading-tight ${isWeekend ? "font-bold text-muted-foreground" : "text-muted-foreground"}`} style={{ fontSize: sz.dayNameSize }}>
                               {DAY_NAMES_PL[dow]}
                             </span>
-                            <span className={`text-[10px] leading-tight ${isToday ? "font-bold text-primary" : ""}`}>
-                              {day.getDate().toString().padStart(2, "0")}.{(day.getMonth() + 1).toString().padStart(2, "0")}
+                            <span className={`leading-tight ${isToday ? "font-bold text-primary" : ""}`} style={{ fontSize: sz.dayNumSize }}>
+                              {day.getDate().toString().padStart(2, "0")}{compact ? "" : `.${(day.getMonth() + 1).toString().padStart(2, "0")}`}
                             </span>
                           </div>
                         );
@@ -330,7 +334,7 @@ export default function Terminarz() {
                 const aptBlockades = (blockades || []).filter((b: any) => b.apartmentId === apt.id);
 
                 return (
-                  <div key={apt.id} className="relative h-[36px] border-b border-border" data-testid={`apt-row-${apt.id}`}>
+                  <div key={apt.id} className="relative border-b border-border" style={{ height: sz.rowHeight }} data-testid={`apt-row-${apt.id}`}>
                     {days.map((day, di) => {
                       const dow = day.getDay();
                       const isWeekend = dow === 0 || dow === 6;
@@ -339,7 +343,7 @@ export default function Terminarz() {
                         <div
                           key={di}
                           className={`absolute top-0 bottom-0 border-r border-border/30 ${isWeekend ? "bg-muted/30" : ""} ${isToday ? "bg-primary/5" : ""}`}
-                          style={{ left: di * DAY_WIDTH, width: DAY_WIDTH }}
+                          style={{ left: di * sz.dayWidth, width: sz.dayWidth }}
                         />
                       );
                     })}
@@ -355,14 +359,14 @@ export default function Terminarz() {
 
                       if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
 
-                      const left = effectiveStart * DAY_WIDTH;
-                      const width = (effectiveEnd - effectiveStart + 1) * DAY_WIDTH;
+                      const left = effectiveStart * sz.dayWidth;
+                      const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
 
                       return (
                         <div
                           key={`blk-${blk.id}`}
-                          className="absolute top-[4px] h-[28px] bg-gray-400/50 dark:bg-gray-600/50 rounded-sm z-[2] flex items-center justify-center cursor-pointer border border-gray-500/30"
-                          style={{ left, width }}
+                          className="absolute bg-gray-400/50 dark:bg-gray-600/50 rounded-sm z-[2] flex items-center justify-center cursor-pointer border border-gray-500/30"
+                          style={{ left, width, top: sz.barTop, height: sz.barHeight }}
                           onMouseEnter={(e) => {
                             setHoveredBlockade(blk);
                             setTooltipPos({ x: e.clientX, y: e.clientY });
@@ -370,8 +374,8 @@ export default function Terminarz() {
                           onMouseLeave={() => setHoveredBlockade(null)}
                           data-testid={`blockade-${blk.id}`}
                         >
-                          {width > 60 && (
-                            <span className="text-[10px] text-gray-700 dark:text-gray-300 font-medium truncate px-1">
+                          {width > (compact ? 40 : 60) && (
+                            <span className="text-gray-700 dark:text-gray-300 font-medium truncate px-1" style={{ fontSize: sz.barFontSize }}>
                               {blk.reason || "Blokada"}
                             </span>
                           )}
@@ -390,15 +394,15 @@ export default function Terminarz() {
 
                       if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
 
-                      const left = effectiveStart * DAY_WIDTH;
-                      const width = (effectiveEnd - effectiveStart + 1) * DAY_WIDTH;
+                      const left = effectiveStart * sz.dayWidth;
+                      const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
                       const colorClass = getColorForReservation(res.id);
 
                       return (
                         <div
                           key={`res-${res.id}`}
-                          className={`absolute top-[4px] h-[28px] ${colorClass} rounded-sm z-[3] flex items-center cursor-pointer shadow-sm border border-black/10`}
-                          style={{ left, width }}
+                          className={`absolute ${colorClass} rounded-sm z-[3] flex items-center cursor-pointer shadow-sm border border-black/10`}
+                          style={{ left, width, top: sz.barTop, height: sz.barHeight }}
                           onMouseEnter={(e) => {
                             setHoveredRes(res);
                             setTooltipPos({ x: e.clientX, y: e.clientY });
@@ -409,7 +413,7 @@ export default function Terminarz() {
                           onMouseLeave={() => setHoveredRes(null)}
                           data-testid={`cal-res-${res.id}`}
                         >
-                          <span className="text-[10px] text-white font-semibold truncate px-1.5 drop-shadow-sm">
+                          <span className="text-white font-semibold truncate px-1.5 drop-shadow-sm" style={{ fontSize: sz.barFontSize }}>
                             {res.guestName}
                           </span>
                         </div>
@@ -419,7 +423,7 @@ export default function Terminarz() {
                     {todayIndex >= 0 && (
                       <div
                         className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-[4]"
-                        style={{ left: todayIndex * DAY_WIDTH + DAY_WIDTH / 2 }}
+                        style={{ left: todayIndex * sz.dayWidth + sz.dayWidth / 2 }}
                       />
                     )}
                   </div>
@@ -430,19 +434,32 @@ export default function Terminarz() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground">
-        <span>Wyświetlono {filteredApartments.length} apartamentów</span>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-sm bg-violet-400 dark:bg-violet-600" />
-          <span>Rezerwacja</span>
+      <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span>Wyświetlono {filteredApartments.length} apartamentów</span>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm bg-violet-400 dark:bg-violet-600" />
+            <span>Rezerwacja</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm bg-gray-400/50 dark:bg-gray-600/50 border border-gray-500/30" />
+            <span>Blokada</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-[2px] h-3 bg-red-500" />
+            <span>Dzisiaj</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-sm bg-gray-400/50 dark:bg-gray-600/50 border border-gray-500/30" />
-          <span>Blokada</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-[2px] h-3 bg-red-500" />
-          <span>Dzisiaj</span>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="compact-view"
+            checked={compact}
+            onCheckedChange={(checked) => setCompact(checked === true)}
+            data-testid="checkbox-compact-view"
+          />
+          <label htmlFor="compact-view" className="cursor-pointer select-none">
+            Widok kompaktowy
+          </label>
         </div>
       </div>
 
