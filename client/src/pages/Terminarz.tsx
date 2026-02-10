@@ -522,7 +522,7 @@ export default function Terminarz() {
             <span>Blokada</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-[2px] h-3 bg-red-500" />
+            <div className="w-[2px] h-3 border-l-2 border-dashed border-black/20 dark:border-white/20" />
             <span>Dzisiaj</span>
           </div>
         </div>
