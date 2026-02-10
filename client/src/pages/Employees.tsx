@@ -30,6 +30,7 @@ import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X } from "lucide
 const POSITIONS: Record<string, string> = {
   KIEROWNIK_RECEPCJI: "Kierownik recepcji",
   PRACOWNIK_RECEPCJI: "Pracownik recepcji",
+  FINANCIAL_MANAGER: "Financial Manager",
   KONSERWATOR: "Konserwator",
   OSOBA_SPRZATAJACA: "Osoba sprzątająca",
 };
