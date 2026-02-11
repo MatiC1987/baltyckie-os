@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -42,6 +42,8 @@ export default function Saldo({ personName }: { personName: string }) {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importing, setImporting] = useState(false);
   const [previewEntry, setPreviewEntry] = useState<SaldoEntry | null>(null);
+  const [sortColumn, setSortColumn] = useState<string>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const [newEntry, setNewEntry] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -91,8 +93,18 @@ export default function Saldo({ personName }: { personName: string }) {
     return [...s].sort();
   }, [entries]);
 
+  const toggleSort = (col: string) => {
+    if (sortColumn === col) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(col);
+      setSortDir(col === "date" ? "desc" : "asc");
+    }
+    setPage(0);
+  };
+
   const filtered = useMemo(() => {
-    let result = entries;
+    let result = [...entries];
     if (dateFrom) result = result.filter(e => e.date >= dateFrom);
     if (dateTo) result = result.filter(e => e.date <= dateTo);
     if (paymentFilter !== "all") result = result.filter(e => e.paymentMethod === paymentFilter);
@@ -106,8 +118,23 @@ export default function Saldo({ personName }: { personName: string }) {
         (e.notes?.toLowerCase().includes(q))
       );
     }
+    const numericCols = ["cashAmount", "saldo", "cardAmount"];
+    result.sort((a, b) => {
+      const key = sortColumn as keyof SaldoEntry;
+      const aVal = a[key];
+      const bVal = b[key];
+      let cmp = 0;
+      if (numericCols.includes(sortColumn)) {
+        cmp = (parseFloat(aVal as string) || 0) - (parseFloat(bVal as string) || 0);
+      } else {
+        const aStr = (aVal ?? "").toString().toLowerCase();
+        const bStr = (bVal ?? "").toString().toLowerCase();
+        cmp = aStr.localeCompare(bStr, "pl");
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
     return result;
-  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, searchQuery]);
+  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, searchQuery, sortColumn, sortDir]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -269,19 +296,37 @@ export default function Saldo({ personName }: { personName: string }) {
           <table className="w-full text-xs border-collapse" style={{ minWidth: "1400px" }}>
             <thead className="sticky top-0 z-[100]">
               <tr className="bg-muted/80 dark:bg-muted/50">
-                <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-2 text-left font-bold w-[90px]">Data</th>
-                <th className="border-b border-r border-border px-2 py-2 text-left font-bold w-[200px]">Nazwa operacji</th>
-                <th className="border-b border-r border-border px-2 py-2 text-left font-bold w-[80px]">Nr rez.</th>
-                <th className="border-b border-r border-border px-2 py-2 text-left font-bold w-[180px]">Imię i nazwisko</th>
-                <th className="border-b border-r border-border px-2 py-2 text-left font-bold w-[130px]">Rodzaj</th>
-                <th className="border-b border-r border-border px-2 py-2 text-left font-bold w-[90px]">Płatność</th>
-                <th className="border-b border-r border-border px-2 py-2 text-center font-bold w-[50px]">KF</th>
-                <th className="border-b border-r border-border px-2 py-2 text-center font-bold w-[50px]">FV</th>
-                <th className="border-b border-r-2 border-border px-2 py-2 text-right font-bold w-[100px]">Suma (got.)</th>
-                <th className="border-b border-r-2 border-border px-2 py-2 text-right font-bold w-[100px]">Saldo</th>
-                <th className="border-b border-r border-border px-2 py-2 text-left font-bold w-[80px]">Kod aut.</th>
-                <th className="border-b border-r border-border px-2 py-2 text-right font-bold w-[100px]">Kwota kartą</th>
-                <th className="border-b border-r border-border px-2 py-2 text-left font-bold">Uwagi</th>
+                {([
+                  { key: "date", label: "Data", cls: "sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-r w-[90px] text-left", borderR: "" },
+                  { key: "operationName", label: "Nazwa operacji", cls: "border-r w-[200px] text-left", borderR: "" },
+                  { key: "reservationNumber", label: "Nr rez.", cls: "border-r w-[80px] text-left", borderR: "" },
+                  { key: "guestName", label: "Imię i nazwisko", cls: "border-r w-[180px] text-left", borderR: "" },
+                  { key: "type", label: "Rodzaj", cls: "border-r w-[130px] text-left", borderR: "" },
+                  { key: "paymentMethod", label: "Płatność", cls: "border-r w-[90px] text-left", borderR: "" },
+                  { key: "kasaFiskalna", label: "KF", cls: "border-r w-[50px] text-center", borderR: "" },
+                  { key: "faktura", label: "FV", cls: "border-r w-[50px] text-center", borderR: "" },
+                  { key: "cashAmount", label: "Suma (got.)", cls: "border-r-2 w-[100px] text-right", borderR: "" },
+                  { key: "saldo", label: "Saldo", cls: "border-r-2 w-[100px] text-right", borderR: "" },
+                  { key: "authCode", label: "Kod aut.", cls: "border-r w-[80px] text-left", borderR: "" },
+                  { key: "cardAmount", label: "Kwota kartą", cls: "border-r w-[100px] text-right", borderR: "" },
+                  { key: "notes", label: "Uwagi", cls: "border-r text-left", borderR: "" },
+                ] as const).map(col => (
+                  <th
+                    key={col.key}
+                    className={`border-b border-border px-2 py-2 font-bold cursor-pointer select-none hover:bg-muted ${col.cls}`}
+                    onClick={() => toggleSort(col.key)}
+                    data-testid={`sort-saldo-${col.key}`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {sortColumn === col.key && (
+                        sortDir === "asc"
+                          ? <ArrowUp className="h-3 w-3 shrink-0" />
+                          : <ArrowDown className="h-3 w-3 shrink-0" />
+                      )}
+                    </span>
+                  </th>
+                ))}
                 <th className="border-b border-border px-2 py-2 text-center font-bold w-[55px]"></th>
               </tr>
             </thead>
