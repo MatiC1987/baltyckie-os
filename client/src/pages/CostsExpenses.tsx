@@ -606,7 +606,7 @@ export default function CostsExpenses() {
       )}
 
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-oplaty" onMouseUp={handleMouseUp}>
-        <table className="w-full text-xs border-collapse table-fixed" style={{ minWidth: "2365px" }}>
+        <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
           <thead className="sticky top-0 z-[100]">
             <tr className="bg-muted/80 dark:bg-muted/50">
               <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-left font-bold w-[220px] min-w-[220px]" rowSpan={2}>
