@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X, ArrowUp, ArrowDown, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -42,6 +42,12 @@ export default function Saldo({ personName }: { personName: string }) {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importing, setImporting] = useState(false);
   const [previewEntry, setPreviewEntry] = useState<SaldoEntry | null>(null);
+  const [editEntry, setEditEntry] = useState<SaldoEntry | null>(null);
+  const [editForm, setEditForm] = useState({
+    date: "", operationName: "", reservationNumber: "", guestName: "",
+    type: "", paymentMethod: "", kasaFiskalna: "NIE", faktura: "NIE",
+    cashAmount: "", saldo: "", cardAmount: "", authCode: "", notes: "",
+  });
   const [sortColumn, setSortColumn] = useState<string>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -73,6 +79,16 @@ export default function Saldo({ personName }: { personName: string }) {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PUT", `/api/saldo/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      toast({ title: "Zapisano zmiany" });
+      setEditEntry(null);
+      setPreviewEntry(null);
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/saldo/${id}`),
     onSuccess: () => {
@@ -80,6 +96,45 @@ export default function Saldo({ personName }: { personName: string }) {
       toast({ title: "Usunięto wpis" });
     },
   });
+
+  const openEdit = (entry: SaldoEntry) => {
+    setEditForm({
+      date: entry.date || "",
+      operationName: entry.operationName || "",
+      reservationNumber: entry.reservationNumber || "",
+      guestName: entry.guestName || "",
+      type: entry.type || "",
+      paymentMethod: entry.paymentMethod || "",
+      kasaFiskalna: entry.kasaFiskalna || "NIE",
+      faktura: entry.faktura || "NIE",
+      cashAmount: entry.cashAmount || "",
+      saldo: entry.saldo || "",
+      cardAmount: entry.cardAmount || "",
+      authCode: entry.authCode || "",
+      notes: entry.notes || "",
+    });
+    setEditEntry(entry);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editEntry) return;
+    const data: any = {
+      date: editForm.date,
+      operationName: editForm.operationName,
+      reservationNumber: editForm.reservationNumber || null,
+      guestName: editForm.guestName || null,
+      type: editForm.type || null,
+      paymentMethod: editForm.paymentMethod || null,
+      kasaFiskalna: editForm.kasaFiskalna || null,
+      faktura: editForm.faktura || null,
+      cashAmount: editForm.cashAmount ? parseFloat(editForm.cashAmount).toFixed(2) : null,
+      saldo: editForm.saldo ? parseFloat(editForm.saldo).toFixed(2) : null,
+      cardAmount: editForm.cardAmount ? parseFloat(editForm.cardAmount).toFixed(2) : null,
+      authCode: editForm.authCode || null,
+      notes: editForm.notes || null,
+    };
+    updateMutation.mutate({ id: editEntry.id, data });
+  };
 
   const paymentMethods = useMemo(() => {
     const s = new Set<string>();
@@ -327,7 +382,7 @@ export default function Saldo({ personName }: { personName: string }) {
                     </span>
                   </th>
                 ))}
-                <th className="border-b border-border px-2 py-2 text-center font-bold w-[55px]"></th>
+                <th className="border-b border-border px-2 py-2 text-center font-bold w-[65px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -361,6 +416,13 @@ export default function Saldo({ personName }: { personName: string }) {
                           data-testid={`button-preview-saldo-${entry.id}`}
                         >
                           <Eye className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEdit(entry); }}
+                          className="invisible group-hover:visible text-muted-foreground hover:text-foreground p-0.5"
+                          data-testid={`button-edit-saldo-${entry.id}`}
+                        >
+                          <Pencil className="h-3 w-3" />
                         </button>
                         <button
                           onClick={(e) => {
@@ -565,9 +627,108 @@ export default function Saldo({ personName }: { personName: string }) {
               </div>
             );
           })()}
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPreviewEntry(null)} data-testid="button-close-saldo-preview">
               Zamknij
+            </Button>
+            <Button onClick={() => { if (previewEntry) { openEdit(previewEntry); setPreviewEntry(null); } }} data-testid="button-edit-from-preview">
+              <Pencil className="mr-1 h-4 w-4" /> Edytuj
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editEntry} onOpenChange={(open) => { if (!open) setEditEntry(null); }}>
+        <DialogContent className="max-w-lg" data-testid="dialog-saldo-edit">
+          <DialogHeader>
+            <DialogTitle>Edytuj wpis</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div className="space-y-1">
+              <Label>Data</Label>
+              <Input type="date" value={editForm.date} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} data-testid="input-edit-saldo-date" />
+            </div>
+            <div className="space-y-1">
+              <Label>Nazwa operacji</Label>
+              <Input value={editForm.operationName} onChange={e => setEditForm(p => ({ ...p, operationName: e.target.value }))} data-testid="input-edit-saldo-op" />
+            </div>
+            <div className="space-y-1">
+              <Label>Nr rezerwacji</Label>
+              <Input value={editForm.reservationNumber} onChange={e => setEditForm(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-edit-saldo-resnum" />
+            </div>
+            <div className="space-y-1">
+              <Label>Imię i nazwisko</Label>
+              <Input value={editForm.guestName} onChange={e => setEditForm(p => ({ ...p, guestName: e.target.value }))} data-testid="input-edit-saldo-guest" />
+            </div>
+            <div className="space-y-1">
+              <Label>Rodzaj</Label>
+              <Input value={editForm.type} onChange={e => setEditForm(p => ({ ...p, type: e.target.value }))} data-testid="input-edit-saldo-type" />
+            </div>
+            <div className="space-y-1">
+              <Label>Sposób płatności</Label>
+              <Select value={editForm.paymentMethod || "none"} onValueChange={v => setEditForm(p => ({ ...p, paymentMethod: v === "none" ? "" : v }))}>
+                <SelectTrigger data-testid="select-edit-saldo-payment">
+                  <SelectValue placeholder="Wybierz" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">-</SelectItem>
+                  <SelectItem value="GOTÓWKA">GOTÓWKA</SelectItem>
+                  <SelectItem value="KARTA">KARTA</SelectItem>
+                  <SelectItem value="BLIK">BLIK</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Suma (gotówka)</Label>
+              <Input type="number" step="0.01" value={editForm.cashAmount} onChange={e => setEditForm(p => ({ ...p, cashAmount: e.target.value }))} data-testid="input-edit-saldo-cash" />
+            </div>
+            <div className="space-y-1">
+              <Label>Saldo</Label>
+              <Input type="number" step="0.01" value={editForm.saldo} onChange={e => setEditForm(p => ({ ...p, saldo: e.target.value }))} data-testid="input-edit-saldo-saldo" />
+            </div>
+            <div className="space-y-1">
+              <Label>Kwota kartą</Label>
+              <Input type="number" step="0.01" value={editForm.cardAmount} onChange={e => setEditForm(p => ({ ...p, cardAmount: e.target.value }))} data-testid="input-edit-saldo-card" />
+            </div>
+            <div className="space-y-1">
+              <Label>Kod autoryzacji</Label>
+              <Input value={editForm.authCode} onChange={e => setEditForm(p => ({ ...p, authCode: e.target.value }))} data-testid="input-edit-saldo-auth" />
+            </div>
+            <div className="space-y-1">
+              <Label>Kasa fiskalna</Label>
+              <Select value={editForm.kasaFiskalna} onValueChange={v => setEditForm(p => ({ ...p, kasaFiskalna: v }))}>
+                <SelectTrigger data-testid="select-edit-saldo-kf">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TAK">TAK</SelectItem>
+                  <SelectItem value="NIE">NIE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Faktura</Label>
+              <Select value={editForm.faktura} onValueChange={v => setEditForm(p => ({ ...p, faktura: v }))}>
+                <SelectTrigger data-testid="select-edit-saldo-fv">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TAK">TAK</SelectItem>
+                  <SelectItem value="NIE">NIE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label>Uwagi</Label>
+              <Input value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} data-testid="input-edit-saldo-notes" />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditEntry(null)} data-testid="button-cancel-edit-saldo">
+              Anuluj
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={!editForm.operationName.trim() || !editForm.date || updateMutation.isPending} data-testid="button-save-edit-saldo">
+              {updateMutation.isPending ? "Zapisywanie..." : "Zapisz zmiany"}
             </Button>
           </DialogFooter>
         </DialogContent>
