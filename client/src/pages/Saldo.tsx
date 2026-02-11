@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -41,6 +41,7 @@ export default function Saldo({ personName }: { personName: string }) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [previewEntry, setPreviewEntry] = useState<SaldoEntry | null>(null);
 
   const [newEntry, setNewEntry] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -281,7 +282,7 @@ export default function Saldo({ personName }: { personName: string }) {
                 <th className="border-b border-r border-border px-2 py-2 text-left font-bold w-[80px]">Kod aut.</th>
                 <th className="border-b border-r border-border px-2 py-2 text-right font-bold w-[100px]">Kwota kartą</th>
                 <th className="border-b border-r border-border px-2 py-2 text-left font-bold">Uwagi</th>
-                <th className="border-b border-border px-2 py-2 text-center font-bold w-[40px]"></th>
+                <th className="border-b border-border px-2 py-2 text-center font-bold w-[55px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -290,11 +291,12 @@ export default function Saldo({ personName }: { personName: string }) {
                 return (
                   <tr
                     key={entry.id}
-                    className={`group hover:bg-accent/30 ${idx % 2 === 0 ? "" : "bg-muted/20 dark:bg-muted/10"} ${entry.operationName === "SALDO POCZĄTKOWE" ? "bg-blue-50 dark:bg-blue-950/30 font-semibold" : ""}`}
+                    className={`group hover:bg-accent/30 cursor-pointer ${idx % 2 === 0 ? "" : "bg-muted/20 dark:bg-muted/10"} ${entry.operationName === "SALDO POCZĄTKOWE" ? "bg-blue-50 dark:bg-blue-950/30 font-semibold" : ""}`}
+                    onClick={() => setPreviewEntry(entry)}
                     data-testid={`row-saldo-${entry.id}`}
                   >
                     <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
-                    <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
+                    <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-resnum-${entry.id}`}>{entry.reservationNumber || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-guest-${entry.id}`}>{entry.guestName || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-type-${entry.id}`}>{entry.type || ""}</td>
@@ -307,17 +309,27 @@ export default function Saldo({ personName }: { personName: string }) {
                     <td className="border-b border-r border-border px-2 py-1.5 text-right tabular-nums" data-testid={`cell-card-${entry.id}`}>{formatNum(entry.cardAmount)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground truncate" data-testid={`cell-notes-${entry.id}`}>{entry.notes || ""}</td>
                     <td className="border-b border-border px-1 py-1.5 text-center">
-                      <button
-                        onClick={() => {
-                          if (window.confirm("Usunąć ten wpis?")) {
-                            deleteMutation.mutate(entry.id);
-                          }
-                        }}
-                        className="invisible group-hover:visible text-muted-foreground hover:text-destructive p-0.5"
-                        data-testid={`button-delete-saldo-${entry.id}`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      <div className="flex items-center gap-0.5 justify-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setPreviewEntry(entry); }}
+                          className="invisible group-hover:visible text-muted-foreground hover:text-foreground p-0.5"
+                          data-testid={`button-preview-saldo-${entry.id}`}
+                        >
+                          <Eye className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm("Usunąć ten wpis?")) {
+                              deleteMutation.mutate(entry.id);
+                            }
+                          }}
+                          className="invisible group-hover:visible text-muted-foreground hover:text-destructive p-0.5"
+                          data-testid={`button-delete-saldo-${entry.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -454,6 +466,63 @@ export default function Saldo({ personName }: { personName: string }) {
             </Button>
             <Button onClick={handleImport} disabled={importing} data-testid="button-confirm-saldo-import">
               {importing ? "Importowanie..." : "Importuj"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!previewEntry} onOpenChange={(open) => { if (!open) setPreviewEntry(null); }}>
+        <DialogContent className="max-w-md" data-testid="dialog-saldo-preview">
+          <DialogHeader>
+            <DialogTitle>Podgląd wpisu</DialogTitle>
+          </DialogHeader>
+          {previewEntry && (() => {
+            const cashVal = previewEntry.cashAmount ? parseFloat(previewEntry.cashAmount) : null;
+            const cardVal = previewEntry.cardAmount ? parseFloat(previewEntry.cardAmount) : null;
+            const saldoVal = previewEntry.saldo ? parseFloat(previewEntry.saldo) : null;
+            const fields: { label: string; value: string; highlight?: string }[] = [
+              { label: "Data", value: formatDate(previewEntry.date) },
+              { label: "Nazwa operacji", value: previewEntry.operationName || "" },
+              { label: "Nr rezerwacji", value: previewEntry.reservationNumber || "" },
+              { label: "Imię i nazwisko", value: previewEntry.guestName || "" },
+              { label: "Rodzaj", value: previewEntry.type || "" },
+              { label: "Sposób płatności", value: previewEntry.paymentMethod || "" },
+              { label: "Kasa fiskalna", value: previewEntry.kasaFiskalna || "" },
+              { label: "Faktura", value: previewEntry.faktura || "" },
+              {
+                label: "Suma (gotówka)",
+                value: formatNum(previewEntry.cashAmount) ? `${formatNum(previewEntry.cashAmount)} zł` : "",
+                highlight: cashVal !== null ? (cashVal < 0 ? "text-red-600 dark:text-red-400" : cashVal > 0 ? "text-green-600 dark:text-green-400" : "") : "",
+              },
+              {
+                label: "Saldo",
+                value: formatNum(previewEntry.saldo) ? `${formatNum(previewEntry.saldo)} zł` : "",
+                highlight: saldoVal !== null ? (saldoVal < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400") : "",
+              },
+              { label: "Kod autoryzacji", value: previewEntry.authCode || "" },
+              {
+                label: "Kwota kartą",
+                value: formatNum(previewEntry.cardAmount) ? `${formatNum(previewEntry.cardAmount)} zł` : "",
+                highlight: cardVal !== null && cardVal > 0 ? "text-blue-600 dark:text-blue-400" : "",
+              },
+              { label: "Uwagi", value: previewEntry.notes || "" },
+            ];
+            return (
+              <div className="space-y-1 py-2" data-testid="preview-saldo-content">
+                {fields.map(({ label, value, highlight }) => (
+                  <div key={label} className="flex items-start gap-3 py-1.5 border-b border-border last:border-b-0">
+                    <span className="text-xs text-muted-foreground w-[130px] shrink-0 pt-0.5">{label}</span>
+                    <span className={`text-sm font-medium break-words ${highlight || ""}`} data-testid={`preview-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+                      {value || <span className="text-muted-foreground/50">—</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewEntry(null)} data-testid="button-close-saldo-preview">
+              Zamknij
             </Button>
           </DialogFooter>
         </DialogContent>
