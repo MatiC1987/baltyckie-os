@@ -497,7 +497,7 @@ export default function Saldo({ personName }: { personName: string }) {
                 return (
                   <tr
                     key={entry.id}
-                    className={`group hover:bg-accent/30 cursor-pointer ${idx % 2 === 0 ? "" : "bg-muted/20 dark:bg-muted/10"} ${entry.operationName === "SALDO POCZĄTKOWE" ? "bg-blue-50 dark:bg-blue-950/30 font-semibold" : ""}`}
+                    className={`group hover:bg-accent/30 cursor-pointer ${entry.operationName === "SALDO POCZĄTKOWE" ? "bg-blue-50 dark:bg-blue-950/30 font-semibold" : entry.entryKind === "KOSZT" || (cashVal !== null && cashVal < 0) ? "bg-red-50 dark:bg-red-950/20" : idx % 2 === 0 ? "" : "bg-muted/20 dark:bg-muted/10"}`}
                     onClick={() => setPreviewEntry(entry)}
                     data-testid={`row-saldo-${entry.id}`}
                   >
