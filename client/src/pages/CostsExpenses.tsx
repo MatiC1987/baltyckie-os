@@ -804,7 +804,7 @@ export default function CostsExpenses() {
                                 startEditing={startEditing}
                                 commitEdit={commitEdit}
                                 cancelEdit={cancelEdit}
-                                className="border-b border-r border-border"
+                                className="border-b border-r border-border font-semibold"
                                 isSelected={selectedCell === rKey}
                                 isInRange={isInFillRange(rKey)}
                                 onCellClick={handleCellClick}
@@ -843,13 +843,13 @@ export default function CostsExpenses() {
                 return (
                   <Fragment key={m}>
                     <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums">{formatNum(prognoza)}</td>
-                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums">{formatNum(rzeczywiste)}</td>
+                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rzeczywiste)}</td>
                     <td className={`border-t-2 border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
                   </Fragment>
                 );
               })}
               <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.prognoza)}</td>
-              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.rzeczywiste)}</td>
+              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted dark:bg-muted/70">{formatNum(grandTotal.rzeczywiste)}</td>
               <td className={`border-t-2 border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70 ${saldoColor(grandTotal.saldo)}`}>{formatNum(grandTotal.saldo)}</td>
             </tr>
           </tbody>
