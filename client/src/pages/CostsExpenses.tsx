@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2, GripVertical } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
@@ -214,10 +214,70 @@ export default function CostsExpenses() {
   const [newCatTitle, setNewCatTitle] = useState("");
   const [newCatColor, setNewCatColor] = useState(CATEGORY_COLORS[0].value);
 
+  const dragCatRef = useRef<string | null>(null);
+  const dragOverCatRef = useRef<string | null>(null);
+  const dragItemRef = useRef<{ catId: string; idx: number } | null>(null);
+  const dragOverItemRef = useRef<{ catId: string; idx: number } | null>(null);
+  const [dragCatId, setDragCatId] = useState<string | null>(null);
+  const [dragItemKey, setDragItemKey] = useState<string | null>(null);
+
   const updateCategories = useCallback((newCats: CostCategory[]) => {
     setCategories(newCats);
     saveCategories(newCats);
   }, []);
+
+  const handleCatDragStart = useCallback((catId: string) => {
+    dragCatRef.current = catId;
+    setDragCatId(catId);
+  }, []);
+
+  const handleCatDragOver = useCallback((e: React.DragEvent, catId: string) => {
+    e.preventDefault();
+    dragOverCatRef.current = catId;
+  }, []);
+
+  const handleCatDragEnd = useCallback(() => {
+    const fromId = dragCatRef.current;
+    const toId = dragOverCatRef.current;
+    setDragCatId(null);
+    dragCatRef.current = null;
+    dragOverCatRef.current = null;
+    if (!fromId || !toId || fromId === toId) return;
+    const newCats = [...categories];
+    const fromIdx = newCats.findIndex(c => c.id === fromId);
+    const toIdx = newCats.findIndex(c => c.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = newCats.splice(fromIdx, 1);
+    newCats.splice(toIdx, 0, moved);
+    updateCategories(newCats);
+  }, [categories, updateCategories]);
+
+  const handleItemDragStart = useCallback((catId: string, idx: number) => {
+    dragItemRef.current = { catId, idx };
+    setDragItemKey(`${catId}__${idx}`);
+  }, []);
+
+  const handleItemDragOver = useCallback((e: React.DragEvent, catId: string, idx: number) => {
+    e.preventDefault();
+    dragOverItemRef.current = { catId, idx };
+  }, []);
+
+  const handleItemDragEnd = useCallback(() => {
+    const from = dragItemRef.current;
+    const to = dragOverItemRef.current;
+    setDragItemKey(null);
+    dragItemRef.current = null;
+    dragOverItemRef.current = null;
+    if (!from || !to) return;
+    if (from.catId === to.catId && from.idx === to.idx) return;
+    const newCats = categories.map(c => ({ ...c, items: [...c.items] }));
+    const fromCat = newCats.find(c => c.id === from.catId);
+    const toCat = newCats.find(c => c.id === to.catId);
+    if (!fromCat || !toCat) return;
+    const [movedItem] = fromCat.items.splice(from.idx, 1);
+    toCat.items.splice(to.idx, 0, movedItem);
+    updateCategories(newCats);
+  }, [categories, updateCategories]);
 
   const handleYearChange = useCallback((year: string) => {
     const y = parseInt(year);
@@ -463,21 +523,33 @@ export default function CostsExpenses() {
             {categories.map(cat => {
               const isCollapsed = collapsedCategories.has(cat.id);
               const annualCat = getCategoryAnnualSummary(cat);
+              const isDraggingCat = dragCatId === cat.id;
               return (
                 <Fragment key={cat.id}>
                   <tr
-                    className={`${cat.color} text-white select-none`}
+                    className={`${cat.color} text-white select-none ${isDraggingCat ? "opacity-40" : ""}`}
                     data-testid={`row-category-${cat.id}`}
+                    onDragOver={(e) => handleCatDragOver(e, cat.id)}
+                    onDrop={handleCatDragEnd}
                   >
-                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-2 py-1 font-bold`}>
-                      <div className="flex items-center gap-1">
-                        <span className="cursor-pointer flex items-center gap-1 flex-1" onClick={() => toggleCategory(cat.id)}>
-                          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                          {cat.title}
+                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-1 py-1 font-bold`}>
+                      <div className="flex items-center gap-0.5">
+                        <span
+                          draggable
+                          onDragStart={() => handleCatDragStart(cat.id)}
+                          onDragEnd={handleCatDragEnd}
+                          className="cursor-grab active:cursor-grabbing opacity-60 hover:opacity-100 shrink-0"
+                          data-testid={`drag-category-${cat.id}`}
+                        >
+                          <GripVertical className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="cursor-pointer flex items-center gap-1 flex-1 min-w-0" onClick={() => toggleCategory(cat.id)}>
+                          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
+                          <span className="truncate">{cat.title}</span>
                         </span>
                         <button
                           onClick={(e) => { e.stopPropagation(); setAddItemCatId(cat.id); }}
-                          className="opacity-60 hover:opacity-100 p-0.5 rounded"
+                          className="opacity-60 hover:opacity-100 p-0.5 rounded shrink-0"
                           title="Dodaj pozycję"
                           data-testid={`button-add-item-${cat.id}`}
                         >
@@ -490,7 +562,7 @@ export default function CostsExpenses() {
                               handleDeleteCategory(cat.id);
                             }
                           }}
-                          className="opacity-40 hover:opacity-100 p-0.5 rounded"
+                          className="opacity-40 hover:opacity-100 p-0.5 rounded shrink-0"
                           title="Usuń kategorię"
                           data-testid={`button-delete-category-${cat.id}`}
                         >
@@ -516,15 +588,18 @@ export default function CostsExpenses() {
                     const annualItem = getItemAnnualSummary(cat.id, idx);
                     const nameKey = `${cat.id}__${idx}`;
                     const isEditingThisName = editingName === nameKey;
+                    const isDraggingItem = dragItemKey === nameKey;
                     return (
                       <tr
                         key={idx}
-                        className="hover:bg-muted/30 dark:hover:bg-muted/20 group"
+                        className={`hover:bg-muted/30 dark:hover:bg-muted/20 group ${isDraggingItem ? "opacity-40" : ""}`}
                         data-testid={`row-item-${cat.id}-${idx}`}
+                        onDragOver={(e) => handleItemDragOver(e, cat.id, idx)}
+                        onDrop={handleItemDragEnd}
                       >
-                        <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-2 py-1 text-left">
+                        <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-1 py-1 text-left">
                           {isEditingThisName ? (
-                            <div className="space-y-0.5">
+                            <div className="space-y-0.5 pl-4">
                               <input
                                 autoFocus
                                 value={editNameValue}
@@ -551,9 +626,18 @@ export default function CostsExpenses() {
                               />
                             </div>
                           ) : (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-0.5">
+                              <span
+                                draggable
+                                onDragStart={() => handleItemDragStart(cat.id, idx)}
+                                onDragEnd={handleItemDragEnd}
+                                className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground shrink-0"
+                                data-testid={`drag-item-${cat.id}-${idx}`}
+                              >
+                                <GripVertical className="h-3 w-3" />
+                              </span>
                               <div
-                                className="flex-1 cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 -mx-0.5 min-w-0"
+                                className="flex-1 cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 min-w-0"
                                 onDoubleClick={() => startEditingName(cat.id, idx)}
                                 data-testid={`name-${nameKey}`}
                               >
