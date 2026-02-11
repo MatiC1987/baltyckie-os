@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronRight, Plus, Trash2, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
@@ -221,6 +221,10 @@ export default function CostsExpenses() {
   const [dragCatId, setDragCatId] = useState<string | null>(null);
   const [dragItemKey, setDragItemKey] = useState<string | null>(null);
 
+  const [selectedCell, setSelectedCell] = useState<CellKey | null>(null);
+  const [fillRangeEnd, setFillRangeEnd] = useState<number | null>(null);
+  const fillDragging = useRef(false);
+
   const updateCategories = useCallback((newCats: CostCategory[]) => {
     setCategories(newCats);
     saveCategories(newCats);
@@ -321,6 +325,80 @@ export default function CostsExpenses() {
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
   }, []);
+
+  const parseCellKey = useCallback((key: CellKey) => {
+    const parts = key.split("__");
+    return { catId: parts[0], itemIdx: parseInt(parts[1]), month: parseInt(parts[2]), field: parts[3] as "prognoza" | "rzeczywiste" };
+  }, []);
+
+  const handleCellClick = useCallback((key: CellKey) => {
+    setSelectedCell(key);
+    setFillRangeEnd(null);
+  }, []);
+
+  const handleFillHandleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fillDragging.current = true;
+  }, []);
+
+  const handleCellMouseEnter = useCallback((month: number) => {
+    if (fillDragging.current && selectedCell) {
+      setFillRangeEnd(month);
+    }
+  }, [selectedCell]);
+
+  const handleMouseUp = useCallback(() => {
+    if (fillDragging.current && selectedCell && fillRangeEnd !== null) {
+      const source = parseCellKey(selectedCell);
+      const sourceVal = cellData[selectedCell] || 0;
+      const startM = Math.min(source.month, fillRangeEnd);
+      const endM = Math.max(source.month, fillRangeEnd);
+      if (startM !== endM) {
+        const newData = { ...cellData };
+        for (let m = startM; m <= endM; m++) {
+          const k = makeCellKey(source.catId, source.itemIdx, m, source.field);
+          if (sourceVal === 0) {
+            delete newData[k];
+          } else {
+            newData[k] = sourceVal;
+          }
+        }
+        setCellData(newData);
+        saveData(selectedYear, newData);
+      }
+    }
+    fillDragging.current = false;
+    setFillRangeEnd(null);
+  }, [selectedCell, fillRangeEnd, cellData, selectedYear, parseCellKey]);
+
+  const isInFillRange = useCallback((key: CellKey): boolean => {
+    if (!selectedCell || fillRangeEnd === null) return false;
+    const source = parseCellKey(selectedCell);
+    const target = parseCellKey(key);
+    if (source.catId !== target.catId || source.itemIdx !== target.itemIdx || source.field !== target.field) return false;
+    const startM = Math.min(source.month, fillRangeEnd);
+    const endM = Math.max(source.month, fillRangeEnd);
+    return target.month >= startM && target.month <= endM;
+  }, [selectedCell, fillRangeEnd, parseCellKey]);
+
+  const handleFillToEnd = useCallback(() => {
+    if (!selectedCell) return;
+    const source = parseCellKey(selectedCell);
+    const sourceVal = cellData[selectedCell] || 0;
+    const newData = { ...cellData };
+    for (let m = source.month; m < 12; m++) {
+      const k = makeCellKey(source.catId, source.itemIdx, m, source.field);
+      if (sourceVal === 0) {
+        delete newData[k];
+      } else {
+        newData[k] = sourceVal;
+      }
+    }
+    setCellData(newData);
+    saveData(selectedYear, newData);
+    setSelectedCell(null);
+  }, [selectedCell, cellData, selectedYear, parseCellKey]);
 
   const startEditingName = useCallback((catId: string, itemIdx: number) => {
     const cat = categories.find(c => c.id === catId);
@@ -493,7 +571,17 @@ export default function CostsExpenses() {
         </CardContent>
       </Card>
 
-      <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-oplaty">
+      {selectedCell && cellData[selectedCell] !== undefined && cellData[selectedCell] !== 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Zaznaczona komórka: <strong>{cellData[selectedCell]?.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</strong> zł</span>
+          <Button variant="outline" size="sm" onClick={handleFillToEnd} data-testid="button-fill-to-end">
+            <Copy className="mr-1 h-3 w-3" /> Wypełnij do grudnia
+          </Button>
+          <span className="text-muted-foreground/60">lub przeciągnij kwadracik w rogu komórki</span>
+        </div>
+      )}
+
+      <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-oplaty" onMouseUp={handleMouseUp}>
         <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
           <thead className="sticky top-0 z-[100]">
             <tr className="bg-muted/80 dark:bg-muted/50">
@@ -676,6 +764,12 @@ export default function CostsExpenses() {
                                 commitEdit={commitEdit}
                                 cancelEdit={cancelEdit}
                                 className="border-b border-r border-border"
+                                isSelected={selectedCell === pKey}
+                                isInRange={isInFillRange(pKey)}
+                                onCellClick={handleCellClick}
+                                onFillHandleMouseDown={handleFillHandleMouseDown}
+                                onCellMouseEnter={handleCellMouseEnter}
+                                month={m}
                               />
                               <EditableCell
                                 cellKey={rKey}
@@ -687,6 +781,12 @@ export default function CostsExpenses() {
                                 commitEdit={commitEdit}
                                 cancelEdit={cancelEdit}
                                 className="border-b border-r border-border"
+                                isSelected={selectedCell === rKey}
+                                isInRange={isInFillRange(rKey)}
+                                onCellClick={handleCellClick}
+                                onFillHandleMouseDown={handleFillHandleMouseDown}
+                                onCellMouseEnter={handleCellMouseEnter}
+                                month={m}
                               />
                               <td className={`border-b border-r border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>
                                 {formatNum(saldo)}
@@ -823,6 +923,12 @@ function EditableCell({
   commitEdit,
   cancelEdit,
   className,
+  isSelected,
+  isInRange,
+  onCellClick,
+  onFillHandleMouseDown,
+  onCellMouseEnter,
+  month,
 }: {
   cellKey: CellKey;
   value: number;
@@ -833,6 +939,12 @@ function EditableCell({
   commitEdit: () => void;
   cancelEdit: () => void;
   className?: string;
+  isSelected: boolean;
+  isInRange: boolean;
+  onCellClick: (key: CellKey) => void;
+  onFillHandleMouseDown: (e: React.MouseEvent) => void;
+  onCellMouseEnter: (month: number) => void;
+  month: number;
 }) {
   const isEditing = editingCell === cellKey;
 
@@ -859,11 +971,20 @@ function EditableCell({
 
   return (
     <td
-      className={`${className} px-1 py-1 text-right tabular-nums cursor-pointer hover:bg-accent/50`}
+      className={`${className} px-1 py-1 text-right tabular-nums cursor-pointer hover:bg-accent/50 relative select-none ${isSelected ? "ring-2 ring-[#5ADBFA] ring-inset z-10" : ""} ${isInRange ? "bg-[#5ADBFA]/15" : ""}`}
       onDoubleClick={() => startEditing(cellKey)}
+      onClick={() => onCellClick(cellKey)}
+      onMouseEnter={() => onCellMouseEnter(month)}
       data-testid={`cell-${cellKey}`}
     >
       {value !== 0 ? value.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
+      {isSelected && value !== 0 && (
+        <span
+          onMouseDown={onFillHandleMouseDown}
+          className="absolute -bottom-[3px] -right-[3px] w-[7px] h-[7px] bg-[#5ADBFA] border border-white cursor-crosshair z-20"
+          data-testid={`fill-handle-${cellKey}`}
+        />
+      )}
     </td>
   );
 }
