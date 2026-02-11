@@ -614,6 +614,17 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  app.post('/api/saldo/categories/bulk-delete', isAuthenticated, async (req, res) => {
+    const { names } = req.body;
+    if (!Array.isArray(names) || names.length === 0) {
+      return res.status(400).json({ message: "Podaj listę kategorii do usunięcia" });
+    }
+    for (const name of names) {
+      await storage.deleteSaldoCategory(name);
+    }
+    res.json({ success: true, deleted: names.length });
+  });
+
   app.delete('/api/saldo/categories/:name', isAuthenticated, async (req, res) => {
     await storage.deleteSaldoCategory(req.params.name);
     res.status(204).send();

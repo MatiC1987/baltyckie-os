@@ -55,6 +55,7 @@ export default function Saldo({ personName }: { personName: string }) {
   const [activeTab, setActiveTab] = useState<"wpisy" | "kategorie">("wpisy");
   const [editingCat, setEditingCat] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
+  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
 
   const [newEntry, setNewEntry] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -98,6 +99,16 @@ export default function Saldo({ personName }: { personName: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
       queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
       toast({ title: "Usunięto kategorię" });
+    },
+  });
+
+  const bulkDeleteCategoryMutation = useMutation({
+    mutationFn: (names: string[]) => apiRequest("POST", "/api/saldo/categories/bulk-delete", { names }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      setSelectedCats(new Set());
+      toast({ title: "Usunięto wybrane kategorie" });
     },
   });
 
@@ -326,13 +337,55 @@ export default function Saldo({ personName }: { personName: string }) {
         <Card>
           <CardContent className="p-4">
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Lista kategorii kosztów wykorzystywanych we wpisach. Możesz zmienić nazwę lub usunąć kategorię (usunięcie wyczyści kategorię ze wszystkich powiązanych wpisów).</p>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-sm text-muted-foreground">Lista kategorii wykorzystywanych we wpisach. Możesz zmienić nazwę lub usunąć kategorie (usunięcie wyczyści kategorię ze wszystkich powiązanych wpisów).</p>
+                {selectedCats.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      if (window.confirm(`Usunąć ${selectedCats.size} wybranych kategorii? Kategorie zostaną usunięte ze wszystkich powiązanych wpisów.`))
+                        bulkDeleteCategoryMutation.mutate([...selectedCats]);
+                    }}
+                    disabled={bulkDeleteCategoryMutation.isPending}
+                    data-testid="button-bulk-delete-cats"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    Usuń zaznaczone ({selectedCats.size})
+                  </Button>
+                )}
+              </div>
               {categories.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">Brak kategorii. Dodaj wpis typu "Koszt" z kategorią, aby pojawił się tutaj.</p>
+                <p className="text-sm text-muted-foreground py-4 text-center">Brak kategorii. Dodaj wpis z kategorią, aby pojawiła się tutaj.</p>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0">
+                  <div className="flex items-center gap-2 py-1.5 px-2 border-b border-border bg-muted/30">
+                    <input
+                      type="checkbox"
+                      checked={selectedCats.size === categories.length && categories.length > 0}
+                      onChange={e => {
+                        if (e.target.checked) setSelectedCats(new Set(categories));
+                        else setSelectedCats(new Set());
+                      }}
+                      className="h-4 w-4 rounded border-border"
+                      data-testid="checkbox-select-all-cats"
+                    />
+                    <span className="text-xs text-muted-foreground font-medium">Zaznacz wszystkie ({categories.length})</span>
+                  </div>
                   {categories.map(cat => (
-                    <div key={cat} className="flex items-center gap-2 py-1.5 px-2 border-b border-border last:border-b-0">
+                    <div key={cat} className={`flex items-center gap-2 py-1.5 px-2 border-b border-border last:border-b-0 ${selectedCats.has(cat) ? "bg-accent/20" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedCats.has(cat)}
+                        onChange={e => {
+                          const next = new Set(selectedCats);
+                          if (e.target.checked) next.add(cat);
+                          else next.delete(cat);
+                          setSelectedCats(next);
+                        }}
+                        className="h-4 w-4 rounded border-border"
+                        data-testid={`checkbox-cat-${cat}`}
+                      />
                       {editingCat === cat ? (
                         <>
                           <Input
@@ -434,10 +487,10 @@ export default function Saldo({ personName }: { personName: string }) {
         </Select>
         <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(0); }}>
           <SelectTrigger className="w-[180px]" data-testid="select-saldo-type">
-            <SelectValue placeholder="Rodzaj" />
+            <SelectValue placeholder="Kategoria" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Wszystkie rodzaje</SelectItem>
+            <SelectItem value="all">Wszystkie kategorie</SelectItem>
             {types.map(t => (
               <SelectItem key={t} value={t}>{t}</SelectItem>
             ))}
@@ -462,7 +515,7 @@ export default function Saldo({ personName }: { personName: string }) {
                   { key: "operationName", label: "Nazwa operacji", cls: "border-r w-[200px] text-left", borderR: "" },
                   { key: "reservationNumber", label: "Nr rez.", cls: "border-r w-[80px] text-left", borderR: "" },
                   { key: "guestName", label: "Imię i nazwisko", cls: "border-r w-[180px] text-left", borderR: "" },
-                  { key: "type", label: "Rodzaj", cls: "border-r w-[130px] text-left", borderR: "" },
+                  { key: "type", label: "Kategoria", cls: "border-r w-[130px] text-left", borderR: "" },
                   { key: "paymentMethod", label: "Płatność", cls: "border-r w-[90px] text-left", borderR: "" },
                   { key: "kasaFiskalna", label: "KF", cls: "border-r w-[50px] text-center", borderR: "" },
                   { key: "faktura", label: "FV", cls: "border-r w-[50px] text-center", borderR: "" },
@@ -632,7 +685,7 @@ export default function Saldo({ personName }: { personName: string }) {
                 </>
               )}
               <div className="space-y-1">
-                <Label>Rodzaj</Label>
+                <Label>Kategoria</Label>
                 <Input value={newEntry.type} onChange={e => setNewEntry(p => ({ ...p, type: e.target.value }))} placeholder={newEntry.entryKind === "PRZYCHOD" ? "np. PRZYJAZD" : "np. WYDATEK"} data-testid="input-new-saldo-type" />
               </div>
               <div className="space-y-1">
@@ -742,7 +795,7 @@ export default function Saldo({ personName }: { personName: string }) {
               { label: "Nazwa operacji", value: previewEntry.operationName || "" },
               { label: "Nr rezerwacji", value: previewEntry.reservationNumber || "" },
               { label: "Imię i nazwisko", value: previewEntry.guestName || "" },
-              { label: "Rodzaj", value: previewEntry.type || "" },
+              { label: "Kategoria", value: previewEntry.type || "" },
               { label: "Sposób płatności", value: previewEntry.paymentMethod || "" },
               { label: "Kasa fiskalna", value: previewEntry.kasaFiskalna || "" },
               { label: "Faktura", value: previewEntry.faktura || "" },
@@ -851,7 +904,7 @@ export default function Saldo({ personName }: { personName: string }) {
                 </>
               )}
               <div className="space-y-1">
-                <Label>Rodzaj</Label>
+                <Label>Kategoria</Label>
                 <Input value={editForm.type} onChange={e => setEditForm(p => ({ ...p, type: e.target.value }))} data-testid="input-edit-saldo-type" />
               </div>
               <div className="space-y-1">
