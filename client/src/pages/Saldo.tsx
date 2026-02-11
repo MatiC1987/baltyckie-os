@@ -498,7 +498,8 @@ export default function Saldo({ personName }: { personName: string }) {
             <thead className="sticky top-0 z-[100]">
               <tr className="bg-muted/80 dark:bg-muted/50">
                 {([
-                  { key: "date", label: "Data", cls: "sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-r w-[90px] text-left", borderR: "" },
+                  { key: "lp", label: "Lp.", cls: "sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-r w-[55px] text-center", borderR: "" },
+                  { key: "date", label: "Data", cls: "border-r w-[90px] text-left", borderR: "" },
                   { key: "operationName", label: "Nazwa operacji", cls: "border-r w-[200px] text-left", borderR: "" },
                   { key: "reservationNumber", label: "Nr rez.", cls: "border-r w-[80px] text-left", borderR: "" },
                   { key: "guestName", label: "Imię i nazwisko", cls: "border-r w-[180px] text-left", borderR: "" },
@@ -541,7 +542,8 @@ export default function Saldo({ personName }: { personName: string }) {
                     onClick={() => setPreviewEntry(entry)}
                     data-testid={`row-saldo-${entry.id}`}
                   >
-                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
+                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums text-center text-muted-foreground" data-testid={`cell-lp-${entry.id}`}>{page * PAGE_SIZE + idx + 1}</td>
+                    <td className="border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-resnum-${entry.id}`}>{entry.reservationNumber || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-guest-${entry.id}`}>{entry.guestName || ""}</td>
