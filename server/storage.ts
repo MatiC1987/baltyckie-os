@@ -480,7 +480,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry> {
-    const [created] = await db.insert(saldoEntries).values(entry).returning();
+    const lastRows = await db.select({ saldo: saldoEntries.saldo }).from(saldoEntries).orderBy(desc(saldoEntries.id)).limit(1);
+    const lastSaldo = lastRows.length > 0 && lastRows[0].saldo ? parseFloat(lastRows[0].saldo) : 0;
+    const cashAmt = entry.cashAmount ? parseFloat(entry.cashAmount) : 0;
+    const newSaldo = (lastSaldo + cashAmt).toFixed(2);
+    const [created] = await db.insert(saldoEntries).values({ ...entry, saldo: newSaldo }).returning();
     return created;
   }
 
