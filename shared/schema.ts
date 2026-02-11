@@ -313,3 +313,24 @@ export type ServiceContractCategory = typeof serviceContractCategories.$inferSel
 export type InsertServiceContractCategory = z.infer<typeof insertServiceContractCategorySchema>;
 export type ServiceContract = typeof serviceContracts.$inferSelect;
 export type InsertServiceContract = z.infer<typeof insertServiceContractSchema>;
+
+export const saldoEntries = pgTable("saldo_entries", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  operationName: text("operation_name").notNull(),
+  reservationNumber: text("reservation_number"),
+  guestName: text("guest_name"),
+  type: text("type"),
+  paymentMethod: text("payment_method"),
+  kasaFiskalna: text("kasa_fiskalna"),
+  faktura: text("faktura"),
+  cashAmount: numeric("cash_amount", { precision: 12, scale: 2 }),
+  saldo: numeric("saldo", { precision: 12, scale: 2 }),
+  authCode: text("auth_code"),
+  cardAmount: numeric("card_amount", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+});
+
+export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true });
+export type SaldoEntry = typeof saldoEntries.$inferSelect;
+export type InsertSaldoEntry = z.infer<typeof insertSaldoEntrySchema>;

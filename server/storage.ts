@@ -14,7 +14,8 @@ import {
   blockades, Blockade, InsertBlockade,
   locations, Location, InsertLocation,
   serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
-  serviceContracts, ServiceContract, InsertServiceContract
+  serviceContracts, ServiceContract, InsertServiceContract,
+  saldoEntries, SaldoEntry, InsertSaldoEntry
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -107,6 +108,14 @@ export interface IStorage {
   createServiceContract(contract: InsertServiceContract): Promise<ServiceContract>;
   updateServiceContract(id: number, contract: Partial<InsertServiceContract>): Promise<ServiceContract>;
   deleteServiceContract(id: number): Promise<void>;
+
+  // Saldo
+  getSaldoEntries(filters?: { startDate?: string; endDate?: string }): Promise<SaldoEntry[]>;
+  createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry>;
+  createSaldoEntriesBulk(entries: InsertSaldoEntry[]): Promise<SaldoEntry[]>;
+  updateSaldoEntry(id: number, entry: Partial<InsertSaldoEntry>): Promise<SaldoEntry>;
+  deleteSaldoEntry(id: number): Promise<void>;
+  deleteAllSaldoEntries(): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -444,6 +453,44 @@ export class DatabaseStorage implements IStorage {
 
   async deleteServiceContract(id: number): Promise<void> {
     await db.delete(serviceContracts).where(eq(serviceContracts.id, id));
+  }
+
+  // Saldo
+  async getSaldoEntries(filters?: { startDate?: string; endDate?: string }): Promise<SaldoEntry[]> {
+    const conditions = [];
+    if (filters?.startDate) conditions.push(gte(saldoEntries.date, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(saldoEntries.date, filters.endDate));
+    return db.select().from(saldoEntries).where(conditions.length ? and(...conditions) : undefined).orderBy(saldoEntries.id);
+  }
+
+  async createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry> {
+    const [created] = await db.insert(saldoEntries).values(entry).returning();
+    return created;
+  }
+
+  async createSaldoEntriesBulk(entries: InsertSaldoEntry[]): Promise<SaldoEntry[]> {
+    if (entries.length === 0) return [];
+    const batchSize = 500;
+    const results: SaldoEntry[] = [];
+    for (let i = 0; i < entries.length; i += batchSize) {
+      const batch = entries.slice(i, i + batchSize);
+      const created = await db.insert(saldoEntries).values(batch).returning();
+      results.push(...created);
+    }
+    return results;
+  }
+
+  async updateSaldoEntry(id: number, entry: Partial<InsertSaldoEntry>): Promise<SaldoEntry> {
+    const [updated] = await db.update(saldoEntries).set(entry).where(eq(saldoEntries.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSaldoEntry(id: number): Promise<void> {
+    await db.delete(saldoEntries).where(eq(saldoEntries.id, id));
+  }
+
+  async deleteAllSaldoEntries(): Promise<void> {
+    await db.delete(saldoEntries);
   }
 
   // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)

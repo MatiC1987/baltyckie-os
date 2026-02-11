@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -567,6 +567,111 @@ export async function registerRoutes(
 
   app.delete('/api/service-contracts/:id', isAuthenticated, async (req, res) => {
     await storage.deleteServiceContract(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Saldo
+  app.get('/api/saldo', isAuthenticated, async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const entries = await storage.getSaldoEntries({
+      startDate: startDate as string | undefined,
+      endDate: endDate as string | undefined,
+    });
+    res.json(entries);
+  });
+
+  app.post('/api/saldo', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertSaldoEntrySchema.parse(req.body);
+      const entry = await storage.createSaldoEntry(parsed);
+      res.status(201).json(entry);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
+    }
+  });
+
+  app.put('/api/saldo/:id', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertSaldoEntrySchema.partial().parse(req.body);
+      const updated = await storage.updateSaldoEntry(Number(req.params.id), parsed);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
+    }
+  });
+
+  app.delete('/api/saldo/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteSaldoEntry(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.post('/api/saldo/import-xlsx', isAuthenticated, upload.single('file'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "Nie wybrano pliku" });
+    }
+    try {
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
+      const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('saldo')) || workbook.SheetNames[0];
+      const ws = workbook.Sheets[sheetName];
+      const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      const headerRowIdx = data.findIndex(row =>
+        row.some((c: any) => typeof c === 'string' && c.toUpperCase().includes('DATA')) &&
+        row.some((c: any) => typeof c === 'string' && c.toUpperCase().includes('OPERACJI'))
+      );
+      const startRow = headerRowIdx >= 0 ? headerRowIdx + 1 : 3;
+
+      const entries: any[] = [];
+      for (let i = startRow; i < data.length; i++) {
+        const row = data[i];
+        if (!row || row.length < 9) continue;
+        const rawDate = row[0];
+        if (!rawDate && rawDate !== 0) continue;
+        const opName = row[1]?.toString().trim();
+        if (!opName) continue;
+
+        let dateStr: string;
+        if (typeof rawDate === 'number') {
+          const d = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+          dateStr = d.toISOString().split('T')[0];
+        } else {
+          dateStr = rawDate.toString();
+        }
+
+        const cashAmt = row[8] !== '' && row[8] !== null && row[8] !== undefined ? Number(row[8]) || 0 : null;
+        const saldoVal = row[9] !== '' && row[9] !== null && row[9] !== undefined ? Number(row[9]) || 0 : null;
+        const cardAmt = row[11] !== '' && row[11] !== null && row[11] !== undefined ? Number(row[11]) || 0 : null;
+
+        entries.push({
+          date: dateStr,
+          operationName: opName,
+          reservationNumber: row[2]?.toString().trim() || null,
+          guestName: row[3]?.toString().trim() || null,
+          type: row[4]?.toString().trim() || null,
+          paymentMethod: row[5]?.toString().trim() || null,
+          kasaFiskalna: row[6]?.toString().trim() || null,
+          faktura: row[7]?.toString().trim() || null,
+          cashAmount: cashAmt !== null ? cashAmt.toFixed(2) : null,
+          saldo: saldoVal !== null ? saldoVal.toFixed(2) : null,
+          authCode: row[10]?.toString().trim() || null,
+          cardAmount: cardAmt !== null ? cardAmt.toFixed(2) : null,
+          notes: row[12]?.toString().trim() || null,
+        });
+      }
+
+      if (req.body?.replace === 'true' || req.query?.replace === 'true') {
+        await storage.deleteAllSaldoEntries();
+      }
+
+      const created = await storage.createSaldoEntriesBulk(entries);
+      res.json({ imported: created.length, sheetName });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Błąd importu" });
+    }
+  });
+
+  app.delete('/api/saldo/all', isAuthenticated, async (req, res) => {
+    await storage.deleteAllSaldoEntries();
     res.status(204).send();
   });
 
