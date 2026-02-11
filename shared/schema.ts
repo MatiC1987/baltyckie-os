@@ -329,6 +329,8 @@ export const saldoEntries = pgTable("saldo_entries", {
   authCode: text("auth_code"),
   cardAmount: numeric("card_amount", { precision: 12, scale: 2 }),
   notes: text("notes"),
+  entryKind: text("entry_kind"),
+  category: text("category"),
 });
 
 export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true });
