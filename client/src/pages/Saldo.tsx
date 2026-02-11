@@ -247,9 +247,10 @@ export default function Saldo({ personName }: { personName: string }) {
       if (e.cashAmount) totalCash += parseFloat(e.cashAmount);
       if (e.cardAmount) totalCard += parseFloat(e.cardAmount);
     });
-    const lastSaldo = filtered.length > 0 ? parseFloat(filtered[filtered.length - 1].saldo || "0") : 0;
+    const newestEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+    const lastSaldo = newestEntry ? parseFloat(newestEntry.saldo || "0") : 0;
     return { totalCash, totalCard, lastSaldo, count: filtered.length };
-  }, [filtered]);
+  }, [filtered, entries]);
 
   const handleImport = async () => {
     const file = fileInputRef.current?.files?.[0];
@@ -425,24 +426,10 @@ export default function Saldo({ personName }: { personName: string }) {
 
       {activeTab === "wpisy" && <>
       <Card>
-        <CardContent className="p-3">
-          <div className="grid grid-cols-4 gap-4 text-center">
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Wpisy</div>
-              <div className="text-xl font-bold mt-1" data-testid="text-saldo-count">{summary.count.toLocaleString("pl-PL")}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Gotówka (suma)</div>
-              <div className="text-xl font-bold mt-1" data-testid="text-saldo-cash">{summary.totalCash.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Karta (suma)</div>
-              <div className="text-xl font-bold mt-1" data-testid="text-saldo-card">{summary.totalCard.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Aktualne saldo</div>
-              <div className={`text-xl font-bold mt-1 ${summary.lastSaldo >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-saldo-current">{summary.lastSaldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
-            </div>
+        <CardContent className="p-6">
+          <div className="text-center">
+            <div className="text-sm text-muted-foreground uppercase tracking-wider mb-2">Aktualne saldo</div>
+            <div className={`text-4xl font-bold ${summary.lastSaldo >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-saldo-current">{summary.lastSaldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
           </div>
         </CardContent>
       </Card>
