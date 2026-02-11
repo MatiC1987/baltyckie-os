@@ -672,17 +672,15 @@ export default function Saldo({ personName }: { personName: string }) {
                   </Select>
                 </div>
               )}
+              <div className="space-y-1">
+                <Label>Imię i nazwisko</Label>
+                <Input value={newEntry.guestName} onChange={e => setNewEntry(p => ({ ...p, guestName: e.target.value }))} data-testid="input-new-saldo-guest" />
+              </div>
               {newEntry.entryKind === "PRZYCHOD" && (
-                <>
-                  <div className="space-y-1">
-                    <Label>Nr rezerwacji</Label>
-                    <Input value={newEntry.reservationNumber} onChange={e => setNewEntry(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-new-saldo-resnum" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Imię i nazwisko</Label>
-                    <Input value={newEntry.guestName} onChange={e => setNewEntry(p => ({ ...p, guestName: e.target.value }))} data-testid="input-new-saldo-guest" />
-                  </div>
-                </>
+                <div className="space-y-1">
+                  <Label>Nr rezerwacji</Label>
+                  <Input value={newEntry.reservationNumber} onChange={e => setNewEntry(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-new-saldo-resnum" />
+                </div>
               )}
               <div className="space-y-1">
                 <Label>Kategoria</Label>
@@ -891,17 +889,15 @@ export default function Saldo({ personName }: { personName: string }) {
                   </Select>
                 </div>
               )}
+              <div className="space-y-1">
+                <Label>Imię i nazwisko</Label>
+                <Input value={editForm.guestName} onChange={e => setEditForm(p => ({ ...p, guestName: e.target.value }))} data-testid="input-edit-saldo-guest" />
+              </div>
               {editForm.entryKind === "PRZYCHOD" && (
-                <>
-                  <div className="space-y-1">
-                    <Label>Nr rezerwacji</Label>
-                    <Input value={editForm.reservationNumber} onChange={e => setEditForm(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-edit-saldo-resnum" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Imię i nazwisko</Label>
-                    <Input value={editForm.guestName} onChange={e => setEditForm(p => ({ ...p, guestName: e.target.value }))} data-testid="input-edit-saldo-guest" />
-                  </div>
-                </>
+                <div className="space-y-1">
+                  <Label>Nr rezerwacji</Label>
+                  <Input value={editForm.reservationNumber} onChange={e => setEditForm(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-edit-saldo-resnum" />
+                </div>
               )}
               <div className="space-y-1">
                 <Label>Kategoria</Label>
