@@ -557,8 +557,8 @@ export default function CostsExpenses() {
                                 onDoubleClick={() => startEditingName(cat.id, idx)}
                                 data-testid={`name-${nameKey}`}
                               >
-                                <div className="font-medium truncate">{item.name}</div>
-                                {item.subLabel && <div className="text-[10px] text-muted-foreground truncate">{item.subLabel}</div>}
+                                <span className="font-medium truncate">{item.name}</span>
+                                {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
                               </div>
                               <button
                                 onClick={() => {
