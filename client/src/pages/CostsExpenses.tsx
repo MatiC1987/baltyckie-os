@@ -613,7 +613,7 @@ export default function CostsExpenses() {
                 Pozycja
               </th>
               {MONTHS_SHORT.map((m, i) => (
-                <th key={i} colSpan={3} className="border-b border-r border-border px-1 py-1 text-center font-bold">
+                <th key={i} colSpan={3} className="border-b border-r-2 border-border px-1 py-1 text-center font-bold">
                   {m}
                 </th>
               ))}
@@ -626,7 +626,7 @@ export default function CostsExpenses() {
                 <Fragment key={mi}>
                   <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px]">P</th>
                   <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px]">R</th>
-                  <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px] ${mi < 12 ? "border-r" : ""}`}>S</th>
+                  <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
                 </Fragment>
               ))}
             </tr>
@@ -688,7 +688,7 @@ export default function CostsExpenses() {
                         <Fragment key={m}>
                           <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
                           <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.rzeczywiste)}</td>
-                          <td className={`border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
+                          <td className={`border-b border-r-2 border-border/30 px-1 py-1 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
                         </Fragment>
                       );
                     })}
@@ -812,7 +812,7 @@ export default function CostsExpenses() {
                                 onCellMouseEnter={handleCellMouseEnter}
                                 month={m}
                               />
-                              <td className={`border-b border-r border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>
+                              <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>
                                 {formatNum(saldo)}
                               </td>
                             </Fragment>
@@ -844,7 +844,7 @@ export default function CostsExpenses() {
                   <Fragment key={m}>
                     <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums">{formatNum(prognoza)}</td>
                     <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums">{formatNum(rzeczywiste)}</td>
-                    <td className={`border-t-2 border-r border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                    <td className={`border-t-2 border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
                   </Fragment>
                 );
               })}
