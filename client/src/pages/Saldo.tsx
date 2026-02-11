@@ -5,12 +5,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X, ArrowUp, ArrowDown, Pencil } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X, ArrowUp, ArrowDown, Pencil, Tag, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import type { SaldoEntry } from "@shared/schema";
 
 const PAGE_SIZE = 100;
@@ -47,9 +48,13 @@ export default function Saldo({ personName }: { personName: string }) {
     date: "", operationName: "", reservationNumber: "", guestName: "",
     type: "", paymentMethod: "", kasaFiskalna: "NIE", faktura: "NIE",
     cashAmount: "", saldo: "", cardAmount: "", authCode: "", notes: "",
+    entryKind: "PRZYCHOD" as string, category: "",
   });
   const [sortColumn, setSortColumn] = useState<string>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [activeTab, setActiveTab] = useState<"wpisy" | "kategorie">("wpisy");
+  const [editingCat, setEditingCat] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState("");
 
   const [newEntry, setNewEntry] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -64,10 +69,36 @@ export default function Saldo({ personName }: { personName: string }) {
     cardAmount: "",
     authCode: "",
     notes: "",
+    entryKind: "PRZYCHOD" as string,
+    category: "",
   });
 
   const { data: entries = [], isLoading } = useQuery<SaldoEntry[]>({
     queryKey: ["/api/saldo"],
+  });
+
+  const { data: categories = [] } = useQuery<string[]>({
+    queryKey: ["/api/saldo/categories"],
+  });
+
+  const renameCategoryMutation = useMutation({
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+      apiRequest("PUT", `/api/saldo/categories/${encodeURIComponent(oldName)}`, { newName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      toast({ title: "Zmieniono nazwę kategorii" });
+      setEditingCat(null);
+    },
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (name: string) => apiRequest("DELETE", `/api/saldo/categories/${encodeURIComponent(name)}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      toast({ title: "Usunięto kategorię" });
+    },
   });
 
   const createMutation = useMutation({
@@ -112,6 +143,8 @@ export default function Saldo({ personName }: { personName: string }) {
       cardAmount: entry.cardAmount || "",
       authCode: entry.authCode || "",
       notes: entry.notes || "",
+      entryKind: entry.entryKind || "PRZYCHOD",
+      category: entry.category || "",
     });
     setEditEntry(entry);
   };
@@ -132,6 +165,8 @@ export default function Saldo({ personName }: { personName: string }) {
       cardAmount: editForm.cardAmount ? parseFloat(editForm.cardAmount).toFixed(2) : null,
       authCode: editForm.authCode || null,
       notes: editForm.notes || null,
+      entryKind: editForm.entryKind || null,
+      category: editForm.entryKind === "KOSZT" ? (editForm.category || null) : null,
     };
     updateMutation.mutate({ id: editEntry.id, data });
   };
@@ -244,6 +279,8 @@ export default function Saldo({ personName }: { personName: string }) {
       authCode: newEntry.authCode || null,
       notes: newEntry.notes || null,
       saldo: null,
+      entryKind: newEntry.entryKind || null,
+      category: newEntry.entryKind === "KOSZT" ? (newEntry.category || null) : null,
     };
     createMutation.mutate(data);
   };
@@ -256,15 +293,84 @@ export default function Saldo({ personName }: { personName: string }) {
           <p className="text-muted-foreground">{personName}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setShowAddDialog(true)} data-testid="button-add-saldo">
-            <Plus className="mr-1 h-4 w-4" /> Dodaj wpis
-          </Button>
-          <Button variant="outline" onClick={() => setShowImportDialog(true)} data-testid="button-import-saldo">
-            <Upload className="mr-1 h-4 w-4" /> Import Excel
-          </Button>
+          <div className="flex items-center border border-border rounded-md overflow-visible">
+            <button
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "wpisy" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setActiveTab("wpisy")}
+              data-testid="tab-saldo-wpisy"
+            >
+              Wpisy
+            </button>
+            <button
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "kategorie" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setActiveTab("kategorie")}
+              data-testid="tab-saldo-kategorie"
+            >
+              <Tag className="h-3.5 w-3.5 inline mr-1" />Kategorie
+            </button>
+          </div>
+          {activeTab === "wpisy" && (
+            <>
+              <Button variant="outline" onClick={() => setShowAddDialog(true)} data-testid="button-add-saldo">
+                <Plus className="mr-1 h-4 w-4" /> Dodaj wpis
+              </Button>
+              <Button variant="outline" onClick={() => setShowImportDialog(true)} data-testid="button-import-saldo">
+                <Upload className="mr-1 h-4 w-4" /> Import Excel
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
+      {activeTab === "kategorie" && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">Lista kategorii kosztów wykorzystywanych we wpisach. Możesz zmienić nazwę lub usunąć kategorię (usunięcie wyczyści kategorię ze wszystkich powiązanych wpisów).</p>
+              {categories.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Brak kategorii. Dodaj wpis typu "Koszt" z kategorią, aby pojawił się tutaj.</p>
+              ) : (
+                <div className="space-y-1">
+                  {categories.map(cat => (
+                    <div key={cat} className="flex items-center gap-2 py-1.5 px-2 border-b border-border last:border-b-0">
+                      {editingCat === cat ? (
+                        <>
+                          <Input
+                            className="flex-1"
+                            value={editingCatName}
+                            onChange={e => setEditingCatName(e.target.value)}
+                            autoFocus
+                            onKeyDown={e => { if (e.key === "Enter" && editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }}
+                            data-testid={`input-rename-cat-${cat}`}
+                          />
+                          <Button size="sm" variant="outline" onClick={() => { if (editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }} disabled={!editingCatName.trim() || renameCategoryMutation.isPending} data-testid={`button-save-cat-${cat}`}>
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingCat(null)} data-testid={`button-cancel-cat-${cat}`}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 text-sm font-medium" data-testid={`text-cat-${cat}`}>{cat}</span>
+                          <Button size="sm" variant="ghost" onClick={() => { setEditingCat(cat); setEditingCatName(cat); }} data-testid={`button-edit-cat-${cat}`}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"? Kategoria zostanie usunięta ze wszystkich wpisów.`)) deleteCategoryMutation.mutate(cat); }} data-testid={`button-delete-cat-${cat}`}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "wpisy" && <>
       <Card>
         <CardContent className="p-3">
           <div className="grid grid-cols-4 gap-4 text-center">
@@ -461,86 +567,128 @@ export default function Saldo({ personName }: { personName: string }) {
           </div>
         </div>
       )}
+      </>}
 
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Dodaj wpis do salda</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
-            <div className="space-y-1">
-              <Label>Data</Label>
-              <Input type="date" value={newEntry.date} onChange={e => setNewEntry(p => ({ ...p, date: e.target.value }))} data-testid="input-new-saldo-date" />
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-2">
+              <Label className="shrink-0">Typ wpisu:</Label>
+              <div className="flex items-center border border-border rounded-md overflow-visible">
+                <button
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${newEntry.entryKind === "PRZYCHOD" ? "bg-green-600 text-white" : "hover:bg-muted"}`}
+                  onClick={() => setNewEntry(p => ({ ...p, entryKind: "PRZYCHOD" }))}
+                  data-testid="toggle-new-przychod"
+                >
+                  Przychód
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${newEntry.entryKind === "KOSZT" ? "bg-red-600 text-white" : "hover:bg-muted"}`}
+                  onClick={() => setNewEntry(p => ({ ...p, entryKind: "KOSZT" }))}
+                  data-testid="toggle-new-koszt"
+                >
+                  Koszt
+                </button>
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label>Nazwa operacji</Label>
-              <Input value={newEntry.operationName} onChange={e => setNewEntry(p => ({ ...p, operationName: e.target.value }))} placeholder="np. GRAND BALTIC 203" data-testid="input-new-saldo-op" />
-            </div>
-            <div className="space-y-1">
-              <Label>Nr rezerwacji</Label>
-              <Input value={newEntry.reservationNumber} onChange={e => setNewEntry(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-new-saldo-resnum" />
-            </div>
-            <div className="space-y-1">
-              <Label>Imię i nazwisko</Label>
-              <Input value={newEntry.guestName} onChange={e => setNewEntry(p => ({ ...p, guestName: e.target.value }))} data-testid="input-new-saldo-guest" />
-            </div>
-            <div className="space-y-1">
-              <Label>Rodzaj</Label>
-              <Input value={newEntry.type} onChange={e => setNewEntry(p => ({ ...p, type: e.target.value }))} placeholder="np. PRZYJAZD" data-testid="input-new-saldo-type" />
-            </div>
-            <div className="space-y-1">
-              <Label>Sposób płatności</Label>
-              <Select value={newEntry.paymentMethod || "none"} onValueChange={v => setNewEntry(p => ({ ...p, paymentMethod: v === "none" ? "" : v }))}>
-                <SelectTrigger data-testid="select-new-saldo-payment">
-                  <SelectValue placeholder="Wybierz" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">-</SelectItem>
-                  <SelectItem value="GOTÓWKA">GOTÓWKA</SelectItem>
-                  <SelectItem value="KARTA">KARTA</SelectItem>
-                  <SelectItem value="BLIK">BLIK</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Suma (gotówka)</Label>
-              <Input type="number" step="0.01" value={newEntry.cashAmount} onChange={e => setNewEntry(p => ({ ...p, cashAmount: e.target.value }))} placeholder="0.00" data-testid="input-new-saldo-cash" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kwota kartą</Label>
-              <Input type="number" step="0.01" value={newEntry.cardAmount} onChange={e => setNewEntry(p => ({ ...p, cardAmount: e.target.value }))} placeholder="0.00" data-testid="input-new-saldo-card" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kod autoryzacji</Label>
-              <Input value={newEntry.authCode} onChange={e => setNewEntry(p => ({ ...p, authCode: e.target.value }))} data-testid="input-new-saldo-auth" />
-            </div>
-            <div className="space-y-1">
-              <Label>Uwagi</Label>
-              <Input value={newEntry.notes} onChange={e => setNewEntry(p => ({ ...p, notes: e.target.value }))} data-testid="input-new-saldo-notes" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kasa fiskalna</Label>
-              <Select value={newEntry.kasaFiskalna} onValueChange={v => setNewEntry(p => ({ ...p, kasaFiskalna: v }))}>
-                <SelectTrigger data-testid="select-new-saldo-kf">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TAK">TAK</SelectItem>
-                  <SelectItem value="NIE">NIE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Faktura</Label>
-              <Select value={newEntry.faktura} onValueChange={v => setNewEntry(p => ({ ...p, faktura: v }))}>
-                <SelectTrigger data-testid="select-new-saldo-fv">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TAK">TAK</SelectItem>
-                  <SelectItem value="NIE">NIE</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Data</Label>
+                <Input type="date" value={newEntry.date} onChange={e => setNewEntry(p => ({ ...p, date: e.target.value }))} data-testid="input-new-saldo-date" />
+              </div>
+              <div className="space-y-1">
+                <Label>Nazwa operacji</Label>
+                <Input value={newEntry.operationName} onChange={e => setNewEntry(p => ({ ...p, operationName: e.target.value }))} placeholder={newEntry.entryKind === "PRZYCHOD" ? "np. GRAND BALTIC 203" : "np. Zakup środków czystości"} data-testid="input-new-saldo-op" />
+              </div>
+              {newEntry.entryKind === "KOSZT" && (
+                <div className="col-span-2 space-y-1">
+                  <Label>Kategoria kosztu</Label>
+                  <Select value={newEntry.category || "none"} onValueChange={v => setNewEntry(p => ({ ...p, category: v === "none" ? "" : v }))}>
+                    <SelectTrigger data-testid="select-new-saldo-category">
+                      <SelectValue placeholder="Wybierz kategorię" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— brak —</SelectItem>
+                      {categories.map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {newEntry.entryKind === "PRZYCHOD" && (
+                <>
+                  <div className="space-y-1">
+                    <Label>Nr rezerwacji</Label>
+                    <Input value={newEntry.reservationNumber} onChange={e => setNewEntry(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-new-saldo-resnum" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Imię i nazwisko</Label>
+                    <Input value={newEntry.guestName} onChange={e => setNewEntry(p => ({ ...p, guestName: e.target.value }))} data-testid="input-new-saldo-guest" />
+                  </div>
+                </>
+              )}
+              <div className="space-y-1">
+                <Label>Rodzaj</Label>
+                <Input value={newEntry.type} onChange={e => setNewEntry(p => ({ ...p, type: e.target.value }))} placeholder={newEntry.entryKind === "PRZYCHOD" ? "np. PRZYJAZD" : "np. WYDATEK"} data-testid="input-new-saldo-type" />
+              </div>
+              <div className="space-y-1">
+                <Label>Sposób płatności</Label>
+                <Select value={newEntry.paymentMethod || "none"} onValueChange={v => setNewEntry(p => ({ ...p, paymentMethod: v === "none" ? "" : v }))}>
+                  <SelectTrigger data-testid="select-new-saldo-payment">
+                    <SelectValue placeholder="Wybierz" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">-</SelectItem>
+                    <SelectItem value="GOTÓWKA">GOTÓWKA</SelectItem>
+                    <SelectItem value="KARTA">KARTA</SelectItem>
+                    <SelectItem value="BLIK">BLIK</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Suma (gotówka)</Label>
+                <Input type="number" step="0.01" value={newEntry.cashAmount} onChange={e => setNewEntry(p => ({ ...p, cashAmount: e.target.value }))} placeholder="0.00" data-testid="input-new-saldo-cash" />
+              </div>
+              <div className="space-y-1">
+                <Label>Kwota kartą</Label>
+                <Input type="number" step="0.01" value={newEntry.cardAmount} onChange={e => setNewEntry(p => ({ ...p, cardAmount: e.target.value }))} placeholder="0.00" data-testid="input-new-saldo-card" />
+              </div>
+              <div className="space-y-1">
+                <Label>Kod autoryzacji</Label>
+                <Input value={newEntry.authCode} onChange={e => setNewEntry(p => ({ ...p, authCode: e.target.value }))} data-testid="input-new-saldo-auth" />
+              </div>
+              <div className="space-y-1">
+                <Label>Uwagi</Label>
+                <Input value={newEntry.notes} onChange={e => setNewEntry(p => ({ ...p, notes: e.target.value }))} data-testid="input-new-saldo-notes" />
+              </div>
+              <div className="space-y-1">
+                <Label>Kasa fiskalna</Label>
+                <Select value={newEntry.kasaFiskalna} onValueChange={v => setNewEntry(p => ({ ...p, kasaFiskalna: v }))}>
+                  <SelectTrigger data-testid="select-new-saldo-kf">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TAK">TAK</SelectItem>
+                    <SelectItem value="NIE">NIE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Faktura</Label>
+                <Select value={newEntry.faktura} onValueChange={v => setNewEntry(p => ({ ...p, faktura: v }))}>
+                  <SelectTrigger data-testid="select-new-saldo-fv">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TAK">TAK</SelectItem>
+                    <SelectItem value="NIE">NIE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -588,6 +736,8 @@ export default function Saldo({ personName }: { personName: string }) {
             const cardVal = previewEntry.cardAmount ? parseFloat(previewEntry.cardAmount) : null;
             const saldoVal = previewEntry.saldo ? parseFloat(previewEntry.saldo) : null;
             const fields: { label: string; value: string; highlight?: string }[] = [
+              { label: "Typ wpisu", value: previewEntry.entryKind === "KOSZT" ? "Koszt" : "Przychód", highlight: previewEntry.entryKind === "KOSZT" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400" },
+              ...(previewEntry.entryKind === "KOSZT" && previewEntry.category ? [{ label: "Kategoria", value: previewEntry.category }] : []),
               { label: "Data", value: formatDate(previewEntry.date) },
               { label: "Nazwa operacji", value: previewEntry.operationName || "" },
               { label: "Nr rezerwacji", value: previewEntry.reservationNumber || "" },
@@ -643,84 +793,125 @@ export default function Saldo({ personName }: { personName: string }) {
           <DialogHeader>
             <DialogTitle>Edytuj wpis</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-2">
-            <div className="space-y-1">
-              <Label>Data</Label>
-              <Input type="date" value={editForm.date} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} data-testid="input-edit-saldo-date" />
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-2">
+              <Label className="shrink-0">Typ wpisu:</Label>
+              <div className="flex items-center border border-border rounded-md overflow-visible">
+                <button
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${editForm.entryKind === "PRZYCHOD" ? "bg-green-600 text-white" : "hover:bg-muted"}`}
+                  onClick={() => setEditForm(p => ({ ...p, entryKind: "PRZYCHOD" }))}
+                  data-testid="toggle-edit-przychod"
+                >
+                  Przychód
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${editForm.entryKind === "KOSZT" ? "bg-red-600 text-white" : "hover:bg-muted"}`}
+                  onClick={() => setEditForm(p => ({ ...p, entryKind: "KOSZT" }))}
+                  data-testid="toggle-edit-koszt"
+                >
+                  Koszt
+                </button>
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label>Nazwa operacji</Label>
-              <Input value={editForm.operationName} onChange={e => setEditForm(p => ({ ...p, operationName: e.target.value }))} data-testid="input-edit-saldo-op" />
-            </div>
-            <div className="space-y-1">
-              <Label>Nr rezerwacji</Label>
-              <Input value={editForm.reservationNumber} onChange={e => setEditForm(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-edit-saldo-resnum" />
-            </div>
-            <div className="space-y-1">
-              <Label>Imię i nazwisko</Label>
-              <Input value={editForm.guestName} onChange={e => setEditForm(p => ({ ...p, guestName: e.target.value }))} data-testid="input-edit-saldo-guest" />
-            </div>
-            <div className="space-y-1">
-              <Label>Rodzaj</Label>
-              <Input value={editForm.type} onChange={e => setEditForm(p => ({ ...p, type: e.target.value }))} data-testid="input-edit-saldo-type" />
-            </div>
-            <div className="space-y-1">
-              <Label>Sposób płatności</Label>
-              <Select value={editForm.paymentMethod || "none"} onValueChange={v => setEditForm(p => ({ ...p, paymentMethod: v === "none" ? "" : v }))}>
-                <SelectTrigger data-testid="select-edit-saldo-payment">
-                  <SelectValue placeholder="Wybierz" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">-</SelectItem>
-                  <SelectItem value="GOTÓWKA">GOTÓWKA</SelectItem>
-                  <SelectItem value="KARTA">KARTA</SelectItem>
-                  <SelectItem value="BLIK">BLIK</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Suma (gotówka)</Label>
-              <Input type="number" step="0.01" value={editForm.cashAmount} onChange={e => setEditForm(p => ({ ...p, cashAmount: e.target.value }))} data-testid="input-edit-saldo-cash" />
-            </div>
-            <div className="space-y-1">
-              <Label>Saldo</Label>
-              <Input type="number" step="0.01" value={editForm.saldo} onChange={e => setEditForm(p => ({ ...p, saldo: e.target.value }))} data-testid="input-edit-saldo-saldo" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kwota kartą</Label>
-              <Input type="number" step="0.01" value={editForm.cardAmount} onChange={e => setEditForm(p => ({ ...p, cardAmount: e.target.value }))} data-testid="input-edit-saldo-card" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kod autoryzacji</Label>
-              <Input value={editForm.authCode} onChange={e => setEditForm(p => ({ ...p, authCode: e.target.value }))} data-testid="input-edit-saldo-auth" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kasa fiskalna</Label>
-              <Select value={editForm.kasaFiskalna} onValueChange={v => setEditForm(p => ({ ...p, kasaFiskalna: v }))}>
-                <SelectTrigger data-testid="select-edit-saldo-kf">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TAK">TAK</SelectItem>
-                  <SelectItem value="NIE">NIE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Faktura</Label>
-              <Select value={editForm.faktura} onValueChange={v => setEditForm(p => ({ ...p, faktura: v }))}>
-                <SelectTrigger data-testid="select-edit-saldo-fv">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TAK">TAK</SelectItem>
-                  <SelectItem value="NIE">NIE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label>Uwagi</Label>
-              <Input value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} data-testid="input-edit-saldo-notes" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Data</Label>
+                <Input type="date" value={editForm.date} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} data-testid="input-edit-saldo-date" />
+              </div>
+              <div className="space-y-1">
+                <Label>Nazwa operacji</Label>
+                <Input value={editForm.operationName} onChange={e => setEditForm(p => ({ ...p, operationName: e.target.value }))} data-testid="input-edit-saldo-op" />
+              </div>
+              {editForm.entryKind === "KOSZT" && (
+                <div className="col-span-2 space-y-1">
+                  <Label>Kategoria kosztu</Label>
+                  <Select value={editForm.category || "none"} onValueChange={v => setEditForm(p => ({ ...p, category: v === "none" ? "" : v }))}>
+                    <SelectTrigger data-testid="select-edit-saldo-category">
+                      <SelectValue placeholder="Wybierz kategorię" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— brak —</SelectItem>
+                      {categories.map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {editForm.entryKind === "PRZYCHOD" && (
+                <>
+                  <div className="space-y-1">
+                    <Label>Nr rezerwacji</Label>
+                    <Input value={editForm.reservationNumber} onChange={e => setEditForm(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-edit-saldo-resnum" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Imię i nazwisko</Label>
+                    <Input value={editForm.guestName} onChange={e => setEditForm(p => ({ ...p, guestName: e.target.value }))} data-testid="input-edit-saldo-guest" />
+                  </div>
+                </>
+              )}
+              <div className="space-y-1">
+                <Label>Rodzaj</Label>
+                <Input value={editForm.type} onChange={e => setEditForm(p => ({ ...p, type: e.target.value }))} data-testid="input-edit-saldo-type" />
+              </div>
+              <div className="space-y-1">
+                <Label>Sposób płatności</Label>
+                <Select value={editForm.paymentMethod || "none"} onValueChange={v => setEditForm(p => ({ ...p, paymentMethod: v === "none" ? "" : v }))}>
+                  <SelectTrigger data-testid="select-edit-saldo-payment">
+                    <SelectValue placeholder="Wybierz" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">-</SelectItem>
+                    <SelectItem value="GOTÓWKA">GOTÓWKA</SelectItem>
+                    <SelectItem value="KARTA">KARTA</SelectItem>
+                    <SelectItem value="BLIK">BLIK</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Suma (gotówka)</Label>
+                <Input type="number" step="0.01" value={editForm.cashAmount} onChange={e => setEditForm(p => ({ ...p, cashAmount: e.target.value }))} data-testid="input-edit-saldo-cash" />
+              </div>
+              <div className="space-y-1">
+                <Label>Saldo</Label>
+                <Input type="number" step="0.01" value={editForm.saldo} onChange={e => setEditForm(p => ({ ...p, saldo: e.target.value }))} data-testid="input-edit-saldo-saldo" />
+              </div>
+              <div className="space-y-1">
+                <Label>Kwota kartą</Label>
+                <Input type="number" step="0.01" value={editForm.cardAmount} onChange={e => setEditForm(p => ({ ...p, cardAmount: e.target.value }))} data-testid="input-edit-saldo-card" />
+              </div>
+              <div className="space-y-1">
+                <Label>Kod autoryzacji</Label>
+                <Input value={editForm.authCode} onChange={e => setEditForm(p => ({ ...p, authCode: e.target.value }))} data-testid="input-edit-saldo-auth" />
+              </div>
+              <div className="space-y-1">
+                <Label>Kasa fiskalna</Label>
+                <Select value={editForm.kasaFiskalna} onValueChange={v => setEditForm(p => ({ ...p, kasaFiskalna: v }))}>
+                  <SelectTrigger data-testid="select-edit-saldo-kf">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TAK">TAK</SelectItem>
+                    <SelectItem value="NIE">NIE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Faktura</Label>
+                <Select value={editForm.faktura} onValueChange={v => setEditForm(p => ({ ...p, faktura: v }))}>
+                  <SelectTrigger data-testid="select-edit-saldo-fv">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TAK">TAK</SelectItem>
+                    <SelectItem value="NIE">NIE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2 space-y-1">
+                <Label>Uwagi</Label>
+                <Input value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} data-testid="input-edit-saldo-notes" />
+              </div>
             </div>
           </div>
           <DialogFooter className="gap-2">

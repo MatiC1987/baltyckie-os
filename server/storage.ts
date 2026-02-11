@@ -111,6 +111,9 @@ export interface IStorage {
 
   // Saldo
   getSaldoEntries(filters?: { startDate?: string; endDate?: string }): Promise<SaldoEntry[]>;
+  getSaldoCategories(): Promise<string[]>;
+  updateSaldoCategory(oldName: string, newName: string): Promise<void>;
+  deleteSaldoCategory(name: string): Promise<void>;
   createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry>;
   createSaldoEntriesBulk(entries: InsertSaldoEntry[]): Promise<SaldoEntry[]>;
   updateSaldoEntry(id: number, entry: Partial<InsertSaldoEntry>): Promise<SaldoEntry>;
@@ -461,6 +464,19 @@ export class DatabaseStorage implements IStorage {
     if (filters?.startDate) conditions.push(gte(saldoEntries.date, filters.startDate));
     if (filters?.endDate) conditions.push(lte(saldoEntries.date, filters.endDate));
     return db.select().from(saldoEntries).where(conditions.length ? and(...conditions) : undefined).orderBy(saldoEntries.id);
+  }
+
+  async getSaldoCategories(): Promise<string[]> {
+    const rows = await db.selectDistinct({ category: saldoEntries.category }).from(saldoEntries).where(sql`${saldoEntries.category} IS NOT NULL AND ${saldoEntries.category} != ''`);
+    return rows.map(r => r.category!).sort((a, b) => a.localeCompare(b, "pl"));
+  }
+
+  async updateSaldoCategory(oldName: string, newName: string): Promise<void> {
+    await db.update(saldoEntries).set({ category: newName }).where(eq(saldoEntries.category, oldName));
+  }
+
+  async deleteSaldoCategory(name: string): Promise<void> {
+    await db.update(saldoEntries).set({ category: null }).where(eq(saldoEntries.category, name));
   }
 
   async createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry> {

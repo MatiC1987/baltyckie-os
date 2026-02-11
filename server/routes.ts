@@ -600,6 +600,25 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/saldo/categories', isAuthenticated, async (_req, res) => {
+    const categories = await storage.getSaldoCategories();
+    res.json(categories);
+  });
+
+  app.put('/api/saldo/categories/:name', isAuthenticated, async (req, res) => {
+    const { newName } = req.body;
+    if (!newName || typeof newName !== 'string') {
+      return res.status(400).json({ message: "Podaj nową nazwę kategorii" });
+    }
+    await storage.updateSaldoCategory(req.params.name, newName.trim());
+    res.json({ success: true });
+  });
+
+  app.delete('/api/saldo/categories/:name', isAuthenticated, async (req, res) => {
+    await storage.deleteSaldoCategory(req.params.name);
+    res.status(204).send();
+  });
+
   app.delete('/api/saldo/:id', isAuthenticated, async (req, res) => {
     await storage.deleteSaldoEntry(Number(req.params.id));
     res.status(204).send();
