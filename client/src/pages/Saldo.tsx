@@ -237,6 +237,12 @@ export default function Saldo({ personName }: { personName: string }) {
     return result;
   }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, searchQuery, sortColumn, sortDir]);
 
+  const lpMap = useMemo(() => {
+    const map = new Map<number, number>();
+    entries.forEach((e, i) => map.set(e.id, i + 1));
+    return map;
+  }, [entries]);
+
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -542,7 +548,7 @@ export default function Saldo({ personName }: { personName: string }) {
                     onClick={() => setPreviewEntry(entry)}
                     data-testid={`row-saldo-${entry.id}`}
                   >
-                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums text-center text-muted-foreground" data-testid={`cell-lp-${entry.id}`}>{page * PAGE_SIZE + idx + 1}</td>
+                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums text-center text-muted-foreground" data-testid={`cell-lp-${entry.id}`}>{lpMap.get(entry.id) ?? ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-resnum-${entry.id}`}>{entry.reservationNumber || ""}</td>
