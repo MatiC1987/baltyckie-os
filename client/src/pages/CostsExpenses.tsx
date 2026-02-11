@@ -437,15 +437,15 @@ export default function CostsExpenses() {
         <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
           <thead className="sticky top-0 z-[100]">
             <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1.5 text-left font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-left font-bold w-[220px] min-w-[220px]" rowSpan={2}>
                 Pozycja
               </th>
               {MONTHS_SHORT.map((m, i) => (
-                <th key={i} colSpan={3} className="border-b border-r border-border px-1 py-1.5 text-center font-bold">
+                <th key={i} colSpan={3} className="border-b border-r border-border px-1 py-1 text-center font-bold">
                   {m}
                 </th>
               ))}
-              <th colSpan={3} className="border-b border-border px-1 py-1.5 text-center font-bold bg-muted dark:bg-muted/70">
+              <th colSpan={3} className="border-b border-border px-1 py-1 text-center font-bold bg-muted dark:bg-muted/70">
                 ROCZNIE
               </th>
             </tr>
@@ -469,7 +469,7 @@ export default function CostsExpenses() {
                     className={`${cat.color} text-white select-none`}
                     data-testid={`row-category-${cat.id}`}
                   >
-                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-2 py-1.5 font-bold`}>
+                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-2 py-1 font-bold`}>
                       <div className="flex items-center gap-1">
                         <span className="cursor-pointer flex items-center gap-1 flex-1" onClick={() => toggleCategory(cat.id)}>
                           {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -502,15 +502,15 @@ export default function CostsExpenses() {
                       const s = getCategorySummary(cat, m);
                       return (
                         <Fragment key={m}>
-                          <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
-                          <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-semibold tabular-nums">{formatNum(s.rzeczywiste)}</td>
-                          <td className={`border-b border-r border-border/30 px-1 py-1.5 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
+                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
+                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.rzeczywiste)}</td>
+                          <td className={`border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
                         </Fragment>
                       );
                     })}
-                    <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-bold tabular-nums">{formatNum(annualCat.prognoza)}</td>
-                    <td className="border-b border-r border-border/30 px-1 py-1.5 text-right font-bold tabular-nums">{formatNum(annualCat.rzeczywiste)}</td>
-                    <td className={`border-b border-border/30 px-1 py-1.5 text-right font-bold tabular-nums ${annualCat.saldo > 0 ? "text-green-200" : annualCat.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(annualCat.saldo)}</td>
+                    <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.prognoza)}</td>
+                    <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.rzeczywiste)}</td>
+                    <td className={`border-b border-border/30 px-1 py-1 text-right font-bold tabular-nums ${annualCat.saldo > 0 ? "text-green-200" : annualCat.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(annualCat.saldo)}</td>
                   </tr>
                   {!isCollapsed && cat.items.map((item, idx) => {
                     const annualItem = getItemAnnualSummary(cat.id, idx);
@@ -620,7 +620,7 @@ export default function CostsExpenses() {
               );
             })}
             <tr className="bg-muted/80 dark:bg-muted/50 font-bold">
-              <td className="sticky left-0 z-[105] bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-2 text-left">
+              <td className="sticky left-0 z-[105] bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-left">
                 SUMA
               </td>
               {Array.from({ length: 12 }, (_, m) => {
@@ -634,15 +634,15 @@ export default function CostsExpenses() {
                 const saldo = prognoza - rzeczywiste;
                 return (
                   <Fragment key={m}>
-                    <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums">{formatNum(prognoza)}</td>
-                    <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums">{formatNum(rzeczywiste)}</td>
-                    <td className={`border-t-2 border-r border-border px-1 py-2 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums">{formatNum(prognoza)}</td>
+                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums">{formatNum(rzeczywiste)}</td>
+                    <td className={`border-t-2 border-r border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
                   </Fragment>
                 );
               })}
-              <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.prognoza)}</td>
-              <td className="border-t-2 border-r border-border px-1 py-2 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.rzeczywiste)}</td>
-              <td className={`border-t-2 border-border px-1 py-2 text-right tabular-nums bg-muted dark:bg-muted/70 ${saldoColor(grandTotal.saldo)}`}>{formatNum(grandTotal.saldo)}</td>
+              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.prognoza)}</td>
+              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.rzeczywiste)}</td>
+              <td className={`border-t-2 border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70 ${saldoColor(grandTotal.saldo)}`}>{formatNum(grandTotal.saldo)}</td>
             </tr>
           </tbody>
         </table>
