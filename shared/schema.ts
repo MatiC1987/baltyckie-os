@@ -336,3 +336,12 @@ export const saldoEntries = pgTable("saldo_entries", {
 export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true });
 export type SaldoEntry = typeof saldoEntries.$inferSelect;
 export type InsertSaldoEntry = z.infer<typeof insertSaldoEntrySchema>;
+
+export const saldoCategories = pgTable("saldo_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const insertSaldoCategorySchema = createInsertSchema(saldoCategories).omit({ id: true });
+export type SaldoCategory = typeof saldoCategories.$inferSelect;
+export type InsertSaldoCategory = z.infer<typeof insertSaldoCategorySchema>;

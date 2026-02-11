@@ -15,7 +15,8 @@ import {
   locations, Location, InsertLocation,
   serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
   serviceContracts, ServiceContract, InsertServiceContract,
-  saldoEntries, SaldoEntry, InsertSaldoEntry
+  saldoEntries, SaldoEntry, InsertSaldoEntry,
+  saldoCategories
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -112,6 +113,7 @@ export interface IStorage {
   // Saldo
   getSaldoEntries(filters?: { startDate?: string; endDate?: string }): Promise<SaldoEntry[]>;
   getSaldoCategories(): Promise<string[]>;
+  createSaldoCategory(name: string): Promise<void>;
   updateSaldoCategory(oldName: string, newName: string): Promise<void>;
   deleteSaldoCategory(name: string): Promise<void>;
   createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry>;
@@ -467,16 +469,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSaldoCategories(): Promise<string[]> {
-    const rows = await db.selectDistinct({ category: saldoEntries.category }).from(saldoEntries).where(sql`${saldoEntries.category} IS NOT NULL AND ${saldoEntries.category} != ''`);
-    return rows.map(r => r.category!).sort((a, b) => a.localeCompare(b, "pl"));
+    const fromEntries = await db.selectDistinct({ category: saldoEntries.category }).from(saldoEntries).where(sql`${saldoEntries.category} IS NOT NULL AND ${saldoEntries.category} != ''`);
+    const fromTable = await db.select({ name: saldoCategories.name }).from(saldoCategories);
+    const all = new Set<string>();
+    fromEntries.forEach(r => { if (r.category) all.add(r.category); });
+    fromTable.forEach(r => all.add(r.name));
+    return [...all].sort((a, b) => a.localeCompare(b, "pl"));
+  }
+
+  async createSaldoCategory(name: string): Promise<void> {
+    await db.insert(saldoCategories).values({ name }).onConflictDoNothing();
   }
 
   async updateSaldoCategory(oldName: string, newName: string): Promise<void> {
     await db.update(saldoEntries).set({ category: newName }).where(eq(saldoEntries.category, oldName));
+    const existing = await db.select().from(saldoCategories).where(eq(saldoCategories.name, oldName));
+    if (existing.length > 0) {
+      await db.update(saldoCategories).set({ name: newName }).where(eq(saldoCategories.name, oldName));
+    }
   }
 
   async deleteSaldoCategory(name: string): Promise<void> {
     await db.update(saldoEntries).set({ category: null }).where(eq(saldoEntries.category, name));
+    await db.delete(saldoCategories).where(eq(saldoCategories.name, name));
   }
 
   async createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry> {

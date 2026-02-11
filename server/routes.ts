@@ -605,6 +605,15 @@ export async function registerRoutes(
     res.json(categories);
   });
 
+  app.post('/api/saldo/categories', isAuthenticated, async (req, res) => {
+    const { name } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ message: "Podaj nazwę kategorii" });
+    }
+    await storage.createSaldoCategory(name.trim());
+    res.json({ success: true });
+  });
+
   app.put('/api/saldo/categories/:name', isAuthenticated, async (req, res) => {
     const { newName } = req.body;
     if (!newName || typeof newName !== 'string') {

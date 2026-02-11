@@ -110,6 +110,16 @@ export default function Saldo({ personName }: { personName: string }) {
     },
   });
 
+  const [newCatName, setNewCatName] = useState("");
+  const createCategoryMutation = useMutation({
+    mutationFn: (name: string) => apiRequest("POST", "/api/saldo/categories", { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
+      toast({ title: "Dodano kategorię" });
+      setNewCatName("");
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/saldo", data),
     onSuccess: () => {
@@ -312,8 +322,28 @@ export default function Saldo({ personName }: { personName: string }) {
         <Card>
           <CardContent className="p-4">
             <div className="space-y-3">
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Input
+                  placeholder="Nazwa nowej kategorii"
+                  value={newCatName}
+                  onChange={e => setNewCatName(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && newCatName.trim()) createCategoryMutation.mutate(newCatName.trim()); }}
+                  className="max-w-xs"
+                  data-testid="input-new-category"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => { if (newCatName.trim()) createCategoryMutation.mutate(newCatName.trim()); }}
+                  disabled={!newCatName.trim() || createCategoryMutation.isPending}
+                  data-testid="button-add-category"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Dodaj kategorię
+                </Button>
+              </div>
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <p className="text-sm text-muted-foreground">Lista kategorii wykorzystywanych we wpisach. Możesz zmienić nazwę lub usunąć kategorie (usunięcie wyczyści kategorię ze wszystkich powiązanych wpisów).</p>
+                <p className="text-sm text-muted-foreground">Lista kategorii. Możesz zmienić nazwę lub usunąć kategorie.</p>
                 {selectedCats.size > 0 && (
                   <Button
                     variant="destructive"
