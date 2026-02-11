@@ -929,6 +929,33 @@ export default function CostsExpenses() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showCopyToNextYear} onOpenChange={setShowCopyToNextYear}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Kopiuj prognozę na {selectedYear + 1}</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Wszystkie wartości z kolumn <strong>P (Prognoza)</strong> z roku <strong>{selectedYear}</strong> zostaną skopiowane do kolumn <strong>P (Prognoza)</strong> na rok <strong>{selectedYear + 1}</strong>.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Jeśli w roku {selectedYear + 1} istnieją już prognozowane wartości, zostaną one nadpisane.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Wartości rzeczywiste (R) nie zostaną zmienione.
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowCopyToNextYear(false)} data-testid="button-cancel-copy-forecast">
+              Anuluj
+            </Button>
+            <Button onClick={handleCopyForecastToNextYear} data-testid="button-confirm-copy-forecast">
+              <Copy className="mr-1 h-4 w-4" /> Kopiuj prognozę
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
