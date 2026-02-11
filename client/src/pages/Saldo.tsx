@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, ArrowUp, ArrowDown, Pencil, Tag, Check } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -50,8 +50,6 @@ export default function Saldo({ personName }: { personName: string }) {
     cashAmount: "", saldo: "", cardAmount: "", authCode: "", notes: "",
     entryKind: "PRZYCHOD" as string, category: "",
   });
-  const [sortColumn, setSortColumn] = useState<string>("date");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [activeTab, setActiveTab] = useState<"wpisy" | "kategorie">("wpisy");
   const [editingCat, setEditingCat] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
@@ -194,16 +192,6 @@ export default function Saldo({ personName }: { personName: string }) {
     return [...s].sort();
   }, [entries]);
 
-  const toggleSort = (col: string) => {
-    if (sortColumn === col) {
-      setSortDir(d => d === "asc" ? "desc" : "asc");
-    } else {
-      setSortColumn(col);
-      setSortDir(col === "date" ? "desc" : "asc");
-    }
-    setPage(0);
-  };
-
   const filtered = useMemo(() => {
     let result = [...entries];
     if (dateFrom) result = result.filter(e => e.date >= dateFrom);
@@ -219,29 +207,9 @@ export default function Saldo({ personName }: { personName: string }) {
         (e.notes?.toLowerCase().includes(q))
       );
     }
-    const numericCols = ["cashAmount", "saldo", "cardAmount"];
-    result.sort((a, b) => {
-      const key = sortColumn as keyof SaldoEntry;
-      const aVal = a[key];
-      const bVal = b[key];
-      let cmp = 0;
-      if (numericCols.includes(sortColumn)) {
-        cmp = (parseFloat(aVal as string) || 0) - (parseFloat(bVal as string) || 0);
-      } else {
-        const aStr = (aVal ?? "").toString().toLowerCase();
-        const bStr = (bVal ?? "").toString().toLowerCase();
-        cmp = aStr.localeCompare(bStr, "pl");
-      }
-      return sortDir === "asc" ? cmp : -cmp;
-    });
+    result.reverse();
     return result;
-  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, searchQuery, sortColumn, sortDir]);
-
-  const lpMap = useMemo(() => {
-    const map = new Map<number, number>();
-    entries.forEach((e, i) => map.set(e.id, i + 1));
-    return map;
-  }, [entries]);
+  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, searchQuery]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -500,39 +468,30 @@ export default function Saldo({ personName }: { personName: string }) {
         <div className="text-center py-8 text-muted-foreground">Ładowanie danych...</div>
       ) : (
         <div className="rounded-md border border-border bg-card overflow-x-auto">
-          <table className="w-full text-xs border-collapse" style={{ minWidth: "1400px" }}>
+          <table className="w-full text-xs border-collapse" style={{ minWidth: "1350px" }}>
             <thead className="sticky top-0 z-[100]">
               <tr className="bg-muted/80 dark:bg-muted/50">
                 {([
-                  { key: "lp", label: "Lp.", cls: "sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-r w-[55px] text-center", borderR: "" },
-                  { key: "date", label: "Data", cls: "border-r w-[90px] text-left", borderR: "" },
-                  { key: "operationName", label: "Nazwa operacji", cls: "border-r w-[200px] text-left", borderR: "" },
-                  { key: "reservationNumber", label: "Nr rez.", cls: "border-r w-[80px] text-left", borderR: "" },
-                  { key: "guestName", label: "Imię i nazwisko", cls: "border-r w-[180px] text-left", borderR: "" },
-                  { key: "type", label: "Kategoria", cls: "border-r w-[130px] text-left", borderR: "" },
-                  { key: "paymentMethod", label: "Płatność", cls: "border-r w-[90px] text-left", borderR: "" },
-                  { key: "kasaFiskalna", label: "KF", cls: "border-r w-[50px] text-center", borderR: "" },
-                  { key: "faktura", label: "FV", cls: "border-r w-[50px] text-center", borderR: "" },
-                  { key: "cashAmount", label: "Suma (got.)", cls: "border-r-2 w-[100px] text-right", borderR: "" },
-                  { key: "saldo", label: "Saldo", cls: "border-r-2 w-[100px] text-right", borderR: "" },
-                  { key: "authCode", label: "Kod aut.", cls: "border-r w-[80px] text-left", borderR: "" },
-                  { key: "cardAmount", label: "Kwota kartą", cls: "border-r w-[100px] text-right", borderR: "" },
-                  { key: "notes", label: "Uwagi", cls: "border-r text-left", borderR: "" },
+                  { key: "date", label: "Data", cls: "sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-r w-[90px] text-left" },
+                  { key: "operationName", label: "Nazwa operacji", cls: "border-r w-[200px] text-left" },
+                  { key: "reservationNumber", label: "Nr rez.", cls: "border-r w-[80px] text-left" },
+                  { key: "guestName", label: "Imię i nazwisko", cls: "border-r w-[180px] text-left" },
+                  { key: "type", label: "Kategoria", cls: "border-r w-[130px] text-left" },
+                  { key: "paymentMethod", label: "Płatność", cls: "border-r w-[90px] text-left" },
+                  { key: "kasaFiskalna", label: "KF", cls: "border-r w-[50px] text-center" },
+                  { key: "faktura", label: "FV", cls: "border-r w-[50px] text-center" },
+                  { key: "cashAmount", label: "Suma (got.)", cls: "border-r-2 w-[100px] text-right" },
+                  { key: "saldo", label: "Saldo", cls: "border-r-2 w-[100px] text-right" },
+                  { key: "authCode", label: "Kod aut.", cls: "border-r w-[80px] text-left" },
+                  { key: "cardAmount", label: "Kwota kartą", cls: "border-r w-[100px] text-right" },
+                  { key: "notes", label: "Uwagi", cls: "border-r text-left" },
                 ] as const).map(col => (
                   <th
                     key={col.key}
-                    className={`border-b border-border px-2 py-2 font-bold cursor-pointer select-none hover:bg-muted ${col.cls}`}
-                    onClick={() => toggleSort(col.key)}
-                    data-testid={`sort-saldo-${col.key}`}
+                    className={`border-b border-border px-2 py-2 font-bold select-none ${col.cls}`}
+                    data-testid={`header-saldo-${col.key}`}
                   >
-                    <span className="inline-flex items-center gap-1">
-                      {col.label}
-                      {sortColumn === col.key && (
-                        sortDir === "asc"
-                          ? <ArrowUp className="h-3 w-3 shrink-0" />
-                          : <ArrowDown className="h-3 w-3 shrink-0" />
-                      )}
-                    </span>
+                    {col.label}
                   </th>
                 ))}
                 <th className="border-b border-border px-2 py-2 text-center font-bold w-[65px]"></th>
@@ -548,8 +507,7 @@ export default function Saldo({ personName }: { personName: string }) {
                     onClick={() => setPreviewEntry(entry)}
                     data-testid={`row-saldo-${entry.id}`}
                   >
-                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums text-center text-muted-foreground" data-testid={`cell-lp-${entry.id}`}>{lpMap.get(entry.id) ?? ""}</td>
-                    <td className="border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
+                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-resnum-${entry.id}`}>{entry.reservationNumber || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-guest-${entry.id}`}>{entry.guestName || ""}</td>
