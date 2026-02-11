@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, Eye, X, ArrowUp, ArrowDown, Pencil, Tag, Check } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, ArrowUp, ArrowDown, Pencil, Tag, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -593,16 +593,37 @@ export default function Saldo({ personName }: { personName: string }) {
       )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="text-sm text-muted-foreground">
             Strona {page + 1} z {totalPages} ({filtered.length} wpisów)
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)} data-testid="button-saldo-prev-page">
+            <Button variant="outline" size="icon" disabled={page === 0} onClick={() => setPage(0)} data-testid="button-saldo-first-page">
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" disabled={page === 0} onClick={() => setPage(p => p - 1)} data-testid="button-saldo-prev-page">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} data-testid="button-saldo-next-page">
+            <div className="flex items-center gap-1 mx-1">
+              <Input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={page + 1}
+                onChange={e => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val) && val >= 1 && val <= totalPages) setPage(val - 1);
+                }}
+                className="w-16 text-center"
+                data-testid="input-saldo-go-to-page"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">z {totalPages}</span>
+            </div>
+            <Button variant="outline" size="icon" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} data-testid="button-saldo-next-page">
               <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} data-testid="button-saldo-last-page">
+              <ChevronsRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
