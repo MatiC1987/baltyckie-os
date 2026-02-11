@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
@@ -213,6 +213,7 @@ export default function CostsExpenses() {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCatTitle, setNewCatTitle] = useState("");
   const [newCatColor, setNewCatColor] = useState(CATEGORY_COLORS[0].value);
+  const [showCopyToNextYear, setShowCopyToNextYear] = useState(false);
 
   const dragCatRef = useRef<string | null>(null);
   const dragOverCatRef = useRef<string | null>(null);
@@ -400,6 +401,26 @@ export default function CostsExpenses() {
     setSelectedCell(null);
   }, [selectedCell, cellData, selectedYear, parseCellKey]);
 
+  const handleCopyForecastToNextYear = useCallback(() => {
+    const nextYear = selectedYear + 1;
+    const existingNextYearData = loadData(nextYear);
+    const newNextYearData = { ...existingNextYearData };
+    for (const cat of categories) {
+      cat.items.forEach((_, itemIdx) => {
+        for (let m = 0; m < 12; m++) {
+          const sourceKey = makeCellKey(cat.id, itemIdx, m, "prognoza");
+          const targetKey = makeCellKey(cat.id, itemIdx, m, "prognoza");
+          const val = cellData[sourceKey] || 0;
+          if (val !== 0) {
+            newNextYearData[targetKey] = val;
+          }
+        }
+      });
+    }
+    saveData(nextYear, newNextYearData);
+    setShowCopyToNextYear(false);
+  }, [selectedYear, categories, cellData]);
+
   const startEditingName = useCallback((catId: string, itemIdx: number) => {
     const cat = categories.find(c => c.id === catId);
     if (!cat) return;
@@ -536,6 +557,9 @@ export default function CostsExpenses() {
           <p className="text-muted-foreground">Zestawienie kosztów operacyjnych: prognoza vs rzeczywiste</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
+            <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
+          </Button>
           <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
             <Plus className="mr-1 h-4 w-4" /> Kategoria
           </Button>
