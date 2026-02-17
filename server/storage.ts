@@ -16,7 +16,10 @@ import {
   serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
   serviceContracts, ServiceContract, InsertServiceContract,
   saldoEntries, SaldoEntry, InsertSaldoEntry,
-  saldoCategories
+  saldoCategories,
+  subleases, Sublease, InsertSublease,
+  subleasePayments, SubleasePayment, InsertSubleasePayment,
+  subleaseAttachments, SubleaseAttachment, InsertSubleaseAttachment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -121,6 +124,24 @@ export interface IStorage {
   updateSaldoEntry(id: number, entry: Partial<InsertSaldoEntry>): Promise<SaldoEntry>;
   deleteSaldoEntry(id: number): Promise<void>;
   deleteAllSaldoEntries(): Promise<void>;
+
+  // Subleases
+  getSubleases(): Promise<Sublease[]>;
+  getSublease(id: number): Promise<Sublease | undefined>;
+  createSublease(sublease: InsertSublease): Promise<Sublease>;
+  updateSublease(id: number, sublease: Partial<InsertSublease>): Promise<Sublease>;
+  deleteSublease(id: number): Promise<void>;
+
+  // Sublease Payments
+  getSubleasePayments(subleaseId: number): Promise<SubleasePayment[]>;
+  createSubleasePayment(payment: InsertSubleasePayment): Promise<SubleasePayment>;
+  updateSubleasePayment(id: number, payment: Partial<InsertSubleasePayment>): Promise<SubleasePayment>;
+  deleteSubleasePayment(id: number): Promise<void>;
+
+  // Sublease Attachments
+  getSubleaseAttachments(subleaseId: number): Promise<SubleaseAttachment[]>;
+  createSubleaseAttachment(attachment: InsertSubleaseAttachment): Promise<SubleaseAttachment>;
+  deleteSubleaseAttachment(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -552,6 +573,62 @@ export class DatabaseStorage implements IStorage {
       netIncome: totalRevenue - totalExpenses,
       occupancyRate: 0, // Needs complex date range calculation
     };
+  }
+  // Subleases
+  async getSubleases(): Promise<Sublease[]> {
+    return db.select().from(subleases).orderBy(desc(subleases.id));
+  }
+
+  async getSublease(id: number): Promise<Sublease | undefined> {
+    const [s] = await db.select().from(subleases).where(eq(subleases.id, id));
+    return s;
+  }
+
+  async createSublease(sublease: InsertSublease): Promise<Sublease> {
+    const [created] = await db.insert(subleases).values(sublease).returning();
+    return created;
+  }
+
+  async updateSublease(id: number, sublease: Partial<InsertSublease>): Promise<Sublease> {
+    const [updated] = await db.update(subleases).set(sublease).where(eq(subleases.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSublease(id: number): Promise<void> {
+    await db.delete(subleases).where(eq(subleases.id, id));
+  }
+
+  // Sublease Payments
+  async getSubleasePayments(subleaseId: number): Promise<SubleasePayment[]> {
+    return db.select().from(subleasePayments).where(eq(subleasePayments.subleaseId, subleaseId)).orderBy(desc(subleasePayments.dueDate));
+  }
+
+  async createSubleasePayment(payment: InsertSubleasePayment): Promise<SubleasePayment> {
+    const [created] = await db.insert(subleasePayments).values(payment).returning();
+    return created;
+  }
+
+  async updateSubleasePayment(id: number, payment: Partial<InsertSubleasePayment>): Promise<SubleasePayment> {
+    const [updated] = await db.update(subleasePayments).set(payment).where(eq(subleasePayments.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSubleasePayment(id: number): Promise<void> {
+    await db.delete(subleasePayments).where(eq(subleasePayments.id, id));
+  }
+
+  // Sublease Attachments
+  async getSubleaseAttachments(subleaseId: number): Promise<SubleaseAttachment[]> {
+    return db.select().from(subleaseAttachments).where(eq(subleaseAttachments.subleaseId, subleaseId)).orderBy(desc(subleaseAttachments.uploadedAt));
+  }
+
+  async createSubleaseAttachment(attachment: InsertSubleaseAttachment): Promise<SubleaseAttachment> {
+    const [created] = await db.insert(subleaseAttachments).values(attachment).returning();
+    return created;
+  }
+
+  async deleteSubleaseAttachment(id: number): Promise<void> {
+    await db.delete(subleaseAttachments).where(eq(subleaseAttachments.id, id));
   }
 }
 

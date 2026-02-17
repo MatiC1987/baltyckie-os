@@ -345,3 +345,73 @@ export const saldoCategories = pgTable("saldo_categories", {
 export const insertSaldoCategorySchema = createInsertSchema(saldoCategories).omit({ id: true });
 export type SaldoCategory = typeof saldoCategories.$inferSelect;
 export type InsertSaldoCategory = z.infer<typeof insertSaldoCategorySchema>;
+
+export const subleases = pgTable("subleases", {
+  id: serial("id").primaryKey(),
+  tenantType: text("tenant_type").notNull().default("osoba_fizyczna"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  companyName: text("company_name"),
+  nip: text("nip"),
+  street: text("street"),
+  postalCode: text("postal_code"),
+  city: text("city"),
+  peselOrPassport: text("pesel_or_passport"),
+  phone: text("phone"),
+  email: text("email"),
+  invoiceEmail: text("invoice_email"),
+  vatRate: text("vat_rate").default("23%"),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  rentAmount: numeric("rent_amount", { precision: 12, scale: 2 }),
+  additionalFees: numeric("additional_fees", { precision: 12, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const subleasePayments = pgTable("sublease_payments", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  category: text("category").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  dueDate: date("due_date").notNull(),
+  status: text("status").notNull().default("do_oplacenia"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const subleaseAttachments = pgTable("sublease_attachments", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  category: text("category").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type"),
+  objectPath: text("object_path").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+export const subleasesRelations = relations(subleases, ({ one, many }) => ({
+  apartment: one(apartments, { fields: [subleases.apartmentId], references: [apartments.id] }),
+  payments: many(subleasePayments),
+  attachments: many(subleaseAttachments),
+}));
+
+export const subleasePaymentsRelations = relations(subleasePayments, ({ one }) => ({
+  sublease: one(subleases, { fields: [subleasePayments.subleaseId], references: [subleases.id] }),
+}));
+
+export const subleaseAttachmentsRelations = relations(subleaseAttachments, ({ one }) => ({
+  sublease: one(subleases, { fields: [subleaseAttachments.subleaseId], references: [subleases.id] }),
+}));
+
+export const insertSubleaseSchema = createInsertSchema(subleases).omit({ id: true, createdAt: true });
+export type Sublease = typeof subleases.$inferSelect;
+export type InsertSublease = z.infer<typeof insertSubleaseSchema>;
+
+export const insertSubleasePaymentSchema = createInsertSchema(subleasePayments).omit({ id: true, createdAt: true });
+export type SubleasePayment = typeof subleasePayments.$inferSelect;
+export type InsertSubleasePayment = z.infer<typeof insertSubleasePaymentSchema>;
+
+export const insertSubleaseAttachmentSchema = createInsertSchema(subleaseAttachments).omit({ id: true, uploadedAt: true });
+export type SubleaseAttachment = typeof subleaseAttachments.$inferSelect;
+export type InsertSubleaseAttachment = z.infer<typeof insertSubleaseAttachmentSchema>;

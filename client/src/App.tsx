@@ -18,6 +18,7 @@ import Employees from "@/pages/Employees";
 import Terminarz from "@/pages/Terminarz";
 import Lokalizacje from "@/pages/Lokalizacje";
 import ServiceContracts from "@/pages/ServiceContracts";
+import Subleases from "@/pages/Subleases";
 import CostsExpenses from "@/pages/CostsExpenses";
 import Saldo from "@/pages/Saldo";
 import PlaceholderPage from "@/pages/Placeholder";
@@ -81,7 +82,7 @@ function Router() {
       <Route path="/saldo-jg" component={() => <AuthenticatedPlaceholder title="Saldo - Jolanta Głodkowska" description="Rozliczenie salda." />} />
 
       <Route path="/contracts-rent" component={() => <AuthenticatedPlaceholder title="Umowy Najmu" description="Zarządzanie umowami najmu." />} />
-      <Route path="/contracts-subrent" component={() => <AuthenticatedPlaceholder title="Umowy Podnajmu" description="Zarządzanie umowami podnajmu." />} />
+      <Route path="/contracts-subrent" component={() => <AuthenticatedRoute component={Subleases} />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
       <Route path="/contracts-other" component={() => <AuthenticatedPlaceholder title="Umowy (inne)" description="Pozostałe umowy." />} />
 

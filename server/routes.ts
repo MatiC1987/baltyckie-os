@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -567,6 +567,99 @@ export async function registerRoutes(
 
   app.delete('/api/service-contracts/:id', isAuthenticated, async (req, res) => {
     await storage.deleteServiceContract(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Subleases
+  app.get('/api/subleases', isAuthenticated, async (_req, res) => {
+    const list = await storage.getSubleases();
+    res.json(list);
+  });
+
+  app.get('/api/subleases/:id', isAuthenticated, async (req, res) => {
+    const s = await storage.getSublease(Number(req.params.id));
+    if (!s) return res.status(404).json({ message: "Nie znaleziono umowy" });
+    res.json(s);
+  });
+
+  app.post('/api/subleases', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertSubleaseSchema.parse(req.body);
+      const created = await storage.createSublease(parsed);
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd zapisu" });
+    }
+  });
+
+  app.put('/api/subleases/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateSublease(Number(req.params.id), req.body);
+      res.status(200).json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd aktualizacji" });
+    }
+  });
+
+  app.delete('/api/subleases/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteSublease(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Sublease Payments
+  app.get('/api/subleases/:id/payments', isAuthenticated, async (req, res) => {
+    const payments = await storage.getSubleasePayments(Number(req.params.id));
+    res.json(payments);
+  });
+
+  app.post('/api/subleases/:id/payments', isAuthenticated, async (req, res) => {
+    try {
+      const created = await storage.createSubleasePayment({ ...req.body, subleaseId: Number(req.params.id) });
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd zapisu" });
+    }
+  });
+
+  app.put('/api/sublease-payments/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateSubleasePayment(Number(req.params.id), req.body);
+      res.status(200).json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd aktualizacji" });
+    }
+  });
+
+  app.delete('/api/sublease-payments/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteSubleasePayment(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Sublease Attachments
+  app.get('/api/subleases/:id/attachments', isAuthenticated, async (req, res) => {
+    const atts = await storage.getSubleaseAttachments(Number(req.params.id));
+    res.json(atts);
+  });
+
+  app.post('/api/subleases/:id/attachments', isAuthenticated, async (req, res) => {
+    try {
+      const { fileName, objectPath, fileType, category } = req.body;
+      if (!fileName || !objectPath) return res.status(400).json({ message: "Brak wymaganych pól" });
+      const att = await storage.createSubleaseAttachment({
+        subleaseId: Number(req.params.id),
+        fileName,
+        objectPath,
+        fileType: fileType || null,
+        category: category || 'UMOWA',
+      });
+      res.status(201).json(att);
+    } catch (err: any) {
+      res.status(500).json({ message: "Błąd zapisu załącznika" });
+    }
+  });
+
+  app.delete('/api/sublease-attachments/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteSubleaseAttachment(Number(req.params.id));
     res.status(204).send();
   });
 

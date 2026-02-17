@@ -17,7 +17,7 @@ import { Plus, Lock, ChevronLeft, ChevronRight, X, Settings2 } from "lucide-reac
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import type { Location } from "@shared/schema";
+import type { Location, Sublease } from "@shared/schema";
 
 const MONTH_NAMES_PL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 const DAY_NAMES_PL = ["Nd", "Pn", "Wt", "Śr", "Cz", "Pt", "So"];
@@ -27,6 +27,7 @@ interface TerminarzColors {
   PRZYJETA: string;
   ANULOWANA: string;
   BLOKADA: string;
+  PODNAJEM: string;
 }
 
 const DEFAULT_COLORS: TerminarzColors = {
@@ -34,6 +35,7 @@ const DEFAULT_COLORS: TerminarzColors = {
   PRZYJETA: "#22c55e",
   ANULOWANA: "#ef4444",
   BLOKADA: "#9ca3af",
+  PODNAJEM: "#8b5cf6",
 };
 
 const COLORS_STORAGE_KEY = "terminarz-colors-v1";
@@ -148,6 +150,7 @@ export default function Terminarz() {
   const { data: apartments, isLoading: loadingApts } = useApartments();
   const { data: blockades, isLoading: loadingBlk } = useBlockades();
   const { data: dbLocations } = useLocations();
+  const { data: subleases = [] } = useQuery<Sublease[]>({ queryKey: ['/api/subleases'] });
 
   const [monthsToShow, setMonthsToShow] = useState(2);
   const [startDate, setStartDate] = useState(() => {
@@ -444,6 +447,34 @@ export default function Terminarz() {
                         );
                       })}
 
+                      {subleases.filter(s => s.apartmentId === apt.id).map((sub) => {
+                        const subStart = new Date(sub.startDate);
+                        const subEnd = new Date(sub.endDate);
+                        const startIdx = days.findIndex(d => isSameDay(d, subStart));
+                        const endIdx = days.findIndex(d => isSameDay(d, subEnd));
+                        const effectiveStart = startIdx >= 0 ? startIdx : (subStart < rangeStart ? 0 : -1);
+                        const effectiveEnd = endIdx >= 0 ? endIdx : (subEnd > rangeEnd ? days.length - 1 : -1);
+                        if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
+                        const left = effectiveStart * sz.dayWidth;
+                        const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
+                        const tenantName = sub.tenantType === 'firma' ? (sub.companyName || 'Podnajem') : [sub.firstName, sub.lastName].filter(Boolean).join(' ') || 'Podnajem';
+                        return (
+                          <div
+                            key={`sub-${sub.id}`}
+                            className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
+                            style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.PODNAJEM, opacity: 0.85 }}
+                            title={`Podnajem: ${tenantName} (${sub.startDate} - ${sub.endDate})`}
+                            data-testid={`sublease-bar-${sub.id}`}
+                          >
+                            {width > (compact ? 40 : 60) && (
+                              <span className="text-white font-medium truncate px-1" style={{ fontSize: sz.barFontSize }}>
+                                {tenantName}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+
                       {aptReservations.map((res) => {
                         const resStart = new Date(res.startDate);
                         const resEnd = new Date(res.endDate);
@@ -520,6 +551,10 @@ export default function Terminarz() {
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded-md" style={{ backgroundColor: colors.BLOKADA, opacity: 0.7 }} />
             <span>Blokada</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-md" style={{ backgroundColor: colors.PODNAJEM, opacity: 0.85 }} />
+            <span>Podnajem</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-[2px] h-3 border-l-2 border-dashed border-black/20 dark:border-white/20" />
@@ -848,6 +883,7 @@ function ColorSettingsDialog({ open, onClose, colors, onChange }: {
     { key: "PRZYJETA", label: "Przyjęta" },
     { key: "ANULOWANA", label: "Anulowana" },
     { key: "BLOKADA", label: "Blokada" },
+    { key: "PODNAJEM", label: "Podnajem" },
   ];
 
   return (
