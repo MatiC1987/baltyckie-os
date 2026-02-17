@@ -130,8 +130,8 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit", "finance-forecast", "calendar"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals"] },
   { id: "finanse", title: "FINANSE", itemIds: ["income-rent", "income-subrent", "forecast", "costs-apartments", "costs-expenses", "saldo-ml", "saldo-jg", "saldo-mc"] },
-  { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
+  { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
   { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations"] },
 ];
