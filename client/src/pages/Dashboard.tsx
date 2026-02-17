@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useDashboardStats } from "@/hooks/use-stats";
 import { useReservations } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
@@ -29,7 +30,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Users, CreditCard, Home, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Users, CreditCard, Home, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X } from "lucide-react";
 import type { Reservation } from "@shared/schema";
 
 type CompanyBalance = {
@@ -91,6 +92,23 @@ export default function Dashboard() {
   const { data: reservations, isLoading: reservationsLoading } = useReservations();
   const { data: apartments } = useApartments();
   const { data: companyBalance, isLoading: balanceLoading } = useCompanyBalance();
+  const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
+  const [editingBalance, setEditingBalance] = useState("");
+
+  const updateBalanceMutation = useMutation({
+    mutationFn: ({ accountId, balance }: { accountId: number; balance: string }) =>
+      apiRequest("POST", "/api/snapshots", {
+        accountId,
+        date: new Date().toISOString().split("T")[0],
+        balance,
+        notes: "Ręczna aktualizacja salda",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+      setEditingAccountId(null);
+      setEditingBalance("");
+    },
+  });
 
   const chartData = [
     { name: 'Sty', revenue: 4000, expenses: 2400 },
@@ -152,19 +170,70 @@ export default function Dashboard() {
                 {companyBalance?.accounts.map(acc => {
                   const Icon = getAccountIcon(acc.name);
                   const balance = Number(acc.latestBalance);
+                  const isEditing = editingAccountId === acc.id;
                   return (
                     <div
                       key={acc.id}
-                      className="rounded-lg border border-border p-3 space-y-1"
+                      className="rounded-lg border border-border p-3 space-y-1 group"
                       data-testid={`card-account-balance-${acc.id}`}
                     >
                       <div className="flex items-center gap-1.5">
                         <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <span className="text-xs text-muted-foreground truncate">{acc.name}</span>
                       </div>
-                      <div className={`text-sm font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                      </div>
+                      {isEditing ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={editingBalance}
+                            onChange={e => setEditingBalance(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && editingBalance.trim()) {
+                                updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
+                              }
+                              if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
+                            }}
+                            className="h-7 text-xs w-full"
+                            autoFocus
+                            data-testid={`input-balance-${acc.id}`}
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 shrink-0"
+                            onClick={() => {
+                              if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
+                            }}
+                            disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
+                            data-testid={`button-save-balance-${acc.id}`}
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 shrink-0"
+                            onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
+                            data-testid={`button-cancel-balance-${acc.id}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <div className={`text-sm font-bold flex-1 ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                            {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                          </div>
+                          <button
+                            className="invisible group-hover:visible text-muted-foreground hover:text-foreground p-0.5 shrink-0"
+                            onClick={() => { setEditingAccountId(acc.id); setEditingBalance(acc.latestBalance); }}
+                            data-testid={`button-edit-balance-${acc.id}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
