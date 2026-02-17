@@ -132,6 +132,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "finanse", title: "FINANSE", itemIds: ["income-rent", "income-subrent", "forecast", "costs-apartments", "costs-expenses", "saldo-ml", "saldo-jg", "saldo-mc"] },
   { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
+  { id: "umowy-new", title: "UMOWY", itemIds: [] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
   { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations"] },
 ];
@@ -179,10 +180,17 @@ function loadLayout(): SidebarLayout {
         }
       }
       const defaultTitles = Object.fromEntries(DEFAULT_SECTIONS.map(s => [s.id, s.title]));
-      const sections = parsed.sections.map(s => ({
+      const storedSectionIds = new Set(parsed.sections.map(s => s.id));
+      const missingSections = DEFAULT_SECTIONS.filter(s => !storedSectionIds.has(s.id));
+      let sections = parsed.sections.map(s => ({
         ...s,
         title: defaultTitles[s.id] !== undefined ? defaultTitles[s.id] : s.title,
       }));
+      for (const ms of missingSections) {
+        const defaultIdx = DEFAULT_SECTIONS.findIndex(s => s.id === ms.id);
+        const insertAt = Math.min(defaultIdx, sections.length);
+        sections.splice(insertAt, 0, { ...ms });
+      }
       const items = { ...DEFAULT_ITEMS };
       return { sections, items };
     }
