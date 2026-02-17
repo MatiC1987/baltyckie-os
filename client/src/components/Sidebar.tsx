@@ -26,10 +26,12 @@ import {
   Menu,
   X,
   GripVertical,
-  ChevronDown
+  ChevronDown,
+  Pencil,
+  Check
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
 import {
@@ -135,6 +137,19 @@ const DEFAULT_SECTIONS: NavSection[] = [
 
 const STORAGE_KEY = "sidebar-layout-v1";
 const COLLAPSED_KEY = "sidebar-collapsed-v1";
+const LABELS_KEY = "sidebar-custom-labels-v1";
+
+function loadCustomLabels(): Record<string, string> {
+  try {
+    const stored = localStorage.getItem(LABELS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  return {};
+}
+
+function saveCustomLabels(labels: Record<string, string>) {
+  try { localStorage.setItem(LABELS_KEY, JSON.stringify(labels)); } catch {}
+}
 
 function loadCollapsed(): Set<string> {
   try {
@@ -182,7 +197,7 @@ function findSectionOfItem(sections: NavSection[], itemId: string): string | nul
   return null;
 }
 
-function SortableNavItem({ item, isActive, onClick }: { item: NavItem; isActive: boolean; onClick: () => void }) {
+function SortableNavItem({ item, isActive, onClick, onRename }: { item: NavItem; isActive: boolean; onClick: () => void; onRename: (id: string, newLabel: string) => void }) {
   const {
     attributes,
     listeners,
@@ -198,13 +213,33 @@ function SortableNavItem({ item, isActive, onClick }: { item: NavItem; isActive:
   };
 
   const Icon = ICON_MAP[item.iconName] || LayoutDashboard;
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(item.label);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const confirmRename = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== item.label) {
+      onRename(item.id, trimmed);
+    } else {
+      setEditValue(item.label);
+    }
+    setIsEditing(false);
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-1 rounded-lg transition-all duration-200 group",
+        "flex items-center gap-1 rounded-lg transition-all duration-200 group/navitem",
         isDragging ? "opacity-50 z-50" : "",
       )}
     >
@@ -216,21 +251,55 @@ function SortableNavItem({ item, isActive, onClick }: { item: NavItem; isActive:
       >
         <GripVertical className="h-3 w-3" />
       </div>
-      <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className="flex-1 min-w-0">
-        <div
-          onClick={onClick}
-          className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer group",
-            isActive
-              ? "text-white shadow-lg"
-              : "text-slate-400 hover:text-white hover:bg-white/10"
-          )}
-          style={isActive ? { backgroundColor: "#5ADBFA", boxShadow: "0 4px 14px rgba(90, 219, 250, 0.3)" } : undefined}
-        >
-          <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-white" : "text-slate-400 group-hover:text-white")} />
-          <span className="font-medium text-xs truncate">{item.label}</span>
+      {isEditing ? (
+        <div className="flex-1 min-w-0 flex items-center gap-1 px-1">
+          <Icon className="h-4 w-4 shrink-0 text-slate-400" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmRename();
+              if (e.key === "Escape") { setEditValue(item.label); setIsEditing(false); }
+            }}
+            onBlur={confirmRename}
+            className="flex-1 min-w-0 bg-white/10 text-white text-xs font-medium rounded px-2 py-1.5 outline-none border border-white/20 focus:border-[#5ADBFA]"
+            data-testid={`input-rename-${item.id}`}
+          />
         </div>
-      </Link>
+      ) : (
+        <>
+          <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className="flex-1 min-w-0">
+            <div
+              onClick={onClick}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
+                isActive
+                  ? "text-white shadow-lg"
+                  : "text-slate-400 hover:text-white hover:bg-white/10"
+              )}
+              style={isActive ? { backgroundColor: "#5ADBFA", boxShadow: "0 4px 14px rgba(90, 219, 250, 0.3)" } : undefined}
+            >
+              <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-white" : "text-slate-400 group-hover/navitem:text-white")} />
+              <span className="font-medium text-xs truncate">{item.label}</span>
+            </div>
+          </Link>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setEditValue(item.label);
+              setIsEditing(true);
+            }}
+            className="invisible group-hover/navitem:visible flex items-center justify-center w-6 h-6 rounded text-slate-500 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+            data-testid={`button-rename-${item.id}`}
+            title="Zmień nazwę"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -257,6 +326,23 @@ export function Sidebar() {
   const [layout, setLayout] = useState<SidebarLayout>(loadLayout);
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
+  const [customLabels, setCustomLabels] = useState<Record<string, string>>(loadCustomLabels);
+
+  const itemsWithLabels = useMemo(() => {
+    const merged: Record<string, NavItem> = {};
+    for (const [key, item] of Object.entries(layout.items)) {
+      merged[key] = customLabels[key] ? { ...item, label: customLabels[key] } : item;
+    }
+    return merged;
+  }, [layout.items, customLabels]);
+
+  const handleRenameItem = useCallback((id: string, newLabel: string) => {
+    setCustomLabels(prev => {
+      const next = { ...prev, [id]: newLabel };
+      saveCustomLabels(next);
+      return next;
+    });
+  }, []);
 
   const toggleSection = useCallback((sectionId: string) => {
     setCollapsedSections(prev => {
@@ -279,8 +365,8 @@ export function Sidebar() {
 
   const activeItem = useMemo(() => {
     if (!activeId) return null;
-    return layout.items[activeId as string] || null;
-  }, [activeId, layout.items]);
+    return itemsWithLabels[activeId as string] || null;
+  }, [activeId, itemsWithLabels]);
 
   const allItemIds = useMemo(() => {
     return layout.sections.flatMap(s => s.itemIds);
@@ -414,7 +500,7 @@ export function Sidebar() {
                     )}>
                       <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy} id={section.id}>
                         {section.itemIds.map((itemId) => {
-                          const item = layout.items[itemId];
+                          const item = itemsWithLabels[itemId];
                           if (!item) return null;
                           return (
                             <SortableNavItem
@@ -422,6 +508,7 @@ export function Sidebar() {
                               item={item}
                               isActive={location === item.href}
                               onClick={() => setIsOpen(false)}
+                              onRename={handleRenameItem}
                             />
                           );
                         })}
