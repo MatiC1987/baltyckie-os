@@ -214,6 +214,9 @@ export default function CostsExpenses() {
   const [newCatTitle, setNewCatTitle] = useState("");
   const [newCatColor, setNewCatColor] = useState(CATEGORY_COLORS[0].value);
   const [showCopyToNextYear, setShowCopyToNextYear] = useState(false);
+  const [editCatDialog, setEditCatDialog] = useState<CostCategory | null>(null);
+  const [editCatTitle, setEditCatTitle] = useState("");
+  const [editCatColor, setEditCatColor] = useState("");
 
   const dragCatRef = useRef<string | null>(null);
   const dragOverCatRef = useRef<string | null>(null);
@@ -494,6 +497,22 @@ export default function CostsExpenses() {
     updateCategories(categories.filter(c => c.id !== catId));
   }, [categories, updateCategories]);
 
+  const openEditCatDialog = useCallback((cat: CostCategory) => {
+    setEditCatDialog(cat);
+    setEditCatTitle(cat.title);
+    setEditCatColor(cat.color);
+  }, []);
+
+  const handleSaveEditCat = useCallback(() => {
+    if (!editCatDialog || !editCatTitle.trim()) return;
+    const newCats = categories.map(c => {
+      if (c.id !== editCatDialog.id) return c;
+      return { ...c, title: editCatTitle.trim().toUpperCase(), color: editCatColor };
+    });
+    updateCategories(newCats);
+    setEditCatDialog(null);
+  }, [editCatDialog, editCatTitle, editCatColor, categories, updateCategories]);
+
   const getCategorySummary = useCallback((cat: CostCategory, month: number) => {
     let prognoza = 0;
     let rzeczywiste = 0;
@@ -609,7 +628,7 @@ export default function CostsExpenses() {
         <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
           <thead className="sticky top-0 z-[100]">
             <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-left font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
                 Pozycja
               </th>
               {MONTHS_SHORT.map((m, i) => (
@@ -624,9 +643,9 @@ export default function CostsExpenses() {
             <tr className="bg-muted/60 dark:bg-muted/40">
               {[...Array(13)].map((_, mi) => (
                 <Fragment key={mi}>
-                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px]">P</th>
-                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px]">R</th>
-                  <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[55px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
+                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">P</th>
+                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">R</th>
+                  <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
                 </Fragment>
               ))}
             </tr>
@@ -655,9 +674,16 @@ export default function CostsExpenses() {
                         >
                           <GripVertical className="h-3.5 w-3.5" />
                         </span>
-                        <span className="cursor-pointer flex items-center gap-1 flex-1 min-w-0" onClick={() => toggleCategory(cat.id)}>
-                          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
-                          <span className="truncate">{cat.title}</span>
+                        <span className="cursor-pointer shrink-0" onClick={() => toggleCategory(cat.id)} data-testid={`button-toggle-category-${cat.id}`}>
+                          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </span>
+                        <span
+                          className="truncate flex-1 min-w-0 cursor-pointer hover:underline"
+                          onClick={(e) => { e.stopPropagation(); openEditCatDialog(cat); }}
+                          title="Kliknij aby edytować kategorię"
+                          data-testid={`text-category-name-${cat.id}`}
+                        >
+                          {cat.title}
                         </span>
                         <button
                           onClick={(e) => { e.stopPropagation(); setAddItemCatId(cat.id); }}
@@ -709,7 +735,7 @@ export default function CostsExpenses() {
                         onDragOver={(e) => handleItemDragOver(e, cat.id, idx)}
                         onDrop={handleItemDragEnd}
                       >
-                        <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-1 py-1 text-left">
+                        <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-1 py-1 text-right">
                           {isEditingThisName ? (
                             <div className="space-y-0.5 pl-4">
                               <input
@@ -787,7 +813,7 @@ export default function CostsExpenses() {
                                 startEditing={startEditing}
                                 commitEdit={commitEdit}
                                 cancelEdit={cancelEdit}
-                                className="border-b border-r border-border"
+                                className="border-b border-r border-border bg-muted/20 dark:bg-muted/10 text-[10px]"
                                 isSelected={selectedCell === pKey}
                                 isInRange={isInFillRange(pKey)}
                                 onCellClick={handleCellClick}
@@ -818,7 +844,7 @@ export default function CostsExpenses() {
                             </Fragment>
                           );
                         })}
-                        <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.prognoza)}</td>
+                        <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums bg-muted/30 dark:bg-muted/20 text-[10px]">{formatNum(annualItem.prognoza)}</td>
                         <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.rzeczywiste)}</td>
                         <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(annualItem.saldo)}`}>{formatNum(annualItem.saldo)}</td>
                       </tr>
@@ -828,7 +854,7 @@ export default function CostsExpenses() {
               );
             })}
             <tr className="bg-muted/80 dark:bg-muted/50 font-bold">
-              <td className="sticky left-0 z-[105] bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-left">
+              <td className="sticky left-0 z-[105] bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-right">
                 SUMA
               </td>
               {Array.from({ length: 12 }, (_, m) => {
@@ -842,13 +868,13 @@ export default function CostsExpenses() {
                 const saldo = prognoza - rzeczywiste;
                 return (
                   <Fragment key={m}>
-                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums">{formatNum(prognoza)}</td>
+                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10">{formatNum(prognoza)}</td>
                     <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rzeczywiste)}</td>
                     <td className={`border-t-2 border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
                   </Fragment>
                 );
               })}
-              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70">{formatNum(grandTotal.prognoza)}</td>
+              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70 text-[10px]">{formatNum(grandTotal.prognoza)}</td>
               <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted dark:bg-muted/70">{formatNum(grandTotal.rzeczywiste)}</td>
               <td className={`border-t-2 border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70 ${saldoColor(grandTotal.saldo)}`}>{formatNum(grandTotal.saldo)}</td>
             </tr>
@@ -925,6 +951,45 @@ export default function CostsExpenses() {
           <DialogFooter>
             <Button onClick={handleAddCategory} disabled={!newCatTitle.trim()} data-testid="button-confirm-add-category">
               Dodaj kategorię
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editCatDialog !== null} onOpenChange={(open) => { if (!open) setEditCatDialog(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edytuj kategorię</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Nazwa kategorii</Label>
+              <Input
+                value={editCatTitle}
+                onChange={e => setEditCatTitle(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleSaveEditCat(); }}
+                data-testid="input-edit-category-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Kolor</Label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_COLORS.map(c => (
+                  <button
+                    key={c.value}
+                    onClick={() => setEditCatColor(c.value)}
+                    className={`w-8 h-8 rounded-md ${c.value} ${editCatColor === c.value ? "ring-2 ring-offset-2 ring-[#5ADBFA]" : ""}`}
+                    title={c.label}
+                    data-testid={`edit-color-${c.label}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditCatDialog(null)} data-testid="button-cancel-edit-category">Anuluj</Button>
+            <Button onClick={handleSaveEditCat} disabled={!editCatTitle.trim()} data-testid="button-save-edit-category">
+              Zapisz
             </Button>
           </DialogFooter>
         </DialogContent>
