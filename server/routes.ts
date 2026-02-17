@@ -469,6 +469,18 @@ export async function registerRoutes(
   });
 
   // Medical Exams
+  app.get('/api/medical-exams/all', isAuthenticated, async (req, res) => {
+    const allEmployees = await storage.getEmployees();
+    const allExams: any[] = [];
+    for (const emp of allEmployees) {
+      const exams = await storage.getMedicalExams(emp.id);
+      for (const exam of exams) {
+        allExams.push({ ...exam, employeeName: `${emp.firstName} ${emp.lastName}` });
+      }
+    }
+    res.json(allExams);
+  });
+
   app.get('/api/employees/:employeeId/medical-exams', isAuthenticated, async (req, res) => {
     const exams = await storage.getMedicalExams(Number(req.params.employeeId));
     res.json(exams);
@@ -665,10 +677,11 @@ export async function registerRoutes(
 
   // Saldo
   app.get('/api/saldo', isAuthenticated, async (req, res) => {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, personName } = req.query;
     const entries = await storage.getSaldoEntries({
       startDate: startDate as string | undefined,
       endDate: endDate as string | undefined,
+      personName: personName as string | undefined,
     });
     res.json(entries);
   });
@@ -788,6 +801,7 @@ export async function registerRoutes(
           authCode: row[10]?.toString().trim() || null,
           cardAmount: cardAmt !== null ? cardAmt.toFixed(2) : null,
           notes: row[12]?.toString().trim() || null,
+          personName: req.query?.personName as string || null,
         });
       }
 
@@ -804,6 +818,57 @@ export async function registerRoutes(
 
   app.delete('/api/saldo/all', isAuthenticated, async (req, res) => {
     await storage.deleteAllSaldoEntries();
+    res.status(204).send();
+  });
+
+  // App Users
+  app.get('/api/app-users', isAuthenticated, async (req, res) => {
+    const users = await storage.getAppUsers();
+    const safe = users.map(u => ({ ...u, passwordHash: undefined }));
+    res.json(safe);
+  });
+
+  app.post('/api/app-users', isAuthenticated, async (req, res) => {
+    try {
+      const { email, firstName, lastName, password, permissions } = req.body;
+      if (!email || !firstName || !lastName || !password) {
+        return res.status(400).json({ message: "Wszystkie pola są wymagane" });
+      }
+      const existing = await storage.getAppUserByEmail(email);
+      if (existing) {
+        return res.status(400).json({ message: "Użytkownik z tym adresem email już istnieje" });
+      }
+      const bcrypt = await import('bcryptjs');
+      const passwordHash = await bcrypt.hash(password, 10);
+      const user = await storage.createAppUser({ email, firstName, lastName, passwordHash, permissions: permissions || [], active: true });
+      res.json({ ...user, passwordHash: undefined });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put('/api/app-users/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { email, firstName, lastName, password, permissions } = req.body;
+      const data: any = {};
+      if (email !== undefined) data.email = email;
+      if (firstName !== undefined) data.firstName = firstName;
+      if (lastName !== undefined) data.lastName = lastName;
+      if (permissions !== undefined) data.permissions = permissions;
+      if (password) {
+        const bcrypt = await import('bcryptjs');
+        data.passwordHash = await bcrypt.hash(password, 10);
+      }
+      const user = await storage.updateAppUser(id, data);
+      res.json({ ...user, passwordHash: undefined });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete('/api/app-users/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteAppUser(parseInt(req.params.id));
     res.status(204).send();
   });
 

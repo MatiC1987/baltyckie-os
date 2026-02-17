@@ -1,0 +1,16 @@
+OGÓLNE
+- Usuwamy zakładkę UMOWY (inne)
+- Usuwamy zakładkę UMOWY Najmu
+- Dodajemy sekcję PODNAJEM do której przenosimy Umowy Podnajem i dodajemy kolejna podstronę Podnajem - Rozliczenie oraz Podnajem - Rozliczenie mediów
+W Podnajem Rozliczenie umieszczamy tabelę z chronologicznie umieszczonymi wszystkimi opłatami z umów o statusie aktualne z następującymi danymi: Nazwa apartamentu, Imię i nazwisko/Nazwa firmy, Data płatności, Tytuł płatności, Status płatności (opłacone/nieopłacone do wyboru tak abym mógł w tym miejscu oznaczać również czy dana płatność jest opłacona czy nieopłacona, ta informacja również musi znajdować się na karcie poszczególnej umowy podnajmu w zakładce RATY)
+W Podnajem Rozliczenie mediów narazie nie umieszczamy nic.
+- W zakładce OPŁATY tak samo jak na stronie widoczna jest pierwsza kolumna POZYCJA, tak samo widoczna cały czas musi być ostatnia kolumna ROCZNE (przy okazji zmieniamy nazwę kolumny z ROCZNIE na ROZLICZENIE ROCZNE). Pierwsza kolumnę wracamy do wyrównania czcionki do lewej krawędzi
+- W zakładce SALDO JOLANTA GŁODKOWSKA robimy takie samo saldo jak w Saldo Małgorzata Latasiewicz. Dodajemy nową podstronę SALDO - MATEUSZ CIEŚLAK z taką samą funkcjonalnością
+- W zakładce PRACOWNICY umieszczamy pod listą pracowników zestawienie kończących się badań z informacją który pracownik jakie badanie i kiedy się kończy ważność - dane chronologicznie od najszybciej konczacych się
+- W zakładce TERMINARZ musimy zrobić tak, aby dane rezerwacje na siebie nie nachodziły. Jeśli jedna rezerwacja kończy się w dniu przyjazdu kolejnej rezerwacji, wówczas obie rezerwacje na siebie nachodzą w danej komórce. Musimy zrobić aby wyjazdy kończyły się w połowie komórki a przyjazdy rozpoczynały się od polowy komórki.
+- W zakładce TERMINARZ przy nazwie lokalizacji nie potrzebujemy oznaczenia liczby apartamentu w danej lokalizacji - wystarczy sama nazwa
+- W zakładce PROGNOZA przygotowujemy podobnie do zakładki OPŁATY zestawienie do uzupełnienia przewidywanych przychodów dla każdego miesiąca dla każdego apartamentu. Zestawienie z podziałem na lokalizacje, tak aby wyświetlało się również zestawienie prognozowanych przychodów dla całej lokalizacji. 
+- W Konta użytkowników Przygotuj opcje oddania użytkowników do systemu z adresem email, imię i nazwisko i hasłem tak abym mógł dodawać uprawnienia do poszczególnych sekcji i by wyświetlały się tylko sekcje które zaznaczę dla danego użytkownika
+- W zakładkach PRZYJAZDY i REZERWACJE co drugi wiersz lekko wyróżniamy leciutko ciemniejszym kolorem dla zwiększenia widoczności.
+- Do kategorii rat w zakładce APARTAMENTY dla danego apartamentu dodaj opcję ROZLICZENIE ROCZNE (tam gdzie RATY DLA WŁAŚCICIELI, CZYNSZ DO WSPÓLNOTY ITD.)
+- W Koszty (apartamenty) robimy takie samo zestawienie jak w zakładce OPŁATY z tym, że kategoriami są poszczególne apartamenty. Widoczność w takiej samej kolejności jak na terminarzu z podziałem na lokalizacje (najpierw GRAND BALTIC, potem BULWAR PORTOWY itd.). Rubryki dla każdego apartamentu takie jak kategorie OPŁAT dodanych na karcie poszczególnego apartamentu. Rzeczywiste to koszty wynikające z umowy i dodane w zakładce RATY, rzeczywiste do uzupełnienia przeze mnie i saldo tak jak w OPŁATY. 

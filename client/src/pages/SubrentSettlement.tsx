@@ -1,0 +1,193 @@
+import { useState, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Sublease, SubleasePayment, Apartment } from "@shared/schema";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Search, Check, X } from "lucide-react";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
+
+const PAYMENT_STATUS_LABELS: Record<string, { label: string; variant: "default" | "destructive" | "secondary" }> = {
+  oplacona: { label: "Opłacona", variant: "default" },
+  do_oplacenia: { label: "Do opłacenia", variant: "destructive" },
+  czesciowo: { label: "Częściowo", variant: "secondary" },
+};
+
+function formatDate(d: string | null | undefined) {
+  if (!d) return "";
+  const parts = d.split("-");
+  if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  return d;
+}
+
+function formatNum(v: string | null | undefined): string {
+  if (v === null || v === undefined || v === "") return "";
+  const n = parseFloat(v);
+  if (isNaN(n)) return "";
+  return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export default function SubrentSettlement() {
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: subleases = [] } = useQuery<Sublease[]>({
+    queryKey: ["/api/subleases"],
+  });
+
+  const { data: apartments = [] } = useQuery<Apartment[]>({
+    queryKey: ["/api/apartments"],
+  });
+
+  const activeSubleases = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    return subleases.filter(s => s.endDate >= today);
+  }, [subleases]);
+
+  const subleaseIds = useMemo(() => activeSubleases.map(s => s.id), [activeSubleases]);
+
+  const paymentQueries = useQuery<{ subleaseId: number; payments: SubleasePayment[] }[]>({
+    queryKey: ["/api/sublease-payments/all", subleaseIds],
+    queryFn: async () => {
+      const results = await Promise.all(
+        subleaseIds.map(async (id) => {
+          const res = await fetch(`/api/subleases/${id}/payments`, { credentials: "include" });
+          if (!res.ok) return { subleaseId: id, payments: [] };
+          const payments = await res.json();
+          return { subleaseId: id, payments };
+        })
+      );
+      return results;
+    },
+    enabled: subleaseIds.length > 0,
+  });
+
+  const allPayments = useMemo(() => {
+    if (!paymentQueries.data) return [];
+    const items: { payment: SubleasePayment; sublease: Sublease; apartmentName: string; tenantName: string }[] = [];
+    for (const { subleaseId, payments } of paymentQueries.data) {
+      const sub = activeSubleases.find(s => s.id === subleaseId);
+      if (!sub) continue;
+      const apt = apartments.find(a => a.id === sub.apartmentId);
+      const apartmentName = apt?.name || "—";
+      const tenantName = sub.tenantType === "firma"
+        ? (sub.companyName || "—")
+        : [sub.firstName, sub.lastName].filter(Boolean).join(" ") || "—";
+      for (const p of payments) {
+        items.push({ payment: p, sublease: sub, apartmentName, tenantName });
+      }
+    }
+    items.sort((a, b) => (a.payment.dueDate || "").localeCompare(b.payment.dueDate || ""));
+    return items;
+  }, [paymentQueries.data, activeSubleases, apartments]);
+
+  const filtered = useMemo(() => {
+    if (!searchQuery.trim()) return allPayments;
+    const q = searchQuery.toLowerCase();
+    return allPayments.filter(item =>
+      item.apartmentName.toLowerCase().includes(q) ||
+      item.tenantName.toLowerCase().includes(q) ||
+      item.payment.title.toLowerCase().includes(q)
+    );
+  }, [allPayments, searchQuery]);
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ paymentId, newStatus }: { paymentId: number; newStatus: string }) => {
+      const res = await fetch(`/api/sublease-payments/${paymentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sublease-payments/all"] });
+      for (const id of subleaseIds) {
+        queryClient.invalidateQueries({ queryKey: ["/api/subleases", id, "payments"] });
+      }
+      toast({ title: "Status płatności został zaktualizowany" });
+    },
+  });
+
+  const handleToggleStatus = (paymentId: number, currentStatus: string) => {
+    const newStatus = currentStatus === "oplacona" ? "do_oplacenia" : "oplacona";
+    toggleStatusMutation.mutate({ paymentId, newStatus });
+  };
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-subrent-settlement-title">Podnajem - Rozliczenie</h1>
+          <p className="text-muted-foreground text-sm">Zestawienie płatności z aktywnych umów podnajmu</p>
+        </div>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Szukaj..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+            data-testid="input-search-settlement"
+          />
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead data-testid="th-apartment">Apartament</TableHead>
+                <TableHead data-testid="th-tenant">Imię i nazwisko / Firma</TableHead>
+                <TableHead data-testid="th-due-date">Data płatności</TableHead>
+                <TableHead data-testid="th-title">Tytuł płatności</TableHead>
+                <TableHead className="text-right" data-testid="th-amount">Kwota</TableHead>
+                <TableHead className="text-center" data-testid="th-status">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    Brak płatności do wyświetlenia
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((item, idx) => {
+                  const st = PAYMENT_STATUS_LABELS[item.payment.status] || PAYMENT_STATUS_LABELS.do_oplacenia;
+                  return (
+                    <TableRow key={item.payment.id} className={idx % 2 === 1 ? "bg-muted/30" : ""} data-testid={`row-payment-${item.payment.id}`}>
+                      <TableCell className="font-medium" data-testid={`cell-apartment-${item.payment.id}`}>{item.apartmentName}</TableCell>
+                      <TableCell data-testid={`cell-tenant-${item.payment.id}`}>{item.tenantName}</TableCell>
+                      <TableCell data-testid={`cell-date-${item.payment.id}`}>{formatDate(item.payment.dueDate)}</TableCell>
+                      <TableCell data-testid={`cell-title-${item.payment.id}`}>{item.payment.title}</TableCell>
+                      <TableCell className="text-right tabular-nums" data-testid={`cell-amount-${item.payment.id}`}>{formatNum(item.payment.amount)} zł</TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant={st.variant}
+                          className="cursor-pointer"
+                          onClick={() => handleToggleStatus(item.payment.id, item.payment.status)}
+                          data-testid={`badge-status-${item.payment.id}`}
+                        >
+                          {item.payment.status === "oplacona" ? <Check className="h-3 w-3 mr-1" /> : <X className="h-3 w-3 mr-1" />}
+                          {st.label}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -116,3 +116,14 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-10: Added hotresName field to apartments table - "Nazwa w HotRes" field in apartment edit (Dane tab) for matching imported HotRes reservations to apartments. HotRes CSV import now checks hotresName first, then falls back to regular name matching.
 - 2026-02-10: Added group reservation support - apartmentIds integer[] column in reservations table. HotRes CSV import splits comma/plus/slash-separated roomscodes into individual apartments, stores all IDs in apartmentIds. Terminarz shows group reservations on all their apartments' rows with count badge. Reservations/Arrivals pages display all apartment names for group reservations.
 - 2026-02-17: Added Sublease (Podnajem) management system - subleases table (tenantType, firstName, lastName, companyName, nip, street, postalCode, city, peselOrPassport, phone, email, invoiceEmail, vatRate, apartmentId FK, startDate, endDate, rentAmount, additionalFees), subleasePayments table (title, category, amount, dueDate, status), subleaseAttachments table (category, fileName, objectPath). Full CRUD API. Subleases page with table + 3-tab dialog (DANE/OPŁATY/ZAŁĄCZNIKI). Integrated into Terminarz with purple (#8b5cf6) bars. Route: /contracts-subrent
+- 2026-02-17: Navigation restructure - removed UMOWY inne/Najmu, added PODNAJEM section (Umowy Podnajem, Rozliczenie, Rozliczenie mediów), added Saldo - M. Cieślak, reorganized sidebar sections
+- 2026-02-17: Added app_users table (email, firstName, lastName, passwordHash, permissions[], active) with full CRUD API for user account management
+- 2026-02-17: Created UserAccounts page (/user-accounts) with permissions checkboxes per app section
+- 2026-02-17: Created SubrentSettlement page (/subrent-settlement) showing aggregated sublease payments across active subleases
+- 2026-02-17: Created Forecast page (/forecast) - P/R/S spreadsheet view for revenue forecasting per apartment/location, data saved to localStorage
+- 2026-02-17: Created CostsApartments page (/costs-apartments) - P/R/S spreadsheet for apartment costs grouped by location and owner payment categories
+- 2026-02-17: Added expiring medical exams alert banner to Employees page (shows exams expiring within 60 days)
+- 2026-02-17: Added GET /api/medical-exams/all endpoint for fetching all employee exams with employee names
+- 2026-02-17: Added ROZLICZENIE ROCZNE to saldo categories
+- 2026-02-17: Fixed Saldo import to pass personName parameter for person-specific data separation
+- 2026-02-17: Enabled Saldo pages for Jolanta Głodkowska and Mateusz Cieślak

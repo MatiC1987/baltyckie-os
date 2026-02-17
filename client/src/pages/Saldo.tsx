@@ -73,7 +73,12 @@ export default function Saldo({ personName }: { personName: string }) {
   });
 
   const { data: entries = [], isLoading } = useQuery<SaldoEntry[]>({
-    queryKey: ["/api/saldo"],
+    queryKey: ["/api/saldo", { personName }],
+    queryFn: async () => {
+      const res = await fetch(`/api/saldo?personName=${encodeURIComponent(personName)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch saldo entries");
+      return res.json();
+    },
   });
 
   const { data: categories = [] } = useQuery<string[]>({
@@ -121,9 +126,9 @@ export default function Saldo({ personName }: { personName: string }) {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/saldo", data),
+    mutationFn: (data: any) => apiRequest("POST", "/api/saldo", { ...data, personName }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Dodano wpis" });
       setShowAddDialog(false);
     },
@@ -132,7 +137,7 @@ export default function Saldo({ personName }: { personName: string }) {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PUT", `/api/saldo/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Zapisano zmiany" });
       setEditEntry(null);
       setPreviewEntry(null);
@@ -142,7 +147,7 @@ export default function Saldo({ personName }: { personName: string }) {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/saldo/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Usunięto wpis" });
     },
   });
@@ -243,14 +248,14 @@ export default function Saldo({ personName }: { personName: string }) {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/saldo/import-xlsx?replace=true", {
+      const res = await fetch(`/api/saldo/import-xlsx?replace=true&personName=${encodeURIComponent(personName)}`, {
         method: "POST",
         body: formData,
         credentials: "include",
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: `Zaimportowano ${result.imported} wpisów z arkusza "${result.sheetName}"` });
       setShowImportDialog(false);
     } catch (err: any) {

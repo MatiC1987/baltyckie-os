@@ -331,6 +331,7 @@ export const saldoEntries = pgTable("saldo_entries", {
   notes: text("notes"),
   entryKind: text("entry_kind"),
   category: text("category"),
+  personName: text("person_name"),
 });
 
 export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true });
@@ -415,3 +416,18 @@ export type InsertSubleasePayment = z.infer<typeof insertSubleasePaymentSchema>;
 export const insertSubleaseAttachmentSchema = createInsertSchema(subleaseAttachments).omit({ id: true, uploadedAt: true });
 export type SubleaseAttachment = typeof subleaseAttachments.$inferSelect;
 export type InsertSubleaseAttachment = z.infer<typeof insertSubleaseAttachmentSchema>;
+
+export const appUsers = pgTable("app_users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  passwordHash: text("password_hash").notNull(),
+  permissions: text("permissions").array().default([]),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAppUserSchema = createInsertSchema(appUsers).omit({ id: true, createdAt: true });
+export type AppUser = typeof appUsers.$inferSelect;
+export type InsertAppUser = z.infer<typeof insertAppUserSchema>;

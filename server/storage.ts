@@ -19,7 +19,8 @@ import {
   saldoCategories,
   subleases, Sublease, InsertSublease,
   subleasePayments, SubleasePayment, InsertSubleasePayment,
-  subleaseAttachments, SubleaseAttachment, InsertSubleaseAttachment
+  subleaseAttachments, SubleaseAttachment, InsertSubleaseAttachment,
+  appUsers, AppUser, InsertAppUser
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -114,7 +115,7 @@ export interface IStorage {
   deleteServiceContract(id: number): Promise<void>;
 
   // Saldo
-  getSaldoEntries(filters?: { startDate?: string; endDate?: string }): Promise<SaldoEntry[]>;
+  getSaldoEntries(filters?: { startDate?: string; endDate?: string; personName?: string }): Promise<SaldoEntry[]>;
   getSaldoCategories(): Promise<string[]>;
   createSaldoCategory(name: string): Promise<void>;
   updateSaldoCategory(oldName: string, newName: string): Promise<void>;
@@ -142,6 +143,13 @@ export interface IStorage {
   getSubleaseAttachments(subleaseId: number): Promise<SubleaseAttachment[]>;
   createSubleaseAttachment(attachment: InsertSubleaseAttachment): Promise<SubleaseAttachment>;
   deleteSubleaseAttachment(id: number): Promise<void>;
+
+  // App Users
+  getAppUsers(): Promise<AppUser[]>;
+  createAppUser(user: InsertAppUser): Promise<AppUser>;
+  updateAppUser(id: number, user: Partial<InsertAppUser>): Promise<AppUser>;
+  deleteAppUser(id: number): Promise<void>;
+  getAppUserByEmail(email: string): Promise<AppUser | undefined>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -482,10 +490,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Saldo
-  async getSaldoEntries(filters?: { startDate?: string; endDate?: string }): Promise<SaldoEntry[]> {
+  async getSaldoEntries(filters?: { startDate?: string; endDate?: string; personName?: string }): Promise<SaldoEntry[]> {
     const conditions = [];
     if (filters?.startDate) conditions.push(gte(saldoEntries.date, filters.startDate));
     if (filters?.endDate) conditions.push(lte(saldoEntries.date, filters.endDate));
+    if (filters?.personName) conditions.push(eq(saldoEntries.personName, filters.personName));
     return db.select().from(saldoEntries).where(conditions.length ? and(...conditions) : undefined).orderBy(saldoEntries.id);
   }
 
@@ -629,6 +638,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSubleaseAttachment(id: number): Promise<void> {
     await db.delete(subleaseAttachments).where(eq(subleaseAttachments.id, id));
+  }
+
+  // App Users
+  async getAppUsers(): Promise<AppUser[]> {
+    return db.select().from(appUsers).orderBy(appUsers.lastName);
+  }
+
+  async createAppUser(user: InsertAppUser): Promise<AppUser> {
+    const [created] = await db.insert(appUsers).values(user).returning();
+    return created;
+  }
+
+  async updateAppUser(id: number, user: Partial<InsertAppUser>): Promise<AppUser> {
+    const [updated] = await db.update(appUsers).set(user).where(eq(appUsers.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAppUser(id: number): Promise<void> {
+    await db.delete(appUsers).where(eq(appUsers.id, id));
+  }
+
+  async getAppUserByEmail(email: string): Promise<AppUser | undefined> {
+    const [user] = await db.select().from(appUsers).where(eq(appUsers.email, email));
+    return user;
   }
 }
 

@@ -109,6 +109,10 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
   );
 }
 
+interface ExamWithEmployee extends MedicalExam {
+  employeeName: string;
+}
+
 export default function Employees() {
   const { data: employees, isLoading } = useEmployees();
   const queryClient = useQueryClient();
@@ -123,6 +127,16 @@ export default function Employees() {
   const [examForm, setExamForm] = useState({ examName: "", examDate: "", validUntil: "" });
 
   const { data: medicalExams } = useMedicalExams(previewEmployee?.id ?? null);
+
+  const { data: allExams } = useQuery<ExamWithEmployee[]>({
+    queryKey: ['/api/medical-exams/all'],
+  });
+
+  const expiringExams = (allExams || []).filter(exam => {
+    if (!exam.validUntil) return false;
+    const remaining = calcRemainingDays(exam.validUntil);
+    return remaining <= 60;
+  }).sort((a, b) => calcRemainingDays(a.validUntil!) - calcRemainingDays(b.validUntil!));
 
   const { uploadFile, isUploading } = useUpload({
     onSuccess: (response) => {
@@ -333,6 +347,32 @@ export default function Employees() {
           <Plus className="mr-2 h-4 w-4" /> Dodaj pracownika
         </Button>
       </div>
+
+      {expiringExams.length > 0 && (
+        <Card className="border-amber-300 dark:border-amber-700">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <span className="font-semibold text-sm text-amber-700 dark:text-amber-300">Wygasające badania lekarskie</span>
+            </div>
+            <div className="space-y-1">
+              {expiringExams.map(exam => {
+                const remaining = calcRemainingDays(exam.validUntil!);
+                const isExpired = remaining < 0;
+                return (
+                  <div key={exam.id} className="flex items-center gap-3 text-sm" data-testid={`expiring-exam-${exam.id}`}>
+                    <span className="font-medium">{exam.employeeName}</span>
+                    <span className="text-muted-foreground">{exam.examName}</span>
+                    <Badge variant={isExpired ? "destructive" : "secondary"} className="text-xs">
+                      {isExpired ? `Wygasło ${Math.abs(remaining)} dni temu` : `Wygasa za ${remaining} dni`}
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {(!employees || employees.length === 0) ? (
         <Card>

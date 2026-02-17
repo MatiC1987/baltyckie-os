@@ -19,7 +19,11 @@ import Terminarz from "@/pages/Terminarz";
 import Lokalizacje from "@/pages/Lokalizacje";
 import ServiceContracts from "@/pages/ServiceContracts";
 import Subleases from "@/pages/Subleases";
+import SubrentSettlement from "@/pages/SubrentSettlement";
 import CostsExpenses from "@/pages/CostsExpenses";
+import CostsApartments from "@/pages/CostsApartments";
+import Forecast from "@/pages/Forecast";
+import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
@@ -75,22 +79,23 @@ function Router() {
 
       <Route path="/income-rent" component={() => <AuthenticatedPlaceholder title="Przychody Najem" description="Przychody z najmu apartamentów." />} />
       <Route path="/income-subrent" component={() => <AuthenticatedPlaceholder title="Przychody Podnajem" description="Przychody z podnajmu apartamentów." />} />
-      <Route path="/forecast" component={() => <AuthenticatedPlaceholder title="Prognoza" description="Prognoza finansowa." />} />
-      <Route path="/costs-apartments" component={() => <AuthenticatedPlaceholder title="Koszty (Apartamenty)" description="Koszty związane z apartamentami." />} />
+      <Route path="/forecast" component={() => <AuthenticatedRoute component={Forecast} />} />
+      <Route path="/costs-apartments" component={() => <AuthenticatedRoute component={CostsApartments} />} />
       <Route path="/costs-expenses" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
       <Route path="/saldo-ml" component={() => <Layout><Saldo personName="Małgorzata Latasiewicz" /></Layout>} />
-      <Route path="/saldo-jg" component={() => <AuthenticatedPlaceholder title="Saldo - Jolanta Głodkowska" description="Rozliczenie salda." />} />
+      <Route path="/saldo-jg" component={() => <Layout><Saldo personName="Jolanta Głodkowska" /></Layout>} />
+      <Route path="/saldo-mc" component={() => <Layout><Saldo personName="Mateusz Cieślak" /></Layout>} />
 
-      <Route path="/contracts-rent" component={() => <AuthenticatedPlaceholder title="Umowy Najmu" description="Zarządzanie umowami najmu." />} />
       <Route path="/contracts-subrent" component={() => <AuthenticatedRoute component={Subleases} />} />
+      <Route path="/subrent-settlement" component={() => <AuthenticatedRoute component={SubrentSettlement} />} />
+      <Route path="/subrent-media" component={() => <AuthenticatedPlaceholder title="Podnajem - Rozliczenie mediów" description="Rozliczenie mediów dla podnajmów." />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
-      <Route path="/contracts-other" component={() => <AuthenticatedPlaceholder title="Umowy (inne)" description="Pozostałe umowy." />} />
 
       <Route path="/employees" component={() => <AuthenticatedRoute component={Employees} />} />
 
       <Route path="/import" component={() => <AuthenticatedRoute component={Import} />} />
       <Route path="/export" component={() => <AuthenticatedPlaceholder title="Eksport rezerwacji" description="Eksport danych rezerwacji do pliku." />} />
-      <Route path="/user-accounts" component={() => <AuthenticatedPlaceholder title="Konta użytkowników" description="Zarządzanie kontami użytkowników systemu." />} />
+      <Route path="/user-accounts" component={() => <AuthenticatedRoute component={UserAccounts} />} />
       <Route path="/locations" component={() => <AuthenticatedRoute component={Lokalizacje} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
