@@ -45,6 +45,7 @@ import {
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
+  useDroppable,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
@@ -130,7 +131,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals"] },
   { id: "finanse", title: "FINANSE", itemIds: ["income-rent", "income-subrent", "forecast", "costs-apartments", "costs-expenses", "saldo-ml", "saldo-jg", "saldo-mc"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
-  { id: "umowy", title: "UMOWY", itemIds: ["contracts-services"] },
+  { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
   { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations"] },
 ];
@@ -177,8 +178,13 @@ function loadLayout(): SidebarLayout {
           lastSection.itemIds.push(...missingIds);
         }
       }
+      const defaultTitles = Object.fromEntries(DEFAULT_SECTIONS.map(s => [s.id, s.title]));
+      const sections = parsed.sections.map(s => ({
+        ...s,
+        title: defaultTitles[s.id] !== undefined ? defaultTitles[s.id] : s.title,
+      }));
       const items = { ...DEFAULT_ITEMS };
-      return { sections: parsed.sections, items };
+      return { sections, items };
     }
   } catch {}
   return { sections: DEFAULT_SECTIONS, items: DEFAULT_ITEMS };
@@ -315,6 +321,22 @@ function DragOverlayItem({ item }: { item: NavItem }) {
         <Icon className="h-4 w-4 shrink-0 text-slate-300" />
         <span className="font-medium text-xs text-white">{item.label}</span>
       </div>
+    </div>
+  );
+}
+
+function DroppableEmptySection({ sectionId }: { sectionId: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: sectionId });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "mx-2 py-3 border border-dashed rounded-lg flex items-center justify-center transition-colors",
+        isOver ? "border-[#5ADBFA]/50 bg-[#5ADBFA]/10" : "border-white/10"
+      )}
+      data-testid={`empty-section-${sectionId}`}
+    >
+      <span className="text-[10px] text-slate-600">Przeciągnij tutaj</span>
     </div>
   );
 }
@@ -514,12 +536,7 @@ export function Sidebar() {
                         })}
                       </SortableContext>
                       {section.itemIds.length === 0 && (
-                        <div
-                          className="mx-2 py-3 border border-dashed border-white/10 rounded-lg flex items-center justify-center"
-                          data-testid={`empty-section-${section.id}`}
-                        >
-                          <span className="text-[10px] text-slate-600">Przeciągnij tutaj</span>
-                        </div>
+                        <DroppableEmptySection sectionId={section.id} />
                       )}
                     </div>
                   </div>
