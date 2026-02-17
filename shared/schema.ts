@@ -340,7 +340,8 @@ export type InsertSaldoEntry = z.infer<typeof insertSaldoEntrySchema>;
 
 export const saldoCategories = pgTable("saldo_categories", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
+  name: text("name").notNull(),
+  personName: text("person_name"),
 });
 
 export const insertSaldoCategorySchema = createInsertSchema(saldoCategories).omit({ id: true });

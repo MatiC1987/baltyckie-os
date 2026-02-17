@@ -168,9 +168,24 @@ export default function Terminarz() {
   const [colors, setColors] = useState<TerminarzColors>(loadColors);
   const [showSettings, setShowSettings] = useState(false);
   const [previewRes, setPreviewRes] = useState<Reservation | null>(null);
+  const [dragSelection, setDragSelection] = useState<{ aptId: number; startIdx: number; endIdx: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showSelectionMenu, setShowSelectionMenu] = useState<{ aptId: number; startDate: string; endDate: string } | null>(null);
+  const [resPrefill, setResPrefill] = useState<{ aptId?: number; startDate?: string; endDate?: string } | undefined>(undefined);
+  const [blkPrefill, setBlkPrefill] = useState<{ aptId?: number; startDate?: string; endDate?: string } | undefined>(undefined);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sz = compact ? COMPACT : NORMAL;
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+      }
+    };
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, [isDragging]);
 
   const locationNames = useMemo(() => {
     if (!dbLocations || dbLocations.length === 0) return ["GRAND BALTIC", "BULWAR PORTOWY", "WCZASOWA", "PRZEWŁOKA", "NA WYDMIE", "INNE"];
@@ -398,15 +413,66 @@ export default function Terminarz() {
                     >
                       <span className="font-semibold truncate" style={{ fontSize: sz.aptFontSize }} title={apt.name}>{apt.name}</span>
                     </div>
-                    <div className="relative border-b border-border flex-1" style={{ height: sz.rowHeight, width: totalWidth, minWidth: totalWidth }}>
+                    <div
+                      className="relative border-b border-border flex-1 select-none"
+                      style={{ height: sz.rowHeight, width: totalWidth, minWidth: totalWidth }}
+                      onMouseDown={(e) => {
+                        if (e.button !== 0) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const dayIdx = Math.floor(x / sz.dayWidth);
+                        if (dayIdx >= 0 && dayIdx < days.length) {
+                          setIsDragging(true);
+                          setDragSelection({ aptId: apt.id, startIdx: dayIdx, endIdx: dayIdx });
+                          setShowSelectionMenu(null);
+                        }
+                      }}
+                      onMouseMove={(e) => {
+                        if (!isDragging || !dragSelection || dragSelection.aptId !== apt.id) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const dayIdx = Math.max(0, Math.min(days.length - 1, Math.floor(x / sz.dayWidth)));
+                        setDragSelection(prev => prev ? { ...prev, endIdx: dayIdx } : null);
+                      }}
+                      onMouseUp={() => {
+                        if (!isDragging || !dragSelection || dragSelection.aptId !== apt.id) return;
+                        setIsDragging(false);
+                        const selStart = Math.min(dragSelection.startIdx, dragSelection.endIdx);
+                        const selEnd = Math.max(dragSelection.startIdx, dragSelection.endIdx);
+                        if (selStart >= 0 && selEnd < days.length) {
+                          setShowSelectionMenu({
+                            aptId: apt.id,
+                            startDate: formatDate(days[selStart]),
+                            endDate: formatDate(days[selEnd]),
+                          });
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        if (isDragging) {
+                          setIsDragging(false);
+                          if (dragSelection && dragSelection.aptId === apt.id) {
+                            const selStart = Math.min(dragSelection.startIdx, dragSelection.endIdx);
+                            const selEnd = Math.max(dragSelection.startIdx, dragSelection.endIdx);
+                            if (selStart >= 0 && selEnd < days.length) {
+                              setShowSelectionMenu({
+                                aptId: apt.id,
+                                startDate: formatDate(days[selStart]),
+                                endDate: formatDate(days[selEnd]),
+                              });
+                            }
+                          }
+                        }
+                      }}
+                    >
                       {days.map((day, di) => {
                         const dow = day.getDay();
                         const isWeekend = dow === 0 || dow === 6;
                         const isToday = isSameDay(day, new Date());
+                        const isSelected = dragSelection && dragSelection.aptId === apt.id && di >= Math.min(dragSelection.startIdx, dragSelection.endIdx) && di <= Math.max(dragSelection.startIdx, dragSelection.endIdx);
                         return (
                           <div
                             key={di}
-                            className={`absolute top-0 bottom-0 border-r border-border/30 ${isWeekend ? "bg-muted/30" : ""} ${isToday ? "bg-primary/5" : ""}`}
+                            className={`absolute top-0 bottom-0 border-r border-border/30 ${isWeekend ? "bg-muted/30" : ""} ${isToday ? "bg-primary/5" : ""} ${isSelected ? "bg-primary/20" : ""}`}
                             style={{ left: di * sz.dayWidth, width: sz.dayWidth }}
                           />
                         );
@@ -423,14 +489,19 @@ export default function Terminarz() {
 
                         if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
 
-                        const left = effectiveStart * sz.dayWidth;
-                        const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
+                        const halfDay = sz.dayWidth / 2;
+                        const startsInRange = startIdx >= 0;
+                        const endsInRange = endIdx >= 0;
+                        const left = effectiveStart * sz.dayWidth + (startsInRange ? halfDay : 0);
+                        const rightEdge = effectiveEnd * sz.dayWidth + (endsInRange ? halfDay : sz.dayWidth);
+                        const width = Math.max(rightEdge - left, halfDay);
 
                         return (
                           <div
                             key={`blk-${blk.id}`}
                             className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
                             style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.BLOKADA, opacity: 0.7 }}
+                            onMouseDown={(e) => e.stopPropagation()}
                             onMouseEnter={(e) => {
                               setHoveredBlockade(blk);
                               setTooltipPos({ x: e.clientX, y: e.clientY });
@@ -455,14 +526,19 @@ export default function Terminarz() {
                         const effectiveStart = startIdx >= 0 ? startIdx : (subStart < rangeStart ? 0 : -1);
                         const effectiveEnd = endIdx >= 0 ? endIdx : (subEnd > rangeEnd ? days.length - 1 : -1);
                         if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
-                        const left = effectiveStart * sz.dayWidth;
-                        const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
+                        const halfDay = sz.dayWidth / 2;
+                        const startsInRange = startIdx >= 0;
+                        const endsInRange = endIdx >= 0;
+                        const left = effectiveStart * sz.dayWidth + (startsInRange ? halfDay : 0);
+                        const rightEdge = effectiveEnd * sz.dayWidth + (endsInRange ? halfDay : sz.dayWidth);
+                        const width = Math.max(rightEdge - left, halfDay);
                         const tenantName = sub.tenantType === 'firma' ? (sub.companyName || 'Podnajem') : [sub.firstName, sub.lastName].filter(Boolean).join(' ') || 'Podnajem';
                         return (
                           <div
                             key={`sub-${sub.id}`}
                             className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
                             style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.PODNAJEM, opacity: 0.85 }}
+                            onMouseDown={(e) => e.stopPropagation()}
                             title={`Podnajem: ${tenantName} (${sub.startDate} - ${sub.endDate})`}
                             data-testid={`sublease-bar-${sub.id}`}
                           >
@@ -486,8 +562,12 @@ export default function Terminarz() {
 
                         if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
 
-                        const left = effectiveStart * sz.dayWidth;
-                        const width = (effectiveEnd - effectiveStart + 1) * sz.dayWidth;
+                        const halfDay = sz.dayWidth / 2;
+                        const startsInRange = startIdx >= 0;
+                        const endsInRange = endIdx >= 0;
+                        const left = effectiveStart * sz.dayWidth + (startsInRange ? halfDay : 0);
+                        const rightEdge = effectiveEnd * sz.dayWidth + (endsInRange ? halfDay : sz.dayWidth);
+                        const width = Math.max(rightEdge - left, halfDay);
                         const barColor = getColorForStatus(res.status || "PRZYJETA", colors);
 
                         return (
@@ -495,6 +575,7 @@ export default function Terminarz() {
                             key={`res-${res.id}`}
                             className="absolute rounded-md z-[3] flex items-center cursor-pointer shadow-sm border border-black/10"
                             style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: barColor }}
+                            onMouseDown={(e) => e.stopPropagation()}
                             onClick={() => setPreviewRes(res)}
                             onMouseEnter={(e) => {
                               setHoveredRes(res);
@@ -621,13 +702,15 @@ export default function Terminarz() {
 
       <NewReservationDialog
         open={showNewReservation}
-        onClose={() => setShowNewReservation(false)}
+        onClose={() => { setShowNewReservation(false); setResPrefill(undefined); }}
         apartments={filteredApartments}
+        prefill={resPrefill}
       />
       <NewBlockadeDialog
         open={showNewBlockade}
-        onClose={() => setShowNewBlockade(false)}
+        onClose={() => { setShowNewBlockade(false); setBlkPrefill(undefined); }}
         apartments={filteredApartments}
+        prefill={blkPrefill}
       />
 
       <ColorSettingsDialog
@@ -639,6 +722,59 @@ export default function Terminarz() {
           saveColors(newColors);
         }}
       />
+
+      {showSelectionMenu && (
+        <Dialog open={!!showSelectionMenu} onOpenChange={(o) => { if (!o) { setShowSelectionMenu(null); setDragSelection(null); } }}>
+          <DialogContent className="max-w-xs">
+            <DialogHeader>
+              <DialogTitle>Zaznaczony zakres dat</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="text-sm text-muted-foreground">
+                <p><span className="font-medium text-foreground">Apartament:</span> {apartments?.find(a => a.id === showSelectionMenu.aptId)?.name || `#${showSelectionMenu.aptId}`}</p>
+                <p><span className="font-medium text-foreground">Od:</span> {showSelectionMenu.startDate}</p>
+                <p><span className="font-medium text-foreground">Do:</span> {showSelectionMenu.endDate}</p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={() => {
+                    const sel = showSelectionMenu;
+                    setResPrefill({ aptId: sel.aptId, startDate: sel.startDate, endDate: sel.endDate });
+                    setShowSelectionMenu(null);
+                    setDragSelection(null);
+                    setShowNewReservation(true);
+                  }}
+                  data-testid="button-selection-add-reservation"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Dodaj rezerwację
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const sel = showSelectionMenu;
+                    setBlkPrefill({ aptId: sel.aptId, startDate: sel.startDate, endDate: sel.endDate });
+                    setShowSelectionMenu(null);
+                    setDragSelection(null);
+                    setShowNewBlockade(true);
+                  }}
+                  data-testid="button-selection-add-blockade"
+                >
+                  <Lock className="w-4 h-4 mr-2" />
+                  Dodaj blokadę
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => { setShowSelectionMenu(null); setDragSelection(null); }}
+                  data-testid="button-selection-cancel"
+                >
+                  Anuluj
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {previewRes && (
         <Dialog open={!!previewRes} onOpenChange={(o) => { if (!o) setPreviewRes(null); }}>
@@ -694,7 +830,7 @@ export default function Terminarz() {
   );
 }
 
-function NewReservationDialog({ open, onClose, apartments }: { open: boolean; onClose: () => void; apartments: Apartment[] }) {
+function NewReservationDialog({ open, onClose, apartments, prefill }: { open: boolean; onClose: () => void; apartments: Apartment[]; prefill?: { aptId?: number; startDate?: string; endDate?: string } }) {
   const createReservation = useCreateReservation();
 
   const form = useForm<InsertReservation>({
@@ -707,6 +843,14 @@ function NewReservationDialog({ open, onClose, apartments }: { open: boolean; on
       surcharge: "0",
     },
   });
+
+  useEffect(() => {
+    if (open && prefill) {
+      if (prefill.aptId) form.setValue("apartmentId", prefill.aptId);
+      if (prefill.startDate) form.setValue("startDate", prefill.startDate);
+      if (prefill.endDate) form.setValue("endDate", prefill.endDate);
+    }
+  }, [open, prefill]);
 
   const onSubmit = (data: InsertReservation) => {
     createReservation.mutate(data, {
@@ -791,12 +935,20 @@ function NewReservationDialog({ open, onClose, apartments }: { open: boolean; on
   );
 }
 
-function NewBlockadeDialog({ open, onClose, apartments }: { open: boolean; onClose: () => void; apartments: Apartment[] }) {
+function NewBlockadeDialog({ open, onClose, apartments, prefill }: { open: boolean; onClose: () => void; apartments: Apartment[]; prefill?: { aptId?: number; startDate?: string; endDate?: string } }) {
   const createBlockade = useCreateBlockade();
   const [apartmentId, setApartmentId] = useState("");
   const [blkStartDate, setBlkStartDate] = useState("");
   const [blkEndDate, setBlkEndDate] = useState("");
   const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (open && prefill) {
+      if (prefill.aptId) setApartmentId(prefill.aptId.toString());
+      if (prefill.startDate) setBlkStartDate(prefill.startDate);
+      if (prefill.endDate) setBlkEndDate(prefill.endDate);
+    }
+  }, [open, prefill]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -706,42 +706,44 @@ export async function registerRoutes(
     }
   });
 
-  app.get('/api/saldo/categories', isAuthenticated, async (_req, res) => {
-    const categories = await storage.getSaldoCategories();
+  app.get('/api/saldo/categories', isAuthenticated, async (req, res) => {
+    const personName = req.query.personName as string | undefined;
+    const categories = await storage.getSaldoCategories(personName);
     res.json(categories);
   });
 
   app.post('/api/saldo/categories', isAuthenticated, async (req, res) => {
-    const { name } = req.body;
+    const { name, personName } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ message: "Podaj nazwę kategorii" });
     }
-    await storage.createSaldoCategory(name.trim());
+    await storage.createSaldoCategory(name.trim(), personName);
     res.json({ success: true });
   });
 
   app.put('/api/saldo/categories/:name', isAuthenticated, async (req, res) => {
-    const { newName } = req.body;
+    const { newName, personName } = req.body;
     if (!newName || typeof newName !== 'string') {
       return res.status(400).json({ message: "Podaj nową nazwę kategorii" });
     }
-    await storage.updateSaldoCategory(req.params.name, newName.trim());
+    await storage.updateSaldoCategory(req.params.name, newName.trim(), personName);
     res.json({ success: true });
   });
 
   app.post('/api/saldo/categories/bulk-delete', isAuthenticated, async (req, res) => {
-    const { names } = req.body;
+    const { names, personName } = req.body;
     if (!Array.isArray(names) || names.length === 0) {
       return res.status(400).json({ message: "Podaj listę kategorii do usunięcia" });
     }
     for (const name of names) {
-      await storage.deleteSaldoCategory(name);
+      await storage.deleteSaldoCategory(name, personName);
     }
     res.json({ success: true, deleted: names.length });
   });
 
   app.delete('/api/saldo/categories/:name', isAuthenticated, async (req, res) => {
-    await storage.deleteSaldoCategory(req.params.name);
+    const personName = req.query.personName as string | undefined;
+    await storage.deleteSaldoCategory(req.params.name, personName);
     res.status(204).send();
   });
 

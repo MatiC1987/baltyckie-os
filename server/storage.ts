@@ -116,10 +116,10 @@ export interface IStorage {
 
   // Saldo
   getSaldoEntries(filters?: { startDate?: string; endDate?: string; personName?: string }): Promise<SaldoEntry[]>;
-  getSaldoCategories(): Promise<string[]>;
-  createSaldoCategory(name: string): Promise<void>;
-  updateSaldoCategory(oldName: string, newName: string): Promise<void>;
-  deleteSaldoCategory(name: string): Promise<void>;
+  getSaldoCategories(personName?: string): Promise<string[]>;
+  createSaldoCategory(name: string, personName?: string): Promise<void>;
+  updateSaldoCategory(oldName: string, newName: string, personName?: string): Promise<void>;
+  deleteSaldoCategory(name: string, personName?: string): Promise<void>;
   createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry>;
   createSaldoEntriesBulk(entries: InsertSaldoEntry[]): Promise<SaldoEntry[]>;
   updateSaldoEntry(id: number, entry: Partial<InsertSaldoEntry>): Promise<SaldoEntry>;
@@ -498,30 +498,53 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(saldoEntries).where(conditions.length ? and(...conditions) : undefined).orderBy(saldoEntries.id);
   }
 
-  async getSaldoCategories(): Promise<string[]> {
-    const fromEntries = await db.selectDistinct({ category: saldoEntries.category }).from(saldoEntries).where(sql`${saldoEntries.category} IS NOT NULL AND ${saldoEntries.category} != ''`);
-    const fromTable = await db.select({ name: saldoCategories.name }).from(saldoCategories);
+  async getSaldoCategories(personName?: string): Promise<string[]> {
+    const conditions: any[] = [];
+    if (personName) {
+      conditions.push(eq(saldoEntries.personName, personName));
+    }
+    conditions.push(sql`${saldoEntries.category} IS NOT NULL AND ${saldoEntries.category} != ''`);
+    const fromEntries = await db.selectDistinct({ category: saldoEntries.category }).from(saldoEntries).where(and(...conditions));
+    
+    const tableConditions: any[] = [];
+    if (personName) {
+      tableConditions.push(eq(saldoCategories.personName, personName));
+    }
+    const fromTable = tableConditions.length > 0
+      ? await db.select({ name: saldoCategories.name }).from(saldoCategories).where(and(...tableConditions))
+      : await db.select({ name: saldoCategories.name }).from(saldoCategories);
+    
     const all = new Set<string>();
     fromEntries.forEach(r => { if (r.category) all.add(r.category); });
     fromTable.forEach(r => all.add(r.name));
     return [...all].sort((a, b) => a.localeCompare(b, "pl"));
   }
 
-  async createSaldoCategory(name: string): Promise<void> {
-    await db.insert(saldoCategories).values({ name }).onConflictDoNothing();
+  async createSaldoCategory(name: string, personName?: string): Promise<void> {
+    await db.insert(saldoCategories).values({ name, personName: personName || null });
   }
 
-  async updateSaldoCategory(oldName: string, newName: string): Promise<void> {
-    await db.update(saldoEntries).set({ category: newName }).where(eq(saldoEntries.category, oldName));
-    const existing = await db.select().from(saldoCategories).where(eq(saldoCategories.name, oldName));
+  async updateSaldoCategory(oldName: string, newName: string, personName?: string): Promise<void> {
+    const entryConditions: any[] = [eq(saldoEntries.category, oldName)];
+    if (personName) entryConditions.push(eq(saldoEntries.personName, personName));
+    await db.update(saldoEntries).set({ category: newName }).where(and(...entryConditions));
+    
+    const catConditions: any[] = [eq(saldoCategories.name, oldName)];
+    if (personName) catConditions.push(eq(saldoCategories.personName, personName));
+    const existing = await db.select().from(saldoCategories).where(and(...catConditions));
     if (existing.length > 0) {
-      await db.update(saldoCategories).set({ name: newName }).where(eq(saldoCategories.name, oldName));
+      await db.update(saldoCategories).set({ name: newName }).where(and(...catConditions));
     }
   }
 
-  async deleteSaldoCategory(name: string): Promise<void> {
-    await db.update(saldoEntries).set({ category: null }).where(eq(saldoEntries.category, name));
-    await db.delete(saldoCategories).where(eq(saldoCategories.name, name));
+  async deleteSaldoCategory(name: string, personName?: string): Promise<void> {
+    const entryConditions: any[] = [eq(saldoEntries.category, name)];
+    if (personName) entryConditions.push(eq(saldoEntries.personName, personName));
+    await db.update(saldoEntries).set({ category: null }).where(and(...entryConditions));
+    
+    const catConditions: any[] = [eq(saldoCategories.name, name)];
+    if (personName) catConditions.push(eq(saldoCategories.personName, personName));
+    await db.delete(saldoCategories).where(and(...catConditions));
   }
 
   async createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry> {

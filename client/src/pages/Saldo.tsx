@@ -82,34 +82,39 @@ export default function Saldo({ personName }: { personName: string }) {
   });
 
   const { data: categories = [] } = useQuery<string[]>({
-    queryKey: ["/api/saldo/categories"],
+    queryKey: ["/api/saldo/categories", { personName }],
+    queryFn: async () => {
+      const res = await fetch(`/api/saldo/categories?personName=${encodeURIComponent(personName)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch categories");
+      return res.json();
+    },
   });
 
   const renameCategoryMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
-      apiRequest("PUT", `/api/saldo/categories/${encodeURIComponent(oldName)}`, { newName }),
+      apiRequest("PUT", `/api/saldo/categories/${encodeURIComponent(oldName)}`, { newName, personName }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Zmieniono nazwę kategorii" });
       setEditingCat(null);
     },
   });
 
   const deleteCategoryMutation = useMutation({
-    mutationFn: (name: string) => apiRequest("DELETE", `/api/saldo/categories/${encodeURIComponent(name)}`),
+    mutationFn: (name: string) => apiRequest("DELETE", `/api/saldo/categories/${encodeURIComponent(name)}?personName=${encodeURIComponent(personName)}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Usunięto kategorię" });
     },
   });
 
   const bulkDeleteCategoryMutation = useMutation({
-    mutationFn: (names: string[]) => apiRequest("POST", "/api/saldo/categories/bulk-delete", { names }),
+    mutationFn: (names: string[]) => apiRequest("POST", "/api/saldo/categories/bulk-delete", { names, personName }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       setSelectedCats(new Set());
       toast({ title: "Usunięto wybrane kategorie" });
     },
@@ -117,9 +122,9 @@ export default function Saldo({ personName }: { personName: string }) {
 
   const [newCatName, setNewCatName] = useState("");
   const createCategoryMutation = useMutation({
-    mutationFn: (name: string) => apiRequest("POST", "/api/saldo/categories", { name }),
+    mutationFn: (name: string) => apiRequest("POST", "/api/saldo/categories", { name, personName }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
       toast({ title: "Dodano kategorię" });
       setNewCatName("");
     },

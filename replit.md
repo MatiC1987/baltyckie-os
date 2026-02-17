@@ -127,3 +127,6 @@ All require authentication. Defined in shared/routes.ts:
 - 2026-02-17: Added ROZLICZENIE ROCZNE to saldo categories
 - 2026-02-17: Fixed Saldo import to pass personName parameter for person-specific data separation
 - 2026-02-17: Enabled Saldo pages for Jolanta Głodkowska and Mateusz Cieślak
+- 2026-02-17: Independent saldo categories per person - saldo_categories table now has personName column, each person's Saldo page manages its own categories independently
+- 2026-02-17: Terminarz half-cell offset - reservation/blockade/sublease bars start at midpoint of check-in day and end at midpoint of check-out day, allowing same-day transitions to display without overlap
+- 2026-02-17: Terminarz date range selection - click and drag on calendar cells to select date range, shows dialog with options to add reservation or blockade with pre-filled apartment and dates
