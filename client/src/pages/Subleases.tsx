@@ -199,10 +199,10 @@ function SubleaseFormFields({ form, setForm, apartments }: {
   );
 }
 
-function PaymentsTab({ subleaseId }: { subleaseId: number }) {
+function PaymentsTab({ subleaseId, apartments }: { subleaseId: number; apartments: Apartment[] }) {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
-  const [payForm, setPayForm] = useState({ title: "", category: "Czynsz", amount: "", dueDate: "", status: "do_oplacenia" });
+  const [payForm, setPayForm] = useState<Record<string, any>>({ title: "", category: "Czynsz", amount: "", dueDate: "", status: "do_oplacenia", apartmentId: "" });
 
   const { data: payments = [], isLoading } = useQuery<SubleasePayment[]>({
     queryKey: ['/api/subleases', subleaseId, 'payments'],
@@ -225,7 +225,7 @@ function PaymentsTab({ subleaseId }: { subleaseId: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'payments'] });
       toast({ title: "Sukces", description: "Dodano opłatę" });
       setShowAdd(false);
-      setPayForm({ title: "", category: "Czynsz", amount: "", dueDate: "", status: "do_oplacenia" });
+      setPayForm({ title: "", category: "Czynsz", amount: "", dueDate: "", status: "do_oplacenia", apartmentId: "" });
     },
   });
 
@@ -306,6 +306,19 @@ function PaymentsTab({ subleaseId }: { subleaseId: number }) {
                 </Select>
               </div>
             </div>
+            {apartments.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Apartament</Label>
+                <Select value={payForm.apartmentId?.toString() || ""} onValueChange={(v) => setPayForm({ ...payForm, apartmentId: v ? parseInt(v) : null })}>
+                  <SelectTrigger data-testid="select-payment-apartment"><SelectValue placeholder="Wybierz apartament" /></SelectTrigger>
+                  <SelectContent>
+                    {apartments.map((a) => (
+                      <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setShowAdd(false)}>Anuluj</Button>
               <Button size="sm" onClick={() => createMut.mutate(payForm)} disabled={!payForm.title || !payForm.amount || !payForm.dueDate || createMut.isPending} data-testid="button-save-payment">
@@ -326,6 +339,7 @@ function PaymentsTab({ subleaseId }: { subleaseId: number }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Tytuł</TableHead>
+                <TableHead>Apartament</TableHead>
                 <TableHead>Kategoria</TableHead>
                 <TableHead>Kwota</TableHead>
                 <TableHead>Termin</TableHead>
@@ -339,6 +353,9 @@ function PaymentsTab({ subleaseId }: { subleaseId: number }) {
                 return (
                   <TableRow key={p.id} data-testid={`row-payment-${p.id}`}>
                     <TableCell className="font-medium">{p.title}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {p.apartmentId ? (apartments.find(a => a.id === p.apartmentId)?.name || "—") : "—"}
+                    </TableCell>
                     <TableCell>{p.category}</TableCell>
                     <TableCell>{Number(p.amount).toFixed(2)} PLN</TableCell>
                     <TableCell>{p.dueDate}</TableCell>
@@ -749,7 +766,12 @@ export default function Subleases() {
             {editId && (
               <>
                 <TabsContent value="oplaty" className="flex-1 overflow-y-auto mt-0">
-                  <PaymentsTab subleaseId={editId} />
+                  <PaymentsTab subleaseId={editId} apartments={
+                    (() => {
+                      const ids: number[] = form.apartmentIds || (form.apartmentId ? [form.apartmentId] : []);
+                      return apartments.filter(a => ids.includes(a.id));
+                    })()
+                  } />
                 </TabsContent>
                 <TabsContent value="zalaczniki" className="flex-1 overflow-y-auto mt-0">
                   <AttachmentsTab subleaseId={editId} />

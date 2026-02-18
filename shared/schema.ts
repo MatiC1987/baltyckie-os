@@ -375,6 +375,7 @@ export const subleases = pgTable("subleases", {
 export const subleasePayments = pgTable("sublease_payments", {
   id: serial("id").primaryKey(),
   subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
   title: text("title").notNull(),
   category: text("category").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
