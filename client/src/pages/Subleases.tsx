@@ -1056,6 +1056,7 @@ export default function Subleases() {
       endDate: s.endDate,
       rentAmount: s.rentAmount || "",
       additionalFees: s.additionalFees || "",
+      mediaByMeters: s.mediaByMeters || false,
       hasDeposit: s.hasDeposit || false,
       depositAmount: s.depositAmount || "",
       depositReturnDate: s.depositReturnDate || "",
