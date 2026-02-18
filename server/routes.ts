@@ -606,7 +606,10 @@ export async function registerRoutes(
 
   app.put('/api/subleases/:id', isAuthenticated, async (req, res) => {
     try {
-      const updated = await storage.updateSublease(Number(req.params.id), req.body);
+      const data = { ...req.body };
+      if (data.rentAmount === "" || data.rentAmount === undefined) data.rentAmount = null;
+      if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
+      const updated = await storage.updateSublease(Number(req.params.id), data);
       res.status(200).json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Błąd aktualizacji" });
