@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -782,6 +782,42 @@ export async function registerRoutes(
   app.delete('/api/sublease-attachments/:id', isAuthenticated, async (req, res) => {
     await storage.deleteSubleaseAttachment(Number(req.params.id));
     res.status(204).send();
+  });
+
+  // Meter Readings & Settings
+  app.get('/api/subleases/:id/meter-readings', isAuthenticated, async (req, res) => {
+    const readings = await storage.getMeterReadings(Number(req.params.id));
+    res.json(readings);
+  });
+
+  app.post('/api/subleases/:id/meter-readings', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertSubleaseMeterReadingSchema.parse({ ...req.body, subleaseId: Number(req.params.id) });
+      const created = await storage.upsertMeterReading(parsed);
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
+    }
+  });
+
+  app.delete('/api/meter-readings/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteMeterReading(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.get('/api/subleases/:id/meter-settings', isAuthenticated, async (req, res) => {
+    const settings = await storage.getMeterSettings(Number(req.params.id));
+    res.json(settings);
+  });
+
+  app.post('/api/subleases/:id/meter-settings', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertSubleaseMeterSettingSchema.parse({ ...req.body, subleaseId: Number(req.params.id) });
+      const saved = await storage.upsertMeterSetting(parsed);
+      res.status(201).json(saved);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
+    }
   });
 
   // Saldo

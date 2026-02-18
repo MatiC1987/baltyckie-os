@@ -20,6 +20,8 @@ import {
   subleases, Sublease, InsertSublease,
   subleasePayments, SubleasePayment, InsertSubleasePayment,
   subleaseAttachments, SubleaseAttachment, InsertSubleaseAttachment,
+  subleaseMeterReadings, SubleaseMeterReading, InsertSubleaseMeterReading,
+  subleaseMeterSettings, SubleaseMeterSetting, InsertSubleaseMeterSetting,
   appUsers, AppUser, InsertAppUser,
   documentCategories, DocumentCategory, InsertDocumentCategory,
   documentTemplates, DocumentTemplate, InsertDocumentTemplate
@@ -146,6 +148,13 @@ export interface IStorage {
   getSubleaseAttachments(subleaseId: number): Promise<SubleaseAttachment[]>;
   createSubleaseAttachment(attachment: InsertSubleaseAttachment): Promise<SubleaseAttachment>;
   deleteSubleaseAttachment(id: number): Promise<void>;
+
+  // Sublease Meter Readings & Settings
+  getMeterReadings(subleaseId: number): Promise<SubleaseMeterReading[]>;
+  upsertMeterReading(reading: InsertSubleaseMeterReading): Promise<SubleaseMeterReading>;
+  deleteMeterReading(id: number): Promise<void>;
+  getMeterSettings(subleaseId: number): Promise<SubleaseMeterSetting[]>;
+  upsertMeterSetting(setting: InsertSubleaseMeterSetting): Promise<SubleaseMeterSetting>;
 
   // App Users
   getAppUsers(): Promise<AppUser[]>;
@@ -685,6 +694,56 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSubleaseAttachment(id: number): Promise<void> {
     await db.delete(subleaseAttachments).where(eq(subleaseAttachments.id, id));
+  }
+
+  async getMeterReadings(subleaseId: number): Promise<SubleaseMeterReading[]> {
+    return db.select().from(subleaseMeterReadings)
+      .where(eq(subleaseMeterReadings.subleaseId, subleaseId))
+      .orderBy(subleaseMeterReadings.yearMonth);
+  }
+
+  async upsertMeterReading(reading: InsertSubleaseMeterReading): Promise<SubleaseMeterReading> {
+    const existing = await db.select().from(subleaseMeterReadings)
+      .where(and(
+        eq(subleaseMeterReadings.subleaseId, reading.subleaseId),
+        eq(subleaseMeterReadings.meterType, reading.meterType),
+        eq(subleaseMeterReadings.yearMonth, reading.yearMonth)
+      ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(subleaseMeterReadings)
+        .set({ reading: reading.reading })
+        .where(eq(subleaseMeterReadings.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(subleaseMeterReadings).values(reading).returning();
+    return created;
+  }
+
+  async deleteMeterReading(id: number): Promise<void> {
+    await db.delete(subleaseMeterReadings).where(eq(subleaseMeterReadings.id, id));
+  }
+
+  async getMeterSettings(subleaseId: number): Promise<SubleaseMeterSetting[]> {
+    return db.select().from(subleaseMeterSettings)
+      .where(eq(subleaseMeterSettings.subleaseId, subleaseId));
+  }
+
+  async upsertMeterSetting(setting: InsertSubleaseMeterSetting): Promise<SubleaseMeterSetting> {
+    const existing = await db.select().from(subleaseMeterSettings)
+      .where(and(
+        eq(subleaseMeterSettings.subleaseId, setting.subleaseId),
+        eq(subleaseMeterSettings.meterType, setting.meterType)
+      ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(subleaseMeterSettings)
+        .set({ unitPrice: setting.unitPrice, initialReading: setting.initialReading })
+        .where(eq(subleaseMeterSettings.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(subleaseMeterSettings).values(setting).returning();
+    return created;
   }
 
   // App Users

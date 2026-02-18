@@ -20,6 +20,7 @@ import Lokalizacje from "@/pages/Lokalizacje";
 import ServiceContracts from "@/pages/ServiceContracts";
 import Subleases from "@/pages/Subleases";
 import SubrentSettlement from "@/pages/SubrentSettlement";
+import MediaSettlement from "@/pages/MediaSettlement";
 import CostsExpenses from "@/pages/CostsExpenses";
 import CostsApartments from "@/pages/CostsApartments";
 import Forecast from "@/pages/Forecast";
@@ -90,7 +91,7 @@ function Router() {
 
       <Route path="/contracts-subrent" component={() => <AuthenticatedRoute component={Subleases} />} />
       <Route path="/subrent-settlement" component={() => <AuthenticatedRoute component={SubrentSettlement} />} />
-      <Route path="/subrent-media" component={() => <AuthenticatedPlaceholder title="Podnajem - Rozliczenie mediów" description="Rozliczenie mediów dla podnajmów." />} />
+      <Route path="/subrent-media" component={() => <AuthenticatedRoute component={MediaSettlement} />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
 
       <Route path="/document-templates" component={() => <AuthenticatedRoute component={DocumentTemplates} />} />
