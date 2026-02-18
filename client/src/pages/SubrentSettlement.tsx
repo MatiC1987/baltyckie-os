@@ -6,7 +6,7 @@ import type { Sublease, SubleasePayment, Apartment } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Check, X } from "lucide-react";
+import { Search, Check, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
@@ -31,9 +31,14 @@ function formatNum(v: string | null | undefined): string {
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+type SortKey = "apartment" | "tenant" | "dueDate" | "title" | "amount" | "status";
+type SortDir = "asc" | "desc";
+
 export default function SubrentSettlement() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("dueDate");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const { data: subleases = [] } = useQuery<Sublease[]>({
     queryKey: ["/api/subleases"],
@@ -81,7 +86,6 @@ export default function SubrentSettlement() {
         items.push({ payment: p, sublease: sub, apartmentName, tenantName });
       }
     }
-    items.sort((a, b) => (a.payment.dueDate || "").localeCompare(b.payment.dueDate || ""));
     return items;
   }, [paymentQueries.data, activeSubleases, apartments]);
 
@@ -94,6 +98,49 @@ export default function SubrentSettlement() {
       item.payment.title.toLowerCase().includes(q)
     );
   }, [allPayments, searchQuery]);
+
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case "apartment":
+          return dir * a.apartmentName.localeCompare(b.apartmentName, "pl");
+        case "tenant":
+          return dir * a.tenantName.localeCompare(b.tenantName, "pl");
+        case "dueDate":
+          return dir * (a.payment.dueDate || "").localeCompare(b.payment.dueDate || "");
+        case "title":
+          return dir * a.payment.title.localeCompare(b.payment.title, "pl");
+        case "amount": {
+          const aVal = parseFloat(a.payment.amount) || 0;
+          const bVal = parseFloat(b.payment.amount) || 0;
+          return dir * (aVal - bVal);
+        }
+        case "status":
+          return dir * (a.payment.status || "").localeCompare(b.payment.status || "");
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [filtered, sortKey, sortDir]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ column }: { column: SortKey }) => {
+    if (sortKey !== column) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
+    return sortDir === "asc"
+      ? <ArrowUp className="h-3 w-3 ml-1" />
+      : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
 
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ paymentId, newStatus }: { paymentId: number; newStatus: string }) => {
@@ -144,23 +191,35 @@ export default function SubrentSettlement() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead data-testid="th-apartment">Apartament</TableHead>
-                <TableHead data-testid="th-tenant">Imię i nazwisko / Firma</TableHead>
-                <TableHead data-testid="th-due-date">Data płatności</TableHead>
-                <TableHead data-testid="th-title">Tytuł płatności</TableHead>
-                <TableHead className="text-right" data-testid="th-amount">Kwota</TableHead>
-                <TableHead className="text-center" data-testid="th-status">Status</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("apartment")} data-testid="th-apartment">
+                  <div className="flex items-center">Apartament<SortIcon column="apartment" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("tenant")} data-testid="th-tenant">
+                  <div className="flex items-center">Najemca<SortIcon column="tenant" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("dueDate")} data-testid="th-due-date">
+                  <div className="flex items-center">Data płatności<SortIcon column="dueDate" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("title")} data-testid="th-title">
+                  <div className="flex items-center">Tytuł płatności<SortIcon column="title" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none text-right" onClick={() => handleSort("amount")} data-testid="th-amount">
+                  <div className="flex items-center justify-end">Kwota<SortIcon column="amount" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none text-center" onClick={() => handleSort("status")} data-testid="th-status">
+                  <div className="flex items-center justify-center">Status<SortIcon column="status" /></div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     Brak płatności do wyświetlenia
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((item, idx) => {
+                sorted.map((item, idx) => {
                   const st = PAYMENT_STATUS_LABELS[item.payment.status] || PAYMENT_STATUS_LABELS.do_oplacenia;
                   return (
                     <TableRow key={item.payment.id} className={idx % 2 === 1 ? "bg-muted/30" : ""} data-testid={`row-payment-${item.payment.id}`}>
