@@ -75,22 +75,23 @@ function SubleaseFormFields({ form, setForm, apartments }: {
           </div>
         </>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label>Imię</Label>
-            <Input value={form.firstName || ""} onChange={(e) => setForm({ ...form, firstName: e.target.value })} data-testid="input-first-name" />
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Imię</Label>
+              <Input value={form.firstName || ""} onChange={(e) => setForm({ ...form, firstName: e.target.value })} data-testid="input-first-name" />
+            </div>
+            <div className="space-y-2">
+              <Label>Nazwisko</Label>
+              <Input value={form.lastName || ""} onChange={(e) => setForm({ ...form, lastName: e.target.value })} data-testid="input-last-name" />
+            </div>
           </div>
           <div className="space-y-2">
-            <Label>Nazwisko</Label>
-            <Input value={form.lastName || ""} onChange={(e) => setForm({ ...form, lastName: e.target.value })} data-testid="input-last-name" />
+            <Label>PESEL / Paszport</Label>
+            <Input value={form.peselOrPassport || ""} onChange={(e) => setForm({ ...form, peselOrPassport: e.target.value })} data-testid="input-pesel" />
           </div>
-        </div>
+        </>
       )}
-
-      <div className="space-y-2">
-        <Label>PESEL / Paszport</Label>
-        <Input value={form.peselOrPassport || ""} onChange={(e) => setForm({ ...form, peselOrPassport: e.target.value })} data-testid="input-pesel" />
-      </div>
 
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-2 col-span-1">
@@ -118,26 +119,28 @@ function SubleaseFormFields({ form, setForm, apartments }: {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label>Email do faktur</Label>
-          <Input value={form.invoiceEmail || ""} onChange={(e) => setForm({ ...form, invoiceEmail: e.target.value })} data-testid="input-invoice-email" />
+      {isCompany && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Email do faktur</Label>
+            <Input value={form.invoiceEmail || ""} onChange={(e) => setForm({ ...form, invoiceEmail: e.target.value })} data-testid="input-invoice-email" />
+          </div>
+          <div className="space-y-2">
+            <Label>Stawka VAT</Label>
+            <Select value={form.vatRate || "23%"} onValueChange={(v) => setForm({ ...form, vatRate: v })}>
+              <SelectTrigger data-testid="select-vat-rate">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="23%">23%</SelectItem>
+                <SelectItem value="8%">8%</SelectItem>
+                <SelectItem value="0%">0%</SelectItem>
+                <SelectItem value="zw.">zw.</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label>Stawka VAT</Label>
-          <Select value={form.vatRate || "23%"} onValueChange={(v) => setForm({ ...form, vatRate: v })}>
-            <SelectTrigger data-testid="select-vat-rate">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="23%">23%</SelectItem>
-              <SelectItem value="8%">8%</SelectItem>
-              <SelectItem value="0%">0%</SelectItem>
-              <SelectItem value="zw.">zw.</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      )}
 
       <div className="space-y-2">
         <Label>Apartamenty</Label>
