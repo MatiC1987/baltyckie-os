@@ -141,12 +141,15 @@ function SubleaseMediaCard({
     [sublease.startDate, sublease.endDate]
   );
 
+  const readingsKey = [`/api/subleases/${sublease.id}/meter-readings`];
+  const settingsKey = [`/api/subleases/${sublease.id}/meter-settings`];
+
   const { data: readings = [], isLoading: readingsLoading } = useQuery<SubleaseMeterReading[]>({
-    queryKey: [`/api/subleases/${sublease.id}/meter-readings`],
+    queryKey: readingsKey,
   });
 
   const { data: settings = [], isLoading: settingsLoading } = useQuery<SubleaseMeterSetting[]>({
-    queryKey: [`/api/subleases/${sublease.id}/meter-settings`],
+    queryKey: settingsKey,
   });
 
   const saveSetting = useMutation({
@@ -154,7 +157,7 @@ function SubleaseMediaCard({
       await apiRequest("POST", `/api/subleases/${sublease.id}/meter-settings`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/subleases", sublease.id, "meter-settings"] });
+      queryClient.invalidateQueries({ queryKey: settingsKey });
       toast({ title: "Zapisano ustawienia" });
     },
   });
@@ -164,7 +167,8 @@ function SubleaseMediaCard({
       await apiRequest("POST", `/api/subleases/${sublease.id}/meter-readings`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/subleases", sublease.id, "meter-readings"] });
+      queryClient.invalidateQueries({ queryKey: readingsKey });
+      toast({ title: "Zapisano odczyt" });
     },
   });
 
