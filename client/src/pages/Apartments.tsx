@@ -1113,32 +1113,8 @@ function PhotoSection({ apartment }: { apartment: Apartment }) {
 function AttachmentsSection({ apartmentId }: { apartmentId: number }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { uploadFile, isUploading } = useUpload({
-    onSuccess: async (response) => {
-      await fetch(`/api/apartments/${apartmentId}/attachments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          fileName: currentFileName,
-          objectPath: response.objectPath,
-          fileType: currentFileType,
-          category: selectedCategory,
-        }),
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartmentId, 'attachments'] });
-      toast({ title: "Sukces", description: "Załącznik został dodany" });
-      setCurrentFileName('');
-      setCurrentFileType('');
-    },
-    onError: () => {
-      toast({ title: "Błąd", description: "Nie udało się przesłać pliku", variant: "destructive" });
-    },
-  });
-
-  const [currentFileName, setCurrentFileName] = useState('');
-  const [currentFileType, setCurrentFileType] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('UMOWA');
+  const { uploadFile, isUploading } = useUpload({});
 
   const { data: attachmentsList } = useQuery<Attachment[]>({
     queryKey: ['/api/apartments', apartmentId, 'attachments'],
@@ -1163,9 +1139,29 @@ function AttachmentsSection({ apartmentId }: { apartmentId: number }) {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setCurrentFileName(file.name);
-    setCurrentFileType(file.type);
-    await uploadFile(file);
+    const response = await uploadFile(file);
+    if (response) {
+      const saveRes = await fetch(`/api/apartments/${apartmentId}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          fileName: file.name,
+          objectPath: response.objectPath,
+          fileType: file.type,
+          category: selectedCategory,
+        }),
+      });
+      if (saveRes.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartmentId, 'attachments'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/attachments/all'] });
+        toast({ title: "Sukces", description: "Załącznik został dodany" });
+      } else {
+        toast({ title: "Błąd", description: "Nie udało się zapisać załącznika", variant: "destructive" });
+      }
+    } else {
+      toast({ title: "Błąd", description: "Nie udało się przesłać pliku", variant: "destructive" });
+    }
     e.target.value = '';
   };
 
