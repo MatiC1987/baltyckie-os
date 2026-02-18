@@ -358,6 +358,14 @@ export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id
 export type SaldoEntry = typeof saldoEntries.$inferSelect;
 export type InsertSaldoEntry = z.infer<typeof insertSaldoEntrySchema>;
 
+export const saldoInitialBalances = pgTable("saldo_initial_balances", {
+  id: serial("id").primaryKey(),
+  personName: text("person_name").notNull().unique(),
+  initialBalance: numeric("initial_balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
+});
+
+export type SaldoInitialBalance = typeof saldoInitialBalances.$inferSelect;
+
 export const saldoCategories = pgTable("saldo_categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),

@@ -1,0 +1,145 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "Montserrat",
+      "role": "body"
+    },
+    {
+      "family": "Futura PT",
+      "role": "heading"
+    }
+  ],
+  "colors": {
+    "primary": "#FFC100",
+    "accent": "#051F51",
+    "background": "#FFFFFF",
+    "textPrimary": "#051F51",
+    "link": "#051F51"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Montserrat",
+      "heading": "Futura PT"
+    },
+    "fontStacks": {
+      "heading": [
+        "futura-pt",
+        "sans-serif"
+      ],
+      "body": [
+        "Montserrat",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "Montserrat",
+        "sans-serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "56px",
+      "h2": "30px",
+      "body": "12px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "3px"
+  },
+  "components": {
+    "input": {
+      "background": "#FFFFFF",
+      "textColor": "#000000",
+      "borderColor": "#DEDEDE",
+      "borderRadius": "2px",
+      "borderRadiusCorners": {
+        "topLeft": "2px",
+        "topRight": "2px",
+        "bottomRight": "2px",
+        "bottomLeft": "2px"
+      },
+      "shadow": "none"
+    },
+    "buttonPrimary": {
+      "background": "#FFC100",
+      "textColor": "#000000",
+      "borderRadius": "3px",
+      "borderRadiusCorners": {
+        "topLeft": "3px",
+        "topRight": "3px",
+        "bottomRight": "3px",
+        "bottomLeft": "3px"
+      },
+      "shadow": "none"
+    },
+    "buttonSecondary": {
+      "background": "#051F51",
+      "textColor": "#FFFFFF",
+      "borderColor": "#051F51",
+      "borderRadius": "0px",
+      "borderRadiusCorners": {
+        "topLeft": "0px",
+        "topRight": "0px",
+        "bottomRight": "0px",
+        "bottomLeft": "0px"
+      },
+      "shadow": "none"
+    }
+  },
+  "images": {
+    "logo": "https://baltyckie.pl/public/images/logobaltyckie.png",
+    "favicon": "https://baltyckie.pl/public/images/fav.png",
+    "ogImage": null,
+    "logoHref": "https://baltyckie.pl",
+    "logoAlt": "Apartamenty Bałtyckie - Apartamenty Ustka - Apartamenty nad morzem dla Rodziny"
+  },
+  "__llm_logo_reasoning": {
+    "selectedIndex": 0,
+    "reasoning": "Selected #0 because it is visible, located in the header, links to the homepage, and matches the brand name 'Apartamenty Bałtyckie'.",
+    "confidence": 0.9,
+    "source": "llm"
+  },
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": 0,
+      "text": "ZAREZERWUJ JUŻ TERAZ",
+      "reasoning": "Button #0 with text 'ZAREZERWUJ JUŻ TERAZ' uses the vibrant brand color #FFC100, making it the most prominent call-to-action."
+    },
+    "secondary": {
+      "index": 1,
+      "text": "Sprawdź dostępność",
+      "reasoning": "Button #1 with text 'Sprawdź dostępność' uses a different color group (#051F51) and serves as a secondary action to check availability."
+    },
+    "confidence": 0.95
+  },
+  "personality": {
+    "tone": "professional",
+    "energy": "medium",
+    "targetAudience": "families looking for seaside apartments"
+  },
+  "designSystem": {
+    "framework": "custom",
+    "componentLibrary": ""
+  },
+  "confidence": {
+    "buttons": 0.95,
+    "colors": 0.9,
+    "overall": 0.925
+  },
+  "__llm_metadata": {
+    "logoSelection": {
+      "llmCalled": true,
+      "llmSucceeded": true,
+      "finalSource": "llm",
+      "rawLogoSelection": {
+        "selectedLogoIndex": 0,
+        "selectedLogoReasoning": "Selected #0 because it is visible, located in the header, links to the homepage, and matches the brand name 'Apartamenty Bałtyckie'.",
+        "confidence": 0.9
+      }
+    },
+    "buttonClassification": {
+      "llmCalled": true,
+      "llmSucceeded": true
+    }
+  }
+}
