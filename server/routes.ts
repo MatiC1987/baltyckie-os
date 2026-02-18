@@ -532,7 +532,7 @@ export async function registerRoutes(
   // Costs Apartments import data
   app.get('/api/costs-apartments/import-data', isAuthenticated, (_req, res) => {
     try {
-      const filePath = path.join(__dirname, 'data', 'costs-apartments-import.json');
+      const filePath = path.join(process.cwd(), 'server', 'data', 'costs-apartments-import.json');
       const raw = fs.readFileSync(filePath, 'utf-8');
       res.json(JSON.parse(raw));
     } catch (err) {
