@@ -23,6 +23,7 @@ import {
   subleaseMeterReadings, SubleaseMeterReading, InsertSubleaseMeterReading,
   subleaseMeterSettings, SubleaseMeterSetting, InsertSubleaseMeterSetting,
   subleaseMeterPrices, SubleaseMeterPrice, InsertSubleaseMeterPrice,
+  mediaSettlementReports, MediaSettlementReport, InsertMediaSettlementReport,
   appUsers, AppUser, InsertAppUser,
   documentCategories, DocumentCategory, InsertDocumentCategory,
   documentTemplates, DocumentTemplate, InsertDocumentTemplate
@@ -159,6 +160,11 @@ export interface IStorage {
   getMeterPrices(subleaseId: number): Promise<SubleaseMeterPrice[]>;
   createMeterPrice(price: InsertSubleaseMeterPrice): Promise<SubleaseMeterPrice>;
   deleteMeterPrice(id: number): Promise<void>;
+
+  getMediaSettlementReports(subleaseId: number): Promise<MediaSettlementReport[]>;
+  createMediaSettlementReport(report: InsertMediaSettlementReport): Promise<MediaSettlementReport>;
+  updateMediaSettlementReportStatus(id: number, status: string): Promise<MediaSettlementReport>;
+  deleteMediaSettlementReport(id: number): Promise<void>;
 
   // App Users
   getAppUsers(): Promise<AppUser[]>;
@@ -765,6 +771,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMeterPrice(id: number): Promise<void> {
     await db.delete(subleaseMeterPrices).where(eq(subleaseMeterPrices.id, id));
+  }
+
+  async getMediaSettlementReports(subleaseId: number): Promise<MediaSettlementReport[]> {
+    return db.select().from(mediaSettlementReports)
+      .where(eq(mediaSettlementReports.subleaseId, subleaseId))
+      .orderBy(desc(mediaSettlementReports.periodFrom));
+  }
+
+  async createMediaSettlementReport(report: InsertMediaSettlementReport): Promise<MediaSettlementReport> {
+    const [created] = await db.insert(mediaSettlementReports).values(report).returning();
+    return created;
+  }
+
+  async updateMediaSettlementReportStatus(id: number, status: string): Promise<MediaSettlementReport> {
+    const [updated] = await db.update(mediaSettlementReports)
+      .set({ paymentStatus: status })
+      .where(eq(mediaSettlementReports.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMediaSettlementReport(id: number): Promise<void> {
+    await db.delete(mediaSettlementReports).where(eq(mediaSettlementReports.id, id));
   }
 
   // App Users

@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -838,6 +838,39 @@ export async function registerRoutes(
 
   app.delete('/api/meter-prices/:id', isAuthenticated, async (req, res) => {
     await storage.deleteMeterPrice(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.get('/api/subleases/:id/settlement-reports', isAuthenticated, async (req, res) => {
+    const reports = await storage.getMediaSettlementReports(Number(req.params.id));
+    res.json(reports);
+  });
+
+  app.post('/api/subleases/:id/settlement-reports', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertMediaSettlementReportSchema.parse({ ...req.body, subleaseId: Number(req.params.id) });
+      const created = await storage.createMediaSettlementReport(parsed);
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
+    }
+  });
+
+  app.patch('/api/settlement-reports/:id/status', isAuthenticated, async (req, res) => {
+    try {
+      const { paymentStatus } = req.body;
+      if (!paymentStatus || !["NIEOPLACONE", "OPLACONE"].includes(paymentStatus)) {
+        return res.status(400).json({ message: "Nieprawidłowy status płatności" });
+      }
+      const updated = await storage.updateMediaSettlementReportStatus(Number(req.params.id), paymentStatus);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd aktualizacji" });
+    }
+  });
+
+  app.delete('/api/settlement-reports/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteMediaSettlementReport(Number(req.params.id));
     res.status(204).send();
   });
 

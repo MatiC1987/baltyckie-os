@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice } from "@shared/schema";
+import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
 } from "@/components/ui/dialog";
-import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History } from "lucide-react";
+import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign } from "lucide-react";
 
 function formatDate(d: string | null | undefined) {
   if (!d) return "";
@@ -251,7 +251,7 @@ function SubleaseMediaCard({
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("electricity");
   const [expanded, setExpanded] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [priceHistoryType, setPriceHistoryType] = useState<MeterType>("electricity");
   const [newReadingDate, setNewReadingDate] = useState("");
@@ -267,6 +267,7 @@ function SubleaseMediaCard({
   const readingsKey = [`/api/subleases/${sublease.id}/meter-readings`];
   const settingsKey = [`/api/subleases/${sublease.id}/meter-settings`];
   const pricesKey = [`/api/subleases/${sublease.id}/meter-prices`];
+  const reportsKey = [`/api/subleases/${sublease.id}/settlement-reports`];
 
   const { data: readings = [], isLoading: readingsLoading } = useQuery<SubleaseMeterReading[]>({
     queryKey: readingsKey,
@@ -278,6 +279,10 @@ function SubleaseMediaCard({
 
   const { data: prices = [], isLoading: pricesLoading } = useQuery<SubleaseMeterPrice[]>({
     queryKey: pricesKey,
+  });
+
+  const { data: reports = [] } = useQuery<MediaSettlementReport[]>({
+    queryKey: [`/api/subleases/${sublease.id}/settlement-reports`],
   });
 
   const saveSetting = useMutation({
@@ -369,29 +374,111 @@ function SubleaseMediaCard({
     [getReadingsForType, getSetting, getPriceAtDate, sublease.startDate]
   );
 
-  const getSummaryData = useCallback(() => {
+  const lastReportPeriodTo = useMemo(() => {
+    if (reports.length === 0) return null;
+    const sorted = [...reports].sort((a, b) => b.periodTo.localeCompare(a.periodTo));
+    return sorted[0].periodTo;
+  }, [reports]);
+
+  const currentPeriodFrom = useMemo(() => {
+    return lastReportPeriodTo || sublease.startDate;
+  }, [lastReportPeriodTo, sublease.startDate]);
+
+  const currentPeriodTo = useMemo(() => {
+    return new Date().toISOString().slice(0, 10);
+  }, []);
+
+  const getCurrentPeriodData = useCallback(() => {
     const types: MeterType[] = ["electricity", "cold_water", "hot_water"];
     let total = 0;
+    const periodFrom = currentPeriodFrom;
+    const periodTo = currentPeriodTo;
+
     const items = types.map((type) => {
       const typeReadings = getReadingsForType(type);
-      let totalConsumption = 0;
-      let totalCost = 0;
-      typeReadings.forEach((_, i) => {
-        const row = computeRow(type, i);
-        if (row.consumption !== null) totalConsumption += row.consumption;
-        if (row.cost !== null) totalCost += row.cost;
-      });
-      total += totalCost;
+      const setting = getSetting(type);
+      const initialDate = setting?.initialDate || sublease.startDate;
+      const initialReading = parseFloat(setting?.initialReading || "0") || 0;
+
+      let periodConsumption = 0;
+      let periodCost = 0;
+
+      const allPoints = [
+        { date: initialDate, value: initialReading },
+        ...typeReadings.map(r => ({ date: r.readingDate || "", value: parseFloat(r.reading || "0") || 0 }))
+      ].sort((a, b) => a.date.localeCompare(b.date));
+
+      const baselinePoint = allPoints.filter(p => p.date <= periodFrom).pop();
+      const baselineValue = baselinePoint ? baselinePoint.value : initialReading;
+
+      const periodReadings = allPoints.filter(p => p.date > periodFrom && p.date <= periodTo);
+
+      let prevValue = baselineValue;
+      for (const curr of periodReadings) {
+        const consumption = curr.value - prevValue;
+        const unitPrice = getPriceAtDate(type, curr.date);
+        periodConsumption += consumption;
+        periodCost += consumption * unitPrice;
+        prevValue = curr.value;
+      }
+
+      total += periodCost;
       return {
         type,
         label: METER_TYPES[type].label,
         unit: METER_TYPES[type].unit,
-        totalConsumption,
-        totalCost,
+        totalConsumption: periodConsumption,
+        totalCost: periodCost,
       };
     });
-    return { items, total };
-  }, [getReadingsForType, computeRow]);
+    return { items, total, periodFrom, periodTo };
+  }, [getReadingsForType, getSetting, getPriceAtDate, currentPeriodFrom, currentPeriodTo, sublease.startDate]);
+
+  const createReport = useMutation({
+    mutationFn: async () => {
+      const data = getCurrentPeriodData();
+      const elec = data.items.find(i => i.type === "electricity");
+      const cold = data.items.find(i => i.type === "cold_water");
+      const hot = data.items.find(i => i.type === "hot_water");
+      await apiRequest("POST", `/api/subleases/${sublease.id}/settlement-reports`, {
+        periodFrom: data.periodFrom,
+        periodTo: data.periodTo,
+        electricityConsumption: elec?.totalConsumption?.toFixed(3) || "0",
+        electricityCost: elec?.totalCost?.toFixed(2) || "0",
+        coldWaterConsumption: cold?.totalConsumption?.toFixed(3) || "0",
+        coldWaterCost: cold?.totalCost?.toFixed(2) || "0",
+        hotWaterConsumption: hot?.totalConsumption?.toFixed(3) || "0",
+        hotWaterCost: hot?.totalCost?.toFixed(2) || "0",
+        totalCost: data.total.toFixed(2),
+        paymentStatus: "NIEOPLACONE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reportsKey });
+      setGenerateOpen(false);
+      toast({ title: "Wygenerowano raport rozliczeniowy" });
+    },
+  });
+
+  const updateReportStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      await apiRequest("PATCH", `/api/settlement-reports/${id}/status`, { paymentStatus: status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reportsKey });
+      toast({ title: "Zaktualizowano status płatności" });
+    },
+  });
+
+  const deleteReport = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/settlement-reports/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reportsKey });
+      toast({ title: "Usunięto raport" });
+    },
+  });
 
   const renderMeterTab = (types: MeterType[]) => {
     return types.map((type) => {
@@ -650,15 +737,20 @@ function SubleaseMediaCard({
             <Button
               size="sm"
               variant="outline"
-              data-testid={`button-summary-${sublease.id}`}
+              data-testid={`button-generate-report-${sublease.id}`}
               onClick={(e) => {
                 e.stopPropagation();
-                setSummaryOpen(true);
+                setGenerateOpen(true);
               }}
             >
-              <FileText className="w-4 h-4 mr-1" />
-              Podsumowanie
+              <ClipboardCheck className="w-4 h-4 mr-1" />
+              Generuj rozliczenie
             </Button>
+            {reports.filter(r => r.paymentStatus === "NIEOPLACONE").length > 0 && (
+              <Badge variant="destructive" className="no-default-hover-elevate no-default-active-elevate">
+                {reports.filter(r => r.paymentStatus === "NIEOPLACONE").length} nieop\u0142acone
+              </Badge>
+            )}
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </CardHeader>
@@ -669,6 +761,7 @@ function SubleaseMediaCard({
                 <div className="animate-spin h-6 w-6 border-4 border-primary border-t-transparent rounded-full" />
               </div>
             ) : (
+              <>
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="mb-4">
                   <TabsTrigger value="electricity" data-testid={`tab-electricity-${sublease.id}`}>
@@ -689,6 +782,84 @@ function SubleaseMediaCard({
                   </div>
                 </TabsContent>
               </Tabs>
+
+              {reports.length > 0 && (
+                <div className="mt-6 pt-4 border-t space-y-3">
+                  <h3 className="font-medium text-sm flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Historia rozlicze\u0144
+                  </h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Okres</TableHead>
+                        <TableHead className="text-right">Energia</TableHead>
+                        <TableHead className="text-right">Woda zimna</TableHead>
+                        <TableHead className="text-right">Woda ciep\u0142a</TableHead>
+                        <TableHead className="text-right">Razem</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reports.map((report) => (
+                        <TableRow key={report.id} data-testid={`row-report-${report.id}`}>
+                          <TableCell className="text-sm">
+                            {formatDate(report.periodFrom)} — {formatDate(report.periodTo)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {report.electricityCost ? `${formatNum(report.electricityCost)} z\u0142` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {report.coldWaterCost ? `${formatNum(report.coldWaterCost)} z\u0142` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {report.hotWaterCost ? `${formatNum(report.hotWaterCost)} z\u0142` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-medium">
+                            {report.totalCost ? `${formatNum(report.totalCost)} z\u0142` : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant={report.paymentStatus === "OPLACONE" ? "default" : "outline"}
+                              data-testid={`button-status-${report.id}`}
+                              className={report.paymentStatus === "OPLACONE" ? "bg-green-600 hover:bg-green-600 text-white" : ""}
+                              onClick={() => {
+                                const newStatus = report.paymentStatus === "NIEOPLACONE" ? "OPLACONE" : "NIEOPLACONE";
+                                updateReportStatus.mutate({ id: report.id, status: newStatus });
+                              }}
+                            >
+                              {report.paymentStatus === "OPLACONE" ? (
+                                <>
+                                  <Check className="w-3 h-3 mr-1" />
+                                  OP\u0141ACONE
+                                </>
+                              ) : (
+                                <>
+                                  <CircleDollarSign className="w-3 h-3 mr-1" />
+                                  NIEOP\u0141ACONE
+                                </>
+                              )}
+                            </Button>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              data-testid={`button-delete-report-${report.id}`}
+                              onClick={() => deleteReport.mutate(report.id)}
+                            >
+                              <Trash2 className="w-3 h-3 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              </>
             )}
           </CardContent>
         )}
@@ -702,57 +873,73 @@ function SubleaseMediaCard({
         prices={prices}
       />
 
-      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Podsumowanie kosztów mediów</DialogTitle>
+            <DialogTitle>Generuj rozliczenie medi\u00f3w</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Najemca: <span className="font-medium text-foreground">{tenantName}</span></p>
               <p className="text-sm text-muted-foreground">Mieszkanie: <span className="font-medium text-foreground">{aptName}</span></p>
-              <p className="text-sm text-muted-foreground">
-                Okres: <span className="font-medium text-foreground">{formatDate(sublease.startDate)} — {formatDate(sublease.endDate)}</span>
-              </p>
             </div>
             {(() => {
-              const summary = getSummaryData();
+              const data = getCurrentPeriodData();
               return (
                 <div className="space-y-3">
+                  <div className="p-3 bg-muted/50 rounded-md">
+                    <p className="text-sm font-medium">Okres rozliczeniowy:</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatDate(data.periodFrom)} — {formatDate(data.periodTo)}
+                    </p>
+                  </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Medium</TableHead>
-                        <TableHead className="text-right">Łączne zużycie</TableHead>
-                        <TableHead className="text-right">Łączny koszt</TableHead>
+                        <TableHead className="text-right">{`Zu\u017cycie`}</TableHead>
+                        <TableHead className="text-right">Koszt</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {summary.items.map((item) => (
+                      {data.items.map((item) => (
                         <TableRow key={item.type}>
                           <TableCell className="font-medium">{item.label}</TableCell>
                           <TableCell className="text-right">
-                            {item.totalConsumption > 0 ? `${formatNum(item.totalConsumption, 3)} ${item.unit}` : "—"}
+                            {item.totalConsumption > 0 ? `${formatNum(item.totalConsumption, 3)} ${item.unit}` : "\u2014"}
                           </TableCell>
                           <TableCell className="text-right font-medium">
-                            {item.totalCost > 0 ? `${formatNum(item.totalCost)} zł` : "—"}
+                            {item.totalCost > 0 ? `${formatNum(item.totalCost)} z\u0142` : "\u2014"}
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                   <div className="flex justify-between items-center p-3 bg-muted/50 rounded-md">
-                    <span className="font-medium">Razem</span>
-                    <span className="text-lg font-bold">{formatNum(summary.total)} zł</span>
+                    <span className="font-medium">Razem do zap\u0142aty</span>
+                    <span className="text-lg font-bold">{formatNum(data.total)} z\u0142</span>
                   </div>
+                  {data.total <= 0 && (
+                    <p className="text-sm text-muted-foreground text-center">
+                      Brak odczyt\u00f3w w bie\u017c\u0105cym okresie. Dodaj odczyty licznik\u00f3w, aby wygenerowa\u0107 rozliczenie.
+                    </p>
+                  )}
                 </div>
               );
             })()}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <DialogClose asChild>
-              <Button variant="outline" data-testid="button-close-summary">Zamknij</Button>
+              <Button variant="outline" data-testid="button-cancel-generate">Anuluj</Button>
             </DialogClose>
+            <Button
+              data-testid="button-confirm-generate"
+              disabled={createReport.isPending || getCurrentPeriodData().total <= 0}
+              onClick={() => createReport.mutate()}
+            >
+              <ClipboardCheck className="w-4 h-4 mr-1" />
+              {createReport.isPending ? "Generowanie..." : "Potwierd\u017a i generuj"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
