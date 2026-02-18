@@ -3,13 +3,13 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment } from "@shared/schema";
-import { format } from "date-fns";
+import { format, addDays, addWeeks, addMonths, addQuarters, isBefore, isEqual } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useMemo } from "react";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search,
   Building2, User, Briefcase, CreditCard, Paperclip,
-  ArrowUpDown, ArrowUp, ArrowDown, Shield
+  ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,9 +234,216 @@ function SubleaseFormFields({ form, setForm, apartments }: {
   );
 }
 
-function PaymentsTab({ subleaseId, apartments }: { subleaseId: number; apartments: Apartment[] }) {
+const RECURRING_FREQUENCIES = [
+  { value: "daily", label: "Dziennie" },
+  { value: "weekly", label: "Tygodniowo" },
+  { value: "monthly", label: "Miesięcznie" },
+  { value: "quarterly", label: "Kwartalnie" },
+];
+
+function generateRecurringDates(startDate: string, endDate: string, frequency: string, dayOfPeriod: number): string[] {
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (frequency === "daily") {
+    let current = new Date(start);
+    while (isBefore(current, end) || isEqual(current, end)) {
+      dates.push(format(current, "yyyy-MM-dd"));
+      current = addDays(current, 1);
+    }
+    return dates;
+  }
+
+  if (frequency === "weekly") {
+    let current = new Date(start);
+    const targetDay = Math.min(dayOfPeriod, 7);
+    while (current.getDay() !== (targetDay % 7)) {
+      current = addDays(current, 1);
+    }
+    while (isBefore(current, end) || isEqual(current, end)) {
+      dates.push(format(current, "yyyy-MM-dd"));
+      current = addWeeks(current, 1);
+    }
+    return dates;
+  }
+
+  if (frequency === "monthly") {
+    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (isBefore(current, end) || isEqual(current, end)) {
+      const lastDay = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+      const day = Math.min(dayOfPeriod, lastDay);
+      const dueDate = new Date(current.getFullYear(), current.getMonth(), day);
+      if ((isBefore(dueDate, end) || isEqual(dueDate, end)) && (isBefore(start, dueDate) || isEqual(start, dueDate))) {
+        dates.push(format(dueDate, "yyyy-MM-dd"));
+      }
+      current = addMonths(current, 1);
+    }
+    return dates;
+  }
+
+  if (frequency === "quarterly") {
+    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (isBefore(current, end) || isEqual(current, end)) {
+      const lastDay = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+      const day = Math.min(dayOfPeriod, lastDay);
+      const dueDate = new Date(current.getFullYear(), current.getMonth(), day);
+      if ((isBefore(dueDate, end) || isEqual(dueDate, end)) && (isBefore(start, dueDate) || isEqual(start, dueDate))) {
+        dates.push(format(dueDate, "yyyy-MM-dd"));
+      }
+      current = addQuarters(current, 1);
+    }
+    return dates;
+  }
+
+  return dates;
+}
+
+function RecurringPaymentForm({ subleaseId, apartments, startDate, endDate, onClose }: {
+  subleaseId: number;
+  apartments: Apartment[];
+  startDate?: string;
+  endDate?: string;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("Czynsz");
+  const [amount, setAmount] = useState("");
+  const [frequency, setFrequency] = useState("monthly");
+  const [dayOfPeriod, setDayOfPeriod] = useState("10");
+  const [apartmentId, setApartmentId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const previewDates = useMemo(() => {
+    if (!startDate || !endDate) return [];
+    return generateRecurringDates(startDate, endDate, frequency, parseInt(dayOfPeriod) || 1);
+  }, [startDate, endDate, frequency, dayOfPeriod]);
+
+  const handleGenerate = async () => {
+    if (!title.trim() || !amount || previewDates.length === 0) return;
+    setSaving(true);
+    try {
+      for (const dueDate of previewDates) {
+        await fetch(`/api/subleases/${subleaseId}/payments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            title: title.trim(),
+            category,
+            amount,
+            dueDate,
+            status: "do_oplacenia",
+            apartmentId: apartmentId ? parseInt(apartmentId) : null,
+          }),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'payments'] });
+      toast({ title: "Sukces", description: `Wygenerowano ${previewDates.length} opłat cyklicznych` });
+      onClose();
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się wygenerować opłat", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dayLabel = frequency === "weekly" ? "Dzień tygodnia (1=pon, 7=ndz)" :
+                   frequency === "daily" ? "" : "Do dnia miesiąca/kwartału";
+
+  return (
+    <Card>
+      <CardContent className="pt-4 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <RefreshCw className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Opłata cykliczna</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Tytuł</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="np. Czynsz miesięczny" data-testid="input-recurring-title" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Kategoria</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger data-testid="select-recurring-category"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PAYMENT_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Kwota (PLN)</Label>
+            <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="input-recurring-amount" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Cykliczność</Label>
+            <Select value={frequency} onValueChange={setFrequency}>
+              <SelectTrigger data-testid="select-recurring-frequency"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {RECURRING_FREQUENCIES.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {frequency !== "daily" && (
+            <div className="space-y-1">
+              <Label className="text-xs">{dayLabel}</Label>
+              <Input type="number" min="1" max={frequency === "weekly" ? "7" : "31"} value={dayOfPeriod} onChange={(e) => setDayOfPeriod(e.target.value)} data-testid="input-recurring-day" />
+            </div>
+          )}
+        </div>
+        {apartments.length > 0 && (
+          <div className="space-y-1">
+            <Label className="text-xs">Apartament</Label>
+            <Select value={apartmentId} onValueChange={setApartmentId}>
+              <SelectTrigger data-testid="select-recurring-apartment"><SelectValue placeholder="Wybierz apartament" /></SelectTrigger>
+              <SelectContent>
+                {apartments.map((a) => (
+                  <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {previewDates.length > 0 && (
+          <div className="rounded-md border border-border p-3 bg-muted/30">
+            <div className="text-xs text-muted-foreground mb-1.5">
+              Podgląd: <span className="font-semibold text-foreground">{previewDates.length}</span> opłat
+              {startDate && endDate && <span> (okres: {startDate} — {endDate})</span>}
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              {previewDates.map((d, i) => (
+                <Badge key={i} variant="secondary" className="text-[10px]">{d}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+        {!startDate || !endDate ? (
+          <div className="text-xs text-destructive">Uzupełnij daty rozpoczęcia i zakończenia umowy w zakładce Dane, aby wygenerować opłaty.</div>
+        ) : null}
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onClose}>Anuluj</Button>
+          <Button
+            size="sm"
+            onClick={handleGenerate}
+            disabled={!title.trim() || !amount || previewDates.length === 0 || saving}
+            data-testid="button-generate-recurring"
+          >
+            {saving ? "Generowanie..." : `Wygeneruj ${previewDates.length} opłat`}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseId: number; apartments: Apartment[]; startDate?: string; endDate?: string }) {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
+  const [showRecurring, setShowRecurring] = useState(false);
   const [payForm, setPayForm] = useState<Record<string, any>>({ title: "", category: "Czynsz", amount: "", dueDate: "", status: "do_oplacenia", apartmentId: "" });
 
   const { data: payments = [], isLoading } = useQuery<SubleasePayment[]>({
@@ -299,10 +506,25 @@ function PaymentsTab({ subleaseId, apartments }: { subleaseId: number; apartment
           <div className="text-sm text-muted-foreground">Suma: <span className="font-semibold text-foreground">{total.toFixed(2)} PLN</span></div>
           <div className="text-sm text-muted-foreground">Opłacone: <span className="font-semibold text-green-600">{totalPaid.toFixed(2)} PLN</span></div>
         </div>
-        <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
-          <Plus className="h-4 w-4 mr-1" /> Dodaj opłatę
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowRecurring(true)} data-testid="button-add-recurring">
+            <RefreshCw className="h-4 w-4 mr-1" /> Dodaj cyklicznie
+          </Button>
+          <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
+            <Plus className="h-4 w-4 mr-1" /> Dodaj opłatę
+          </Button>
+        </div>
       </div>
+
+      {showRecurring && (
+        <RecurringPaymentForm
+          subleaseId={subleaseId}
+          apartments={apartments}
+          startDate={startDate}
+          endDate={endDate}
+          onClose={() => setShowRecurring(false)}
+        />
+      )}
 
       {showAdd && (
         <Card>
@@ -1009,7 +1231,7 @@ export default function Subleases() {
                       const ids: number[] = form.apartmentIds || (form.apartmentId ? [form.apartmentId] : []);
                       return apartments.filter(a => ids.includes(a.id));
                     })()
-                  } />
+                  } startDate={form.startDate} endDate={form.endDate} />
                 </TabsContent>
                 <TabsContent value="zalaczniki" className="flex-1 overflow-y-auto mt-0">
                   <AttachmentsTab subleaseId={editId} />
