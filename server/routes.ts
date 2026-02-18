@@ -1293,6 +1293,184 @@ export async function registerRoutes(
     res.json(result);
   });
 
+  // Import forecast data from Excel
+  app.post("/api/import-forecast", isAuthenticated, async (req, res) => {
+    try {
+      const filePath = path.resolve("attached_assets/BAŁTYCKIE_1771418562534.xlsx");
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "Plik Excel nie został znaleziony" });
+      }
+
+      const wb = XLSX.readFile(filePath);
+      const apartments = await storage.getApartments();
+      const activeApts = apartments.filter(a => a.active !== false);
+
+      const excelEpoch = new Date(1899, 11, 30).getTime();
+
+      const SHEET_CONFIG: Record<string, { col: number; name: string; divideBy?: number; matchApts?: string[] }[]> = {};
+
+      const sheetNames = ["Grand Baltic", "Bulwar Portowy", "Wczasowa", "Na Wydmie", "Przewłoka"];
+
+      for (const sheetName of sheetNames) {
+        const ws = wb.Sheets[sheetName];
+        if (!ws) continue;
+        const range = XLSX.utils.decode_range(ws["!ref"]!);
+        const types: { col: number; name: string }[] = [];
+        for (let c = 0; c <= range.e.c; c++) {
+          const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
+          if (cell && cell.v && String(cell.v) !== "PODSUMOWANIE") {
+            types.push({ col: c, name: String(cell.v) });
+          }
+        }
+        SHEET_CONFIG[sheetName] = types.slice(1).map(t => ({ col: t.col, name: t.name }));
+      }
+
+      const aptNameMap = new Map<string, number[]>();
+      for (const apt of activeApts) {
+        const key = apt.name.toUpperCase().trim();
+        if (!aptNameMap.has(key)) aptNameMap.set(key, []);
+        aptNameMap.get(key)!.push(apt.id);
+      }
+
+      const GB_SUPERIOR = activeApts.filter(a => a.location === "GRAND BALTIC" && a.name.toLowerCase().includes("superior")).map(a => a.id);
+      const GB_STUDIO = activeApts.filter(a => a.location === "GRAND BALTIC" && /^\d+\s*-\s*studio$/i.test(a.name)).map(a => a.id);
+      const GB_STUDIO_MINI = activeApts.filter(a => a.location === "GRAND BALTIC" && a.name.toLowerCase().includes("studio mini")).map(a => a.id);
+      const GB_2OS = activeApts.filter(a => a.location === "GRAND BALTIC" && a.name.toLowerCase().includes("2os")).map(a => a.id);
+
+      function findAptIds(excelName: string, sheetName: string): { ids: number[]; divideBy: number } {
+        const upper = excelName.toUpperCase().trim();
+
+        if (sheetName === "Grand Baltic") {
+          if (upper.includes("SUPERIOR")) return { ids: GB_SUPERIOR, divideBy: 4 };
+          if (upper === "STUDIO") return { ids: GB_STUDIO, divideBy: 9 };
+          if (upper === "STUDIO MINI") return { ids: GB_STUDIO_MINI, divideBy: 3 };
+          if (upper.includes("2-OSOBOWY") || upper.includes("2-OS")) return { ids: GB_2OS, divideBy: 2 };
+        }
+
+        const locationMap: Record<string, string> = {
+          "Bulwar Portowy": "BULWAR PORTOWY",
+          "Na Wydmie": "NA WYDMIE",
+          "Przewłoka": "PRZEWŁOKA",
+          "Wczasowa": "WCZASOWA",
+        };
+        const dbLocation = locationMap[sheetName] || "";
+
+        const nameVariants: Record<string, string> = {
+          "BULWAR GRAND": "BULWAR GRAND",
+          "BULWAR RODZINNY": "BULWAR RODZINNY",
+          "BULWAR PRESTIGE": "BULWAR PRESTIGE",
+          "BULWAR VIP": "BULWAR VIP",
+          "BULWAR ZACISZE": "BULWAR ZACISZE",
+          "BULWAR SUN": "BULWAR SUN",
+          "BULWAR AMBER": "BULWAR AMBER",
+          "BULWAR MODERN": "BULWAR MODERN",
+          "BULWAR MARINA": "BULWAR MARINA",
+          "BULWAR GLAMOUR": "BULWAR GLAMOUR",
+          "BULWAR ELEGANCE": "BULWAR ELEGANCE",
+          "BULWAR PANORAMA": "BULWAR PANORAMA",
+          "BULWAR PANORAMA 2": "BULWAR PANORAMA 2",
+          "BULWAR 7 MÓRZ": "BULWAR 7 MÓRZ",
+          "BULWAR COMFORT": "BULWAR COMFORT",
+          "BULWAR DELUXE": "BULWAR DELUXE",
+          "BULWAR ZACISZE 2": "BULWAR ZACISZE 2",
+          "BULWAR EXCLUSIVE": "BULWAR EXCLUSIVE",
+          "BULWAR SCANIA": "BULWAR SCANIA",
+          "LUXURO 49-1": "49-1",
+          "LUXURO 49-2": "49-2",
+          "LUXURO 51-1": "51-1",
+          "LUXURO 51-2": "51-2",
+          "GARDEN 2": "GARDEN2",
+        };
+
+        let dbName = nameVariants[upper] || upper;
+
+        const matched = activeApts.filter(a => {
+          if (dbLocation && a.location !== dbLocation) return false;
+          return a.name.toUpperCase().trim() === dbName;
+        });
+
+        if (matched.length > 0) return { ids: matched.map(a => a.id), divideBy: 1 };
+
+        const fuzzyMatched = activeApts.filter(a => {
+          if (dbLocation && a.location !== dbLocation) return false;
+          const n = a.name.toUpperCase().trim();
+          return n.includes(dbName) || dbName.includes(n);
+        });
+
+        if (fuzzyMatched.length === 1) return { ids: [fuzzyMatched[0].id], divideBy: 1 };
+
+        return { ids: [], divideBy: 1 };
+      }
+
+      const result: Record<number, Record<number, Record<number, { p: number; r: number }>>> = {};
+
+      for (const sheetName of sheetNames) {
+        const ws = wb.Sheets[sheetName];
+        if (!ws) continue;
+        const config = SHEET_CONFIG[sheetName];
+        if (!config) continue;
+
+        for (const aptType of config) {
+          const { ids, divideBy } = findAptIds(aptType.name, sheetName);
+          if (ids.length === 0) continue;
+
+          const progCol = aptType.col;
+          const przychCol = aptType.col + 1;
+
+          let currentYear = 0;
+          for (let r = 2; r <= 120; r++) {
+            const yearCell = ws[XLSX.utils.encode_cell({ r, c: 4 })];
+            if (yearCell && typeof yearCell.v === "number" && yearCell.v >= 2020 && yearCell.v <= 2030) {
+              currentYear = yearCell.v;
+            }
+
+            if (currentYear < 2022) continue;
+
+            const dateCell = ws[XLSX.utils.encode_cell({ r, c: 5 })];
+            if (!dateCell) continue;
+
+            if (typeof dateCell.v === "string" && dateCell.v.includes("RAZEM")) continue;
+
+            if (typeof dateCell.v !== "number") continue;
+
+            const d = new Date(excelEpoch + dateCell.v * 86400000);
+            const year = d.getFullYear();
+            const month = d.getMonth();
+
+            if (year < 2022) continue;
+
+            const progCell = ws[XLSX.utils.encode_cell({ r, c: progCol })];
+            const przychCell = ws[XLSX.utils.encode_cell({ r, c: przychCol })];
+
+            const prognoza = (Number(progCell?.v) || 0) / divideBy;
+            const przychody = (Number(przychCell?.v) || 0) / divideBy;
+
+            if (prognoza === 0 && przychody === 0) continue;
+
+            const roundedP = Math.round(prognoza * 100) / 100;
+            const roundedR = Math.round(przychody * 100) / 100;
+
+            for (const aptId of ids) {
+              if (!result[year]) result[year] = {};
+              if (!result[year][aptId]) result[year][aptId] = {};
+              result[year][aptId][month] = { p: roundedP, r: roundedR };
+            }
+          }
+        }
+      }
+
+      const summary: Record<number, number> = {};
+      for (const [year, apts] of Object.entries(result)) {
+        summary[Number(year)] = Object.keys(apts).length;
+      }
+
+      res.json({ data: result, summary, message: "Import prognozy zakończony pomyślnie" });
+    } catch (err: any) {
+      console.error("Forecast import error:", err);
+      res.status(500).json({ message: "Błąd importu: " + (err.message || "Nieznany błąd") });
+    }
+  });
+
   // Import Excel
   app.post(api.imports.upload.path, isAuthenticated, upload.single('file'), async (req, res) => {
     if (!req.file) {

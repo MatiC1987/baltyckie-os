@@ -1,8 +1,11 @@
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Apartment, Location } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronRight, Upload, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -77,11 +80,57 @@ export default function Forecast() {
     });
   };
 
+  const { toast } = useToast();
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/import-forecast");
+      return res.json();
+    },
+    onSuccess: (result: { data: Record<number, Record<number, Record<number, { p: number; r: number }>>>; summary: Record<number, number>; message: string }) => {
+      let totalImported = 0;
+      for (const [yr, apts] of Object.entries(result.data)) {
+        const yearNum = Number(yr);
+        const existing = loadData(yearNum);
+        const merged = { ...existing };
+        for (const [aptId, months] of Object.entries(apts as Record<string, Record<number, { p: number; r: number }>>)) {
+          if (!merged[aptId]) merged[aptId] = {};
+          for (const [month, val] of Object.entries(months as Record<number, { p: number; r: number }>)) {
+            merged[aptId][Number(month)] = val;
+            totalImported++;
+          }
+        }
+        saveData(yearNum, merged);
+      }
+      setData(loadData(year));
+      const yearsList = Object.keys(result.summary).sort().join(", ");
+      toast({
+        title: "Import zakończony",
+        description: `Zaimportowano dane prognozy dla lat: ${yearsList} (${totalImported} rekordów)`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Błąd importu",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleYearChange = (y: string) => {
     const newYear = Number(y);
     setYear(newYear);
     setData(loadData(newYear));
   };
+
+  const yearOptions = useMemo(() => {
+    const years: number[] = [];
+    for (let y = 2022; y <= currentYear + 1; y++) {
+      years.push(y);
+    }
+    return years;
+  }, [currentYear]);
 
   return (
     <div className="p-6 space-y-4">
@@ -90,16 +139,28 @@ export default function Forecast() {
           <h1 className="text-2xl font-bold" data-testid="text-forecast-title">Prognoza</h1>
           <p className="text-muted-foreground text-sm">Prognoza przychodów w podziale na apartamenty i lokalizacje</p>
         </div>
-        <Select value={String(year)} onValueChange={handleYearChange}>
-          <SelectTrigger className="w-[100px]" data-testid="select-year">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => importMutation.mutate()}
+            disabled={importMutation.isPending}
+            data-testid="button-import-forecast"
+          >
+            {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            <span className="ml-1.5">Import z Excel</span>
+          </Button>
+          <Select value={String(year)} onValueChange={handleYearChange}>
+            <SelectTrigger className="w-[100px]" data-testid="select-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-forecast">
