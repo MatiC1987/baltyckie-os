@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -890,18 +890,22 @@ export async function registerRoutes(
 
   app.post('/api/document-categories', isAuthenticated, async (req, res) => {
     try {
-      const category = await storage.createDocumentCategory(req.body);
+      const parsed = insertDocumentCategorySchema.parse(req.body);
+      const category = await storage.createDocumentCategory(parsed);
       res.status(201).json(category);
     } catch (error: any) {
+      if (error.name === 'ZodError') return res.status(400).json({ message: error.errors });
       res.status(500).json({ message: error.message });
     }
   });
 
   app.put('/api/document-categories/:id', isAuthenticated, async (req, res) => {
     try {
-      const category = await storage.updateDocumentCategory(parseInt(req.params.id), req.body);
+      const parsed = insertDocumentCategorySchema.partial().parse(req.body);
+      const category = await storage.updateDocumentCategory(parseInt(req.params.id), parsed);
       res.json(category);
     } catch (error: any) {
+      if (error.name === 'ZodError') return res.status(400).json({ message: error.errors });
       res.status(500).json({ message: error.message });
     }
   });
@@ -919,18 +923,22 @@ export async function registerRoutes(
 
   app.post('/api/document-templates', isAuthenticated, async (req, res) => {
     try {
-      const template = await storage.createDocumentTemplate(req.body);
+      const parsed = insertDocumentTemplateSchema.parse(req.body);
+      const template = await storage.createDocumentTemplate(parsed);
       res.status(201).json(template);
     } catch (error: any) {
+      if (error.name === 'ZodError') return res.status(400).json({ message: error.errors });
       res.status(500).json({ message: error.message });
     }
   });
 
   app.put('/api/document-templates/:id', isAuthenticated, async (req, res) => {
     try {
-      const template = await storage.updateDocumentTemplate(parseInt(req.params.id), req.body);
+      const parsed = insertDocumentTemplateSchema.partial().parse(req.body);
+      const template = await storage.updateDocumentTemplate(parseInt(req.params.id), parsed);
       res.json(template);
     } catch (error: any) {
+      if (error.name === 'ZodError') return res.status(400).json({ message: error.errors });
       res.status(500).json({ message: error.message });
     }
   });

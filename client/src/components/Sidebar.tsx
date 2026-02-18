@@ -120,6 +120,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   apartments: { id: "apartments", href: "/apartments", label: "Apartamenty", iconName: "Building2" },
   owners: { id: "owners", href: "/owners", label: "Właściciele", iconName: "Users" },
   employees: { id: "employees", href: "/employees", label: "Pracownicy", iconName: "Users" },
+  "document-templates": { id: "document-templates", href: "/document-templates", label: "Szablony dokumentów", iconName: "Files" },
   import: { id: "import", href: "/import", label: "Import rezerwacji", iconName: "Upload" },
   export: { id: "export", href: "/export", label: "Eksport rezerwacji", iconName: "Download" },
   "user-accounts": { id: "user-accounts", href: "/user-accounts", label: "Konta użytkowników", iconName: "Users" },
@@ -134,6 +135,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "umowy-new", title: "UMOWY", itemIds: [] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
+  { id: "dokumenty", title: "DOKUMENTY", itemIds: ["document-templates"] },
   { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations"] },
 ];
 

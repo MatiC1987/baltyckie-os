@@ -25,6 +25,7 @@ import CostsApartments from "@/pages/CostsApartments";
 import Forecast from "@/pages/Forecast";
 import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
+import DocumentTemplates from "@/pages/DocumentTemplates";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -91,6 +92,7 @@ function Router() {
       <Route path="/subrent-media" component={() => <AuthenticatedPlaceholder title="Podnajem - Rozliczenie mediów" description="Rozliczenie mediów dla podnajmów." />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
 
+      <Route path="/document-templates" component={() => <AuthenticatedRoute component={DocumentTemplates} />} />
       <Route path="/employees" component={() => <AuthenticatedRoute component={Employees} />} />
 
       <Route path="/import" component={() => <AuthenticatedRoute component={Import} />} />
