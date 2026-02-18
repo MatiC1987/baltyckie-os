@@ -264,7 +264,7 @@ export default function Apartments() {
         const atts = allAttachments.filter(a => a.apartmentId === apt.id);
         if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
         return (
-          <div className="flex items-center gap-1 flex-wrap">
+          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(atts.length, 4)}, auto)` }}>
             {atts.map(att => (
               <a
                 key={att.id}
@@ -274,7 +274,7 @@ export default function Apartments() {
                 title={att.fileName}
                 data-testid={`link-apt-attachment-${att.id}`}
               >
-                <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                <Badge variant="outline" className="text-xs gap-1 cursor-pointer whitespace-nowrap">
                   <FileText className="h-3 w-3" />
                   {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : att.category === 'FAKTURA' ? 'Faktura' : 'Inny'}
                 </Badge>
