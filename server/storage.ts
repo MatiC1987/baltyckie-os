@@ -20,7 +20,9 @@ import {
   subleases, Sublease, InsertSublease,
   subleasePayments, SubleasePayment, InsertSubleasePayment,
   subleaseAttachments, SubleaseAttachment, InsertSubleaseAttachment,
-  appUsers, AppUser, InsertAppUser
+  appUsers, AppUser, InsertAppUser,
+  documentCategories, DocumentCategory, InsertDocumentCategory,
+  documentTemplates, DocumentTemplate, InsertDocumentTemplate
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -150,6 +152,18 @@ export interface IStorage {
   updateAppUser(id: number, user: Partial<InsertAppUser>): Promise<AppUser>;
   deleteAppUser(id: number): Promise<void>;
   getAppUserByEmail(email: string): Promise<AppUser | undefined>;
+
+  // Document Categories
+  getDocumentCategories(): Promise<DocumentCategory[]>;
+  createDocumentCategory(cat: InsertDocumentCategory): Promise<DocumentCategory>;
+  updateDocumentCategory(id: number, cat: Partial<InsertDocumentCategory>): Promise<DocumentCategory>;
+  deleteDocumentCategory(id: number): Promise<void>;
+
+  // Document Templates
+  getDocumentTemplates(): Promise<DocumentTemplate[]>;
+  createDocumentTemplate(template: InsertDocumentTemplate): Promise<DocumentTemplate>;
+  updateDocumentTemplate(id: number, template: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate>;
+  deleteDocumentTemplate(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -689,6 +703,42 @@ export class DatabaseStorage implements IStorage {
   async getAppUserByEmail(email: string): Promise<AppUser | undefined> {
     const [user] = await db.select().from(appUsers).where(eq(appUsers.email, email));
     return user;
+  }
+
+  async getDocumentCategories(): Promise<DocumentCategory[]> {
+    return db.select().from(documentCategories).orderBy(documentCategories.sortOrder);
+  }
+
+  async createDocumentCategory(cat: InsertDocumentCategory): Promise<DocumentCategory> {
+    const [created] = await db.insert(documentCategories).values(cat).returning();
+    return created;
+  }
+
+  async updateDocumentCategory(id: number, cat: Partial<InsertDocumentCategory>): Promise<DocumentCategory> {
+    const [updated] = await db.update(documentCategories).set(cat).where(eq(documentCategories.id, id)).returning();
+    return updated;
+  }
+
+  async deleteDocumentCategory(id: number): Promise<void> {
+    await db.delete(documentCategories).where(eq(documentCategories.id, id));
+  }
+
+  async getDocumentTemplates(): Promise<DocumentTemplate[]> {
+    return db.select().from(documentTemplates).orderBy(desc(documentTemplates.uploadedAt));
+  }
+
+  async createDocumentTemplate(template: InsertDocumentTemplate): Promise<DocumentTemplate> {
+    const [created] = await db.insert(documentTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateDocumentTemplate(id: number, template: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate> {
+    const [updated] = await db.update(documentTemplates).set(template).where(eq(documentTemplates.id, id)).returning();
+    return updated;
+  }
+
+  async deleteDocumentTemplate(id: number): Promise<void> {
+    await db.delete(documentTemplates).where(eq(documentTemplates.id, id));
   }
 }
 
