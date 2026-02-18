@@ -369,6 +369,7 @@ export const subleases = pgTable("subleases", {
   endDate: date("end_date").notNull(),
   rentAmount: numeric("rent_amount", { precision: 12, scale: 2 }),
   additionalFees: numeric("additional_fees", { precision: 12, scale: 2 }),
+  mediaByMeters: boolean("media_by_meters").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
