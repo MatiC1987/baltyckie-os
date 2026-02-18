@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting } from "@shared/schema";
+import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
 } from "@/components/ui/dialog";
-import { Zap, Droplets, FileText, Save, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History } from "lucide-react";
 
 function formatDate(d: string | null | undefined) {
   if (!d) return "";
@@ -31,25 +31,10 @@ function formatNum(v: number | string | null | undefined, decimals = 2): string 
   return n.toLocaleString("pl-PL", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-function getMonthsBetween(startDate: string, endDate: string): string[] {
-  const months: string[] = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  let current = new Date(start.getFullYear(), start.getMonth(), 1);
-  const lastMonth = new Date(end.getFullYear(), end.getMonth(), 1);
-  while (current <= lastMonth) {
-    const y = current.getFullYear();
-    const m = String(current.getMonth() + 1).padStart(2, "0");
-    months.push(`${y}-${m}`);
-    current.setMonth(current.getMonth() + 1);
-  }
-  return months;
-}
-
-function monthLabel(ym: string): string {
-  const [y, m] = ym.split("-");
-  const names = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
-  return `${names[parseInt(m, 10) - 1]} ${y}`;
+function daysBetween(dateA: string, dateB: string): number {
+  const a = new Date(dateA);
+  const b = new Date(dateB);
+  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 const METER_TYPES = {
@@ -67,6 +52,7 @@ function InlineEditInput({
   step,
   className,
   testId,
+  type,
 }: {
   initialValue: string;
   onSave: (val: string) => void;
@@ -74,6 +60,7 @@ function InlineEditInput({
   step?: string;
   className?: string;
   testId?: string;
+  type?: string;
 }) {
   const [value, setValue] = useState(initialValue);
   const [dirty, setDirty] = useState(false);
@@ -89,7 +76,7 @@ function InlineEditInput({
     <div className="flex items-center gap-1">
       <Input
         data-testid={testId}
-        type="number"
+        type={type || "number"}
         step={step || "0.01"}
         placeholder={placeholder || "0.00"}
         className={className}
@@ -117,6 +104,143 @@ function InlineEditInput({
   );
 }
 
+function PriceHistoryDialog({
+  open,
+  onOpenChange,
+  subleaseId,
+  meterType,
+  prices,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  subleaseId: number;
+  meterType: MeterType;
+  prices: SubleaseMeterPrice[];
+}) {
+  const { toast } = useToast();
+  const [newPrice, setNewPrice] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const pricesKey = [`/api/subleases/${subleaseId}/meter-prices`];
+  const info = METER_TYPES[meterType];
+
+  const filteredPrices = useMemo(
+    () => prices.filter((p) => p.meterType === meterType).sort((a, b) => a.validFrom.localeCompare(b.validFrom)),
+    [prices, meterType]
+  );
+
+  const addPrice = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/subleases/${subleaseId}/meter-prices`, {
+        meterType,
+        unitPrice: newPrice,
+        validFrom: newDate,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pricesKey });
+      setNewPrice("");
+      setNewDate("");
+      toast({ title: "Dodano cenę" });
+    },
+  });
+
+  const deletePrice = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/meter-prices/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pricesKey });
+      toast({ title: "Usunięto cenę" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Historia cen - {info.label}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Dodaj zmiany cen jednostkowych w czasie. System automatycznie zastosuje cenę obowiązującą w dniu odczytu.
+          </p>
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <Label className="text-xs text-muted-foreground">Data obowiązywania od</Label>
+              <Input
+                type="date"
+                data-testid={`input-price-date-${meterType}`}
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+              />
+            </div>
+            <div className="flex-1">
+              <Label className="text-xs text-muted-foreground">Cena ({info.unit === "kWh" ? "zł/kWh" : `zł/${info.unit}`})</Label>
+              <Input
+                type="number"
+                step="0.0001"
+                data-testid={`input-price-value-${meterType}`}
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+                placeholder="0.0000"
+              />
+            </div>
+            <Button
+              size="icon"
+              data-testid={`button-add-price-${meterType}`}
+              onClick={() => addPrice.mutate()}
+              disabled={!newDate || !newPrice || addPrice.isPending}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {filteredPrices.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Od dnia</TableHead>
+                  <TableHead className="text-right">Cena jedn.</TableHead>
+                  <TableHead className="w-10"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredPrices.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="text-sm">{formatDate(p.validFrom)}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">
+                      {formatNum(p.unitPrice, 4)} zł
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        data-testid={`button-delete-price-${p.id}`}
+                        onClick={() => deletePrice.mutate(p.id)}
+                      >
+                        <Trash2 className="w-3 h-3 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Brak historii cen. Dodaj pierwszą cenę powyżej.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" data-testid="button-close-prices">Zamknij</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SubleaseMediaCard({
   sublease,
   apartments,
@@ -128,7 +252,11 @@ function SubleaseMediaCard({
   const [activeTab, setActiveTab] = useState<string>("electricity");
   const [expanded, setExpanded] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const [summaryMonth, setSummaryMonth] = useState<string>("");
+  const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
+  const [priceHistoryType, setPriceHistoryType] = useState<MeterType>("electricity");
+  const [newReadingDate, setNewReadingDate] = useState("");
+  const [newReadingValue, setNewReadingValue] = useState("");
+  const [addingReadingType, setAddingReadingType] = useState<MeterType | null>(null);
 
   const apt = apartments.find((a) => a.id === sublease.apartmentId);
   const aptName = apt?.name || `Apt #${sublease.apartmentId}`;
@@ -136,13 +264,9 @@ function SubleaseMediaCard({
     ? sublease.companyName || ""
     : `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
 
-  const months = useMemo(
-    () => getMonthsBetween(sublease.startDate, sublease.endDate),
-    [sublease.startDate, sublease.endDate]
-  );
-
   const readingsKey = [`/api/subleases/${sublease.id}/meter-readings`];
   const settingsKey = [`/api/subleases/${sublease.id}/meter-settings`];
+  const pricesKey = [`/api/subleases/${sublease.id}/meter-prices`];
 
   const { data: readings = [], isLoading: readingsLoading } = useQuery<SubleaseMeterReading[]>({
     queryKey: readingsKey,
@@ -152,8 +276,12 @@ function SubleaseMediaCard({
     queryKey: settingsKey,
   });
 
+  const { data: prices = [], isLoading: pricesLoading } = useQuery<SubleaseMeterPrice[]>({
+    queryKey: pricesKey,
+  });
+
   const saveSetting = useMutation({
-    mutationFn: async (data: { meterType: string; unitPrice?: string; initialReading?: string }) => {
+    mutationFn: async (data: { meterType: string; unitPrice?: string; initialReading?: string; initialDate?: string }) => {
       await apiRequest("POST", `/api/subleases/${sublease.id}/meter-settings`, data);
     },
     onSuccess: () => {
@@ -163,7 +291,7 @@ function SubleaseMediaCard({
   });
 
   const saveReading = useMutation({
-    mutationFn: async (data: { meterType: string; yearMonth: string; reading: string }) => {
+    mutationFn: async (data: { meterType: string; readingDate: string; reading: string }) => {
       await apiRequest("POST", `/api/subleases/${sublease.id}/meter-readings`, data);
     },
     onSuccess: () => {
@@ -172,76 +300,109 @@ function SubleaseMediaCard({
     },
   });
 
+  const deleteReading = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/meter-readings/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: readingsKey });
+      toast({ title: "Usunięto odczyt" });
+    },
+  });
+
   const getSetting = useCallback(
     (type: MeterType) => settings.find((s) => s.meterType === type),
     [settings]
   );
 
-  const getReading = useCallback(
-    (type: MeterType, ym: string) => readings.find((r) => r.meterType === type && r.yearMonth === ym),
+  const getReadingsForType = useCallback(
+    (type: MeterType) =>
+      readings
+        .filter((r) => r.meterType === type && r.readingDate)
+        .sort((a, b) => (a.readingDate || "").localeCompare(b.readingDate || "")),
     [readings]
   );
 
-  const computeConsumption = useCallback(
-    (type: MeterType, monthIndex: number) => {
+  const getPriceAtDate = useCallback(
+    (type: MeterType, date: string): number => {
+      const typePrices = prices
+        .filter((p) => p.meterType === type)
+        .sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+      const applicable = typePrices.find((p) => p.validFrom <= date);
+      if (applicable) return parseFloat(applicable.unitPrice) || 0;
       const setting = getSetting(type);
+      return parseFloat(setting?.unitPrice || "0") || 0;
+    },
+    [prices, getSetting]
+  );
+
+  const computeRow = useCallback(
+    (type: MeterType, readingIndex: number) => {
+      const typeReadings = getReadingsForType(type);
+      const setting = getSetting(type);
+      const current = typeReadings[readingIndex];
+      if (!current?.reading || !current.readingDate) return { days: null, consumption: null, cost: null, unitPrice: 0 };
+
+      const currentVal = parseFloat(current.reading) || 0;
+      const initialDate = setting?.initialDate || sublease.startDate;
       const initialReading = parseFloat(setting?.initialReading || "0") || 0;
-      const ym = months[monthIndex];
-      const currentReading = getReading(type, ym);
-      if (!currentReading?.reading) return null;
-      const currentVal = parseFloat(currentReading.reading) || 0;
-      if (monthIndex === 0) {
-        return currentVal - initialReading;
+      const unitPrice = getPriceAtDate(type, current.readingDate);
+
+      let prevDate: string;
+      let prevVal: number;
+
+      if (readingIndex === 0) {
+        prevDate = initialDate;
+        prevVal = initialReading;
+      } else {
+        const prev = typeReadings[readingIndex - 1];
+        prevDate = prev.readingDate || initialDate;
+        prevVal = parseFloat(prev.reading || "0") || 0;
       }
-      const prevYm = months[monthIndex - 1];
-      const prevReading = getReading(type, prevYm);
-      if (!prevReading?.reading) {
-        return currentVal - initialReading;
-      }
-      return currentVal - (parseFloat(prevReading.reading) || 0);
+
+      const days = daysBetween(prevDate, current.readingDate);
+      const consumption = currentVal - prevVal;
+      const cost = consumption * unitPrice;
+
+      return { days, consumption, cost, unitPrice };
     },
-    [getSetting, getReading, months]
+    [getReadingsForType, getSetting, getPriceAtDate, sublease.startDate]
   );
 
-  const computeCost = useCallback(
-    (type: MeterType, monthIndex: number) => {
-      const consumption = computeConsumption(type, monthIndex);
-      if (consumption === null) return null;
-      const setting = getSetting(type);
-      const price = parseFloat(setting?.unitPrice || "0") || 0;
-      return consumption * price;
-    },
-    [computeConsumption, getSetting]
-  );
-
-  const getMonthlySummary = useCallback(
-    (ym: string) => {
-      const mi = months.indexOf(ym);
-      if (mi < 0) return null;
-      const types: MeterType[] = ["electricity", "cold_water", "hot_water"];
-      let total = 0;
-      const items = types.map((type) => {
-        const cost = computeCost(type, mi);
-        const consumption = computeConsumption(type, mi);
-        if (cost !== null) total += cost;
-        return {
-          type,
-          label: METER_TYPES[type].label,
-          unit: METER_TYPES[type].unit,
-          consumption,
-          unitPrice: parseFloat(getSetting(type)?.unitPrice || "0") || 0,
-          cost,
-        };
+  const getSummaryData = useCallback(() => {
+    const types: MeterType[] = ["electricity", "cold_water", "hot_water"];
+    let total = 0;
+    const items = types.map((type) => {
+      const typeReadings = getReadingsForType(type);
+      let totalConsumption = 0;
+      let totalCost = 0;
+      typeReadings.forEach((_, i) => {
+        const row = computeRow(type, i);
+        if (row.consumption !== null) totalConsumption += row.consumption;
+        if (row.cost !== null) totalCost += row.cost;
       });
-      return { items, total };
-    },
-    [months, computeCost, computeConsumption, getSetting]
-  );
+      total += totalCost;
+      return {
+        type,
+        label: METER_TYPES[type].label,
+        unit: METER_TYPES[type].unit,
+        totalConsumption,
+        totalCost,
+      };
+    });
+    return { items, total };
+  }, [getReadingsForType, computeRow]);
 
   const renderMeterTab = (types: MeterType[]) => {
     return types.map((type) => {
       const setting = getSetting(type);
       const info = METER_TYPES[type];
+      const typeReadings = getReadingsForType(type);
+      const initialDate = setting?.initialDate || sublease.startDate;
+
+      const typePrices = prices.filter((p) => p.meterType === type);
+      const hasHistoricalPrices = typePrices.length > 0;
+
       return (
         <div key={type} className="space-y-3">
           {types.length > 1 && (
@@ -250,24 +411,9 @@ function SubleaseMediaCard({
               {info.label}
             </h4>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground">
-                Cena jednostkowa ({info.unit === "kWh" ? "zł/kWh" : `zł/${info.unit}`})
-              </Label>
-              <InlineEditInput
-                key={`price-${type}-${setting?.id ?? "new"}`}
-                testId={`input-unit-price-${type}-${sublease.id}`}
-                initialValue={setting?.unitPrice || ""}
-                step="0.01"
-                placeholder="0.00"
-                onSave={(val) => {
-                  saveSetting.mutate({ meterType: type, unitPrice: val, initialReading: setting?.initialReading || "0" });
-                }}
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Stan początkowy ({formatDate(sublease.startDate)})</Label>
+              <Label className="text-xs text-muted-foreground">Stan początkowy</Label>
               <InlineEditInput
                 key={`init-${type}-${setting?.id ?? "new"}`}
                 testId={`input-initial-reading-${type}-${sublease.id}`}
@@ -275,51 +421,207 @@ function SubleaseMediaCard({
                 step="0.001"
                 placeholder="0.000"
                 onSave={(val) => {
-                  saveSetting.mutate({ meterType: type, initialReading: val, unitPrice: setting?.unitPrice || "0" });
+                  saveSetting.mutate({
+                    meterType: type,
+                    initialReading: val,
+                    unitPrice: setting?.unitPrice || "0",
+                    initialDate: setting?.initialDate || sublease.startDate,
+                  });
                 }}
               />
             </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Data stanu początkowego</Label>
+              <InlineEditInput
+                key={`initdate-${type}-${setting?.id ?? "new"}-${setting?.initialDate || sublease.startDate}`}
+                testId={`input-initial-date-${type}-${sublease.id}`}
+                initialValue={setting?.initialDate || sublease.startDate}
+                type="date"
+                placeholder=""
+                onSave={(val) => {
+                  saveSetting.mutate({
+                    meterType: type,
+                    initialDate: val,
+                    initialReading: setting?.initialReading || "0",
+                    unitPrice: setting?.unitPrice || "0",
+                  });
+                }}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">
+                {hasHistoricalPrices ? "Cena bazowa" : "Cena jednostkowa"} ({info.unit === "kWh" ? "zł/kWh" : `zł/${info.unit}`})
+              </Label>
+              <div className="flex items-center gap-1">
+                <InlineEditInput
+                  key={`price-${type}-${setting?.id ?? "new"}`}
+                  testId={`input-unit-price-${type}-${sublease.id}`}
+                  initialValue={setting?.unitPrice || ""}
+                  step="0.0001"
+                  placeholder="0.0000"
+                  onSave={(val) => {
+                    saveSetting.mutate({
+                      meterType: type,
+                      unitPrice: val,
+                      initialReading: setting?.initialReading || "0",
+                      initialDate: setting?.initialDate || sublease.startDate,
+                    });
+                  }}
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  data-testid={`button-price-history-${type}-${sublease.id}`}
+                  onClick={() => {
+                    setPriceHistoryType(type);
+                    setPriceHistoryOpen(true);
+                  }}
+                  title="Historia cen"
+                >
+                  <History className="w-4 h-4" />
+                </Button>
+              </div>
+              {hasHistoricalPrices && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {typePrices.length} zmian{typePrices.length === 1 ? "a" : typePrices.length < 5 ? "y" : ""} cen
+                </p>
+              )}
+            </div>
           </div>
+
+          <div className="text-xs text-muted-foreground flex items-center gap-2 mb-1">
+            Stan początkowy: <span className="font-medium text-foreground">{formatNum(setting?.initialReading, 3) || "—"}</span>
+            z dnia <span className="font-medium text-foreground">{formatDate(initialDate)}</span>
+          </div>
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[80px]">Miesiąc</TableHead>
+                  <TableHead className="min-w-[120px]">Data odczytu</TableHead>
+                  <TableHead className="min-w-[80px]">Ilość dni</TableHead>
                   <TableHead className="min-w-[120px]">Stan licznika</TableHead>
                   <TableHead className="min-w-[100px]">Zużycie ({info.unit})</TableHead>
+                  <TableHead className="min-w-[100px]">Cena jedn.</TableHead>
                   <TableHead className="min-w-[100px]">Koszt (PLN)</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {months.map((ym, mi) => {
-                  const reading = getReading(type, ym);
-                  const consumption = computeConsumption(type, mi);
-                  const cost = computeCost(type, mi);
+                {typeReadings.map((reading, ri) => {
+                  const row = computeRow(type, ri);
                   return (
-                    <TableRow key={ym}>
-                      <TableCell className="font-medium text-sm">{monthLabel(ym)}</TableCell>
+                    <TableRow key={reading.id}>
+                      <TableCell className="text-sm font-medium">
+                        {formatDate(reading.readingDate)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {row.days !== null ? row.days : "—"}
+                      </TableCell>
                       <TableCell>
                         <InlineEditInput
-                          key={`${type}-${ym}-${reading?.id ?? "new"}`}
-                          testId={`input-reading-${type}-${ym}-${sublease.id}`}
-                          initialValue={reading?.reading || ""}
+                          key={`${type}-${reading.id}-${reading.reading}`}
+                          testId={`input-reading-${type}-${reading.id}-${sublease.id}`}
+                          initialValue={reading.reading || ""}
                           step="0.001"
                           placeholder="—"
                           className="w-28"
                           onSave={(val) => {
-                            saveReading.mutate({ meterType: type, yearMonth: ym, reading: val });
+                            saveReading.mutate({
+                              meterType: type,
+                              readingDate: reading.readingDate || "",
+                              reading: val,
+                            });
                           }}
                         />
                       </TableCell>
                       <TableCell className="text-sm">
-                        {consumption !== null ? formatNum(consumption, 3) : "—"}
+                        {row.consumption !== null ? formatNum(row.consumption, 3) : "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {row.unitPrice > 0 ? `${formatNum(row.unitPrice, 4)} zł` : "—"}
                       </TableCell>
                       <TableCell className="text-sm font-medium">
-                        {cost !== null ? `${formatNum(cost)} zł` : "—"}
+                        {row.cost !== null ? `${formatNum(row.cost)} zł` : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          data-testid={`button-delete-reading-${reading.id}`}
+                          onClick={() => deleteReading.mutate(reading.id)}
+                        >
+                          <Trash2 className="w-3 h-3 text-destructive" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
                 })}
+                <TableRow>
+                  <TableCell colSpan={7}>
+                    {addingReadingType === type ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          data-testid={`input-new-reading-date-${type}-${sublease.id}`}
+                          value={newReadingDate}
+                          onChange={(e) => setNewReadingDate(e.target.value)}
+                          className="w-40"
+                        />
+                        <Input
+                          type="number"
+                          step="0.001"
+                          data-testid={`input-new-reading-value-${type}-${sublease.id}`}
+                          value={newReadingValue}
+                          onChange={(e) => setNewReadingValue(e.target.value)}
+                          placeholder="Stan licznika"
+                          className="w-32"
+                        />
+                        <Button
+                          size="sm"
+                          data-testid={`button-save-new-reading-${type}-${sublease.id}`}
+                          disabled={!newReadingDate || !newReadingValue || saveReading.isPending}
+                          onClick={() => {
+                            saveReading.mutate(
+                              { meterType: type, readingDate: newReadingDate, reading: newReadingValue },
+                              {
+                                onSuccess: () => {
+                                  setNewReadingDate("");
+                                  setNewReadingValue("");
+                                  setAddingReadingType(null);
+                                },
+                              }
+                            );
+                          }}
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          Zapisz
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setAddingReadingType(null);
+                            setNewReadingDate("");
+                            setNewReadingValue("");
+                          }}
+                        >
+                          Anuluj
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        data-testid={`button-add-reading-${type}-${sublease.id}`}
+                        onClick={() => setAddingReadingType(type)}
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Dodaj odczyt
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
               </TableBody>
             </Table>
           </div>
@@ -328,7 +630,7 @@ function SubleaseMediaCard({
     });
   };
 
-  const isLoading = readingsLoading || settingsLoading;
+  const isLoading = readingsLoading || settingsLoading || pricesLoading;
 
   return (
     <>
@@ -351,9 +653,6 @@ function SubleaseMediaCard({
               data-testid={`button-summary-${sublease.id}`}
               onClick={(e) => {
                 e.stopPropagation();
-                const now = new Date();
-                const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-                setSummaryMonth(months.includes(currentYm) ? currentYm : months[months.length - 1] || "");
                 setSummaryOpen(true);
               }}
             >
@@ -395,6 +694,14 @@ function SubleaseMediaCard({
         )}
       </Card>
 
+      <PriceHistoryDialog
+        open={priceHistoryOpen}
+        onOpenChange={setPriceHistoryOpen}
+        subleaseId={sublease.id}
+        meterType={priceHistoryType}
+        prices={prices}
+      />
+
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -404,32 +711,20 @@ function SubleaseMediaCard({
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Najemca: <span className="font-medium text-foreground">{tenantName}</span></p>
               <p className="text-sm text-muted-foreground">Mieszkanie: <span className="font-medium text-foreground">{aptName}</span></p>
+              <p className="text-sm text-muted-foreground">
+                Okres: <span className="font-medium text-foreground">{formatDate(sublease.startDate)} — {formatDate(sublease.endDate)}</span>
+              </p>
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Miesiąc rozliczeniowy</Label>
-              <select
-                className="w-full border rounded-md p-2 mt-1 bg-background"
-                data-testid="select-summary-month"
-                value={summaryMonth}
-                onChange={(e) => setSummaryMonth(e.target.value)}
-              >
-                {months.map((ym) => (
-                  <option key={ym} value={ym}>{monthLabel(ym)}</option>
-                ))}
-              </select>
-            </div>
-            {summaryMonth && (() => {
-              const summary = getMonthlySummary(summaryMonth);
-              if (!summary) return null;
+            {(() => {
+              const summary = getSummaryData();
               return (
                 <div className="space-y-3">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Medium</TableHead>
-                        <TableHead className="text-right">Zużycie</TableHead>
-                        <TableHead className="text-right">Cena jedn.</TableHead>
-                        <TableHead className="text-right">Koszt</TableHead>
+                        <TableHead className="text-right">Łączne zużycie</TableHead>
+                        <TableHead className="text-right">Łączny koszt</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -437,13 +732,10 @@ function SubleaseMediaCard({
                         <TableRow key={item.type}>
                           <TableCell className="font-medium">{item.label}</TableCell>
                           <TableCell className="text-right">
-                            {item.consumption !== null ? `${formatNum(item.consumption, 3)} ${item.unit}` : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {item.unitPrice > 0 ? `${formatNum(item.unitPrice, 4)} zł` : "—"}
+                            {item.totalConsumption > 0 ? `${formatNum(item.totalConsumption, 3)} ${item.unit}` : "—"}
                           </TableCell>
                           <TableCell className="text-right font-medium">
-                            {item.cost !== null ? `${formatNum(item.cost)} zł` : "—"}
+                            {item.totalCost > 0 ? `${formatNum(item.totalCost)} zł` : "—"}
                           </TableCell>
                         </TableRow>
                       ))}
