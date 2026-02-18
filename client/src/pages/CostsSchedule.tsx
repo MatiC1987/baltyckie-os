@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { loadOplatyCategories, type OplatyCostCategory } from "@/lib/oplaty-defaults";
 import type { CostSchedule, CostSchedulePayment } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -464,24 +465,6 @@ export default function CostsSchedule() {
       )}
     </div>
   );
-}
-
-interface OplatyCostItem {
-  name: string;
-  subLabel?: string;
-}
-interface OplatyCostCategory {
-  id: string;
-  title: string;
-  items: OplatyCostItem[];
-}
-
-function loadOplatyCategories(): OplatyCostCategory[] {
-  try {
-    const raw = localStorage.getItem("oplaty-categories");
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return [];
 }
 
 function getLinkLabel(categories: OplatyCostCategory[], catId: string | null, itemIdx: number | null): string {
