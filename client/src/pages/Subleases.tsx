@@ -7,7 +7,8 @@ import { format } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search,
-  Building2, User, Briefcase, CreditCard, Paperclip
+  Building2, User, Briefcase, CreditCard, Paperclip,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -524,6 +525,8 @@ export default function Subleases() {
   const [editId, setEditId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("dane");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortKey, setSortKey] = useState<"tenant" | "type" | "apartment" | "period" | "rent" | "status">("tenant");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [form, setForm] = useState<Record<string, any>>({
     tenantType: "osoba_fizyczna",
     startDate: "",
@@ -638,6 +641,13 @@ export default function Subleases() {
     return ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ");
   };
 
+  const isActive = (s: Sublease) => {
+    const now = new Date().toISOString().slice(0, 10);
+    return s.startDate <= now && s.endDate >= now;
+  };
+
+  const getStatusOrder = (s: Sublease) => isActive(s) ? 0 : s.endDate < new Date().toISOString().slice(0, 10) ? 2 : 1;
+
   const filtered = subleases.filter((s) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -646,9 +656,27 @@ export default function Subleases() {
     return name.includes(q) || apt.includes(q);
   });
 
-  const isActive = (s: Sublease) => {
-    const now = new Date().toISOString().slice(0, 10);
-    return s.startDate <= now && s.endDate >= now;
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    switch (sortKey) {
+      case "tenant": return dir * getTenantName(a).localeCompare(getTenantName(b), "pl");
+      case "type": return dir * (a.tenantType || "").localeCompare(b.tenantType || "");
+      case "apartment": return dir * getApartmentNames(a).localeCompare(getApartmentNames(b), "pl");
+      case "period": return dir * (a.startDate || "").localeCompare(b.startDate || "");
+      case "rent": return dir * ((parseFloat(a.rentAmount || "0") || 0) - (parseFloat(b.rentAmount || "0") || 0));
+      case "status": return dir * (getStatusOrder(a) - getStatusOrder(b));
+      default: return 0;
+    }
+  });
+
+  const handleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const SortIcon = ({ column }: { column: typeof sortKey }) => {
+    if (sortKey !== column) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
   };
 
   return (
@@ -688,18 +716,30 @@ export default function Subleases() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Najemca</TableHead>
-                <TableHead>Typ</TableHead>
-                <TableHead>Apartament</TableHead>
-                <TableHead>Okres</TableHead>
-                <TableHead>Czynsz</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("tenant")} data-testid="th-tenant">
+                  <div className="flex items-center">Najemca<SortIcon column="tenant" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("type")} data-testid="th-type">
+                  <div className="flex items-center">Typ<SortIcon column="type" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("apartment")} data-testid="th-apartment">
+                  <div className="flex items-center">Apartament<SortIcon column="apartment" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("period")} data-testid="th-period">
+                  <div className="flex items-center">Okres<SortIcon column="period" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("rent")} data-testid="th-rent">
+                  <div className="flex items-center">Czynsz<SortIcon column="rent" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("status")} data-testid="th-status">
+                  <div className="flex items-center">Status<SortIcon column="status" /></div>
+                </TableHead>
                 <TableHead>Załączniki</TableHead>
                 <TableHead className="w-[100px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((s) => (
+              {sorted.map((s) => (
                 <TableRow key={s.id} className="cursor-pointer" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
