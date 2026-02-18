@@ -1201,6 +1201,59 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  app.get("/api/dashboard/all-sublease-payments", isAuthenticated, async (req, res) => {
+    const subleases = await storage.getSubleases();
+    const allPayments: any[] = [];
+    for (const s of subleases) {
+      const payments = await storage.getSubleasePayments(s.id);
+      for (const p of payments) {
+        allPayments.push({ ...p, subleaseTenantName: s.tenantName, subleaseApartmentIds: s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []) });
+      }
+    }
+    res.json(allPayments);
+  });
+
+  app.get("/api/dashboard/revenue-forecast", isAuthenticated, async (req, res) => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    const reservations = await storage.getReservations();
+
+    const months: { year: number; month: number; label: string }[] = [];
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(currentYear, currentMonth + i, 1);
+      months.push({ year: d.getFullYear(), month: d.getMonth(), label: "" });
+    }
+
+    const result = months.map(m => {
+      const daysInMonth = new Date(m.year, m.month + 1, 0).getDate();
+      const isCurrentMonth = m.year === now.getFullYear() && m.month === now.getMonth();
+      const dayOfMonth = isCurrentMonth ? now.getDate() : (m.month < now.getMonth() && m.year === now.getFullYear() ? daysInMonth : 0);
+      const daysRemaining = Math.max(0, daysInMonth - dayOfMonth);
+
+      let actual = 0;
+      for (const r of reservations) {
+        if (!r.startDate || r.status === "ANULOWANA") continue;
+        const sd = new Date(r.startDate);
+        if (sd.getFullYear() === m.year && sd.getMonth() === m.month) {
+          actual += Number(r.price) || 0;
+        }
+      }
+
+      return {
+        year: m.year,
+        month: m.month,
+        actual,
+        daysInMonth,
+        dayOfMonth,
+        daysRemaining,
+      };
+    });
+
+    res.json(result);
+  });
+
   // Import Excel
   app.post(api.imports.upload.path, isAuthenticated, upload.single('file'), async (req, res) => {
     if (!req.file) {

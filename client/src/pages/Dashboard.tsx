@@ -2,15 +2,12 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useDashboardStats } from "@/hooks/use-stats";
 import { useReservations } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -20,19 +17,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format } from "date-fns";
-import { pl } from "date-fns/locale";
+import { differenceInDays } from "date-fns";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Users, CreditCard, Home, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, Scale, Coins } from "lucide-react";
-import type { Reservation } from "@shared/schema";
+  ArrowUp, ArrowDown, ArrowUpDown, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, Scale, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target,
+} from "lucide-react";
+import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
 
 type CompanyBalance = {
   accounts: { id: number; name: string; type: string | null; latestBalance: string }[];
@@ -41,16 +30,26 @@ type CompanyBalance = {
 
 type SaldoBalances = Record<string, number>;
 
+type ForecastMonth = {
+  year: number;
+  month: number;
+  actual: number;
+  daysInMonth: number;
+  dayOfMonth: number;
+  daysRemaining: number;
+};
+
+type SubleasePaymentExtended = SubleasePayment & {
+  subleaseTenantName: string;
+  subleaseApartmentIds: number[];
+};
+
 function useCompanyBalance() {
-  return useQuery<CompanyBalance>({
-    queryKey: ["/api/company-balance"],
-  });
+  return useQuery<CompanyBalance>({ queryKey: ["/api/company-balance"] });
 }
 
 function useSaldoBalances() {
-  return useQuery<SaldoBalances>({
-    queryKey: ["/api/saldo-balances"],
-  });
+  return useQuery<SaldoBalances>({ queryKey: ["/api/saldo-balances"] });
 }
 
 function getAccountIcon(name: string) {
@@ -96,12 +95,36 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
   }
 }
 
+const MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+function forecastStorageKey(year: number) { return `forecast-data-${year}`; }
+
+function loadForecastData(year: number): Record<string, Record<number, { p: number; r: number }>> {
+  try {
+    const raw = localStorage.getItem(forecastStorageKey(year));
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function getForecastForMonth(year: number, month: number): number {
+  const data = loadForecastData(year);
+  let total = 0;
+  for (const aptKey of Object.keys(data)) {
+    const monthData = data[aptKey]?.[month];
+    if (monthData) total += monthData.p || 0;
+  }
+  return total;
+}
+
 export default function Dashboard() {
-  const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: reservations, isLoading: reservationsLoading } = useReservations();
   const { data: apartments } = useApartments();
   const { data: companyBalance, isLoading: balanceLoading } = useCompanyBalance();
   const { data: saldoBalances } = useSaldoBalances();
+  const { data: leases } = useQuery<Lease[]>({ queryKey: ["/api/leases"] });
+  const { data: allSubleasePayments } = useQuery<SubleasePaymentExtended[]>({ queryKey: ["/api/dashboard/all-sublease-payments"] });
+  const { data: forecastData } = useQuery<ForecastMonth[]>({ queryKey: ["/api/dashboard/revenue-forecast"] });
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingBalance, setEditingBalance] = useState("");
 
@@ -120,426 +143,363 @@ export default function Dashboard() {
     },
   });
 
-  const chartData = [
-    { name: 'Sty', revenue: 4000, expenses: 2400 },
-    { name: 'Lut', revenue: 3000, expenses: 1398 },
-    { name: 'Mar', revenue: 2000, expenses: 9800 },
-    { name: 'Kwi', revenue: 2780, expenses: 3908 },
-    { name: 'Maj', revenue: 1890, expenses: 4800 },
-    { name: 'Cze', revenue: 2390, expenses: 3800 },
-    { name: 'Lip', revenue: 3490, expenses: 4300 },
-  ];
-
-  if (statsLoading) {
-    return <div className="p-8">Ładowanie danych...</div>;
-  }
-
-  const StatCard = ({ title, value, subtext, icon: Icon, trend }: any) => (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <p className="text-xs text-muted-foreground mt-1 flex items-center flex-wrap gap-1">
-          {trend === 'up' ? <ArrowUpRight className="h-3 w-3 text-green-500" /> : null}
-          {trend === 'down' ? <ArrowDownRight className="h-3 w-3 text-red-500" /> : null}
-          {subtext}
-        </p>
-      </CardContent>
-    </Card>
-  );
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h2>
         <p className="text-muted-foreground">Przegląd wyników finansowych i operacyjnych.</p>
       </div>
 
-      <Card data-testid="card-company-balance">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 flex-wrap">
-            <Wallet className="h-5 w-5" />
-            Saldo firmowe
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {balanceLoading ? (
-            <div className="h-20 bg-muted animate-pulse rounded-lg" />
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-3xl font-bold" data-testid="text-total-balance">
-                  {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
-                </span>
-                <span className="text-sm text-muted-foreground">suma wszystkich źródeł</span>
-              </div>
-              <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-                {companyBalance?.accounts.filter(acc => !acc.name.toLowerCase().includes("gotówka")).map(acc => {
-                  const Icon = getAccountIcon(acc.name);
-                  const balance = Number(acc.latestBalance);
-                  const isEditing = editingAccountId === acc.id;
-                  return (
-                    <div
-                      key={acc.id}
-                      className="rounded-lg border border-border p-3 space-y-1 group"
-                      data-testid={`card-account-balance-${acc.id}`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs text-muted-foreground truncate">{acc.name}</span>
-                      </div>
-                      {isEditing ? (
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={editingBalance}
-                            onChange={e => setEditingBalance(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter" && editingBalance.trim()) {
-                                updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
-                              }
-                              if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
-                            }}
-                            className="h-7 text-xs w-full"
-                            autoFocus
-                            data-testid={`input-balance-${acc.id}`}
-                          />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6 shrink-0"
-                            onClick={() => {
-                              if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
-                            }}
-                            disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
-                            data-testid={`button-save-balance-${acc.id}`}
-                          >
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6 shrink-0"
-                            onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
-                            data-testid={`button-cancel-balance-${acc.id}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <div className={`text-sm font-bold flex-1 ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                            {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                          </div>
-                          <button
-                            className="invisible group-hover:visible text-muted-foreground hover:text-foreground p-0.5 shrink-0"
-                            onClick={() => { setEditingAccountId(acc.id); setEditingBalance(acc.latestBalance); }}
-                            data-testid={`button-edit-balance-${acc.id}`}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {saldoBalances && (
-                <div className="mt-4 pt-4 border-t border-border">
-                  <div className="text-sm text-muted-foreground mb-2 font-medium">Salda kasowe</div>
-                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
-                    {[
-                      { name: "Saldo - M. Cieślak", person: "Mateusz Cieślak", icon: Scale, href: "/saldo-mc" },
-                    ].map(item => {
-                      const balance = saldoBalances[item.person] ?? 0;
-                      const IconComp = item.icon;
-                      return (
-                        <Link
-                          key={item.person}
-                          href={item.href}
-                          className="rounded-lg border border-border p-3 space-y-1 hover-elevate block"
-                          data-testid={`card-saldo-${item.person.replace(/\s/g, "-")}`}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <IconComp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="text-xs text-muted-foreground truncate">{item.name}</span>
-                          </div>
-                          <div className={`text-sm font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                            {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <CompanyBalanceCard
+        companyBalance={companyBalance}
+        saldoBalances={saldoBalances}
+        balanceLoading={balanceLoading}
+        editingAccountId={editingAccountId}
+        editingBalance={editingBalance}
+        setEditingAccountId={setEditingAccountId}
+        setEditingBalance={setEditingBalance}
+        updateBalanceMutation={updateBalanceMutation}
+      />
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList data-testid="dashboard-tabs">
-          <TabsTrigger value="overview" data-testid="tab-overview">Przegląd</TabsTrigger>
-          <TabsTrigger value="arrivals" data-testid="tab-arrivals">
+      <Tabs defaultValue="unpaid-arrivals" className="space-y-4">
+        <TabsList className="flex-wrap h-auto gap-1" data-testid="dashboard-tabs">
+          <TabsTrigger value="unpaid-arrivals" data-testid="tab-unpaid-arrivals">
+            <AlertCircle className="h-4 w-4 mr-1" />
+            Nieopłacone przyjazdy
+          </TabsTrigger>
+          <TabsTrigger value="upcoming-arrivals" data-testid="tab-upcoming-arrivals">
             <Plane className="h-4 w-4 mr-1" />
-            Przyjazdy
+            Najbliższe przyjazdy
+          </TabsTrigger>
+          <TabsTrigger value="unpaid-subleases" data-testid="tab-unpaid-subleases">
+            <FileWarning className="h-4 w-4 mr-1" />
+            Nieopłacone podnajmy
+          </TabsTrigger>
+          <TabsTrigger value="expiring-leases" data-testid="tab-expiring-leases">
+            <CalendarClock className="h-4 w-4 mr-1" />
+            Kończące się umowy
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              title="Przychody całkowite"
-              value={`${stats?.totalRevenue?.toFixed(2) ?? "0.00"} PLN`}
-              subtext="W tym roku"
-              icon={CreditCard}
-              trend="up"
-            />
-            <StatCard
-              title="Koszty operacyjne"
-              value={`${stats?.totalExpenses?.toFixed(2) ?? "0.00"} PLN`}
-              subtext="-12% vs poprzedni miesiąc"
-              icon={ArrowDownRight}
-              trend="down"
-            />
-            <StatCard
-              title="Dochód Netto"
-              value={`${stats?.netIncome?.toFixed(2) ?? "0.00"} PLN`}
-              subtext="Marża +24%"
-              icon={Home}
-              trend="up"
-            />
-            <StatCard
-              title="Obłożenie"
-              value={`${stats?.occupancyRate?.toFixed(1) ?? "0"}%`}
-              subtext="Średnia z wszystkich lokali"
-              icon={Users}
-            />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-            <Card className="col-span-4" data-testid="card-revenue-chart">
-              <CardHeader>
-                <CardTitle>Przychody i Koszty</CardTitle>
-              </CardHeader>
-              <CardContent className="pl-2">
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value} zł`} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        cursor={{ fill: 'transparent' }}
-                      />
-                      <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Przychód" />
-                      <Bar dataKey="expenses" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} name="Koszty" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="col-span-3" data-testid="card-recent-reservations">
-              <CardHeader>
-                <CardTitle>Ostatnie Rezerwacje</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {reservations?.slice(0, 5).map((res) => (
-                    <div key={res.id} className="flex items-center justify-between gap-2 p-2 hover:bg-muted/50 rounded-lg transition-colors">
-                      <div className="flex items-center space-x-4">
-                        <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                          {res.guestName.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium leading-none">{res.guestName}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(res.startDate), 'dd MMM', { locale: pl })} - {format(new Date(res.endDate), 'dd MMM', { locale: pl })}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={statusVariant(res.status)} className="text-xs">
-                          {statusLabel(res.status)}
-                        </Badge>
-                        <div className="text-sm font-bold whitespace-nowrap">+{res.price} zł</div>
-                      </div>
-                    </div>
-                  ))}
-                  {!reservations?.length && <p className="text-sm text-muted-foreground text-center py-4">Brak ostatnich rezerwacji</p>}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <TabsContent value="unpaid-arrivals">
+          <UnpaidArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
         </TabsContent>
 
-        <TabsContent value="arrivals">
-          <ArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
+        <TabsContent value="upcoming-arrivals">
+          <UpcomingArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
+        </TabsContent>
+
+        <TabsContent value="unpaid-subleases">
+          <UnpaidSubleasesTab payments={allSubleasePayments || []} apartments={apartments || []} />
+        </TabsContent>
+
+        <TabsContent value="expiring-leases">
+          <ExpiringLeasesTab leases={leases || []} apartments={apartments || []} />
         </TabsContent>
       </Tabs>
+
+      <RevenueForecastSection forecastData={forecastData || []} />
     </div>
   );
 }
 
-function ArrivalsTab({ reservations, apartments, isLoading }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean }) {
-  const [sortField, setSortField] = useState<SortField>("startDate");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+function CompanyBalanceCard({
+  companyBalance, saldoBalances, balanceLoading, editingAccountId, editingBalance,
+  setEditingAccountId, setEditingBalance, updateBalanceMutation,
+}: any) {
+  return (
+    <Card data-testid="card-company-balance">
+      <CardHeader className="pb-2 pt-3">
+        <CardTitle className="flex items-center gap-2 flex-wrap text-base">
+          <Wallet className="h-4 w-4" />
+          Saldo firmowe
+          {companyBalance && (
+            <span className="text-lg font-bold ml-2" data-testid="text-total-balance">
+              {Number(companyBalance.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pb-3">
+        {balanceLoading ? (
+          <div className="h-10 bg-muted animate-pulse rounded-lg" />
+        ) : (
+          <div className="space-y-2">
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+              {companyBalance?.accounts.filter((acc: any) => !acc.name.toLowerCase().includes("gotówka")).map((acc: any) => {
+                const Icon = getAccountIcon(acc.name);
+                const balance = Number(acc.latestBalance);
+                const isEditing = editingAccountId === acc.id;
+                return (
+                  <div
+                    key={acc.id}
+                    className="rounded-lg border border-border p-2 space-y-0.5 group"
+                    data-testid={`card-account-balance-${acc.id}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="text-[10px] text-muted-foreground truncate">{acc.name}</span>
+                    </div>
+                    {isEditing ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={editingBalance}
+                          onChange={(e: any) => setEditingBalance(e.target.value)}
+                          onKeyDown={(e: any) => {
+                            if (e.key === "Enter" && editingBalance.trim()) {
+                              updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
+                            }
+                            if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
+                          }}
+                          className="h-6 text-xs w-full"
+                          autoFocus
+                          data-testid={`input-balance-${acc.id}`}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => { if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() }); }}
+                          disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
+                          data-testid={`button-save-balance-${acc.id}`}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
+                          data-testid={`button-cancel-balance-${acc.id}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <div className={`text-xs font-bold flex-1 ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                          {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                        </div>
+                        <button
+                          className="invisible group-hover:visible text-muted-foreground hover:text-foreground p-0.5 shrink-0"
+                          onClick={() => { setEditingAccountId(acc.id); setEditingBalance(acc.latestBalance); }}
+                          data-testid={`button-edit-balance-${acc.id}`}
+                        >
+                          <Pencil className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {saldoBalances && (
+              <div className="pt-2 border-t border-border">
+                <div className="grid gap-2 grid-cols-1 sm:grid-cols-3">
+                  {[
+                    { name: "Saldo - M. Cieślak", person: "Mateusz Cieślak", icon: Scale, href: "/saldo-mc" },
+                  ].map(item => {
+                    const balance = saldoBalances[item.person] ?? 0;
+                    const IconComp = item.icon;
+                    return (
+                      <Link
+                        key={item.person}
+                        href={item.href}
+                        className="rounded-lg border border-border p-2 space-y-0.5 hover-elevate block"
+                        data-testid={`card-saldo-${item.person.replace(/\s/g, "-")}`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <IconComp className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <span className="text-[10px] text-muted-foreground truncate">{item.name}</span>
+                        </div>
+                        <div className={`text-xs font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                          {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function UnpaidArrivalsTab({ reservations, apartments, isLoading }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean }) {
+  const [sortField, setSortField] = useState<SortField>("endDate");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir(d => d === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
+    if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortField(field); setSortDir("asc"); }
   };
 
-  const arrivals = useMemo(() => {
-    let data = reservations.filter(r => r.status === "PRZYJETA");
-
-    if (filterDateFrom) {
-      data = data.filter(r => r.startDate >= filterDateFrom);
-    }
-    if (filterDateTo) {
-      data = data.filter(r => r.startDate <= filterDateTo);
-    }
+  const unpaidCompleted = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    let data = reservations.filter(r => {
+      if (r.status === "ANULOWANA") return false;
+      const remaining = calcRemaining(r);
+      return remaining > 0 && r.endDate && r.endDate <= today;
+    });
 
     data.sort((a, b) => {
       let valA: any, valB: any;
       switch (sortField) {
         case "reservationNumber": valA = a.reservationNumber; valB = b.reservationNumber; break;
-        case "addDate": valA = a.addDate || ""; valB = b.addDate || ""; break;
-        case "apartmentName":
-          valA = getApartmentName(a, apartments);
-          valB = getApartmentName(b, apartments);
-          break;
+        case "apartmentName": valA = getApartmentName(a, apartments); valB = getApartmentName(b, apartments); break;
         case "startDate": valA = a.startDate; valB = b.startDate; break;
         case "endDate": valA = a.endDate; valB = b.endDate; break;
         case "guestName": valA = a.guestName; valB = b.guestName; break;
         case "price": valA = Number(a.price); valB = Number(b.price); break;
-        case "prepayment": valA = Number(a.prepayment); valB = Number(b.prepayment); break;
-        case "paidAmount": valA = Number(a.paidAmount); valB = Number(b.paidAmount); break;
         case "remaining": valA = calcRemaining(a); valB = calcRemaining(b); break;
-        default: valA = a.startDate; valB = b.startDate;
+        default: valA = a.endDate; valB = b.endDate;
       }
-      if (typeof valA === "string") {
-        const cmp = valA.localeCompare(valB, "pl");
-        return sortDir === "asc" ? cmp : -cmp;
-      }
+      if (typeof valA === "string") return sortDir === "asc" ? valA.localeCompare(valB, "pl") : valB.localeCompare(valA, "pl");
       return sortDir === "asc" ? valA - valB : valB - valA;
     });
 
     return data;
-  }, [reservations, apartments, sortField, sortDir, filterDateFrom, filterDateTo]);
+  }, [reservations, apartments, sortField, sortDir]);
 
-  const hasActiveFilters = filterDateFrom || filterDateTo;
+  const totalUnpaid = useMemo(() => unpaidCompleted.reduce((s, r) => s + calcRemaining(r), 0), [unpaidCompleted]);
 
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-      </div>
-    );
-  }
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}</div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h3 className="text-xl font-semibold" data-testid="text-arrivals-title">Przyjazdy</h3>
-          <p className="text-sm text-muted-foreground">Rezerwacje ze statusem PRZYJĘTA, chronologicznie wg daty przyjazdu.</p>
+          <h3 className="text-lg font-semibold" data-testid="text-unpaid-arrivals-title">Nieopłacone przyjazdy</h3>
+          <p className="text-sm text-muted-foreground">Zakończone rezerwacje z nieopłaconą dopłatą.</p>
         </div>
-        <Button
-          variant={showFilters ? "default" : "outline"}
-          onClick={() => setShowFilters(!showFilters)}
-          data-testid="button-arrivals-toggle-filters"
-        >
-          <Filter className="mr-2 h-4 w-4" /> Filtry
-          {hasActiveFilters && <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">aktywne</Badge>}
-        </Button>
+        {unpaidCompleted.length > 0 && (
+          <Badge variant="destructive" data-testid="badge-unpaid-total">
+            Łącznie: {totalUnpaid.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+          </Badge>
+        )}
       </div>
-
-      {showFilters && (
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-end gap-4 flex-wrap">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Data przyjazdu od</Label>
-                <Input
-                  type="date"
-                  value={filterDateFrom}
-                  onChange={e => setFilterDateFrom(e.target.value)}
-                  data-testid="input-arrivals-filter-date-from"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Data przyjazdu do</Label>
-                <Input
-                  type="date"
-                  value={filterDateTo}
-                  onChange={e => setFilterDateTo(e.target.value)}
-                  data-testid="input-arrivals-filter-date-to"
-                />
-              </div>
-              {hasActiveFilters && (
-                <Button variant="ghost" onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); }} data-testid="button-arrivals-clear-filters">
-                  Wyczyść filtry
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <ArrivalsSortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="addDate" label="Data dodania" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="apartmentName" label="Apartament" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="startDate" label="Przyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="endDate" label="Wyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="guestName" label="Imię i nazwisko" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="price" label="Kwota pobytu" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="prepayment" label="Zaliczka" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="paidAmount" label="Wpłacona" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <ArrivalsSortableHeader field="remaining" label="Pozostało" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="apartmentName" label="Apartament" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="startDate" label="Przyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="endDate" label="Wyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="guestName" label="Gość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="price" label="Kwota" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="remaining" label="Dopłata" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {arrivals.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                  Brak przyjęych rezerwacji
-                </TableCell>
-              </TableRow>
+            {unpaidCompleted.length === 0 && (
+              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Brak nieopłaconych rezerwacji</TableCell></TableRow>
             )}
-            {arrivals.map(r => {
+            {unpaidCompleted.map(r => (
+              <TableRow key={r.id} data-testid={`row-unpaid-${r.id}`}>
+                <TableCell className="font-medium text-xs whitespace-nowrap">{r.reservationNumber}</TableCell>
+                <TableCell className="text-xs whitespace-nowrap">{getApartmentName(r, apartments)}</TableCell>
+                <TableCell className="text-xs whitespace-nowrap">{r.startDate}</TableCell>
+                <TableCell className="text-xs whitespace-nowrap">{r.endDate}</TableCell>
+                <TableCell className="text-xs whitespace-nowrap">{r.guestName}</TableCell>
+                <TableCell className="text-xs whitespace-nowrap">{Number(r.price).toFixed(2)} zł</TableCell>
+                <TableCell className="text-xs font-semibold whitespace-nowrap text-red-600 dark:text-red-400">{calcRemaining(r).toFixed(2)} zł</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="text-sm text-muted-foreground" data-testid="text-unpaid-count">
+        {unpaidCompleted.length} nieopłaconych rezerwacji
+      </div>
+    </div>
+  );
+}
+
+function UpcomingArrivalsTab({ reservations, apartments, isLoading }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean }) {
+  const [sortField, setSortField] = useState<SortField>("startDate");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortField(field); setSortDir("asc"); }
+  };
+
+  const upcoming = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+    const in7days = new Date(today);
+    in7days.setDate(in7days.getDate() + 7);
+    const in7daysStr = in7days.toISOString().split("T")[0];
+
+    let data = reservations.filter(r => {
+      if (r.status === "ANULOWANA") return false;
+      return r.startDate >= todayStr && r.startDate <= in7daysStr;
+    });
+
+    data.sort((a, b) => {
+      let valA: any, valB: any;
+      switch (sortField) {
+        case "reservationNumber": valA = a.reservationNumber; valB = b.reservationNumber; break;
+        case "apartmentName": valA = getApartmentName(a, apartments); valB = getApartmentName(b, apartments); break;
+        case "startDate": valA = a.startDate; valB = b.startDate; break;
+        case "endDate": valA = a.endDate; valB = b.endDate; break;
+        case "guestName": valA = a.guestName; valB = b.guestName; break;
+        case "price": valA = Number(a.price); valB = Number(b.price); break;
+        case "remaining": valA = calcRemaining(a); valB = calcRemaining(b); break;
+        default: valA = a.startDate; valB = b.startDate;
+      }
+      if (typeof valA === "string") return sortDir === "asc" ? valA.localeCompare(valB, "pl") : valB.localeCompare(valA, "pl");
+      return sortDir === "asc" ? valA - valB : valB - valA;
+    });
+
+    return data;
+  }, [reservations, apartments, sortField, sortDir]);
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}</div>;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-lg font-semibold" data-testid="text-upcoming-arrivals-title">Najbliższe przyjazdy</h3>
+        <p className="text-sm text-muted-foreground">Rezerwacje rozpoczynające się w ciągu najbliższych 7 dni.</p>
+      </div>
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="apartmentName" label="Apartament" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="startDate" label="Przyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="endDate" label="Wyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="guestName" label="Gość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="price" label="Kwota" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="remaining" label="Dopłata" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <TableHead className="text-xs font-semibold">Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {upcoming.length === 0 && (
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Brak rezerwacji w ciągu 7 dni</TableCell></TableRow>
+            )}
+            {upcoming.map(r => {
               const remaining = calcRemaining(r);
               return (
-                <TableRow key={r.id} data-testid={`row-arrival-${r.id}`}>
+                <TableRow key={r.id} data-testid={`row-upcoming-${r.id}`}>
                   <TableCell className="font-medium text-xs whitespace-nowrap">{r.reservationNumber}</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{r.addDate || "—"}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{getApartmentName(r, apartments)}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap font-semibold">{r.startDate}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.endDate}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.guestName}</TableCell>
                   <TableCell className="text-xs font-bold whitespace-nowrap">{Number(r.price).toFixed(2)} zł</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{Number(r.prepayment).toFixed(2)} zł</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{Number(r.paidAmount).toFixed(2)} zł</TableCell>
                   <TableCell className={`text-xs font-semibold whitespace-nowrap ${remaining > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
                     {remaining.toFixed(2)} zł
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant(r.status)} className="text-xs">{statusLabel(r.status)}</Badge>
                   </TableCell>
                 </TableRow>
               );
@@ -547,14 +507,290 @@ function ArrivalsTab({ reservations, apartments, isLoading }: { reservations: Re
           </TableBody>
         </Table>
       </div>
-      <div className="text-sm text-muted-foreground" data-testid="text-arrivals-count">
-        Wyświetlono {arrivals.length} przyjęych rezerwacji
+      <div className="text-sm text-muted-foreground" data-testid="text-upcoming-count">
+        {upcoming.length} rezerwacji w ciągu 7 dni
       </div>
     </div>
   );
 }
 
-function ArrivalsSortableHeader({ field, label, sortField, sortDir, onSort }: {
+function UnpaidSubleasesTab({ payments, apartments }: { payments: SubleasePaymentExtended[]; apartments: any[] }) {
+  const today = new Date().toISOString().split("T")[0];
+  const in7days = new Date();
+  in7days.setDate(in7days.getDate() + 7);
+  const in7daysStr = in7days.toISOString().split("T")[0];
+
+  const todayPayments = useMemo(() =>
+    payments.filter(p => p.status === "do_oplacenia" && p.dueDate <= today),
+    [payments, today]
+  );
+
+  const upcomingPayments = useMemo(() =>
+    payments.filter(p => p.status === "do_oplacenia" && p.dueDate > today && p.dueDate <= in7daysStr),
+    [payments, today, in7daysStr]
+  );
+
+  const getAptNames = (p: SubleasePaymentExtended) => {
+    if (p.apartmentId) {
+      const apt = apartments.find(a => a.id === p.apartmentId);
+      return apt?.name || "—";
+    }
+    return p.subleaseApartmentIds.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ") || "—";
+  };
+
+  const totalOverdue = todayPayments.reduce((s, p) => s + Number(p.amount), 0);
+  const totalUpcoming = upcomingPayments.reduce((s, p) => s + Number(p.amount), 0);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold" data-testid="text-unpaid-subleases-title">Nieopłacone podnajmy</h3>
+        <p className="text-sm text-muted-foreground">Płatności z podnajem - rozliczenie do zapłaty.</p>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h4 className="text-base font-medium">Zaległe i na dziś ({todayPayments.length})</h4>
+          {todayPayments.length > 0 && (
+            <Badge variant="destructive" data-testid="badge-overdue-sublease-total">
+              {totalOverdue.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+            </Badge>
+          )}
+        </div>
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="text-xs font-semibold">Najemca</TableHead>
+                <TableHead className="text-xs font-semibold">Apartament</TableHead>
+                <TableHead className="text-xs font-semibold">Tytuł</TableHead>
+                <TableHead className="text-xs font-semibold">Termin</TableHead>
+                <TableHead className="text-xs font-semibold">Kwota</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {todayPayments.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Brak zaległych płatności</TableCell></TableRow>
+              )}
+              {todayPayments.map(p => (
+                <TableRow key={p.id} data-testid={`row-overdue-sublease-${p.id}`}>
+                  <TableCell className="text-xs whitespace-nowrap">{p.subleaseTenantName}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{getAptNames(p)}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{p.title}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap font-semibold text-red-600 dark:text-red-400">{p.dueDate}</TableCell>
+                  <TableCell className="text-xs font-bold whitespace-nowrap">{Number(p.amount).toFixed(2)} zł</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h4 className="text-base font-medium">Najbliższe 7 dni ({upcomingPayments.length})</h4>
+          {upcomingPayments.length > 0 && (
+            <Badge variant="secondary" data-testid="badge-upcoming-sublease-total">
+              {totalUpcoming.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+            </Badge>
+          )}
+        </div>
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="text-xs font-semibold">Najemca</TableHead>
+                <TableHead className="text-xs font-semibold">Apartament</TableHead>
+                <TableHead className="text-xs font-semibold">Tytuł</TableHead>
+                <TableHead className="text-xs font-semibold">Termin</TableHead>
+                <TableHead className="text-xs font-semibold">Kwota</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {upcomingPayments.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Brak płatności w najbliższych 7 dniach</TableCell></TableRow>
+              )}
+              {upcomingPayments.map(p => (
+                <TableRow key={p.id} data-testid={`row-upcoming-sublease-${p.id}`}>
+                  <TableCell className="text-xs whitespace-nowrap">{p.subleaseTenantName}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{getAptNames(p)}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{p.title}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{p.dueDate}</TableCell>
+                  <TableCell className="text-xs font-bold whitespace-nowrap">{Number(p.amount).toFixed(2)} zł</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExpiringLeasesTab({ leases, apartments }: { leases: Lease[]; apartments: any[] }) {
+  const expiringLeases = useMemo(() => {
+    const today = new Date();
+    const in6months = new Date(today);
+    in6months.setMonth(in6months.getMonth() + 6);
+    const todayStr = today.toISOString().split("T")[0];
+    const in6monthsStr = in6months.toISOString().split("T")[0];
+
+    return leases
+      .filter(l => l.endDate && l.endDate >= todayStr && l.endDate <= in6monthsStr)
+      .sort((a, b) => (a.endDate || "").localeCompare(b.endDate || ""));
+  }, [leases]);
+
+  const getAptName = (lease: Lease) => {
+    if (!lease.apartmentId) return "—";
+    const apt = apartments.find(a => a.id === lease.apartmentId);
+    return apt?.name || "—";
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-lg font-semibold" data-testid="text-expiring-leases-title">Kończące się umowy</h3>
+        <p className="text-sm text-muted-foreground">Umowy najmu kończące się w ciągu najbliższych 6 miesięcy.</p>
+      </div>
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50">
+              <TableHead className="text-xs font-semibold">Apartament</TableHead>
+              <TableHead className="text-xs font-semibold">Najemca</TableHead>
+              <TableHead className="text-xs font-semibold">Początek</TableHead>
+              <TableHead className="text-xs font-semibold">Koniec</TableHead>
+              <TableHead className="text-xs font-semibold">Czynsz</TableHead>
+              <TableHead className="text-xs font-semibold">Pozostało dni</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {expiringLeases.length === 0 && (
+              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Brak kończących się umów w najbliższych 6 miesiącach</TableCell></TableRow>
+            )}
+            {expiringLeases.map(l => {
+              const daysLeft = l.endDate ? differenceInDays(new Date(l.endDate), new Date()) : 0;
+              return (
+                <TableRow key={l.id} data-testid={`row-expiring-lease-${l.id}`}>
+                  <TableCell className="text-xs whitespace-nowrap font-medium">{getAptName(l)}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{l.tenantName || "—"}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{l.startDate}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap font-semibold">{l.endDate}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap font-bold">{Number(l.rentAmount).toFixed(2)} zł</TableCell>
+                  <TableCell className={`text-xs whitespace-nowrap font-semibold ${daysLeft < 30 ? "text-red-600 dark:text-red-400" : daysLeft < 90 ? "text-orange-600 dark:text-orange-400" : ""}`}>
+                    {daysLeft} dni
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="text-sm text-muted-foreground" data-testid="text-expiring-count">
+        {expiringLeases.length} kończących się umów
+      </div>
+    </div>
+  );
+}
+
+function RevenueForecastSection({ forecastData }: { forecastData: ForecastMonth[] }) {
+  const cards = useMemo(() => {
+    return forecastData.map(m => {
+      const forecast = getForecastForMonth(m.year, m.month);
+      const pct = forecast > 0 ? m.actual / forecast : 0;
+      const remaining = Math.max(0, forecast - m.actual);
+      const dailyNeeded = m.daysRemaining > 0 ? remaining / m.daysRemaining : 0;
+      return {
+        ...m,
+        forecast,
+        pct,
+        remaining,
+        dailyNeeded,
+        monthName: MONTH_NAMES[m.month],
+      };
+    });
+  }, [forecastData]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Target className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-lg font-semibold" data-testid="text-forecast-title">Realizacja prognozy przychodów</h3>
+      </div>
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        {cards.map((c, idx) => {
+          const isCurrentMonth = idx === 0;
+          return (
+            <Card key={`${c.year}-${c.month}`} className={isCurrentMonth ? "border-primary/30" : ""} data-testid={`card-forecast-${c.year}-${c.month}`}>
+              <CardHeader className="pb-2 pt-3">
+                <CardTitle className="text-sm flex items-center justify-between gap-2 flex-wrap">
+                  <span>{c.monthName} {c.year}</span>
+                  {isCurrentMonth && <Badge variant="outline" className="text-[10px]">Bieżący</Badge>}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 pb-3">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Prognoza</span>
+                  <span className="font-medium" data-testid={`text-forecast-value-${c.year}-${c.month}`}>
+                    {c.forecast > 0 ? c.forecast.toLocaleString("pl-PL", { minimumFractionDigits: 2 }) + " zł" : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Rzeczywiste</span>
+                  <span className="font-bold" data-testid={`text-actual-value-${c.year}-${c.month}`}>
+                    {c.actual.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Realizacja</span>
+                  <span className={`font-bold ${c.forecast > 0 ? (c.pct >= 1 ? "text-emerald-600 dark:text-emerald-400" : c.pct >= 0.7 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400") : "text-muted-foreground"}`}
+                    data-testid={`text-pct-value-${c.year}-${c.month}`}
+                  >
+                    {c.forecast > 0 ? (c.pct * 100).toFixed(0) + "%" : "—"}
+                  </span>
+                </div>
+                {c.forecast > 0 && (
+                  <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${c.pct >= 1 ? "bg-emerald-500" : c.pct >= 0.7 ? "bg-amber-500" : "bg-red-500"}`}
+                      style={{ width: `${Math.min(100, c.pct * 100)}%` }}
+                    />
+                  </div>
+                )}
+                {c.daysRemaining > 0 && c.forecast > 0 && c.remaining > 0 && (
+                  <div className="pt-1 border-t border-border mt-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Brakuje / dzień</span>
+                      <span className="font-semibold text-orange-600 dark:text-orange-400" data-testid={`text-daily-needed-${c.year}-${c.month}`}>
+                        {c.dailyNeeded.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Pozostało {c.daysRemaining} dni · brakuje {c.remaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                    </div>
+                  </div>
+                )}
+                {c.forecast > 0 && c.pct >= 1 && (
+                  <div className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 pt-1">
+                    <TrendingUp className="h-3 w-3" />
+                    Plan zrealizowany
+                  </div>
+                )}
+                {c.forecast === 0 && (
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    Uzupełnij prognozę w zakładce Prognoza P/R/S
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SortableHeader({ field, label, sortField, sortDir, onSort }: {
   field: SortField;
   label: string;
   sortField: SortField;
@@ -567,7 +803,7 @@ function ArrivalsSortableHeader({ field, label, sortField, sortDir, onSort }: {
       <button
         onClick={() => onSort(field)}
         className="flex items-center text-xs font-semibold whitespace-nowrap hover-elevate px-1 py-1 rounded"
-        data-testid={`arrivals-sort-${field}`}
+        data-testid={`sort-${field}`}
       >
         {label}
         {isActive
