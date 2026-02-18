@@ -38,7 +38,7 @@ export default function SubrentSettlement() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("dueDate");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const { data: subleases = [] } = useQuery<Sublease[]>({
     queryKey: ["/api/subleases"],
