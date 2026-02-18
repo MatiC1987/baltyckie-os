@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Pencil, Calendar, CheckCircle2, XCircle, ChevronDown, ChevronRight, CalendarPlus } from "lucide-react";
+import { Plus, Trash2, Pencil, Calendar, CheckCircle2, XCircle, ChevronDown, ChevronRight, CalendarPlus, Link2 } from "lucide-react";
 import { format, addMonths, addQuarters, addYears, parseISO, isBefore, isAfter, startOfMonth } from "date-fns";
 import { pl } from "date-fns/locale";
 
@@ -68,6 +68,7 @@ export default function CostsSchedule() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const oplatyCategories = useMemo(() => loadOplatyCategories(), []);
 
   const { data: schedules = [], isLoading: schedulesLoading } = useQuery<CostSchedule[]>({
     queryKey: ["/api/cost-schedules"],
@@ -309,6 +310,12 @@ export default function CostsSchedule() {
                         <Badge variant="secondary" className="text-xs">{schedule.category}</Badge>
                         <Badge variant="outline" className="text-xs">{freqLabel(schedule.frequency)}</Badge>
                         {!schedule.active && <Badge variant="destructive" className="text-xs">Nieaktywny</Badge>}
+                        {schedule.linkCategoryId && schedule.linkItemIndex !== null && (
+                          <Badge variant="outline" className="text-xs gap-1">
+                            <Link2 className="w-3 h-3" />
+                            {getLinkLabel(oplatyCategories, schedule.linkCategoryId, schedule.linkItemIndex)}
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
                         <span>{formatNum(schedule.amount)} zł</span>
@@ -459,6 +466,33 @@ export default function CostsSchedule() {
   );
 }
 
+interface OplatyCostItem {
+  name: string;
+  subLabel?: string;
+}
+interface OplatyCostCategory {
+  id: string;
+  title: string;
+  items: OplatyCostItem[];
+}
+
+function loadOplatyCategories(): OplatyCostCategory[] {
+  try {
+    const raw = localStorage.getItem("oplaty-categories");
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function getLinkLabel(categories: OplatyCostCategory[], catId: string | null, itemIdx: number | null): string {
+  if (!catId || itemIdx === null || itemIdx === undefined) return "";
+  const cat = categories.find(c => c.id === catId);
+  if (!cat) return "";
+  const item = cat.items[itemIdx];
+  if (!item) return "";
+  return `${cat.title} > ${item.name}${item.subLabel ? ` (${item.subLabel})` : ""}`;
+}
+
 function ScheduleDialog({
   open,
   onOpenChange,
@@ -482,6 +516,16 @@ function ScheduleDialog({
   const [endDate, setEndDate] = useState(initial?.endDate || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [active, setActive] = useState(initial?.active !== false);
+  const [linkCategoryId, setLinkCategoryId] = useState(initial?.linkCategoryId || "");
+  const [linkItemIndex, setLinkItemIndex] = useState<string>(
+    initial?.linkItemIndex !== null && initial?.linkItemIndex !== undefined ? String(initial.linkItemIndex) : ""
+  );
+
+  const oplatyCategories = useMemo(() => loadOplatyCategories(), []);
+  const selectedOplatyCat = useMemo(
+    () => oplatyCategories.find(c => c.id === linkCategoryId),
+    [oplatyCategories, linkCategoryId]
+  );
 
   const handleSubmit = () => {
     if (!name || !amount || !startDate) return;
@@ -494,12 +538,14 @@ function ScheduleDialog({
       endDate: endDate || null,
       notes: notes || null,
       active,
+      linkCategoryId: linkCategoryId || null,
+      linkItemIndex: linkItemIndex !== "" ? parseInt(linkItemIndex) : null,
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -575,6 +621,52 @@ function ScheduleDialog({
               data-testid="input-schedule-notes"
             />
           </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-2">Powiązanie z arkuszem Opłaty</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Wybierz pozycję w zakładce Koszty (Opłaty), aby automatycznie uzupełniać prognozę i rzeczywiste wydatki.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Kategoria Opłaty</Label>
+                <Select
+                  value={linkCategoryId}
+                  onValueChange={(v) => { setLinkCategoryId(v); setLinkItemIndex(""); }}
+                >
+                  <SelectTrigger data-testid="select-link-category">
+                    <SelectValue placeholder="Brak powiązania" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak powiązania</SelectItem>
+                    {oplatyCategories.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Pozycja</Label>
+                <Select
+                  value={linkItemIndex}
+                  onValueChange={setLinkItemIndex}
+                  disabled={!linkCategoryId || linkCategoryId === "none"}
+                >
+                  <SelectTrigger data-testid="select-link-item">
+                    <SelectValue placeholder="Wybierz pozycję" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedOplatyCat?.items.map((item, idx) => (
+                      <SelectItem key={idx} value={String(idx)}>
+                        {item.name}{item.subLabel ? ` (${item.subLabel})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
           {initial && (
             <div className="flex items-center gap-2">
               <Label>Aktywny</Label>

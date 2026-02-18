@@ -533,6 +533,8 @@ export const costSchedules = pgTable("cost_schedules", {
   endDate: date("end_date"),
   notes: text("notes"),
   active: boolean("active").default(true),
+  linkCategoryId: text("link_category_id"),
+  linkItemIndex: integer("link_item_index"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

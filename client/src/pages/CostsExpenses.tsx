@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { CostSchedule, CostSchedulePayment } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -194,11 +196,71 @@ function saveCategories(cats: CostCategory[]) {
   localStorage.setItem("oplaty-categories", JSON.stringify(cats));
 }
 
+function parseDateLocal(dateStr: string): { year: number; month: number } {
+  const parts = dateStr.split("-");
+  return { year: parseInt(parts[0]), month: parseInt(parts[1]) - 1 };
+}
+
+function buildScheduleOverlay(
+  schedules: CostSchedule[],
+  payments: CostSchedulePayment[],
+  year: number
+): Record<CellKey, number> {
+  const overlay: Record<CellKey, number> = {};
+  const paymentsBySchedule: Record<number, CostSchedulePayment[]> = {};
+  for (const p of payments) {
+    if (!paymentsBySchedule[p.scheduleId]) paymentsBySchedule[p.scheduleId] = [];
+    paymentsBySchedule[p.scheduleId].push(p);
+  }
+
+  for (const schedule of schedules) {
+    if (!schedule.active) continue;
+    if (!schedule.linkCategoryId || schedule.linkItemIndex === null || schedule.linkItemIndex === undefined) continue;
+    const catId = schedule.linkCategoryId;
+    const itemIdx = schedule.linkItemIndex;
+    const schPayments = paymentsBySchedule[schedule.id] || [];
+
+    for (let month = 0; month < 12; month++) {
+      const monthPayments = schPayments.filter(p => {
+        const d = parseDateLocal(p.dueDate);
+        return d.year === year && d.month === month;
+      });
+
+      if (monthPayments.length > 0) {
+        const prognozaKey = makeCellKey(catId, itemIdx, month, "prognoza");
+        const rzeczKey = makeCellKey(catId, itemIdx, month, "rzeczywiste");
+        const totalAmount = monthPayments.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
+        const paidAmount = monthPayments
+          .filter(p => p.status === "OPLACONE")
+          .reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
+
+        overlay[prognozaKey] = (overlay[prognozaKey] || 0) + totalAmount;
+        if (paidAmount > 0) {
+          overlay[rzeczKey] = (overlay[rzeczKey] || 0) + paidAmount;
+        }
+      }
+    }
+  }
+  return overlay;
+}
+
 export default function CostsExpenses() {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(currentYear));
   const [categories, setCategories] = useState<CostCategory[]>(() => loadCategories());
+
+  const { data: costSchedules = [] } = useQuery<CostSchedule[]>({
+    queryKey: ["/api/cost-schedules"],
+  });
+  const { data: costSchedulePayments = [] } = useQuery<CostSchedulePayment[]>({
+    queryKey: ["/api/cost-schedule-payments"],
+  });
+
+  const scheduleOverlay = useMemo(
+    () => buildScheduleOverlay(costSchedules, costSchedulePayments, selectedYear),
+    [costSchedules, costSchedulePayments, selectedYear]
+  );
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -303,8 +365,9 @@ export default function CostsExpenses() {
   }, []);
 
   const getCellValue = useCallback((key: CellKey): number => {
+    if (key in scheduleOverlay) return scheduleOverlay[key];
     return cellData[key] || 0;
-  }, [cellData]);
+  }, [cellData, scheduleOverlay]);
 
   const startEditing = useCallback((key: CellKey) => {
     setEditingCell(key);
