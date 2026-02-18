@@ -5,10 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment } from "@shared/schema";
 import { format } from "date-fns";
 import { pl } from "date-fns/locale";
+import { useMemo } from "react";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search,
   Building2, User, Briefcase, CreditCard, Paperclip,
-  ArrowUpDown, ArrowUp, ArrowDown
+  ArrowUpDown, ArrowUp, ArrowDown, Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const PAYMENT_CATEGORIES = [
-  "Czynsz", "Media", "Energia", "Internet", "Woda", "Ogrzewanie", "Inne"
+  "Czynsz", "Media", "Energia", "Internet", "Woda", "Ogrzewanie", "Kaucja", "Inne"
 ];
 
 const PAYMENT_STATUSES: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -206,6 +207,29 @@ function SubleaseFormFields({ form, setForm, apartments }: {
           data-testid="switch-media-by-meters"
         />
       </div>
+
+      <div className="flex items-center justify-between rounded-md border p-3">
+        <Label htmlFor="has-deposit" className="text-sm font-medium cursor-pointer">Kaucja</Label>
+        <Switch
+          id="has-deposit"
+          checked={!!form.hasDeposit}
+          onCheckedChange={(checked) => setForm({ ...form, hasDeposit: checked, ...(!checked ? { depositAmount: "", depositReturnDate: "" } : {}) })}
+          data-testid="switch-has-deposit"
+        />
+      </div>
+
+      {form.hasDeposit && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Kwota kaucji (PLN)</Label>
+            <Input type="number" step="0.01" value={form.depositAmount || ""} onChange={(e) => setForm({ ...form, depositAmount: e.target.value })} data-testid="input-deposit-amount" />
+          </div>
+          <div className="space-y-2">
+            <Label>Termin zwrotu kaucji</Label>
+            <Input type="date" value={form.depositReturnDate || ""} onChange={(e) => setForm({ ...form, depositReturnDate: e.target.value })} data-testid="input-deposit-return-date" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -519,6 +543,116 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
   );
 }
 
+type DepositSortKey = "apartment" | "tenant" | "amount" | "returnDate";
+
+function DepositsToReturn({ subleases, apartments }: { subleases: Sublease[]; apartments: Apartment[] }) {
+  const [sortKey, setSortKey] = useState<DepositSortKey>("returnDate");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const deposits = useMemo(() => {
+    return subleases.filter(s => s.hasDeposit && s.depositAmount && Number(s.depositAmount) > 0);
+  }, [subleases]);
+
+  const getApartmentNames = (s: Sublease) => {
+    const ids = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
+    if (ids.length === 0) return "—";
+    return ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ");
+  };
+
+  const getTenantName = (s: Sublease) => {
+    if (s.tenantType === "firma") return s.companyName || "—";
+    return [s.firstName, s.lastName].filter(Boolean).join(" ") || "—";
+  };
+
+  const sorted = useMemo(() => {
+    const arr = [...deposits];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case "apartment": return dir * getApartmentNames(a).localeCompare(getApartmentNames(b), "pl");
+        case "tenant": return dir * getTenantName(a).localeCompare(getTenantName(b), "pl");
+        case "amount": return dir * ((Number(a.depositAmount) || 0) - (Number(b.depositAmount) || 0));
+        case "returnDate": return dir * (a.depositReturnDate || "9999").localeCompare(b.depositReturnDate || "9999");
+        default: return 0;
+      }
+    });
+    return arr;
+  }, [deposits, sortKey, sortDir, apartments]);
+
+  const handleSort = (key: DepositSortKey) => {
+    if (sortKey === key) setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const SortIcon = ({ column }: { column: DepositSortKey }) => {
+    if (sortKey !== column) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
+  if (deposits.length === 0) return null;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Shield className="h-5 w-5" />
+          Kaucje do zwrotu
+        </CardTitle>
+        <Badge variant="outline">{deposits.length}</Badge>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="cursor-pointer select-none" onClick={() => handleSort("apartment")} data-testid="th-deposit-apartment">
+                <div className="flex items-center">Apartament<SortIcon column="apartment" /></div>
+              </TableHead>
+              <TableHead className="cursor-pointer select-none" onClick={() => handleSort("tenant")} data-testid="th-deposit-tenant">
+                <div className="flex items-center">Najemca<SortIcon column="tenant" /></div>
+              </TableHead>
+              <TableHead className="cursor-pointer select-none" onClick={() => handleSort("amount")} data-testid="th-deposit-amount">
+                <div className="flex items-center">Kwota kaucji<SortIcon column="amount" /></div>
+              </TableHead>
+              <TableHead className="cursor-pointer select-none" onClick={() => handleSort("returnDate")} data-testid="th-deposit-return-date">
+                <div className="flex items-center">Termin zwrotu<SortIcon column="returnDate" /></div>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.map((s) => {
+              const isOverdue = s.depositReturnDate && s.depositReturnDate < today;
+              const isSoon = s.depositReturnDate && !isOverdue && s.depositReturnDate <= new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+              return (
+                <TableRow key={s.id} data-testid={`row-deposit-${s.id}`}>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                        const apt = apartments.find(a => a.id === id);
+                        return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+                      })}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-medium">{getTenantName(s)}</TableCell>
+                  <TableCell>{Number(s.depositAmount).toFixed(2)} PLN</TableCell>
+                  <TableCell>
+                    <span className={isOverdue ? "text-destructive font-medium" : isSoon ? "text-orange-500 font-medium" : ""}>
+                      {s.depositReturnDate || "—"}
+                    </span>
+                    {isOverdue && <Badge variant="destructive" className="ml-2 text-xs">Po terminie</Badge>}
+                    {isSoon && !isOverdue && <Badge variant="outline" className="ml-2 text-xs border-orange-400 text-orange-500">Wkrótce</Badge>}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Subleases() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -612,6 +746,9 @@ export default function Subleases() {
       endDate: s.endDate,
       rentAmount: s.rentAmount || "",
       additionalFees: s.additionalFees || "",
+      hasDeposit: s.hasDeposit || false,
+      depositAmount: s.depositAmount || "",
+      depositReturnDate: s.depositReturnDate || "",
     });
     setEditId(s.id);
     setActiveTab("dane");
@@ -832,6 +969,8 @@ export default function Subleases() {
           </Table>
         </div>
       )}
+
+      <DepositsToReturn subleases={subleases} apartments={apartments} />
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(v); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
