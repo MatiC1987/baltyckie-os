@@ -54,6 +54,8 @@ export default function Saldo({ personName }: { personName: string }) {
   const [editingCat, setEditingCat] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
+  const [editingInitialBalance, setEditingInitialBalance] = useState(false);
+  const [initialBalanceInput, setInitialBalanceInput] = useState("");
 
   const [newEntry, setNewEntry] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -78,6 +80,26 @@ export default function Saldo({ personName }: { personName: string }) {
       const res = await fetch(`/api/saldo?personName=${encodeURIComponent(personName)}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch saldo entries");
       return res.json();
+    },
+  });
+
+  const { data: initialBalanceData } = useQuery<{ personName: string; initialBalance: string }>({
+    queryKey: ["/api/saldo/initial-balance", { personName }],
+    queryFn: async () => {
+      const res = await fetch(`/api/saldo/initial-balance?personName=${encodeURIComponent(personName)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch initial balance");
+      return res.json();
+    },
+  });
+
+  const initialBalance = parseFloat(initialBalanceData?.initialBalance || "0");
+
+  const updateInitialBalanceMutation = useMutation({
+    mutationFn: (value: string) => apiRequest("PUT", "/api/saldo/initial-balance", { personName, initialBalance: value }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/initial-balance", { personName }] });
+      toast({ title: "Zapisano saldo początkowe" });
+      setEditingInitialBalance(false);
     },
   });
 
@@ -234,6 +256,18 @@ export default function Saldo({ personName }: { personName: string }) {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
+  const runningSaldoMap = useMemo(() => {
+    const map = new Map<number, number>();
+    let running = initialBalance;
+    for (const e of entries) {
+      if (e.cashAmount) running += parseFloat(e.cashAmount);
+      map.set(e.id, running);
+    }
+    return map;
+  }, [entries, initialBalance]);
+
+  const currentSaldo = entries.length > 0 ? (runningSaldoMap.get(entries[entries.length - 1].id) || initialBalance) : initialBalance;
+
   const summary = useMemo(() => {
     let totalCash = 0;
     let totalCard = 0;
@@ -241,10 +275,8 @@ export default function Saldo({ personName }: { personName: string }) {
       if (e.cashAmount) totalCash += parseFloat(e.cashAmount);
       if (e.cardAmount) totalCard += parseFloat(e.cardAmount);
     });
-    const newestEntry = entries.length > 0 ? entries[entries.length - 1] : null;
-    const lastSaldo = newestEntry ? parseFloat(newestEntry.saldo || "0") : 0;
-    return { totalCash, totalCard, lastSaldo, count: filtered.length };
-  }, [filtered, entries]);
+    return { totalCash, totalCard, lastSaldo: currentSaldo, count: filtered.length };
+  }, [filtered, currentSaldo]);
 
   const handleImport = async () => {
     const file = fileInputRef.current?.files?.[0];
@@ -327,6 +359,69 @@ export default function Saldo({ personName }: { personName: string }) {
           )}
         </div>
       </div>
+
+      {activeTab === "wpisy" && (
+        <Card>
+          <CardContent className="py-2.5 px-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saldo początkowe:</span>
+                {editingInitialBalance ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={initialBalanceInput}
+                      onChange={e => setInitialBalanceInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") updateInitialBalanceMutation.mutate(initialBalanceInput);
+                        if (e.key === "Escape") setEditingInitialBalance(false);
+                      }}
+                      className="w-32"
+                      autoFocus
+                      data-testid="input-initial-balance"
+                    />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => updateInitialBalanceMutation.mutate(initialBalanceInput)}
+                      disabled={updateInitialBalanceMutation.isPending}
+                      data-testid="button-save-initial-balance"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setEditingInitialBalance(false)}
+                      data-testid="button-cancel-initial-balance"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    className="text-sm font-bold tabular-nums hover:underline cursor-pointer"
+                    onClick={() => { setInitialBalanceInput(initialBalance.toString()); setEditingInitialBalance(true); }}
+                    data-testid="button-edit-initial-balance"
+                  >
+                    {formatNum(initialBalance.toFixed(2))} zł
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aktualne saldo:</span>
+                <span className={`text-sm font-bold tabular-nums ${currentSaldo >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-current-saldo">
+                  {formatNum(currentSaldo.toFixed(2))} zł
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground ml-auto">
+                Tylko płatności gotówkowe wpływają na saldo
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {activeTab === "kategorie" && (
         <Card>
@@ -556,7 +651,7 @@ export default function Saldo({ personName }: { personName: string }) {
                     <td className="border-b border-r border-border px-2 py-1.5 text-center" data-testid={`cell-kf-${entry.id}`}>{entry.kasaFiskalna || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-center" data-testid={`cell-fv-${entry.id}`}>{entry.faktura || ""}</td>
                     <td className={`border-b border-r-2 border-border px-2 py-1.5 text-right tabular-nums font-semibold ${cashVal !== null && cashVal < 0 ? "text-red-600 dark:text-red-400" : cashVal !== null && cashVal > 0 ? "text-green-600 dark:text-green-400" : ""}`} data-testid={`cell-cash-${entry.id}`}>{formatNum(entry.cashAmount)}</td>
-                    <td className="border-b border-r-2 border-border px-2 py-1.5 text-right tabular-nums font-bold" data-testid={`cell-saldo-${entry.id}`}>{formatNum(entry.saldo)}</td>
+                    <td className="border-b border-r-2 border-border px-2 py-1.5 text-right tabular-nums font-bold" data-testid={`cell-saldo-${entry.id}`}>{formatNum((runningSaldoMap.get(entry.id) ?? 0).toFixed(2))}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-auth-${entry.id}`}>{entry.authCode || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-right tabular-nums" data-testid={`cell-card-${entry.id}`}>{formatNum(entry.cardAmount)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground truncate" data-testid={`cell-notes-${entry.id}`}>{entry.notes || ""}</td>

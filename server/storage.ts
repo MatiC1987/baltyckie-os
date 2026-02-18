@@ -16,6 +16,7 @@ import {
   serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
   serviceContracts, ServiceContract, InsertServiceContract,
   saldoEntries, SaldoEntry, InsertSaldoEntry,
+  saldoInitialBalances,
   saldoCategories,
   subleases, Sublease, InsertSublease,
   subleasePayments, SubleasePayment, InsertSubleasePayment,
@@ -144,6 +145,8 @@ export interface IStorage {
   updateSaldoEntry(id: number, entry: Partial<InsertSaldoEntry>): Promise<SaldoEntry>;
   deleteSaldoEntry(id: number): Promise<void>;
   deleteAllSaldoEntries(): Promise<void>;
+  getSaldoInitialBalance(personName: string): Promise<string>;
+  setSaldoInitialBalance(personName: string, initialBalance: string): Promise<void>;
 
   // Subleases
   getSubleases(): Promise<Sublease[]>;
@@ -683,6 +686,20 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAllSaldoEntries(): Promise<void> {
     await db.delete(saldoEntries);
+  }
+
+  async getSaldoInitialBalance(personName: string): Promise<string> {
+    const rows = await db.select().from(saldoInitialBalances).where(eq(saldoInitialBalances.personName, personName));
+    return rows.length > 0 ? (rows[0].initialBalance || "0.00") : "0.00";
+  }
+
+  async setSaldoInitialBalance(personName: string, initialBalance: string): Promise<void> {
+    const existing = await db.select().from(saldoInitialBalances).where(eq(saldoInitialBalances.personName, personName));
+    if (existing.length > 0) {
+      await db.update(saldoInitialBalances).set({ initialBalance }).where(eq(saldoInitialBalances.personName, personName));
+    } else {
+      await db.insert(saldoInitialBalances).values({ personName, initialBalance });
+    }
   }
 
   // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)

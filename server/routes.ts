@@ -324,11 +324,13 @@ export async function registerRoutes(
       if (acc.balanceSource === "auto_saldo") {
         const personName = saldoPersonMap[acc.name];
         if (personName) {
+          const initialBal = parseFloat(await storage.getSaldoInitialBalance(personName));
           const entries = await storage.getSaldoEntries({ personName });
-          if (entries.length > 0) {
-            const last = entries[entries.length - 1];
-            acc.latestBalance = last.saldo || "0.00";
+          let running = initialBal;
+          for (const e of entries) {
+            if (e.cashAmount) running += parseFloat(e.cashAmount);
           }
+          acc.latestBalance = running.toFixed(2);
         }
       }
     }
@@ -343,13 +345,13 @@ export async function registerRoutes(
     const persons = ["Małgorzata Latasiewicz", "Jolanta Głodkowska", "Mateusz Cieślak"];
     const result: Record<string, number> = {};
     for (const person of persons) {
+      const initialBal = parseFloat(await storage.getSaldoInitialBalance(person));
       const entries = await storage.getSaldoEntries({ personName: person });
-      if (entries.length > 0) {
-        const last = entries[entries.length - 1];
-        result[person] = parseFloat(last.saldo || "0");
-      } else {
-        result[person] = 0;
+      let running = initialBal;
+      for (const e of entries) {
+        if (e.cashAmount) running += parseFloat(e.cashAmount);
       }
+      result[person] = running;
     }
     res.json(result);
   });
@@ -954,6 +956,20 @@ export async function registerRoutes(
   });
 
   // Saldo
+  app.get('/api/saldo/initial-balance', isAuthenticated, async (req, res) => {
+    const personName = req.query.personName as string;
+    if (!personName) return res.status(400).json({ message: "personName required" });
+    const balance = await storage.getSaldoInitialBalance(personName);
+    res.json({ personName, initialBalance: balance });
+  });
+
+  app.put('/api/saldo/initial-balance', isAuthenticated, async (req, res) => {
+    const { personName, initialBalance } = req.body;
+    if (!personName) return res.status(400).json({ message: "personName required" });
+    await storage.setSaldoInitialBalance(personName, parseFloat(initialBalance || "0").toFixed(2));
+    res.json({ success: true });
+  });
+
   app.get('/api/saldo', isAuthenticated, async (req, res) => {
     const { startDate, endDate, personName } = req.query;
     const entries = await storage.getSaldoEntries({
