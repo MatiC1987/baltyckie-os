@@ -518,7 +518,10 @@ export default function Terminarz() {
                         );
                       })}
 
-                      {subleases.filter(s => s.apartmentId === apt.id).map((sub) => {
+                      {subleases.filter(s => {
+                        const ids = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
+                        return ids.includes(apt.id);
+                      }).map((sub) => {
                         const subStart = new Date(sub.startDate);
                         const subEnd = new Date(sub.endDate);
                         const startIdx = days.findIndex(d => isSameDay(d, subStart));

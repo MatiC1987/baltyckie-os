@@ -140,17 +140,35 @@ function SubleaseFormFields({ form, setForm, apartments }: {
       </div>
 
       <div className="space-y-2">
-        <Label>Apartament</Label>
-        <Select value={form.apartmentId?.toString() || ""} onValueChange={(v) => setForm({ ...form, apartmentId: parseInt(v) })}>
-          <SelectTrigger data-testid="select-apartment">
-            <SelectValue placeholder="Wybierz apartament" />
-          </SelectTrigger>
-          <SelectContent>
-            {apartments.map((a) => (
-              <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label>Apartamenty</Label>
+        <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1" data-testid="select-apartments-multi">
+          {apartments.map((a) => {
+            const selectedIds: number[] = form.apartmentIds || (form.apartmentId ? [form.apartmentId] : []);
+            const checked = selectedIds.includes(a.id);
+            return (
+              <label key={a.id} className="flex items-center gap-2 px-2 py-1 rounded hover-elevate cursor-pointer text-sm" data-testid={`checkbox-apartment-${a.id}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const newIds = checked ? selectedIds.filter(id => id !== a.id) : [...selectedIds, a.id];
+                    setForm({ ...form, apartmentIds: newIds, apartmentId: newIds[0] || null });
+                  }}
+                  className="rounded"
+                />
+                {a.name}
+              </label>
+            );
+          })}
+        </div>
+        {((form.apartmentIds || []).length > 0 || form.apartmentId) && (
+          <div className="flex flex-wrap gap-1">
+            {(form.apartmentIds || (form.apartmentId ? [form.apartmentId] : [])).map((id: number) => {
+              const apt = apartments.find(a => a.id === id);
+              return apt ? <Badge key={id} variant="secondary" className="text-xs">{apt.name}</Badge> : null;
+            })}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -538,6 +556,7 @@ export default function Subleases() {
       invoiceEmail: s.invoiceEmail || "",
       vatRate: s.vatRate || "23%",
       apartmentId: s.apartmentId,
+      apartmentIds: s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []),
       startDate: s.startDate,
       endDate: s.endDate,
       rentAmount: s.rentAmount || "",
@@ -565,16 +584,17 @@ export default function Subleases() {
     return [s.firstName, s.lastName].filter(Boolean).join(" ") || "—";
   };
 
-  const getApartmentName = (id: number | null) => {
-    if (!id) return "—";
-    return apartments.find((a) => a.id === id)?.name || "—";
+  const getApartmentNames = (s: Sublease) => {
+    const ids = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
+    if (ids.length === 0) return "—";
+    return ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ");
   };
 
   const filtered = subleases.filter((s) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     const name = getTenantName(s).toLowerCase();
-    const apt = getApartmentName(s.apartmentId).toLowerCase();
+    const apt = getApartmentNames(s).toLowerCase();
     return name.includes(q) || apt.includes(q);
   });
 
@@ -643,7 +663,15 @@ export default function Subleases() {
                       {s.tenantType === "firma" ? "Firma" : "Osoba"}
                     </Badge>
                   </TableCell>
-                  <TableCell>{getApartmentName(s.apartmentId)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                        const apt = apartments.find(a => a.id === id);
+                        return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+                      })}
+                      {!(s.apartmentIds?.length) && !s.apartmentId && "—"}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-sm">{s.startDate} — {s.endDate}</TableCell>
                   <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
                   <TableCell>

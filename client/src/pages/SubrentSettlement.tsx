@@ -72,8 +72,8 @@ export default function SubrentSettlement() {
     for (const { subleaseId, payments } of paymentQueries.data) {
       const sub = activeSubleases.find(s => s.id === subleaseId);
       if (!sub) continue;
-      const apt = apartments.find(a => a.id === sub.apartmentId);
-      const apartmentName = apt?.name || "—";
+      const ids = sub.apartmentIds || (sub.apartmentId ? [sub.apartmentId] : []);
+      const apartmentName = ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ") || "—";
       const tenantName = sub.tenantType === "firma"
         ? (sub.companyName || "—")
         : [sub.firstName, sub.lastName].filter(Boolean).join(" ") || "—";
