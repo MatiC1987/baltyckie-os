@@ -1283,7 +1283,7 @@ export default function Subleases() {
       <DepositsToReturn subleases={subleases} apartments={apartments} />
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(v); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle data-testid="text-dialog-title">
               {editId ? "Edytuj umowę podnajmu" : "Nowa umowa podnajmu"}
