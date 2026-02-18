@@ -464,6 +464,26 @@ export const insertSubleaseMeterPriceSchema = createInsertSchema(subleaseMeterPr
 export type SubleaseMeterPrice = typeof subleaseMeterPrices.$inferSelect;
 export type InsertSubleaseMeterPrice = z.infer<typeof insertSubleaseMeterPriceSchema>;
 
+export const mediaSettlementReports = pgTable("media_settlement_reports", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  periodFrom: date("period_from").notNull(),
+  periodTo: date("period_to").notNull(),
+  electricityConsumption: numeric("electricity_consumption", { precision: 12, scale: 3 }),
+  electricityCost: numeric("electricity_cost", { precision: 12, scale: 2 }),
+  coldWaterConsumption: numeric("cold_water_consumption", { precision: 12, scale: 3 }),
+  coldWaterCost: numeric("cold_water_cost", { precision: 12, scale: 2 }),
+  hotWaterConsumption: numeric("hot_water_consumption", { precision: 12, scale: 3 }),
+  hotWaterCost: numeric("hot_water_cost", { precision: 12, scale: 2 }),
+  totalCost: numeric("total_cost", { precision: 12, scale: 2 }),
+  paymentStatus: text("payment_status").notNull().default("NIEOPLACONE"),
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
+export const insertMediaSettlementReportSchema = createInsertSchema(mediaSettlementReports).omit({ id: true, generatedAt: true });
+export type MediaSettlementReport = typeof mediaSettlementReports.$inferSelect;
+export type InsertMediaSettlementReport = z.infer<typeof insertMediaSettlementReportSchema>;
+
 export const appUsers = pgTable("app_users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
