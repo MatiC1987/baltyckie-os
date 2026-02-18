@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ChevronDown, ChevronRight, Settings, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -86,6 +87,40 @@ export default function CostsApartments() {
   const [editingEntry, setEditingEntry] = useState<CostEntry | null>(null);
   const [editCategories, setEditCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const { toast } = useToast();
+
+  const handleImportFromExcel = async () => {
+    setIsImporting(true);
+    try {
+      const res = await fetch('/api/costs-apartments/import-data', { credentials: 'include' });
+      if (!res.ok) throw new Error('Brak danych');
+      const importData = await res.json();
+      const { data: yearlyData, categories } = importData;
+
+      let totalEntries = 0;
+      for (const [yr, entries] of Object.entries(yearlyData as Record<string, DataMap>)) {
+        const existing = loadData(Number(yr));
+        const merged = { ...existing, ...entries };
+        saveData(Number(yr), merged);
+        totalEntries += Object.keys(entries).length;
+      }
+
+      if (categories) {
+        const existingCats = loadCategories();
+        const mergedCats = { ...existingCats, ...categories };
+        saveCategories(mergedCats);
+        setCategoriesMap(mergedCats);
+      }
+
+      setData(loadData(year));
+      toast({ title: "Import zakończony", description: `Zaimportowano dane dla ${Object.keys(yearlyData).length} lat (${totalEntries} pozycji)` });
+    } catch (err) {
+      toast({ title: "Błąd importu", description: "Nie udało się zaimportować danych", variant: "destructive" });
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const { data: apartments = [] } = useQuery<Apartment[]>({ queryKey: ["/api/apartments"] });
   const { data: locations = [] } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
@@ -241,16 +276,27 @@ export default function CostsApartments() {
           <h1 className="text-2xl font-bold" data-testid="text-costs-apartments-title">Koszty (Apartamenty)</h1>
           <p className="text-muted-foreground text-sm">Zestawienie kosztów w podziale na apartamenty i lokalizacje — P (prognoza), R (rzeczywiste), S (saldo)</p>
         </div>
-        <Select value={String(year)} onValueChange={handleYearChange}>
-          <SelectTrigger className="w-[100px]" data-testid="select-year">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={handleImportFromExcel}
+            disabled={isImporting}
+            data-testid="button-import-costs"
+          >
+            <FolderInput className="h-4 w-4 mr-1" />
+            {isImporting ? "Importowanie..." : "Import z Excel"}
+          </Button>
+          <Select value={String(year)} onValueChange={handleYearChange}>
+            <SelectTrigger className="w-[100px]" data-testid="select-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">

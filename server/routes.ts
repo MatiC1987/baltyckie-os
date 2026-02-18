@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import * as fs from "fs";
+import * as path from "path";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
@@ -525,6 +527,17 @@ export async function registerRoutes(
   app.delete('/api/attachments/:id', isAuthenticated, async (req, res) => {
     await storage.deleteAttachment(Number(req.params.id));
     res.status(204).send();
+  });
+
+  // Costs Apartments import data
+  app.get('/api/costs-apartments/import-data', isAuthenticated, (_req, res) => {
+    try {
+      const filePath = path.join(__dirname, 'data', 'costs-apartments-import.json');
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      res.json(JSON.parse(raw));
+    } catch (err) {
+      res.status(404).json({ message: "Brak danych importu" });
+    }
   });
 
   // Employees
