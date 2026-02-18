@@ -140,6 +140,7 @@ export default function CostsSchedule() {
 
   const filteredSchedules = useMemo(() => {
     return schedules.filter(s => {
+      if (s.category === "APARTAMENTY") return false;
       if (filterCategory !== "all" && s.category !== filterCategory) return false;
       if (filterStatus === "active" && !s.active) return false;
       if (filterStatus === "inactive" && s.active) return false;
@@ -148,7 +149,7 @@ export default function CostsSchedule() {
   }, [schedules, filterCategory, filterStatus]);
 
   const summaryStats = useMemo(() => {
-    const activeSchedules = schedules.filter(s => s.active);
+    const activeSchedules = schedules.filter(s => s.active && s.category !== "APARTAMENTY");
     const monthlyTotal = activeSchedules.reduce((sum, s) => {
       const amt = parseFloat(s.amount || "0");
       if (s.frequency === "monthly") return sum + amt;

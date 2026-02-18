@@ -102,15 +102,21 @@ function buildScheduleOverlay(
       if (monthPayments.length > 0) {
         const prognozaKey = makeCellKey(catId, itemIdx, month, "prognoza");
         const rzeczKey = makeCellKey(catId, itemIdx, month, "rzeczywiste");
-        const totalAmount = monthPayments.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
-        const paidAmount = monthPayments
-          .filter(p => p.status === "OPLACONE")
-          .reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
 
-        overlay[prognozaKey] = (overlay[prognozaKey] || 0) + totalAmount;
-        if (paidAmount > 0) {
-          overlay[rzeczKey] = (overlay[rzeczKey] || 0) + paidAmount;
+        let prognozaTotal = 0;
+        let rzeczTotal = 0;
+
+        for (const p of monthPayments) {
+          const amt = parseFloat(p.amount || "0");
+          const forecast = p.forecastAmount ? parseFloat(p.forecastAmount) : amt;
+          prognozaTotal += isNaN(forecast) ? amt : forecast;
+          if (p.status === "OPLACONE") {
+            rzeczTotal += amt;
+          }
         }
+
+        if (prognozaTotal !== 0) overlay[prognozaKey] = (overlay[prognozaKey] || 0) + prognozaTotal;
+        if (rzeczTotal !== 0) overlay[rzeczKey] = (overlay[rzeczKey] || 0) + rzeczTotal;
       }
     }
   }

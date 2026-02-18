@@ -543,6 +543,7 @@ export const costSchedulePayments = pgTable("cost_schedule_payments", {
   scheduleId: integer("schedule_id").references(() => costSchedules.id, { onDelete: "cascade" }).notNull(),
   dueDate: date("due_date").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  forecastAmount: numeric("forecast_amount", { precision: 12, scale: 2 }),
   status: text("status").notNull().default("NIEOPLACONE"),
   paidDate: date("paid_date"),
   notes: text("notes"),
