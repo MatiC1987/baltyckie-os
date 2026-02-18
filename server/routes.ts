@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -818,6 +818,27 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
     }
+  });
+
+  // Meter Price History
+  app.get('/api/subleases/:id/meter-prices', isAuthenticated, async (req, res) => {
+    const prices = await storage.getMeterPrices(Number(req.params.id));
+    res.json(prices);
+  });
+
+  app.post('/api/subleases/:id/meter-prices', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertSubleaseMeterPriceSchema.parse({ ...req.body, subleaseId: Number(req.params.id) });
+      const created = await storage.createMeterPrice(parsed);
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
+    }
+  });
+
+  app.delete('/api/meter-prices/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteMeterPrice(Number(req.params.id));
+    res.status(204).send();
   });
 
   // Saldo
