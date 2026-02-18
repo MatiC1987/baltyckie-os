@@ -76,6 +76,8 @@ export const accounts = pgTable("accounts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   type: text("type").default("BANK"),
+  category: text("category").default("KONTA_BANKOWE"),
+  balanceSource: text("balance_source").default("manual"),
 });
 
 export const accountSnapshots = pgTable("account_snapshots", {
