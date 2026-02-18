@@ -26,6 +26,7 @@ import Forecast from "@/pages/Forecast";
 import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
+import Revenue from "@/pages/Revenue";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -78,8 +79,7 @@ function Router() {
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
 
-      <Route path="/income-rent" component={() => <AuthenticatedPlaceholder title="Przychody Najem" description="Przychody z najmu apartamentów." />} />
-      <Route path="/income-subrent" component={() => <AuthenticatedPlaceholder title="Przychody Podnajem" description="Przychody z podnajmu apartamentów." />} />
+      <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
       <Route path="/forecast" component={() => <AuthenticatedRoute component={Forecast} />} />
       <Route path="/costs-apartments" component={() => <AuthenticatedRoute component={CostsApartments} />} />
       <Route path="/costs-expenses" component={() => <AuthenticatedRoute component={CostsExpenses} />} />

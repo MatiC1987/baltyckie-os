@@ -314,6 +314,100 @@ export async function registerRoutes(
     res.json(balance);
   });
 
+  app.get("/api/revenue", isAuthenticated, async (req, res) => {
+    const year = Number(req.query.year) || new Date().getFullYear();
+    const reservations = await storage.getReservations();
+    const subleases = await storage.getSubleases();
+    const subleasePaymentsAll: Record<number, any[]> = {};
+
+    for (const s of subleases) {
+      const payments = await storage.getSubleasePayments(s.id);
+      subleasePaymentsAll[s.id] = payments;
+    }
+
+    const revenueData: Record<number, Record<number, {
+      najem: number;
+      podnajem: number;
+      doplaty_najem: number;
+      doplaty_podnajem: number;
+    }>> = {};
+
+    const initMonth = (aptId: number, month: number) => {
+      if (!revenueData[aptId]) revenueData[aptId] = {};
+      if (!revenueData[aptId][month]) revenueData[aptId][month] = { najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
+    };
+
+    for (const r of reservations) {
+      if (!r.startDate) continue;
+      if (r.status === "ANULOWANA") continue;
+      const d = new Date(r.startDate);
+      if (d.getFullYear() !== year) continue;
+      const month = d.getMonth();
+      const price = Number(r.price) || 0;
+      const paid = Number(r.paidAmount) || 0;
+      const unpaid = Math.max(0, price - paid);
+
+      const aptIds = r.apartmentIds && r.apartmentIds.length > 0
+        ? r.apartmentIds
+        : (r.apartmentId ? [r.apartmentId] : []);
+
+      for (const aptId of aptIds) {
+        if (!aptId) continue;
+        initMonth(aptId, month);
+        const share = aptIds.length > 0 ? price / aptIds.length : price;
+        const shareUnpaid = aptIds.length > 0 ? unpaid / aptIds.length : unpaid;
+        revenueData[aptId][month].najem += share;
+        revenueData[aptId][month].doplaty_najem += shareUnpaid;
+      }
+    }
+
+    for (const s of subleases) {
+      const aptIds = s.apartmentIds && s.apartmentIds.length > 0
+        ? s.apartmentIds
+        : (s.apartmentId ? [s.apartmentId] : []);
+
+      if (aptIds.length === 0) continue;
+
+      const rent = Number(s.rentAmount) || 0;
+      const additionalFees = Number(s.additionalFees) || 0;
+      const monthlyIncome = rent + additionalFees;
+
+      const sDate = new Date(s.startDate);
+      const eDate = new Date(s.endDate);
+
+      for (let m = 0; m < 12; m++) {
+        const mStart = new Date(year, m, 1);
+        const mEnd = new Date(year, m + 1, 0);
+        if (mStart > eDate || mEnd < sDate) continue;
+
+        for (const aptId of aptIds) {
+          if (!aptId) continue;
+          initMonth(aptId, m);
+          const share = monthlyIncome / aptIds.length;
+          revenueData[aptId][m].podnajem += share;
+        }
+      }
+
+      const payments = subleasePaymentsAll[s.id] || [];
+      for (const p of payments) {
+        if (!p.dueDate) continue;
+        const pd = new Date(p.dueDate);
+        if (pd.getFullYear() !== year) continue;
+        const month = pd.getMonth();
+        if (p.status === "do_oplacenia") {
+          const amount = Number(p.amount) || 0;
+          for (const aptId of aptIds) {
+            if (!aptId) continue;
+            initMonth(aptId, month);
+            revenueData[aptId][month].doplaty_podnajem += amount / aptIds.length;
+          }
+        }
+      }
+    }
+
+    res.json(revenueData);
+  });
+
   // Accounts
   app.get(api.accounts.list.path, isAuthenticated, async (req, res) => {
     const accounts = await storage.getAccounts();
