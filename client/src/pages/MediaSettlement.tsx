@@ -241,6 +241,194 @@ function PriceHistoryDialog({
   );
 }
 
+function EditReportDialog({
+  report,
+  open,
+  onOpenChange,
+  onSave,
+  isPending,
+}: {
+  report: MediaSettlementReport;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Record<string, unknown>) => void;
+  isPending: boolean;
+}) {
+  const [periodFrom, setPeriodFrom] = useState(report.periodFrom || "");
+  const [periodTo, setPeriodTo] = useState(report.periodTo || "");
+  const [elecConsumption, setElecConsumption] = useState(report.electricityConsumption || "");
+  const [elecCost, setElecCost] = useState(report.electricityCost || "");
+  const [coldConsumption, setColdConsumption] = useState(report.coldWaterConsumption || "");
+  const [coldCost, setColdCost] = useState(report.coldWaterCost || "");
+  const [hotConsumption, setHotConsumption] = useState(report.hotWaterConsumption || "");
+  const [hotCost, setHotCost] = useState(report.hotWaterCost || "");
+  const [paymentStatus, setPaymentStatus] = useState(report.paymentStatus || "NIEOPLACONE");
+
+  const totalCost = [elecCost, coldCost, hotCost]
+    .reduce((sum, v) => sum + (parseFloat(String(v)) || 0), 0);
+
+  const handleSubmit = () => {
+    onSave({
+      periodFrom,
+      periodTo,
+      electricityConsumption: elecConsumption || null,
+      electricityCost: elecCost || null,
+      coldWaterConsumption: coldConsumption || null,
+      coldWaterCost: coldCost || null,
+      hotWaterConsumption: hotConsumption || null,
+      hotWaterCost: hotCost || null,
+      totalCost: totalCost.toFixed(2),
+      paymentStatus,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edytuj rozliczenie</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Data od</Label>
+              <Input
+                type="date"
+                value={periodFrom}
+                onChange={(e) => setPeriodFrom(e.target.value)}
+                data-testid="input-edit-period-from"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Data do</Label>
+              <Input
+                type="date"
+                value={periodTo}
+                onChange={(e) => setPeriodTo(e.target.value)}
+                data-testid="input-edit-period-to"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium">Energia elektryczna</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Zużycie (kWh)</Label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={elecConsumption}
+                  onChange={(e) => setElecConsumption(e.target.value)}
+                  data-testid="input-edit-elec-consumption"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Koszt (zł)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={elecCost}
+                  onChange={(e) => setElecCost(e.target.value)}
+                  data-testid="input-edit-elec-cost"
+                />
+              </div>
+            </div>
+
+            <h4 className="text-sm font-medium">Woda zimna</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Zużycie (m³)</Label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={coldConsumption}
+                  onChange={(e) => setColdConsumption(e.target.value)}
+                  data-testid="input-edit-cold-consumption"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Koszt (zł)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={coldCost}
+                  onChange={(e) => setColdCost(e.target.value)}
+                  data-testid="input-edit-cold-cost"
+                />
+              </div>
+            </div>
+
+            <h4 className="text-sm font-medium">Woda ciepła</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Zużycie (m³)</Label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={hotConsumption}
+                  onChange={(e) => setHotConsumption(e.target.value)}
+                  data-testid="input-edit-hot-consumption"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Koszt (zł)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={hotCost}
+                  onChange={(e) => setHotCost(e.target.value)}
+                  data-testid="input-edit-hot-cost"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center p-3 bg-muted/50 rounded-md">
+            <span className="font-medium">Razem</span>
+            <span className="text-lg font-bold">{formatNum(totalCost)} zł</span>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Status płatności</Label>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={paymentStatus === "NIEOPLACONE" ? "default" : "outline"}
+                onClick={() => setPaymentStatus("NIEOPLACONE")}
+                data-testid="button-edit-status-nieoplacone"
+              >
+                NIEOPŁACONE
+              </Button>
+              <Button
+                size="sm"
+                variant={paymentStatus === "OPLACONE" ? "default" : "outline"}
+                className={paymentStatus === "OPLACONE" ? "bg-green-600 text-white" : ""}
+                onClick={() => setPaymentStatus("OPLACONE")}
+                data-testid="button-edit-status-oplacone"
+              >
+                OPŁACONE
+              </Button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <DialogClose asChild>
+            <Button variant="outline">Anuluj</Button>
+          </DialogClose>
+          <Button
+            data-testid="button-save-edit-report"
+            disabled={isPending || !periodFrom || !periodTo}
+            onClick={handleSubmit}
+          >
+            {isPending ? "Zapisywanie..." : "Zapisz zmiany"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SubleaseMediaCard({
   sublease,
   apartments,
@@ -257,6 +445,7 @@ function SubleaseMediaCard({
   const [newReadingDate, setNewReadingDate] = useState("");
   const [newReadingValue, setNewReadingValue] = useState("");
   const [addingReadingType, setAddingReadingType] = useState<MeterType | null>(null);
+  const [editReport, setEditReport] = useState<MediaSettlementReport | null>(null);
 
   const apt = apartments.find((a) => a.id === sublease.apartmentId);
   const aptName = apt?.name || `Apt #${sublease.apartmentId}`;
@@ -467,6 +656,17 @@ function SubleaseMediaCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reportsKey });
       toast({ title: "Zaktualizowano status płatności" });
+    },
+  });
+
+  const updateReport = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+      await apiRequest("PATCH", `/api/settlement-reports/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reportsKey });
+      toast({ title: "Zaktualizowano rozliczenie" });
+      setEditReport(null);
     },
   });
 
@@ -798,7 +998,7 @@ function SubleaseMediaCard({
                         <TableHead className="text-right">Woda ciepła</TableHead>
                         <TableHead className="text-right">Razem</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="w-10"></TableHead>
+                        <TableHead className="w-20"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -844,14 +1044,24 @@ function SubleaseMediaCard({
                             </Button>
                           </TableCell>
                           <TableCell>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              data-testid={`button-delete-report-${report.id}`}
-                              onClick={() => deleteReport.mutate(report.id)}
-                            >
-                              <Trash2 className="w-3 h-3 text-destructive" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                data-testid={`button-edit-report-${report.id}`}
+                                onClick={() => setEditReport(report)}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                data-testid={`button-delete-report-${report.id}`}
+                                onClick={() => deleteReport.mutate(report.id)}
+                              >
+                                <Trash2 className="w-3 h-3 text-destructive" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -943,6 +1153,16 @@ function SubleaseMediaCard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {editReport && (
+        <EditReportDialog
+          report={editReport}
+          open={!!editReport}
+          onOpenChange={(open) => { if (!open) setEditReport(null); }}
+          onSave={(data) => updateReport.mutate({ id: editReport.id, data })}
+          isPending={updateReport.isPending}
+        />
+      )}
     </>
   );
 }
