@@ -30,7 +30,8 @@ import {
   costSchedules, CostSchedule, InsertCostSchedule,
   costSchedulePayments, CostSchedulePayment, InsertCostSchedulePayment,
   installmentSchedules, InstallmentSchedule, InsertInstallmentSchedule,
-  installmentPayments, InstallmentPayment, InsertInstallmentPayment
+  installmentPayments, InstallmentPayment, InsertInstallmentPayment,
+  serviceContractAttachments, ServiceContractAttachment, InsertServiceContractAttachment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -124,6 +125,11 @@ export interface IStorage {
   createServiceContract(contract: InsertServiceContract): Promise<ServiceContract>;
   updateServiceContract(id: number, contract: Partial<InsertServiceContract>): Promise<ServiceContract>;
   deleteServiceContract(id: number): Promise<void>;
+
+  getAllServiceContractAttachments(): Promise<ServiceContractAttachment[]>;
+  getServiceContractAttachments(contractId: number): Promise<ServiceContractAttachment[]>;
+  createServiceContractAttachment(attachment: InsertServiceContractAttachment): Promise<ServiceContractAttachment>;
+  deleteServiceContractAttachment(id: number): Promise<void>;
 
   // Saldo
   getSaldoEntries(filters?: { startDate?: string; endDate?: string; personName?: string }): Promise<SaldoEntry[]>;
@@ -553,6 +559,23 @@ export class DatabaseStorage implements IStorage {
 
   async deleteServiceContract(id: number): Promise<void> {
     await db.delete(serviceContracts).where(eq(serviceContracts.id, id));
+  }
+
+  async getAllServiceContractAttachments(): Promise<ServiceContractAttachment[]> {
+    return db.select().from(serviceContractAttachments).orderBy(desc(serviceContractAttachments.uploadedAt));
+  }
+
+  async getServiceContractAttachments(contractId: number): Promise<ServiceContractAttachment[]> {
+    return db.select().from(serviceContractAttachments).where(eq(serviceContractAttachments.contractId, contractId)).orderBy(desc(serviceContractAttachments.uploadedAt));
+  }
+
+  async createServiceContractAttachment(attachment: InsertServiceContractAttachment): Promise<ServiceContractAttachment> {
+    const [created] = await db.insert(serviceContractAttachments).values(attachment).returning();
+    return created;
+  }
+
+  async deleteServiceContractAttachment(id: number): Promise<void> {
+    await db.delete(serviceContractAttachments).where(eq(serviceContractAttachments.id, id));
   }
 
   // Saldo

@@ -15,9 +15,10 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
-import { Plus, Trash2, Pencil, ArrowUp, ArrowDown, GripVertical, Settings } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Trash2, Pencil, ArrowUp, ArrowDown, GripVertical, Settings, FileText, Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { ServiceContract, ServiceContractCategory } from "@shared/schema";
+import type { ServiceContract, ServiceContractCategory, ServiceContractAttachment } from "@shared/schema";
 
 function useServiceContracts() {
   return useQuery<ServiceContract[]>({ queryKey: ["/api/service-contracts"] });
@@ -30,6 +31,9 @@ function useServiceContractCategories() {
 export default function ServiceContracts() {
   const { data: contracts, isLoading: loadingContracts } = useServiceContracts();
   const { data: categories, isLoading: loadingCats } = useServiceContractCategories();
+  const { data: allAttachments = [] } = useQuery<ServiceContractAttachment[]>({
+    queryKey: ['/api/service-contract-attachments/all'],
+  });
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("all");
   const [showAddContract, setShowAddContract] = useState(false);
@@ -153,6 +157,7 @@ export default function ServiceContracts() {
                   <TableHead>Data zakończenia</TableHead>
                   <TableHead>Adres usługi</TableHead>
                   <TableHead>Cena /miesiąc</TableHead>
+                  <TableHead>Załączniki</TableHead>
                   <TableHead className="w-16">Akcje</TableHead>
                 </TableRow>
               </TableHeader>
@@ -169,6 +174,31 @@ export default function ServiceContracts() {
                       {contract.monthlyPrice ? `${Number(contract.monthlyPrice).toFixed(2)} PLN` : "—"}
                     </TableCell>
                     <TableCell>
+                      {(() => {
+                        const atts = allAttachments.filter(a => a.contractId === contract.id);
+                        if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+                        return (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {atts.map(att => (
+                              <a
+                                key={att.id}
+                                href={att.objectPath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={att.fileName}
+                                data-testid={`link-sc-attachment-${att.id}`}
+                              >
+                                <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                                  <FileText className="h-3 w-3" />
+                                  {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : att.category === 'FAKTURA' ? 'Faktura' : 'Inny'}
+                                </Badge>
+                              </a>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-1">
                         <Button size="icon" variant="ghost" onClick={() => setEditingContract(contract)} data-testid={`button-edit-contract-${contract.id}`}>
                           <Pencil className="h-4 w-4" />
@@ -182,7 +212,7 @@ export default function ServiceContracts() {
                 ))}
                 {filteredContracts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       Brak umów w tej kategorii.
                     </TableCell>
                   </TableRow>
@@ -468,8 +498,138 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
             </Button>
           </div>
         </form>
+
+        {contract && <ContractAttachmentsSection contractId={contract.id} />}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ContractAttachmentsSection({ contractId }: { contractId: number }) {
+  const { toast } = useToast();
+  const [selectedCategory, setSelectedCategory] = useState("UMOWA");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const { data: attachments = [] } = useQuery<ServiceContractAttachment[]>({
+    queryKey: ['/api/service-contracts', contractId, 'attachments'],
+    queryFn: async () => {
+      const r = await fetch(`/api/service-contracts/${contractId}/attachments`, { credentials: 'include' });
+      if (!r.ok) throw new Error('Fetch error');
+      return r.json();
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/service-contract-attachments/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) throw new Error('Failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-contracts', contractId, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/service-contract-attachments/all'] });
+      toast({ title: "Sukces", description: "Załącznik usunięty" });
+    },
+  });
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fileName = file.name;
+    const fileType = file.type;
+    const category = selectedCategory;
+
+    setIsUploading(true);
+    try {
+      const urlRes = await fetch("/api/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: fileName, size: file.size, contentType: fileType || "application/octet-stream" }),
+      });
+      if (!urlRes.ok) throw new Error("Nie udało się uzyskać URL do uploadu");
+      const { uploadURL, objectPath } = await urlRes.json();
+
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": fileType || "application/octet-stream" },
+      });
+      if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku");
+
+      const saveRes = await fetch(`/api/service-contracts/${contractId}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ fileName, objectPath, fileType, category }),
+      });
+      if (!saveRes.ok) throw new Error("Nie udało się zapisać załącznika");
+
+      queryClient.invalidateQueries({ queryKey: ['/api/service-contracts', contractId, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/service-contract-attachments/all'] });
+      toast({ title: "Sukces", description: "Załącznik dodany" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+    e.target.value = '';
+  };
+
+  return (
+    <div className="space-y-3 border-t pt-4">
+      <Label className="text-sm font-semibold">Załączniki</Label>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger className="w-32" data-testid="select-sc-att-category">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="UMOWA">Umowa</SelectItem>
+            <SelectItem value="ANEKS">Aneks</SelectItem>
+            <SelectItem value="FAKTURA">Faktura</SelectItem>
+            <SelectItem value="INNY">Inny</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" type="button" disabled={isUploading} asChild>
+          <label className="cursor-pointer" data-testid="button-upload-sc-attachment">
+            <Upload className="h-4 w-4 mr-2" />
+            {isUploading ? "Przesyłanie..." : "Dodaj plik"}
+            <input type="file" className="hidden" onChange={handleFileSelect} disabled={isUploading} />
+          </label>
+        </Button>
+      </div>
+      {attachments.length > 0 ? (
+        <div className="space-y-2">
+          {attachments.map((att) => (
+            <div key={att.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2" data-testid={`sc-attachment-${att.id}`}>
+              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+              <a
+                href={att.objectPath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-primary hover:underline truncate flex-1"
+                title={att.fileName}
+              >
+                {att.fileName}
+              </a>
+              <Badge variant="secondary" className="text-xs shrink-0">
+                {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : att.category === 'FAKTURA' ? 'Faktura' : 'Inny'}
+              </Badge>
+              <Button
+                size="icon"
+                variant="ghost"
+                type="button"
+                onClick={() => deleteMut.mutate(att.id)}
+                data-testid={`button-delete-sc-att-${att.id}`}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Brak załączników</p>
+      )}
+    </div>
   );
 }
 

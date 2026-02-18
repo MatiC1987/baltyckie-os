@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -680,6 +680,35 @@ export async function registerRoutes(
 
   app.delete('/api/service-contracts/:id', isAuthenticated, async (req, res) => {
     await storage.deleteServiceContract(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.get('/api/service-contract-attachments/all', isAuthenticated, async (_req, res) => {
+    const atts = await storage.getAllServiceContractAttachments();
+    res.json(atts);
+  });
+
+  app.get('/api/service-contracts/:id/attachments', isAuthenticated, async (req, res) => {
+    const atts = await storage.getServiceContractAttachments(Number(req.params.id));
+    res.json(atts);
+  });
+
+  app.post('/api/service-contracts/:id/attachments', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertServiceContractAttachmentSchema.parse({
+        ...req.body,
+        contractId: Number(req.params.id),
+        category: req.body.category || 'UMOWA',
+      });
+      const att = await storage.createServiceContractAttachment(parsed);
+      res.status(201).json(att);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
+    }
+  });
+
+  app.delete('/api/service-contract-attachments/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteServiceContractAttachment(Number(req.params.id));
     res.status(204).send();
   });
 

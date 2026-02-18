@@ -258,11 +258,26 @@ export const serviceContractCategoriesRelations = relations(serviceContractCateg
   contracts: many(serviceContracts),
 }));
 
-export const serviceContractsRelations = relations(serviceContracts, ({ one }) => ({
+export const serviceContractAttachments = pgTable("service_contract_attachments", {
+  id: serial("id").primaryKey(),
+  contractId: integer("contract_id").references(() => serviceContracts.id, { onDelete: "cascade" }).notNull(),
+  category: text("category").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type"),
+  objectPath: text("object_path").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+export const serviceContractsRelations = relations(serviceContracts, ({ one, many }) => ({
   category: one(serviceContractCategories, {
     fields: [serviceContracts.categoryId],
     references: [serviceContractCategories.id],
   }),
+  attachments: many(serviceContractAttachments),
+}));
+
+export const serviceContractAttachmentsRelations = relations(serviceContractAttachments, ({ one }) => ({
+  contract: one(serviceContracts, { fields: [serviceContractAttachments.contractId], references: [serviceContracts.id] }),
 }));
 
 // Insert Schemas
@@ -281,6 +296,7 @@ export const insertBlockadeSchema = createInsertSchema(blockades).omit({ id: tru
 export const insertLocationSchema = createInsertSchema(locations).omit({ id: true, createdAt: true });
 export const insertServiceContractCategorySchema = createInsertSchema(serviceContractCategories).omit({ id: true, createdAt: true });
 export const insertServiceContractSchema = createInsertSchema(serviceContracts).omit({ id: true, createdAt: true });
+export const insertServiceContractAttachmentSchema = createInsertSchema(serviceContractAttachments).omit({ id: true, uploadedAt: true });
 
 // Types
 export type Owner = typeof owners.$inferSelect;
@@ -313,6 +329,8 @@ export type ServiceContractCategory = typeof serviceContractCategories.$inferSel
 export type InsertServiceContractCategory = z.infer<typeof insertServiceContractCategorySchema>;
 export type ServiceContract = typeof serviceContracts.$inferSelect;
 export type InsertServiceContract = z.infer<typeof insertServiceContractSchema>;
+export type ServiceContractAttachment = typeof serviceContractAttachments.$inferSelect;
+export type InsertServiceContractAttachment = z.infer<typeof insertServiceContractAttachmentSchema>;
 
 export const saldoEntries = pgTable("saldo_entries", {
   id: serial("id").primaryKey(),
