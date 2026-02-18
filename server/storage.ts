@@ -26,7 +26,11 @@ import {
   mediaSettlementReports, MediaSettlementReport, InsertMediaSettlementReport,
   appUsers, AppUser, InsertAppUser,
   documentCategories, DocumentCategory, InsertDocumentCategory,
-  documentTemplates, DocumentTemplate, InsertDocumentTemplate
+  documentTemplates, DocumentTemplate, InsertDocumentTemplate,
+  costSchedules, CostSchedule, InsertCostSchedule,
+  costSchedulePayments, CostSchedulePayment, InsertCostSchedulePayment,
+  installmentSchedules, InstallmentSchedule, InsertInstallmentSchedule,
+  installmentPayments, InstallmentPayment, InsertInstallmentPayment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -185,6 +189,28 @@ export interface IStorage {
   createDocumentTemplate(template: InsertDocumentTemplate): Promise<DocumentTemplate>;
   updateDocumentTemplate(id: number, template: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate>;
   deleteDocumentTemplate(id: number): Promise<void>;
+
+  // Cost Schedules
+  getCostSchedules(): Promise<CostSchedule[]>;
+  createCostSchedule(schedule: InsertCostSchedule): Promise<CostSchedule>;
+  updateCostSchedule(id: number, schedule: Partial<InsertCostSchedule>): Promise<CostSchedule>;
+  deleteCostSchedule(id: number): Promise<void>;
+  getCostSchedulePayments(scheduleId: number): Promise<CostSchedulePayment[]>;
+  getAllCostSchedulePayments(): Promise<CostSchedulePayment[]>;
+  createCostSchedulePayment(payment: InsertCostSchedulePayment): Promise<CostSchedulePayment>;
+  updateCostSchedulePayment(id: number, payment: Partial<InsertCostSchedulePayment>): Promise<CostSchedulePayment>;
+  deleteCostSchedulePayment(id: number): Promise<void>;
+
+  // Installment Schedules
+  getInstallmentSchedules(): Promise<InstallmentSchedule[]>;
+  createInstallmentSchedule(schedule: InsertInstallmentSchedule): Promise<InstallmentSchedule>;
+  updateInstallmentSchedule(id: number, schedule: Partial<InsertInstallmentSchedule>): Promise<InstallmentSchedule>;
+  deleteInstallmentSchedule(id: number): Promise<void>;
+  getInstallmentPayments(scheduleId: number): Promise<InstallmentPayment[]>;
+  getAllInstallmentPayments(): Promise<InstallmentPayment[]>;
+  createInstallmentPayment(payment: InsertInstallmentPayment): Promise<InstallmentPayment>;
+  updateInstallmentPayment(id: number, payment: Partial<InsertInstallmentPayment>): Promise<InstallmentPayment>;
+  deleteInstallmentPayment(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -863,6 +889,92 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDocumentTemplate(id: number): Promise<void> {
     await db.delete(documentTemplates).where(eq(documentTemplates.id, id));
+  }
+
+  // Cost Schedules
+  async getCostSchedules(): Promise<CostSchedule[]> {
+    return db.select().from(costSchedules).orderBy(costSchedules.name);
+  }
+
+  async createCostSchedule(schedule: InsertCostSchedule): Promise<CostSchedule> {
+    const [created] = await db.insert(costSchedules).values(schedule).returning();
+    return created;
+  }
+
+  async updateCostSchedule(id: number, schedule: Partial<InsertCostSchedule>): Promise<CostSchedule> {
+    const [updated] = await db.update(costSchedules).set(schedule).where(eq(costSchedules.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCostSchedule(id: number): Promise<void> {
+    await db.delete(costSchedules).where(eq(costSchedules.id, id));
+  }
+
+  async getCostSchedulePayments(scheduleId: number): Promise<CostSchedulePayment[]> {
+    return db.select().from(costSchedulePayments)
+      .where(eq(costSchedulePayments.scheduleId, scheduleId))
+      .orderBy(costSchedulePayments.dueDate);
+  }
+
+  async getAllCostSchedulePayments(): Promise<CostSchedulePayment[]> {
+    return db.select().from(costSchedulePayments).orderBy(costSchedulePayments.dueDate);
+  }
+
+  async createCostSchedulePayment(payment: InsertCostSchedulePayment): Promise<CostSchedulePayment> {
+    const [created] = await db.insert(costSchedulePayments).values(payment).returning();
+    return created;
+  }
+
+  async updateCostSchedulePayment(id: number, payment: Partial<InsertCostSchedulePayment>): Promise<CostSchedulePayment> {
+    const [updated] = await db.update(costSchedulePayments).set(payment).where(eq(costSchedulePayments.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCostSchedulePayment(id: number): Promise<void> {
+    await db.delete(costSchedulePayments).where(eq(costSchedulePayments.id, id));
+  }
+
+  // Installment Schedules
+  async getInstallmentSchedules(): Promise<InstallmentSchedule[]> {
+    return db.select().from(installmentSchedules).orderBy(installmentSchedules.name);
+  }
+
+  async createInstallmentSchedule(schedule: InsertInstallmentSchedule): Promise<InstallmentSchedule> {
+    const [created] = await db.insert(installmentSchedules).values(schedule).returning();
+    return created;
+  }
+
+  async updateInstallmentSchedule(id: number, schedule: Partial<InsertInstallmentSchedule>): Promise<InstallmentSchedule> {
+    const [updated] = await db.update(installmentSchedules).set(schedule).where(eq(installmentSchedules.id, id)).returning();
+    return updated;
+  }
+
+  async deleteInstallmentSchedule(id: number): Promise<void> {
+    await db.delete(installmentSchedules).where(eq(installmentSchedules.id, id));
+  }
+
+  async getInstallmentPayments(scheduleId: number): Promise<InstallmentPayment[]> {
+    return db.select().from(installmentPayments)
+      .where(eq(installmentPayments.scheduleId, scheduleId))
+      .orderBy(installmentPayments.installmentNumber);
+  }
+
+  async getAllInstallmentPayments(): Promise<InstallmentPayment[]> {
+    return db.select().from(installmentPayments).orderBy(installmentPayments.dueDate);
+  }
+
+  async createInstallmentPayment(payment: InsertInstallmentPayment): Promise<InstallmentPayment> {
+    const [created] = await db.insert(installmentPayments).values(payment).returning();
+    return created;
+  }
+
+  async updateInstallmentPayment(id: number, payment: Partial<InsertInstallmentPayment>): Promise<InstallmentPayment> {
+    const [updated] = await db.update(installmentPayments).set(payment).where(eq(installmentPayments.id, id)).returning();
+    return updated;
+  }
+
+  async deleteInstallmentPayment(id: number): Promise<void> {
+    await db.delete(installmentPayments).where(eq(installmentPayments.id, id));
   }
 }
 

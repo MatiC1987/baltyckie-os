@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -1559,6 +1559,102 @@ export async function registerRoutes(
       console.error("HotRes sync error:", e);
       res.status(500).json({ success: false, message: `Błąd synchronizacji: ${e.message}` });
     }
+  });
+
+  // Cost Schedules
+  app.get('/api/cost-schedules', isAuthenticated, async (_req, res) => {
+    const schedules = await storage.getCostSchedules();
+    res.json(schedules);
+  });
+
+  app.post('/api/cost-schedules', isAuthenticated, async (req, res) => {
+    const parsed = insertCostScheduleSchema.parse(req.body);
+    const schedule = await storage.createCostSchedule(parsed);
+    res.json(schedule);
+  });
+
+  app.patch('/api/cost-schedules/:id', isAuthenticated, async (req, res) => {
+    const schedule = await storage.updateCostSchedule(Number(req.params.id), req.body);
+    res.json(schedule);
+  });
+
+  app.delete('/api/cost-schedules/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteCostSchedule(Number(req.params.id));
+    res.json({ success: true });
+  });
+
+  app.get('/api/cost-schedule-payments', isAuthenticated, async (_req, res) => {
+    const payments = await storage.getAllCostSchedulePayments();
+    res.json(payments);
+  });
+
+  app.get('/api/cost-schedules/:id/payments', isAuthenticated, async (req, res) => {
+    const payments = await storage.getCostSchedulePayments(Number(req.params.id));
+    res.json(payments);
+  });
+
+  app.post('/api/cost-schedule-payments', isAuthenticated, async (req, res) => {
+    const parsed = insertCostSchedulePaymentSchema.parse(req.body);
+    const payment = await storage.createCostSchedulePayment(parsed);
+    res.json(payment);
+  });
+
+  app.patch('/api/cost-schedule-payments/:id', isAuthenticated, async (req, res) => {
+    const payment = await storage.updateCostSchedulePayment(Number(req.params.id), req.body);
+    res.json(payment);
+  });
+
+  app.delete('/api/cost-schedule-payments/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteCostSchedulePayment(Number(req.params.id));
+    res.json({ success: true });
+  });
+
+  // Installment Schedules
+  app.get('/api/installment-schedules', isAuthenticated, async (_req, res) => {
+    const schedules = await storage.getInstallmentSchedules();
+    res.json(schedules);
+  });
+
+  app.post('/api/installment-schedules', isAuthenticated, async (req, res) => {
+    const parsed = insertInstallmentScheduleSchema.parse(req.body);
+    const schedule = await storage.createInstallmentSchedule(parsed);
+    res.json(schedule);
+  });
+
+  app.patch('/api/installment-schedules/:id', isAuthenticated, async (req, res) => {
+    const schedule = await storage.updateInstallmentSchedule(Number(req.params.id), req.body);
+    res.json(schedule);
+  });
+
+  app.delete('/api/installment-schedules/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteInstallmentSchedule(Number(req.params.id));
+    res.json({ success: true });
+  });
+
+  app.get('/api/installment-payments', isAuthenticated, async (_req, res) => {
+    const payments = await storage.getAllInstallmentPayments();
+    res.json(payments);
+  });
+
+  app.get('/api/installment-schedules/:id/payments', isAuthenticated, async (req, res) => {
+    const payments = await storage.getInstallmentPayments(Number(req.params.id));
+    res.json(payments);
+  });
+
+  app.post('/api/installment-payments', isAuthenticated, async (req, res) => {
+    const parsed = insertInstallmentPaymentSchema.parse(req.body);
+    const payment = await storage.createInstallmentPayment(parsed);
+    res.json(payment);
+  });
+
+  app.patch('/api/installment-payments/:id', isAuthenticated, async (req, res) => {
+    const payment = await storage.updateInstallmentPayment(Number(req.params.id), req.body);
+    res.json(payment);
+  });
+
+  app.delete('/api/installment-payments/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteInstallmentPayment(Number(req.params.id));
+    res.json({ success: true });
   });
 
   return httpServer;

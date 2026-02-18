@@ -522,3 +522,86 @@ export const documentTemplates = pgTable("document_templates", {
 export const insertDocumentTemplateSchema = createInsertSchema(documentTemplates).omit({ id: true, uploadedAt: true });
 export type DocumentTemplate = typeof documentTemplates.$inferSelect;
 export type InsertDocumentTemplate = z.infer<typeof insertDocumentTemplateSchema>;
+
+export const costSchedules = pgTable("cost_schedules", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  frequency: text("frequency").notNull().default("monthly"),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  notes: text("notes"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const costSchedulePayments = pgTable("cost_schedule_payments", {
+  id: serial("id").primaryKey(),
+  scheduleId: integer("schedule_id").references(() => costSchedules.id, { onDelete: "cascade" }).notNull(),
+  dueDate: date("due_date").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  status: text("status").notNull().default("NIEOPLACONE"),
+  paidDate: date("paid_date"),
+  notes: text("notes"),
+});
+
+export const costSchedulesRelations = relations(costSchedules, ({ many }) => ({
+  payments: many(costSchedulePayments),
+}));
+
+export const costSchedulePaymentsRelations = relations(costSchedulePayments, ({ one }) => ({
+  schedule: one(costSchedules, { fields: [costSchedulePayments.scheduleId], references: [costSchedules.id] }),
+}));
+
+export const insertCostScheduleSchema = createInsertSchema(costSchedules).omit({ id: true, createdAt: true });
+export type CostSchedule = typeof costSchedules.$inferSelect;
+export type InsertCostSchedule = z.infer<typeof insertCostScheduleSchema>;
+
+export const insertCostSchedulePaymentSchema = createInsertSchema(costSchedulePayments).omit({ id: true });
+export type CostSchedulePayment = typeof costSchedulePayments.$inferSelect;
+export type InsertCostSchedulePayment = z.infer<typeof insertCostSchedulePaymentSchema>;
+
+export const installmentSchedules = pgTable("installment_schedules", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
+  installmentAmount: numeric("installment_amount", { precision: 12, scale: 2 }).notNull(),
+  numberOfInstallments: integer("number_of_installments").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  interestRate: numeric("interest_rate", { precision: 5, scale: 2 }),
+  notes: text("notes"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const installmentPayments = pgTable("installment_payments", {
+  id: serial("id").primaryKey(),
+  scheduleId: integer("schedule_id").references(() => installmentSchedules.id, { onDelete: "cascade" }).notNull(),
+  installmentNumber: integer("installment_number").notNull(),
+  dueDate: date("due_date").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  principalAmount: numeric("principal_amount", { precision: 12, scale: 2 }),
+  interestAmount: numeric("interest_amount", { precision: 12, scale: 2 }),
+  status: text("status").notNull().default("NIEOPLACONE"),
+  paidDate: date("paid_date"),
+  notes: text("notes"),
+});
+
+export const installmentSchedulesRelations = relations(installmentSchedules, ({ many }) => ({
+  payments: many(installmentPayments),
+}));
+
+export const installmentPaymentsRelations = relations(installmentPayments, ({ one }) => ({
+  schedule: one(installmentSchedules, { fields: [installmentPayments.scheduleId], references: [installmentSchedules.id] }),
+}));
+
+export const insertInstallmentScheduleSchema = createInsertSchema(installmentSchedules).omit({ id: true, createdAt: true });
+export type InstallmentSchedule = typeof installmentSchedules.$inferSelect;
+export type InsertInstallmentSchedule = z.infer<typeof insertInstallmentScheduleSchema>;
+
+export const insertInstallmentPaymentSchema = createInsertSchema(installmentPayments).omit({ id: true });
+export type InstallmentPayment = typeof installmentPayments.$inferSelect;
+export type InsertInstallmentPayment = z.infer<typeof insertInstallmentPaymentSchema>;
