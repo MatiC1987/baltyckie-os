@@ -882,6 +882,64 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Document Categories
+  app.get('/api/document-categories', isAuthenticated, async (_req, res) => {
+    const categories = await storage.getDocumentCategories();
+    res.json(categories);
+  });
+
+  app.post('/api/document-categories', isAuthenticated, async (req, res) => {
+    try {
+      const category = await storage.createDocumentCategory(req.body);
+      res.status(201).json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put('/api/document-categories/:id', isAuthenticated, async (req, res) => {
+    try {
+      const category = await storage.updateDocumentCategory(parseInt(req.params.id), req.body);
+      res.json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete('/api/document-categories/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteDocumentCategory(parseInt(req.params.id));
+    res.status(204).send();
+  });
+
+  // Document Templates
+  app.get('/api/document-templates', isAuthenticated, async (_req, res) => {
+    const templates = await storage.getDocumentTemplates();
+    res.json(templates);
+  });
+
+  app.post('/api/document-templates', isAuthenticated, async (req, res) => {
+    try {
+      const template = await storage.createDocumentTemplate(req.body);
+      res.status(201).json(template);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put('/api/document-templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      const template = await storage.updateDocumentTemplate(parseInt(req.params.id), req.body);
+      res.json(template);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete('/api/document-templates/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteDocumentTemplate(parseInt(req.params.id));
+    res.status(204).send();
+  });
+
   // Stats
   app.get(api.stats.dashboard.path, isAuthenticated, async (req, res) => {
     const stats = await storage.getDashboardStats();
