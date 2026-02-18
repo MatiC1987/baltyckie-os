@@ -177,7 +177,7 @@ export default function Dashboard() {
                 <span className="text-sm text-muted-foreground">suma wszystkich źródeł</span>
               </div>
               <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-                {companyBalance?.accounts.map(acc => {
+                {companyBalance?.accounts.filter(acc => !acc.name.toLowerCase().includes("gotówka")).map(acc => {
                   const Icon = getAccountIcon(acc.name);
                   const balance = Number(acc.latestBalance);
                   const isEditing = editingAccountId === acc.id;
@@ -254,8 +254,6 @@ export default function Dashboard() {
                   <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
                     {[
                       { name: "Saldo - M. Cieślak", person: "Mateusz Cieślak", icon: Scale, href: "/saldo-mc" },
-                      { name: "Saldo - J. Głodkowska", person: "Jolanta Głodkowska", icon: Coins, href: "/saldo-jg" },
-                      { name: "Saldo - M. Latasiewicz", person: "Małgorzata Latasiewicz", icon: Coins, href: "/saldo-ml" },
                     ].map(item => {
                       const balance = saldoBalances[item.person] ?? 0;
                       const IconComp = item.icon;
