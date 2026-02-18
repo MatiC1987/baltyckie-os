@@ -44,6 +44,9 @@ function normalizeKey(loc: string): string {
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
   const { data: ownersList } = useOwners();
+  const { data: allAttachments = [] } = useQuery<Attachment[]>({
+    queryKey: ['/api/attachments/all'],
+  });
   const updateApartmentMutation = useUpdateApartment();
   const deleteApartmentMutation = useDeleteApartment();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -254,6 +257,32 @@ export default function Apartments() {
           {apt.active ? "Aktywny" : "Nieaktywny"}
         </Badge>
       )
+    },
+    {
+      header: "Załączniki",
+      cell: (apt: any) => {
+        const atts = allAttachments.filter(a => a.apartmentId === apt.id);
+        if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+        return (
+          <div className="flex items-center gap-1 flex-wrap">
+            {atts.map(att => (
+              <a
+                key={att.id}
+                href={att.objectPath}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={att.fileName}
+                data-testid={`link-apt-attachment-${att.id}`}
+              >
+                <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                  <FileText className="h-3 w-3" />
+                  {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : att.category === 'FAKTURA' ? 'Faktura' : 'Inny'}
+                </Badge>
+              </a>
+            ))}
+          </div>
+        );
+      }
     },
     {
       header: "",

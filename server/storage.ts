@@ -82,6 +82,7 @@ export interface IStorage {
   getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; latestBalance: string }[]; totalBalance: string }>;
   
   // Attachments
+  getAllAttachments(): Promise<Attachment[]>;
   getAttachments(apartmentId: number): Promise<Attachment[]>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
   deleteAttachment(id: number): Promise<void>;
@@ -420,6 +421,10 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Attachments
+  async getAllAttachments(): Promise<Attachment[]> {
+    return db.select().from(attachments).orderBy(desc(attachments.uploadedAt));
+  }
+
   async getAttachments(apartmentId: number): Promise<Attachment[]> {
     return await db.select().from(attachments).where(eq(attachments.apartmentId, apartmentId)).orderBy(desc(attachments.uploadedAt));
   }

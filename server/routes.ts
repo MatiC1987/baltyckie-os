@@ -494,6 +494,11 @@ export async function registerRoutes(
   });
 
   // Attachments
+  app.get('/api/attachments/all', isAuthenticated, async (_req, res) => {
+    const atts = await storage.getAllAttachments();
+    res.json(atts);
+  });
+
   app.get('/api/apartments/:id/attachments', isAuthenticated, async (req, res) => {
     const atts = await storage.getAttachments(Number(req.params.id));
     res.json(atts);
