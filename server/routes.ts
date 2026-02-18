@@ -368,38 +368,26 @@ export async function registerRoutes(
 
       if (aptIds.length === 0) continue;
 
-      const rent = Number(s.rentAmount) || 0;
-      const additionalFees = Number(s.additionalFees) || 0;
-      const monthlyIncome = rent + additionalFees;
-
-      const sDate = new Date(s.startDate);
-      const eDate = new Date(s.endDate);
-
-      for (let m = 0; m < 12; m++) {
-        const mStart = new Date(year, m, 1);
-        const mEnd = new Date(year, m + 1, 0);
-        if (mStart > eDate || mEnd < sDate) continue;
-
-        for (const aptId of aptIds) {
-          if (!aptId) continue;
-          initMonth(aptId, m);
-          const share = monthlyIncome / aptIds.length;
-          revenueData[aptId][m].podnajem += share;
-        }
-      }
-
       const payments = subleasePaymentsAll[s.id] || [];
       for (const p of payments) {
         if (!p.dueDate) continue;
         const pd = new Date(p.dueDate);
         if (pd.getFullYear() !== year) continue;
         const month = pd.getMonth();
-        if (p.status === "do_oplacenia") {
-          const amount = Number(p.amount) || 0;
-          for (const aptId of aptIds) {
+        const amount = Number(p.amount) || 0;
+        const payAptIds = p.apartmentId ? [p.apartmentId] : aptIds;
+
+        if (p.status === "oplacona") {
+          for (const aptId of payAptIds) {
             if (!aptId) continue;
             initMonth(aptId, month);
-            revenueData[aptId][month].doplaty_podnajem += amount / aptIds.length;
+            revenueData[aptId][month].podnajem += amount / payAptIds.length;
+          }
+        } else if (p.status === "do_oplacenia") {
+          for (const aptId of payAptIds) {
+            if (!aptId) continue;
+            initMonth(aptId, month);
+            revenueData[aptId][month].doplaty_podnajem += amount / payAptIds.length;
           }
         }
       }
