@@ -191,6 +191,16 @@ function loadLayout(): SidebarLayout {
         const insertAt = Math.min(defaultIdx, sections.length);
         sections.splice(insertAt, 0, { ...ms });
       }
+      const validIds = new Set(allDefaultIds);
+      const seen = new Set<string>();
+      sections = sections.map(s => ({
+        ...s,
+        itemIds: s.itemIds.filter(id => {
+          if (!validIds.has(id) || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        }),
+      }));
       const items = { ...DEFAULT_ITEMS };
       return { sections, items };
     }
