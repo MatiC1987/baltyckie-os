@@ -509,10 +509,10 @@ export default function Saldo({ personName }: { personName: string }) {
       ) : (
         <div className="rounded-md border border-border bg-card overflow-x-auto">
           <table className="w-full text-xs border-collapse" style={{ minWidth: "1350px" }}>
-            <thead className="sticky top-0 z-[100]">
+            <thead className="sticky top-0 z-20">
               <tr className="bg-muted/80 dark:bg-muted/50">
                 {([
-                  { key: "date", label: "Data", cls: "sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-r w-[90px] text-left" },
+                  { key: "date", label: "Data", cls: "sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-r w-[90px] text-left" },
                   { key: "operationName", label: "Nazwa operacji", cls: "border-r w-[200px] text-left" },
                   { key: "reservationNumber", label: "Nr rez.", cls: "border-r w-[80px] text-left" },
                   { key: "guestName", label: "Imię i nazwisko", cls: "border-r w-[180px] text-left" },

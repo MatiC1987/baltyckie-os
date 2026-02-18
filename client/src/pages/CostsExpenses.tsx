@@ -568,9 +568,9 @@ export default function CostsExpenses() {
 
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-oplaty" onMouseUp={handleMouseUp}>
         <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
-          <thead className="sticky top-0 z-[100]">
+          <thead className="sticky top-0 z-20">
             <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-[110] bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
                 Pozycja
               </th>
               {MONTHS_SHORT.map((m, i) => (
@@ -605,7 +605,7 @@ export default function CostsExpenses() {
                     onDragOver={(e) => handleCatDragOver(e, cat.id)}
                     onDrop={handleCatDragEnd}
                   >
-                    <td className={`sticky left-0 z-[105] ${cat.color} border-b border-r border-border/30 px-1 py-1 font-bold`}>
+                    <td className={`sticky left-0 z-20 ${cat.color} border-b border-r border-border/30 px-1 py-1 font-bold`}>
                       <div className="flex items-center gap-0.5">
                         <span
                           draggable
@@ -677,7 +677,7 @@ export default function CostsExpenses() {
                         onDragOver={(e) => handleItemDragOver(e, cat.id, idx)}
                         onDrop={handleItemDragEnd}
                       >
-                        <td className="sticky left-0 z-[105] bg-card border-b border-r border-border px-1 py-1 text-right">
+                        <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1 text-right">
                           {isEditingThisName ? (
                             <div className="space-y-0.5 pl-4">
                               <input
@@ -796,7 +796,7 @@ export default function CostsExpenses() {
               );
             })}
             <tr className="bg-muted/80 dark:bg-muted/50 font-bold">
-              <td className="sticky left-0 z-[105] bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-right">
+              <td className="sticky left-0 z-20 bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-right">
                 SUMA
               </td>
               {Array.from({ length: 12 }, (_, m) => {
