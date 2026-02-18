@@ -27,6 +27,7 @@ import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
 import Revenue from "@/pages/Revenue";
+import FinanceForecast from "@/pages/FinanceForecast";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -69,7 +70,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={() => <AuthenticatedRoute component={Dashboard} />} />
-      <Route path="/finance-forecast" component={() => <AuthenticatedPlaceholder title="Finanse / Prognoza" description="Przegląd finansowy i prognoza przychodów." />} />
+      <Route path="/finance-forecast" component={() => <AuthenticatedRoute component={FinanceForecast} />} />
       <Route path="/calendar" component={() => <AuthenticatedRoute component={Terminarz} />} />
 
       <Route path="/apartments" component={() => <AuthenticatedRoute component={Apartments} />} />

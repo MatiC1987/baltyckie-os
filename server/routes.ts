@@ -314,6 +314,21 @@ export async function registerRoutes(
     res.json(balance);
   });
 
+  app.get("/api/saldo-balances", isAuthenticated, async (_req, res) => {
+    const persons = ["Małgorzata Latasiewicz", "Jolanta Głodkowska", "Mateusz Cieślak"];
+    const result: Record<string, number> = {};
+    for (const person of persons) {
+      const entries = await storage.getSaldoEntries({ personName: person });
+      if (entries.length > 0) {
+        const last = entries[entries.length - 1];
+        result[person] = parseFloat(last.saldo || "0");
+      } else {
+        result[person] = 0;
+      }
+    }
+    res.json(result);
+  });
+
   app.get("/api/revenue", isAuthenticated, async (req, res) => {
     const year = Number(req.query.year) || new Date().getFullYear();
     const reservations = await storage.getReservations();

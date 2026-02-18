@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useDashboardStats } from "@/hooks/use-stats";
 import { useReservations } from "@/hooks/use-reservations";
@@ -30,7 +31,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Users, CreditCard, Home, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Users, CreditCard, Home, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, Scale, Coins } from "lucide-react";
 import type { Reservation } from "@shared/schema";
 
 type CompanyBalance = {
@@ -38,9 +39,17 @@ type CompanyBalance = {
   totalBalance: string;
 };
 
+type SaldoBalances = Record<string, number>;
+
 function useCompanyBalance() {
   return useQuery<CompanyBalance>({
     queryKey: ["/api/company-balance"],
+  });
+}
+
+function useSaldoBalances() {
+  return useQuery<SaldoBalances>({
+    queryKey: ["/api/saldo-balances"],
   });
 }
 
@@ -92,6 +101,7 @@ export default function Dashboard() {
   const { data: reservations, isLoading: reservationsLoading } = useReservations();
   const { data: apartments } = useApartments();
   const { data: companyBalance, isLoading: balanceLoading } = useCompanyBalance();
+  const { data: saldoBalances } = useSaldoBalances();
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingBalance, setEditingBalance] = useState("");
 
@@ -238,6 +248,37 @@ export default function Dashboard() {
                   );
                 })}
               </div>
+              {saldoBalances && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <div className="text-sm text-muted-foreground mb-2 font-medium">Salda kasowe</div>
+                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+                    {[
+                      { name: "Saldo - M. Cieślak", person: "Mateusz Cieślak", icon: Scale, href: "/saldo-mc" },
+                      { name: "Saldo - J. Głodkowska", person: "Jolanta Głodkowska", icon: Coins, href: "/saldo-jg" },
+                      { name: "Saldo - M. Latasiewicz", person: "Małgorzata Latasiewicz", icon: Coins, href: "/saldo-ml" },
+                    ].map(item => {
+                      const balance = saldoBalances[item.person] ?? 0;
+                      const IconComp = item.icon;
+                      return (
+                        <Link
+                          key={item.person}
+                          href={item.href}
+                          className="rounded-lg border border-border p-3 space-y-1 hover-elevate block"
+                          data-testid={`card-saldo-${item.person.replace(/\s/g, "-")}`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <IconComp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs text-muted-foreground truncate">{item.name}</span>
+                          </div>
+                          <div className={`text-sm font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                            {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
