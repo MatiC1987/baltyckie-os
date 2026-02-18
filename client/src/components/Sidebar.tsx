@@ -30,6 +30,7 @@ import {
   Pencil,
   Check,
   CalendarRange,
+  CalendarCheck,
   Landmark
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -100,6 +101,7 @@ const ICON_MAP: Record<string, any> = {
   Settings,
   MapPin,
   CalendarRange,
+  CalendarCheck,
   Landmark,
 };
 
@@ -115,6 +117,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   "costs-expenses": { id: "costs-expenses", href: "/costs-expenses", label: "Opłaty", iconName: "Receipt" },
   "costs-schedule": { id: "costs-schedule", href: "/costs-schedule", label: "Koszty - Harmonogram", iconName: "CalendarRange" },
   "installment-schedule": { id: "installment-schedule", href: "/installment-schedule", label: "Raty - Harmonogram", iconName: "Landmark" },
+  "apartment-schedule": { id: "apartment-schedule", href: "/apartment-schedule", label: "Apartamenty - Harmonogram", iconName: "CalendarCheck" },
   "saldo-ml": { id: "saldo-ml", href: "/saldo-ml", label: "Saldo - M. Latasiewicz", iconName: "Scale" },
   "saldo-jg": { id: "saldo-jg", href: "/saldo-jg", label: "Saldo - J. Głodkowska", iconName: "Coins" },
   "saldo-mc": { id: "saldo-mc", href: "/saldo-mc", label: "Saldo - M. Cieślak", iconName: "Coins" },
@@ -137,7 +140,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals"] },
   { id: "finanse", title: "FINANSE", itemIds: ["revenue", "forecast", "costs-apartments", "costs-expenses", "costs-schedule", "installment-schedule", "saldo-ml", "saldo-jg", "saldo-mc"] },
   { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
-  { id: "umowy-new", title: "UMOWY", itemIds: [] },
+  { id: "umowy-new", title: "UMOWY", itemIds: ["apartment-schedule"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
   { id: "dokumenty", title: "DOKUMENTY", itemIds: ["document-templates"] },

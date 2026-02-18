@@ -31,6 +31,7 @@ import Revenue from "@/pages/Revenue";
 import FinanceForecast from "@/pages/FinanceForecast";
 import CostsSchedule from "@/pages/CostsSchedule";
 import InstallmentSchedule from "@/pages/InstallmentSchedule";
+import ApartmentSchedule from "@/pages/ApartmentSchedule";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/reservations" component={() => <AuthenticatedRoute component={Reservations} />} />
       <Route path="/arrivals" component={() => <AuthenticatedRoute component={Arrivals} />} />
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
+      <Route path="/apartment-schedule" component={() => <AuthenticatedRoute component={ApartmentSchedule} />} />
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
 
       <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
