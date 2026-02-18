@@ -626,3 +626,17 @@ export type InsertInstallmentSchedule = z.infer<typeof insertInstallmentSchedule
 export const insertInstallmentPaymentSchema = createInsertSchema(installmentPayments).omit({ id: true });
 export type InstallmentPayment = typeof installmentPayments.$inferSelect;
 export type InsertInstallmentPayment = z.infer<typeof insertInstallmentPaymentSchema>;
+
+export const importMetadata = pgTable("import_metadata", {
+  id: serial("id").primaryKey(),
+  importType: text("import_type").notNull(),
+  importedAt: timestamp("imported_at").defaultNow(),
+  recordsImported: integer("records_imported").default(0),
+  recordsUpdated: integer("records_updated").default(0),
+  recordsSkipped: integer("records_skipped").default(0),
+  details: text("details"),
+});
+
+export const insertImportMetadataSchema = createInsertSchema(importMetadata).omit({ id: true, importedAt: true });
+export type ImportMetadata = typeof importMetadata.$inferSelect;
+export type InsertImportMetadata = z.infer<typeof insertImportMetadataSchema>;

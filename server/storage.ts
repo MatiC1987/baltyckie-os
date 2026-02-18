@@ -31,7 +31,8 @@ import {
   costSchedulePayments, CostSchedulePayment, InsertCostSchedulePayment,
   installmentSchedules, InstallmentSchedule, InsertInstallmentSchedule,
   installmentPayments, InstallmentPayment, InsertInstallmentPayment,
-  serviceContractAttachments, ServiceContractAttachment, InsertServiceContractAttachment
+  serviceContractAttachments, ServiceContractAttachment, InsertServiceContractAttachment,
+  importMetadata, ImportMetadata,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -218,6 +219,13 @@ export interface IStorage {
   createInstallmentPayment(payment: InsertInstallmentPayment): Promise<InstallmentPayment>;
   updateInstallmentPayment(id: number, payment: Partial<InsertInstallmentPayment>): Promise<InstallmentPayment>;
   deleteInstallmentPayment(id: number): Promise<void>;
+
+  // Import Metadata
+  getLastImport(importType: string): Promise<ImportMetadata | undefined>;
+  saveImportMetadata(data: { importType: string; recordsImported: number; recordsUpdated: number; recordsSkipped: number; details?: string }): Promise<ImportMetadata>;
+
+  // Reservations by number
+  getReservationByNumber(reservationNumber: string): Promise<Reservation | undefined>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1003,6 +1011,25 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInstallmentPayment(id: number): Promise<void> {
     await db.delete(installmentPayments).where(eq(installmentPayments.id, id));
+  }
+
+  async getLastImport(importType: string): Promise<ImportMetadata | undefined> {
+    const [result] = await db.select().from(importMetadata)
+      .where(eq(importMetadata.importType, importType))
+      .orderBy(desc(importMetadata.importedAt))
+      .limit(1);
+    return result;
+  }
+
+  async saveImportMetadata(data: { importType: string; recordsImported: number; recordsUpdated: number; recordsSkipped: number; details?: string }): Promise<ImportMetadata> {
+    const [created] = await db.insert(importMetadata).values(data).returning();
+    return created;
+  }
+
+  async getReservationByNumber(reservationNumber: string): Promise<Reservation | undefined> {
+    const [result] = await db.select().from(reservations)
+      .where(eq(reservations.reservationNumber, reservationNumber));
+    return result;
   }
 }
 

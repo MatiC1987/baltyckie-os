@@ -1373,6 +1373,16 @@ export async function registerRoutes(
     }
   });
 
+  // Last import metadata
+  app.get('/api/import-metadata/last/:type', isAuthenticated, async (req, res) => {
+    try {
+      const result = await storage.getLastImport(req.params.type);
+      res.json(result || null);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // HotRes CSV Import
   app.post("/api/hotres/import-csv", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
@@ -1397,12 +1407,9 @@ export async function registerRoutes(
       const apartmentMap = new Map(apartments.map(a => [a.name.trim().toLowerCase(), a.id]));
       const hotresNameMap = new Map(apartments.filter(a => a.hotresName).map(a => [a.hotresName!.trim().toLowerCase(), a.id]));
 
-      const existingReservations = await storage.getReservations();
-      const existingNumbers = new Set(existingReservations.map(r => r.reservationNumber));
-
       let imported = 0;
+      let updated = 0;
       let skipped = 0;
-      let duplicates = 0;
       let newApartments = 0;
       const log: string[] = [];
 
@@ -1412,11 +1419,6 @@ export async function registerRoutes(
         if (!hr.startDate || !hr.endDate) {
           skipped++;
           log.push(`Pominięto rezerwację ${hr.reservationNumber}: brak dat`);
-          continue;
-        }
-
-        if (existingNumbers.has(hr.reservationNumber)) {
-          duplicates++;
           continue;
         }
 
@@ -1448,6 +1450,23 @@ export async function registerRoutes(
         const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
         const isGroupReservation = resolvedAptIds.length > 1;
 
+        const existing = await storage.getReservationByNumber(hr.reservationNumber);
+        if (existing) {
+          await storage.updateReservation(existing.id, {
+            apartmentId: primaryAptId,
+            apartmentIds: isGroupReservation ? resolvedAptIds : null,
+            startDate: hr.startDate,
+            endDate: hr.endDate,
+            guestName: hr.guestName,
+            price: hr.price,
+            prepayment: hr.prepayment || "0",
+            paidAmount: hr.paidAmount || "0",
+            status: hr.status,
+          });
+          updated++;
+          continue;
+        }
+
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
           apartmentId: primaryAptId,
@@ -1470,20 +1489,27 @@ export async function registerRoutes(
           }).join(", ");
           log.push(`Rezerwacja grupowa ${hr.reservationNumber}: ${aptNamesList}`);
         }
-        existingNumbers.add(hr.reservationNumber);
       }
 
-      if (duplicates > 0) {
-        log.push(`Pominięto ${duplicates} duplikatów (już istnieją w bazie)`);
+      if (updated > 0) {
+        log.push(`Zaktualizowano ${updated} istniejących rezerwacji`);
       }
-      log.push(`Podsumowanie: zaimportowano=${imported}, pominięto=${skipped}, duplikaty=${duplicates}, nowe apartamenty=${newApartments}`);
+      log.push(`Podsumowanie: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}, nowe apartamenty=${newApartments}`);
+
+      await storage.saveImportMetadata({
+        importType: 'hotres_csv',
+        recordsImported: imported,
+        recordsUpdated: updated,
+        recordsSkipped: skipped,
+        details: `Plik CSV: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`,
+      });
 
       res.json({
         success: true,
-        message: `Zaimportowano ${imported} rezerwacji z pliku CSV HotRes${duplicates > 0 ? ` (${duplicates} duplikatów pominięto)` : ""}`,
+        message: `Import CSV HotRes: ${imported} nowych, ${updated} zaktualizowanych${skipped > 0 ? `, ${skipped} pominiętych` : ""}`,
         imported,
+        updated,
         skipped,
-        duplicates,
         newApartments,
         log,
       });
@@ -1522,12 +1548,9 @@ export async function registerRoutes(
       const apartmentMap = new Map(apartments.map(a => [a.name.trim().toLowerCase(), a.id]));
       const hotresNameMap = new Map(apartments.filter(a => a.hotresName).map(a => [a.hotresName!.trim().toLowerCase(), a.id]));
 
-      const existingReservations = await storage.getReservations();
-      const existingNumbers = new Set(existingReservations.map(r => r.reservationNumber));
-
       let imported = 0;
+      let updated = 0;
       let skipped = 0;
-      let duplicates = 0;
       let newApartments = 0;
       const log: string[] = [];
 
@@ -1535,11 +1558,6 @@ export async function registerRoutes(
         if (!hr.startDate || !hr.endDate) {
           skipped++;
           log.push(`Pominięto rezerwację ${hr.reservationNumber}: brak dat`);
-          continue;
-        }
-
-        if (existingNumbers.has(hr.reservationNumber)) {
-          duplicates++;
           continue;
         }
 
@@ -1571,6 +1589,23 @@ export async function registerRoutes(
         const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
         const isGroupReservation = resolvedAptIds.length > 1;
 
+        const existing = await storage.getReservationByNumber(hr.reservationNumber);
+        if (existing) {
+          await storage.updateReservation(existing.id, {
+            apartmentId: primaryAptId,
+            apartmentIds: isGroupReservation ? resolvedAptIds : null,
+            startDate: hr.startDate,
+            endDate: hr.endDate,
+            guestName: hr.guestName,
+            price: hr.price,
+            prepayment: hr.prepayment || "0",
+            paidAmount: hr.paidAmount || "0",
+            status: hr.status,
+          });
+          updated++;
+          continue;
+        }
+
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
           apartmentId: primaryAptId,
@@ -1588,17 +1623,25 @@ export async function registerRoutes(
         imported++;
       }
 
-      if (duplicates > 0) {
-        log.push(`Pominięto ${duplicates} duplikatów (już istnieją w bazie)`);
+      if (updated > 0) {
+        log.push(`Zaktualizowano ${updated} istniejących rezerwacji`);
       }
-      log.push(`Podsumowanie: zaimportowano=${imported}, pominięto=${skipped}, duplikaty=${duplicates}, nowe apartamenty=${newApartments}`);
+      log.push(`Podsumowanie: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}, nowe apartamenty=${newApartments}`);
+
+      await storage.saveImportMetadata({
+        importType: 'hotres_api',
+        recordsImported: imported,
+        recordsUpdated: updated,
+        recordsSkipped: skipped,
+        details: `API sync: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`,
+      });
 
       res.json({
         success: true,
-        message: `Zaimportowano ${imported} rezerwacji z HotRes${duplicates > 0 ? ` (${duplicates} duplikatów pominięto)` : ""}`,
+        message: `Synchronizacja HotRes: ${imported} nowych, ${updated} zaktualizowanych${skipped > 0 ? `, ${skipped} pominiętych` : ""}`,
         imported,
+        updated,
         skipped,
-        duplicates,
         newApartments,
         log,
       });

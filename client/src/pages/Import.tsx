@@ -222,11 +222,12 @@ function HotResSection() {
       const data: HotResSyncResult = await res.json();
       setImportResult(data);
 
-      if (data.success && data.imported > 0) {
+      if (data.success && (data.imported > 0 || (data as any).updated > 0)) {
         toast({ title: "Sukces", description: data.message });
         queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
         queryClient.invalidateQueries({ queryKey: ['/api/apartments'] });
         queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/import-metadata/last/hotres_csv'] });
       } else {
         toast({
           title: data.success ? "Informacja" : "Problem",

@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
 import { useReservations, useCreateReservation, useUpdateReservation } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X, Pencil } from "lucide-react";
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X, Pencil, Clock } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
@@ -87,9 +88,18 @@ function InfoRow({ label, value, highlight }: { label: string; value: string | n
   );
 }
 
+function formatImportDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export default function Reservations() {
   const { data: reservations, isLoading } = useReservations();
   const { data: apartments } = useApartments();
+
+  const { data: lastCsvImport } = useQuery<{ importedAt: string; recordsImported: number; recordsUpdated: number; recordsSkipped: number } | null>({ queryKey: ["/api/import-metadata/last/hotres_csv"] });
+  const { data: lastApiImport } = useQuery<{ importedAt: string; recordsImported: number; recordsUpdated: number; recordsSkipped: number } | null>({ queryKey: ["/api/import-metadata/last/hotres_api"] });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>("reservationNumber");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -177,6 +187,27 @@ export default function Reservations() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight" data-testid="text-reservations-title">Rezerwacje</h2>
           <p className="text-muted-foreground">Lista wszystkich rezerwacji krótkoterminowych.</p>
+          {(lastCsvImport || lastApiImport) && (
+            <div className="flex items-center gap-3 mt-1 flex-wrap" data-testid="text-last-import-info">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              {lastCsvImport && (
+                <span className="text-xs text-muted-foreground" data-testid="text-last-csv-import">
+                  Ostatni import CSV: <span className="font-medium text-foreground" data-testid="text-last-csv-import-date">{formatImportDate(lastCsvImport.importedAt)}</span>
+                  {lastCsvImport.recordsImported > 0 && <span> ({lastCsvImport.recordsImported} nowych</span>}
+                  {lastCsvImport.recordsUpdated > 0 && <span>, {lastCsvImport.recordsUpdated} zaktual.</span>}
+                  {(lastCsvImport.recordsImported > 0 || lastCsvImport.recordsUpdated > 0) && <span>)</span>}
+                </span>
+              )}
+              {lastApiImport && (
+                <span className="text-xs text-muted-foreground" data-testid="text-last-api-import">
+                  Ostatni sync API: <span className="font-medium text-foreground" data-testid="text-last-api-import-date">{formatImportDate(lastApiImport.importedAt)}</span>
+                  {lastApiImport.recordsImported > 0 && <span> ({lastApiImport.recordsImported} nowych</span>}
+                  {lastApiImport.recordsUpdated > 0 && <span>, {lastApiImport.recordsUpdated} zaktual.</span>}
+                  {(lastApiImport.recordsImported > 0 || lastApiImport.recordsUpdated > 0) && <span>)</span>}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button
