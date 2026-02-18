@@ -15,7 +15,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
 } from "@/components/ui/dialog";
-import { Zap, Droplets, FileText, Save, ChevronDown, ChevronUp } from "lucide-react";
+import { Zap, Droplets, FileText, Save, ChevronDown, ChevronUp, Check } from "lucide-react";
 
 function formatDate(d: string | null | undefined) {
   if (!d) return "";
@@ -59,6 +59,63 @@ const METER_TYPES = {
 };
 
 type MeterType = keyof typeof METER_TYPES;
+
+function InlineEditInput({
+  initialValue,
+  onSave,
+  placeholder,
+  step,
+  className,
+  testId,
+}: {
+  initialValue: string;
+  onSave: (val: string) => void;
+  placeholder?: string;
+  step?: string;
+  className?: string;
+  testId?: string;
+}) {
+  const [value, setValue] = useState(initialValue);
+  const [dirty, setDirty] = useState(false);
+
+  const handleSave = useCallback(() => {
+    if (value !== initialValue) {
+      onSave(value);
+      setDirty(false);
+    }
+  }, [value, initialValue, onSave]);
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        data-testid={testId}
+        type="number"
+        step={step || "0.01"}
+        placeholder={placeholder || "0.00"}
+        className={className}
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setDirty(e.target.value !== initialValue);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSave();
+        }}
+      />
+      {dirty && (
+        <Button
+          size="icon"
+          variant="ghost"
+          data-testid={testId ? `${testId}-confirm` : undefined}
+          onClick={handleSave}
+          className="shrink-0"
+        >
+          <Check className="w-4 h-4 text-green-600" />
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function SubleaseMediaCard({
   sublease,
@@ -194,29 +251,27 @@ function SubleaseMediaCard({
               <Label className="text-xs text-muted-foreground">
                 Cena jednostkowa ({info.unit === "kWh" ? "zł/kWh" : `zł/${info.unit}`})
               </Label>
-              <Input
-                data-testid={`input-unit-price-${type}-${sublease.id}`}
-                key={`price-${type}-${setting?.unitPrice ?? "empty"}`}
-                type="number"
+              <InlineEditInput
+                key={`price-${type}-${setting?.id ?? "new"}`}
+                testId={`input-unit-price-${type}-${sublease.id}`}
+                initialValue={setting?.unitPrice || ""}
                 step="0.01"
                 placeholder="0.00"
-                defaultValue={setting?.unitPrice || ""}
-                onBlur={(e) => {
-                  saveSetting.mutate({ meterType: type, unitPrice: e.target.value, initialReading: setting?.initialReading || "0" });
+                onSave={(val) => {
+                  saveSetting.mutate({ meterType: type, unitPrice: val, initialReading: setting?.initialReading || "0" });
                 }}
               />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Stan początkowy ({formatDate(sublease.startDate)})</Label>
-              <Input
-                data-testid={`input-initial-reading-${type}-${sublease.id}`}
-                key={`init-${type}-${setting?.initialReading ?? "empty"}`}
-                type="number"
+              <InlineEditInput
+                key={`init-${type}-${setting?.id ?? "new"}`}
+                testId={`input-initial-reading-${type}-${sublease.id}`}
+                initialValue={setting?.initialReading || ""}
                 step="0.001"
                 placeholder="0.000"
-                defaultValue={setting?.initialReading || ""}
-                onBlur={(e) => {
-                  saveSetting.mutate({ meterType: type, initialReading: e.target.value, unitPrice: setting?.unitPrice || "0" });
+                onSave={(val) => {
+                  saveSetting.mutate({ meterType: type, initialReading: val, unitPrice: setting?.unitPrice || "0" });
                 }}
               />
             </div>
@@ -240,18 +295,15 @@ function SubleaseMediaCard({
                     <TableRow key={ym}>
                       <TableCell className="font-medium text-sm">{monthLabel(ym)}</TableCell>
                       <TableCell>
-                        <Input
-                          data-testid={`input-reading-${type}-${ym}-${sublease.id}`}
-                          type="number"
+                        <InlineEditInput
+                          key={`${type}-${ym}-${reading?.id ?? "new"}`}
+                          testId={`input-reading-${type}-${ym}-${sublease.id}`}
+                          initialValue={reading?.reading || ""}
                           step="0.001"
-                          className="w-28"
                           placeholder="—"
-                          defaultValue={reading?.reading || ""}
-                          key={`${type}-${ym}-${reading?.reading ?? "empty"}`}
-                          onBlur={(e) => {
-                            if (e.target.value !== (reading?.reading || "")) {
-                              saveReading.mutate({ meterType: type, yearMonth: ym, reading: e.target.value });
-                            }
+                          className="w-28"
+                          onSave={(val) => {
+                            saveReading.mutate({ meterType: type, yearMonth: ym, reading: val });
                           }}
                         />
                       </TableCell>
