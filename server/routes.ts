@@ -1301,7 +1301,8 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Plik Excel nie został znaleziony" });
       }
 
-      const wb = XLSX.readFile(filePath);
+      const fileBuffer = fs.readFileSync(filePath);
+      const wb = XLSX.read(fileBuffer);
       const apartments = await storage.getApartments();
       const activeApts = apartments.filter(a => a.active !== false);
 
