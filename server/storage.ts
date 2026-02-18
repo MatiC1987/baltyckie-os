@@ -164,6 +164,7 @@ export interface IStorage {
   getMediaSettlementReports(subleaseId: number): Promise<MediaSettlementReport[]>;
   createMediaSettlementReport(report: InsertMediaSettlementReport): Promise<MediaSettlementReport>;
   updateMediaSettlementReportStatus(id: number, status: string): Promise<MediaSettlementReport>;
+  updateMediaSettlementReport(id: number, data: Partial<InsertMediaSettlementReport>): Promise<MediaSettlementReport>;
   deleteMediaSettlementReport(id: number): Promise<void>;
 
   // App Users
@@ -787,6 +788,14 @@ export class DatabaseStorage implements IStorage {
   async updateMediaSettlementReportStatus(id: number, status: string): Promise<MediaSettlementReport> {
     const [updated] = await db.update(mediaSettlementReports)
       .set({ paymentStatus: status })
+      .where(eq(mediaSettlementReports.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateMediaSettlementReport(id: number, data: Partial<InsertMediaSettlementReport>): Promise<MediaSettlementReport> {
+    const [updated] = await db.update(mediaSettlementReports)
+      .set(data)
       .where(eq(mediaSettlementReports.id, id))
       .returning();
     return updated;

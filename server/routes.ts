@@ -856,6 +856,15 @@ export async function registerRoutes(
     }
   });
 
+  app.patch('/api/settlement-reports/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateMediaSettlementReport(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd aktualizacji" });
+    }
+  });
+
   app.patch('/api/settlement-reports/:id/status', isAuthenticated, async (req, res) => {
     try {
       const { paymentStatus } = req.body;

@@ -15,7 +15,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
 } from "@/components/ui/dialog";
-import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign } from "lucide-react";
+import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign, Pencil } from "lucide-react";
 
 function formatDate(d: string | null | undefined) {
   if (!d) return "";
@@ -748,7 +748,7 @@ function SubleaseMediaCard({
             </Button>
             {reports.filter(r => r.paymentStatus === "NIEOPLACONE").length > 0 && (
               <Badge variant="destructive" className="no-default-hover-elevate no-default-active-elevate">
-                {reports.filter(r => r.paymentStatus === "NIEOPLACONE").length} nieop\u0142acone
+                {reports.filter(r => r.paymentStatus === "NIEOPLACONE").length} nieopłacone
               </Badge>
             )}
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -787,7 +787,7 @@ function SubleaseMediaCard({
                 <div className="mt-6 pt-4 border-t space-y-3">
                   <h3 className="font-medium text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4" />
-                    Historia rozlicze\u0144
+                    Historia rozliczeń
                   </h3>
                   <Table>
                     <TableHeader>
@@ -795,7 +795,7 @@ function SubleaseMediaCard({
                         <TableHead>Okres</TableHead>
                         <TableHead className="text-right">Energia</TableHead>
                         <TableHead className="text-right">Woda zimna</TableHead>
-                        <TableHead className="text-right">Woda ciep\u0142a</TableHead>
+                        <TableHead className="text-right">Woda ciepła</TableHead>
                         <TableHead className="text-right">Razem</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="w-10"></TableHead>
@@ -808,16 +808,16 @@ function SubleaseMediaCard({
                             {formatDate(report.periodFrom)} — {formatDate(report.periodTo)}
                           </TableCell>
                           <TableCell className="text-right text-sm">
-                            {report.electricityCost ? `${formatNum(report.electricityCost)} z\u0142` : "—"}
+                            {report.electricityCost ? `${formatNum(report.electricityCost)} zł` : "—"}
                           </TableCell>
                           <TableCell className="text-right text-sm">
-                            {report.coldWaterCost ? `${formatNum(report.coldWaterCost)} z\u0142` : "—"}
+                            {report.coldWaterCost ? `${formatNum(report.coldWaterCost)} zł` : "—"}
                           </TableCell>
                           <TableCell className="text-right text-sm">
-                            {report.hotWaterCost ? `${formatNum(report.hotWaterCost)} z\u0142` : "—"}
+                            {report.hotWaterCost ? `${formatNum(report.hotWaterCost)} zł` : "—"}
                           </TableCell>
                           <TableCell className="text-right text-sm font-medium">
-                            {report.totalCost ? `${formatNum(report.totalCost)} z\u0142` : "—"}
+                            {report.totalCost ? `${formatNum(report.totalCost)} zł` : "—"}
                           </TableCell>
                           <TableCell>
                             <Button
@@ -833,12 +833,12 @@ function SubleaseMediaCard({
                               {report.paymentStatus === "OPLACONE" ? (
                                 <>
                                   <Check className="w-3 h-3 mr-1" />
-                                  OP\u0141ACONE
+                                  OPŁACONE
                                 </>
                               ) : (
                                 <>
                                   <CircleDollarSign className="w-3 h-3 mr-1" />
-                                  NIEOP\u0141ACONE
+                                  NIEOPŁACONE
                                 </>
                               )}
                             </Button>
@@ -876,7 +876,7 @@ function SubleaseMediaCard({
       <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Generuj rozliczenie medi\u00f3w</DialogTitle>
+            <DialogTitle>Generuj rozliczenie mediów</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">
@@ -897,7 +897,7 @@ function SubleaseMediaCard({
                     <TableHeader>
                       <TableRow>
                         <TableHead>Medium</TableHead>
-                        <TableHead className="text-right">{`Zu\u017cycie`}</TableHead>
+                        <TableHead className="text-right">Zużycie</TableHead>
                         <TableHead className="text-right">Koszt</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -906,22 +906,22 @@ function SubleaseMediaCard({
                         <TableRow key={item.type}>
                           <TableCell className="font-medium">{item.label}</TableCell>
                           <TableCell className="text-right">
-                            {item.totalConsumption > 0 ? `${formatNum(item.totalConsumption, 3)} ${item.unit}` : "\u2014"}
+                            {item.totalConsumption > 0 ? `${formatNum(item.totalConsumption, 3)} ${item.unit}` : "—"}
                           </TableCell>
                           <TableCell className="text-right font-medium">
-                            {item.totalCost > 0 ? `${formatNum(item.totalCost)} z\u0142` : "\u2014"}
+                            {item.totalCost > 0 ? `${formatNum(item.totalCost)} zł` : "—"}
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                   <div className="flex justify-between items-center p-3 bg-muted/50 rounded-md">
-                    <span className="font-medium">Razem do zap\u0142aty</span>
-                    <span className="text-lg font-bold">{formatNum(data.total)} z\u0142</span>
+                    <span className="font-medium">Razem do zapłaty</span>
+                    <span className="text-lg font-bold">{formatNum(data.total)} zł</span>
                   </div>
                   {data.total <= 0 && (
                     <p className="text-sm text-muted-foreground text-center">
-                      Brak odczyt\u00f3w w bie\u017c\u0105cym okresie. Dodaj odczyty licznik\u00f3w, aby wygenerowa\u0107 rozliczenie.
+                      Brak odczytów w bieżącym okresie. Dodaj odczyty liczników, aby wygenerować rozliczenie.
                     </p>
                   )}
                 </div>
@@ -938,7 +938,7 @@ function SubleaseMediaCard({
               onClick={() => createReport.mutate()}
             >
               <ClipboardCheck className="w-4 h-4 mr-1" />
-              {createReport.isPending ? "Generowanie..." : "Potwierd\u017a i generuj"}
+              {createReport.isPending ? "Generowanie..." : "Potwierdź i generuj"}
             </Button>
           </DialogFooter>
         </DialogContent>
