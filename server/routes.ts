@@ -392,16 +392,11 @@ export async function registerRoutes(
         const amount = Number(p.amount) || 0;
         const payAptIds = p.apartmentId ? [p.apartmentId] : aptIds;
 
-        if (p.status === "oplacona") {
-          for (const aptId of payAptIds) {
-            if (!aptId) continue;
-            initMonth(aptId, month);
-            revenueData[aptId][month].podnajem += amount / payAptIds.length;
-          }
-        } else if (p.status === "do_oplacenia") {
-          for (const aptId of payAptIds) {
-            if (!aptId) continue;
-            initMonth(aptId, month);
+        for (const aptId of payAptIds) {
+          if (!aptId) continue;
+          initMonth(aptId, month);
+          revenueData[aptId][month].podnajem += amount / payAptIds.length;
+          if (p.status === "do_oplacenia") {
             revenueData[aptId][month].doplaty_podnajem += amount / payAptIds.length;
           }
         }
