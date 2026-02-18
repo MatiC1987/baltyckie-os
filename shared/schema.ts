@@ -424,6 +424,31 @@ export const insertSubleaseAttachmentSchema = createInsertSchema(subleaseAttachm
 export type SubleaseAttachment = typeof subleaseAttachments.$inferSelect;
 export type InsertSubleaseAttachment = z.infer<typeof insertSubleaseAttachmentSchema>;
 
+export const subleaseMeterReadings = pgTable("sublease_meter_readings", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  meterType: text("meter_type").notNull(),
+  yearMonth: text("year_month").notNull(),
+  reading: numeric("reading", { precision: 12, scale: 3 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const subleaseMeterSettings = pgTable("sublease_meter_settings", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  meterType: text("meter_type").notNull(),
+  unitPrice: numeric("unit_price", { precision: 12, scale: 4 }),
+  initialReading: numeric("initial_reading", { precision: 12, scale: 3 }),
+});
+
+export const insertSubleaseMeterReadingSchema = createInsertSchema(subleaseMeterReadings).omit({ id: true, createdAt: true });
+export type SubleaseMeterReading = typeof subleaseMeterReadings.$inferSelect;
+export type InsertSubleaseMeterReading = z.infer<typeof insertSubleaseMeterReadingSchema>;
+
+export const insertSubleaseMeterSettingSchema = createInsertSchema(subleaseMeterSettings).omit({ id: true });
+export type SubleaseMeterSetting = typeof subleaseMeterSettings.$inferSelect;
+export type InsertSubleaseMeterSetting = z.infer<typeof insertSubleaseMeterSettingSchema>;
+
 export const appUsers = pgTable("app_users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
