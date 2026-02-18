@@ -7,7 +7,7 @@ import { format, addDays, addWeeks, addMonths, addQuarters, isBefore, isEqual } 
 import { pl } from "date-fns/locale";
 import { useMemo } from "react";
 import {
-  Plus, Pencil, Trash2, Upload, FileText, X, Search,
+  Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw
 } from "lucide-react";
@@ -445,6 +445,7 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
   const [showAdd, setShowAdd] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
   const [payForm, setPayForm] = useState<Record<string, any>>({ title: "", category: "Czynsz", amount: "", dueDate: "", status: "do_oplacenia", apartmentId: "" });
+  const [editingPayment, setEditingPayment] = useState<Record<string, any> | null>(null);
 
   const { data: payments = [], isLoading } = useQuery<SubleasePayment[]>({
     queryKey: ['/api/subleases', subleaseId, 'payments'],
@@ -482,6 +483,7 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'payments'] });
       toast({ title: "Sukces", description: "Zaktualizowano opłatę" });
+      setEditingPayment(null);
     },
   });
 
@@ -607,6 +609,79 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
             <TableBody>
               {payments.map((p) => {
                 const st = PAYMENT_STATUSES[p.status] || { label: p.status, variant: "outline" as const };
+                const isEditing = editingPayment?.id === p.id;
+
+                if (isEditing) {
+                  return (
+                    <TableRow key={p.id} className="bg-muted/30" data-testid={`row-payment-edit-${p.id}`}>
+                      <TableCell>
+                        <Input
+                          value={editingPayment.title}
+                          onChange={(e) => setEditingPayment({ ...editingPayment, title: e.target.value })}
+                          className="h-7 text-xs"
+                          data-testid={`edit-input-payment-title-${p.id}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select value={editingPayment.apartmentId?.toString() || ""} onValueChange={(v) => setEditingPayment({ ...editingPayment, apartmentId: v ? parseInt(v) : null })}>
+                          <SelectTrigger className="h-7 text-xs" data-testid={`edit-select-payment-apartment-${p.id}`}><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>
+                            {apartments.map((a) => <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select value={editingPayment.category} onValueChange={(v) => setEditingPayment({ ...editingPayment, category: v })}>
+                          <SelectTrigger className="h-7 text-xs" data-testid={`edit-select-payment-category-${p.id}`}><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={editingPayment.amount}
+                          onChange={(e) => setEditingPayment({ ...editingPayment, amount: e.target.value })}
+                          className="h-7 text-xs w-24"
+                          data-testid={`edit-input-payment-amount-${p.id}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="date"
+                          value={editingPayment.dueDate}
+                          onChange={(e) => setEditingPayment({ ...editingPayment, dueDate: e.target.value })}
+                          className="h-7 text-xs"
+                          data-testid={`edit-input-payment-due-date-${p.id}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select value={editingPayment.status} onValueChange={(v) => setEditingPayment({ ...editingPayment, status: v })}>
+                          <SelectTrigger className="h-7 w-32 text-xs" data-testid={`edit-select-payment-status-${p.id}`}><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(PAYMENT_STATUSES).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-0.5">
+                          <Button size="icon" variant="ghost" onClick={() => {
+                            const { id, ...data } = editingPayment;
+                            updateMut.mutate({ id, data: { title: data.title, category: data.category, amount: data.amount, dueDate: data.dueDate, status: data.status, apartmentId: data.apartmentId || null } });
+                          }} disabled={updateMut.isPending} data-testid={`button-save-edit-payment-${p.id}`}>
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => setEditingPayment(null)} data-testid={`button-cancel-edit-payment-${p.id}`}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+
                 return (
                   <TableRow key={p.id} data-testid={`row-payment-${p.id}`}>
                     <TableCell className="font-medium">{p.title}</TableCell>
@@ -627,9 +702,22 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <Button size="icon" variant="ghost" onClick={() => deleteMut.mutate(p.id)} data-testid={`button-delete-payment-${p.id}`}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button size="icon" variant="ghost" onClick={() => setEditingPayment({
+                          id: p.id,
+                          title: p.title,
+                          category: p.category,
+                          amount: p.amount,
+                          dueDate: p.dueDate,
+                          status: p.status,
+                          apartmentId: p.apartmentId,
+                        })} data-testid={`button-edit-payment-${p.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => deleteMut.mutate(p.id)} data-testid={`button-delete-payment-${p.id}`}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
