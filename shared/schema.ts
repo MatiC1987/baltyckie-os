@@ -428,7 +428,8 @@ export const subleaseMeterReadings = pgTable("sublease_meter_readings", {
   id: serial("id").primaryKey(),
   subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
   meterType: text("meter_type").notNull(),
-  yearMonth: text("year_month").notNull(),
+  yearMonth: text("year_month"),
+  readingDate: date("reading_date"),
   reading: numeric("reading", { precision: 12, scale: 3 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -439,6 +440,16 @@ export const subleaseMeterSettings = pgTable("sublease_meter_settings", {
   meterType: text("meter_type").notNull(),
   unitPrice: numeric("unit_price", { precision: 12, scale: 4 }),
   initialReading: numeric("initial_reading", { precision: 12, scale: 3 }),
+  initialDate: date("initial_date"),
+});
+
+export const subleaseMeterPrices = pgTable("sublease_meter_prices", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  meterType: text("meter_type").notNull(),
+  unitPrice: numeric("unit_price", { precision: 12, scale: 4 }).notNull(),
+  validFrom: date("valid_from").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertSubleaseMeterReadingSchema = createInsertSchema(subleaseMeterReadings).omit({ id: true, createdAt: true });
@@ -448,6 +459,10 @@ export type InsertSubleaseMeterReading = z.infer<typeof insertSubleaseMeterReadi
 export const insertSubleaseMeterSettingSchema = createInsertSchema(subleaseMeterSettings).omit({ id: true });
 export type SubleaseMeterSetting = typeof subleaseMeterSettings.$inferSelect;
 export type InsertSubleaseMeterSetting = z.infer<typeof insertSubleaseMeterSettingSchema>;
+
+export const insertSubleaseMeterPriceSchema = createInsertSchema(subleaseMeterPrices).omit({ id: true, createdAt: true });
+export type SubleaseMeterPrice = typeof subleaseMeterPrices.$inferSelect;
+export type InsertSubleaseMeterPrice = z.infer<typeof insertSubleaseMeterPriceSchema>;
 
 export const appUsers = pgTable("app_users", {
   id: serial("id").primaryKey(),
