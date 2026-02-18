@@ -734,10 +734,12 @@ export default function Subleases() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title={att.fileName}
-                              className="text-muted-foreground hover:text-foreground"
                               data-testid={`link-attachment-${att.id}`}
                             >
-                              <Paperclip className="h-4 w-4" />
+                              <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                                <FileText className="h-3 w-3" />
+                                {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
+                              </Badge>
                             </a>
                           ))}
                         </div>
