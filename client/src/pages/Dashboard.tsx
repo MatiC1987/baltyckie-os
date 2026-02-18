@@ -19,16 +19,31 @@ import {
 } from "@/components/ui/table";
 import { differenceInDays } from "date-fns";
 import {
-  ArrowUp, ArrowDown, ArrowUpDown, Plane, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, Scale, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target,
+  ArrowUp, ArrowDown, ArrowUpDown, Plane, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target,
 } from "lucide-react";
 import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
 
+type CompanyBalanceAccount = {
+  id: number;
+  name: string;
+  type: string | null;
+  category: string | null;
+  balanceSource: string | null;
+  latestBalance: string;
+};
+
 type CompanyBalance = {
-  accounts: { id: number; name: string; type: string | null; latestBalance: string }[];
+  accounts: CompanyBalanceAccount[];
   totalBalance: string;
 };
 
-type SaldoBalances = Record<string, number>;
+const CATEGORY_LABELS: Record<string, string> = {
+  KONTA_BANKOWE: "Konta bankowe",
+  GOTOWKA: "Gotówka",
+  INNE: "Inne",
+};
+
+const CATEGORY_ORDER = ["KONTA_BANKOWE", "GOTOWKA", "INNE"];
 
 type ForecastMonth = {
   year: number;
@@ -46,19 +61,6 @@ type SubleasePaymentExtended = SubleasePayment & {
 
 function useCompanyBalance() {
   return useQuery<CompanyBalance>({ queryKey: ["/api/company-balance"] });
-}
-
-function useSaldoBalances() {
-  return useQuery<SaldoBalances>({ queryKey: ["/api/saldo-balances"] });
-}
-
-function getAccountIcon(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.includes("pekao") || lower.includes("santander")) return Landmark;
-  if (lower.includes("gotówka")) return Banknote;
-  if (lower.includes("krypto")) return Bitcoin;
-  if (lower.includes("pożyczki")) return HandCoins;
-  return Wallet;
 }
 
 type SortField = "reservationNumber" | "addDate" | "apartmentName" | "startDate" | "endDate" | "guestName" | "price" | "prepayment" | "paidAmount" | "remaining" | "status";
@@ -121,7 +123,6 @@ export default function Dashboard() {
   const { data: reservations, isLoading: reservationsLoading } = useReservations();
   const { data: apartments } = useApartments();
   const { data: companyBalance, isLoading: balanceLoading } = useCompanyBalance();
-  const { data: saldoBalances } = useSaldoBalances();
   const { data: leases } = useQuery<Lease[]>({ queryKey: ["/api/leases"] });
   const { data: allSubleasePayments } = useQuery<SubleasePaymentExtended[]>({ queryKey: ["/api/dashboard/all-sublease-payments"] });
   const { data: forecastData } = useQuery<ForecastMonth[]>({ queryKey: ["/api/dashboard/revenue-forecast"] });
@@ -152,7 +153,6 @@ export default function Dashboard() {
 
       <CompanyBalanceCard
         companyBalance={companyBalance}
-        saldoBalances={saldoBalances}
         balanceLoading={balanceLoading}
         editingAccountId={editingAccountId}
         editingBalance={editingBalance}
@@ -204,123 +204,150 @@ export default function Dashboard() {
 }
 
 function CompanyBalanceCard({
-  companyBalance, saldoBalances, balanceLoading, editingAccountId, editingBalance,
+  companyBalance, balanceLoading, editingAccountId, editingBalance,
   setEditingAccountId, setEditingBalance, updateBalanceMutation,
 }: any) {
+  const categorized = useMemo(() => {
+    if (!companyBalance?.accounts) return {};
+    const groups: Record<string, CompanyBalanceAccount[]> = {};
+    for (const acc of companyBalance.accounts) {
+      const cat = acc.category || "INNE";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(acc);
+    }
+    return groups;
+  }, [companyBalance]);
+
+  const categoryTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const [cat, accs] of Object.entries(categorized)) {
+      totals[cat] = accs.reduce((sum, a) => sum + Number(a.latestBalance), 0);
+    }
+    return totals;
+  }, [categorized]);
+
+  const saldoLinkMap: Record<string, string> = {
+    "Saldo - M. Cieślak": "/saldo-mc",
+    "Saldo - M. Latasiewicz": "/saldo-ml",
+    "Saldo - J. Głodkowska": "/saldo-jg",
+  };
+
+  const formatPLN = (val: number) =>
+    val.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " zł";
+
   return (
     <Card data-testid="card-company-balance">
-      <CardHeader className="pb-2 pt-3">
-        <CardTitle className="flex items-center gap-2 flex-wrap text-base">
-          <Wallet className="h-4 w-4" />
-          Saldo firmowe
-          {companyBalance && (
-            <span className="text-lg font-bold ml-2" data-testid="text-total-balance">
-              {Number(companyBalance.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pb-3">
+      <CardContent className="py-3 px-4">
         {balanceLoading ? (
-          <div className="h-10 bg-muted animate-pulse rounded-lg" />
+          <div className="h-14 bg-muted animate-pulse rounded-lg" />
         ) : (
-          <div className="space-y-2">
-            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-              {companyBalance?.accounts.filter((acc: any) => !acc.name.toLowerCase().includes("gotówka")).map((acc: any) => {
-                const Icon = getAccountIcon(acc.name);
-                const balance = Number(acc.latestBalance);
-                const isEditing = editingAccountId === acc.id;
-                return (
-                  <div
-                    key={acc.id}
-                    className="rounded-lg border border-border p-2 space-y-0.5 group"
-                    data-testid={`card-account-balance-${acc.id}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="text-[10px] text-muted-foreground truncate">{acc.name}</span>
-                    </div>
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={editingBalance}
-                          onChange={(e: any) => setEditingBalance(e.target.value)}
-                          onKeyDown={(e: any) => {
-                            if (e.key === "Enter" && editingBalance.trim()) {
-                              updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
-                            }
-                            if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
-                          }}
-                          className="h-6 text-xs w-full"
-                          autoFocus
-                          data-testid={`input-balance-${acc.id}`}
-                        />
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => { if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() }); }}
-                          disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
-                          data-testid={`button-save-balance-${acc.id}`}
-                        >
-                          <Check className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
-                          data-testid={`button-cancel-balance-${acc.id}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        <div className={`text-xs font-bold flex-1 ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                        </div>
-                        <button
-                          className="invisible group-hover:visible text-muted-foreground hover:text-foreground p-0.5 shrink-0"
-                          onClick={() => { setEditingAccountId(acc.id); setEditingBalance(acc.latestBalance); }}
-                          data-testid={`button-edit-balance-${acc.id}`}
-                        >
-                          <Pencil className="h-2.5 w-2.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {saldoBalances && (
-              <div className="pt-2 border-t border-border">
-                <div className="grid gap-2 grid-cols-1 sm:grid-cols-3">
-                  {[
-                    { name: "Saldo - M. Cieślak", person: "Mateusz Cieślak", icon: Scale, href: "/saldo-mc" },
-                  ].map(item => {
-                    const balance = saldoBalances[item.person] ?? 0;
-                    const IconComp = item.icon;
-                    return (
-                      <Link
-                        key={item.person}
-                        href={item.href}
-                        className="rounded-lg border border-border p-2 space-y-0.5 hover-elevate block"
-                        data-testid={`card-saldo-${item.person.replace(/\s/g, "-")}`}
-                      >
-                        <div className="flex items-center gap-1">
-                          <IconComp className="h-3 w-3 text-muted-foreground shrink-0" />
-                          <span className="text-[10px] text-muted-foreground truncate">{item.name}</span>
-                        </div>
-                        <div className={`text-xs font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                          {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
+          <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-4 lg:gap-6 items-start">
+            <div className="shrink-0" data-testid="text-total-balance">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                Saldo firmowe
               </div>
-            )}
+              <div className="text-2xl font-bold whitespace-nowrap">
+                {formatPLN(Number(companyBalance?.totalBalance || 0))}
+              </div>
+            </div>
+
+            {CATEGORY_ORDER.map(cat => {
+              const accs = categorized[cat];
+              if (!accs || accs.length === 0) return null;
+              const catTotal = categoryTotals[cat] || 0;
+              return (
+                <div key={cat} className="min-w-0" data-testid={`category-${cat}`}>
+                  <div className="flex items-baseline gap-2 mb-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {CATEGORY_LABELS[cat] || cat}
+                    </span>
+                    <span className="text-sm font-bold whitespace-nowrap" data-testid={`text-category-total-${cat}`}>
+                      {formatPLN(catTotal)}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5">
+                    {accs.map(acc => {
+                      const balance = Number(acc.latestBalance);
+                      const isEditing = editingAccountId === acc.id;
+                      const isAuto = acc.balanceSource === "auto_saldo";
+                      const link = saldoLinkMap[acc.name];
+
+                      return (
+                        <div
+                          key={acc.id}
+                          className="flex items-center gap-3 group min-h-[22px]"
+                          data-testid={`card-account-balance-${acc.id}`}
+                        >
+                          <span className="text-[11px] text-muted-foreground whitespace-nowrap text-right">
+                            {acc.name}
+                          </span>
+                          {isEditing ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={editingBalance}
+                                onChange={(e: any) => setEditingBalance(e.target.value)}
+                                onKeyDown={(e: any) => {
+                                  if (e.key === "Enter" && editingBalance.trim()) {
+                                    updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
+                                  }
+                                  if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
+                                }}
+                                className="h-6 text-xs w-28"
+                                autoFocus
+                                data-testid={`input-balance-${acc.id}`}
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => { if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() }); }}
+                                disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
+                                data-testid={`button-save-balance-${acc.id}`}
+                              >
+                                <Check className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
+                                data-testid={`button-cancel-balance-${acc.id}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              {link && isAuto ? (
+                                <Link href={link} className="text-sm font-bold whitespace-nowrap hover:underline" data-testid={`text-balance-${acc.id}`}>
+                                  {formatPLN(balance)}
+                                </Link>
+                              ) : (
+                                <span className={`text-sm font-bold whitespace-nowrap ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`} data-testid={`text-balance-${acc.id}`}>
+                                  {formatPLN(balance)}
+                                </span>
+                              )}
+                              {!isAuto && (
+                                <button
+                                  className="invisible group-hover:visible text-muted-foreground hover:text-foreground p-0.5 shrink-0"
+                                  onClick={() => { setEditingAccountId(acc.id); setEditingBalance(acc.latestBalance); }}
+                                  data-testid={`button-edit-balance-${acc.id}`}
+                                >
+                                  <Pencil className="h-2.5 w-2.5" />
+                                </button>
+                              )}
+                              {isAuto && (
+                                <span className="text-[9px] text-muted-foreground/60 italic">auto</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

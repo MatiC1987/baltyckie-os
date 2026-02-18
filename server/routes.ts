@@ -71,13 +71,13 @@ async function seedServiceContractCategories() {
 async function seedAccounts() {
   const existingAccounts = await storage.getAccounts();
   const requiredAccounts = [
-    { name: "Pekao SA", type: "BANK" },
-    { name: "Santander", type: "BANK" },
-    { name: "Gotówka", type: "CASH" },
-    { name: "Saldo - M. Latasiewicz", type: "BANK" },
-    { name: "Saldo - J. Głodkowska", type: "BANK" },
-    { name: "Kryptowaluty", type: "BANK" },
-    { name: "Pożyczki", type: "LOAN" },
+    { name: "Pekao SA", type: "BANK", category: "KONTA_BANKOWE", balanceSource: "manual" },
+    { name: "Santander", type: "BANK", category: "KONTA_BANKOWE", balanceSource: "manual" },
+    { name: "Saldo - M. Cieślak", type: "CASH", category: "GOTOWKA", balanceSource: "auto_saldo" },
+    { name: "Saldo - M. Latasiewicz", type: "BANK", category: "GOTOWKA", balanceSource: "auto_saldo" },
+    { name: "Saldo - J. Głodkowska", type: "BANK", category: "GOTOWKA", balanceSource: "auto_saldo" },
+    { name: "Kryptowaluty", type: "BANK", category: "INNE", balanceSource: "manual" },
+    { name: "Pożyczki", type: "LOAN", category: "INNE", balanceSource: "manual" },
   ];
   const existingNames = existingAccounts.map(a => a.name.toLowerCase());
   for (const acc of requiredAccounts) {
@@ -313,6 +313,29 @@ export async function registerRoutes(
   // Company Balance
   app.get("/api/company-balance", isAuthenticated, async (req, res) => {
     const balance = await storage.getCompanyBalance();
+
+    const saldoPersonMap: Record<string, string> = {
+      "Saldo - M. Latasiewicz": "Małgorzata Latasiewicz",
+      "Saldo - J. Głodkowska": "Jolanta Głodkowska",
+      "Saldo - M. Cieślak": "Mateusz Cieślak",
+    };
+
+    for (const acc of balance.accounts) {
+      if (acc.balanceSource === "auto_saldo") {
+        const personName = saldoPersonMap[acc.name];
+        if (personName) {
+          const entries = await storage.getSaldoEntries({ personName });
+          if (entries.length > 0) {
+            const last = entries[entries.length - 1];
+            acc.latestBalance = last.saldo || "0.00";
+          }
+        }
+      }
+    }
+
+    const total = balance.accounts.reduce((sum, a) => sum + Number(a.latestBalance), 0);
+    balance.totalBalance = total.toFixed(2);
+
     res.json(balance);
   });
 

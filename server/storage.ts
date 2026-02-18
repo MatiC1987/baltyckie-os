@@ -80,7 +80,7 @@ export interface IStorage {
   createAccount(account: InsertAccount): Promise<Account>;
   getSnapshots(accountId?: number): Promise<AccountSnapshot[]>;
   createSnapshot(snapshot: InsertAccountSnapshot): Promise<AccountSnapshot>;
-  getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; latestBalance: string }[]; totalBalance: string }>;
+  getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; category: string | null; balanceSource: string | null; latestBalance: string }[]; totalBalance: string }>;
   
   // Attachments
   getAllAttachments(): Promise<Attachment[]>;
@@ -406,7 +406,7 @@ export class DatabaseStorage implements IStorage {
     return newSnapshot;
   }
 
-  async getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; latestBalance: string }[]; totalBalance: string }> {
+  async getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; category: string | null; balanceSource: string | null; latestBalance: string }[]; totalBalance: string }> {
     const allAccounts = await db.select().from(accounts);
     const allSnapshots = await db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.date));
 
@@ -416,6 +416,8 @@ export class DatabaseStorage implements IStorage {
         id: acc.id,
         name: acc.name,
         type: acc.type,
+        category: acc.category,
+        balanceSource: acc.balanceSource,
         latestBalance: latestSnapshot?.balance ?? "0.00",
       };
     });
