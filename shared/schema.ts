@@ -364,6 +364,7 @@ export const subleases = pgTable("subleases", {
   invoiceEmail: text("invoice_email"),
   vatRate: text("vat_rate").default("23%"),
   apartmentId: integer("apartment_id").references(() => apartments.id),
+  apartmentIds: integer("apartment_ids").array(),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   rentAmount: numeric("rent_amount", { precision: 12, scale: 2 }),
