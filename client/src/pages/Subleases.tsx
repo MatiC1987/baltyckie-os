@@ -525,7 +525,7 @@ export default function Subleases() {
   const [editId, setEditId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("dane");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortKey, setSortKey] = useState<"tenant" | "type" | "apartment" | "period" | "rent" | "status">("tenant");
+  const [sortKey, setSortKey] = useState<"tenant" | "type" | "apartment" | "startDate" | "endDate" | "rent" | "status">("tenant");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [form, setForm] = useState<Record<string, any>>({
     tenantType: "osoba_fizyczna",
@@ -662,7 +662,8 @@ export default function Subleases() {
       case "tenant": return dir * getTenantName(a).localeCompare(getTenantName(b), "pl");
       case "type": return dir * (a.tenantType || "").localeCompare(b.tenantType || "");
       case "apartment": return dir * getApartmentNames(a).localeCompare(getApartmentNames(b), "pl");
-      case "period": return dir * (a.startDate || "").localeCompare(b.startDate || "");
+      case "startDate": return dir * (a.startDate || "").localeCompare(b.startDate || "");
+      case "endDate": return dir * (a.endDate || "").localeCompare(b.endDate || "");
       case "rent": return dir * ((parseFloat(a.rentAmount || "0") || 0) - (parseFloat(b.rentAmount || "0") || 0));
       case "status": return dir * (getStatusOrder(a) - getStatusOrder(b));
       default: return 0;
@@ -725,8 +726,11 @@ export default function Subleases() {
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("apartment")} data-testid="th-apartment">
                   <div className="flex items-center">Apartament<SortIcon column="apartment" /></div>
                 </TableHead>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("period")} data-testid="th-period">
-                  <div className="flex items-center">Okres<SortIcon column="period" /></div>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("startDate")} data-testid="th-start-date">
+                  <div className="flex items-center">Data rozpoczęcia<SortIcon column="startDate" /></div>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("endDate")} data-testid="th-end-date">
+                  <div className="flex items-center">Data zakończenia<SortIcon column="endDate" /></div>
                 </TableHead>
                 <TableHead className="cursor-pointer select-none" onClick={() => handleSort("rent")} data-testid="th-rent">
                   <div className="flex items-center">Czynsz<SortIcon column="rent" /></div>
@@ -761,7 +765,8 @@ export default function Subleases() {
                       {!(s.apartmentIds?.length) && !s.apartmentId && "—"}
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm">{s.startDate} — {s.endDate}</TableCell>
+                  <TableCell className="text-sm" data-testid={`cell-start-date-${s.id}`}>{s.startDate}</TableCell>
+                  <TableCell className="text-sm" data-testid={`cell-end-date-${s.id}`}>{s.endDate}</TableCell>
                   <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
                   <TableCell>
                     {isActive(s) ? (
