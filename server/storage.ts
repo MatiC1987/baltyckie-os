@@ -650,6 +650,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Sublease Attachments
+  async getAllSubleaseAttachments(): Promise<SubleaseAttachment[]> {
+    return db.select().from(subleaseAttachments).orderBy(desc(subleaseAttachments.uploadedAt));
+  }
+
   async getSubleaseAttachments(subleaseId: number): Promise<SubleaseAttachment[]> {
     return db.select().from(subleaseAttachments).where(eq(subleaseAttachments.subleaseId, subleaseId)).orderBy(desc(subleaseAttachments.uploadedAt));
   }

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useUpload } from "@/hooks/use-upload";
 import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment } from "@shared/schema";
 import { format } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -388,8 +387,7 @@ function PaymentsTab({ subleaseId, apartments }: { subleaseId: number; apartment
 function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
   const { toast } = useToast();
   const [selectedCategory, setSelectedCategory] = useState("UMOWA");
-  const [currentFileName, setCurrentFileName] = useState("");
-  const [currentFileType, setCurrentFileType] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
   const { data: attachments = [] } = useQuery<SubleaseAttachment[]>({
     queryKey: ['/api/subleases', subleaseId, 'attachments'],
@@ -400,27 +398,6 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
     },
   });
 
-  const { uploadFile, isUploading } = useUpload({
-    onSuccess: async (response) => {
-      await fetch(`/api/subleases/${subleaseId}/attachments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          fileName: currentFileName,
-          objectPath: response.objectPath,
-          fileType: currentFileType,
-          category: selectedCategory,
-        }),
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'attachments'] });
-      toast({ title: "Sukces", description: "Załącznik dodany" });
-    },
-    onError: (err) => {
-      toast({ title: "Błąd", description: err.message, variant: "destructive" });
-    },
-  });
-
   const deleteMut = useMutation({
     mutationFn: async (id: number) => {
       const r = await fetch(`/api/sublease-attachments/${id}`, { method: 'DELETE', credentials: 'include' });
@@ -428,6 +405,7 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
       toast({ title: "Sukces", description: "Załącznik usunięty" });
     },
   });
@@ -435,9 +413,44 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setCurrentFileName(file.name);
-    setCurrentFileType(file.type);
-    await uploadFile(file);
+    const fileName = file.name;
+    const fileType = file.type;
+    const category = selectedCategory;
+
+    setIsUploading(true);
+    try {
+      const urlRes = await fetch("/api/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: fileName, size: file.size, contentType: fileType || "application/octet-stream" }),
+      });
+      if (!urlRes.ok) throw new Error("Nie udało się uzyskać URL do uploadu");
+      const { uploadURL, objectPath } = await urlRes.json();
+
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": fileType || "application/octet-stream" },
+      });
+      if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku");
+
+      const saveRes = await fetch(`/api/subleases/${subleaseId}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ fileName, objectPath, fileType, category }),
+      });
+      if (!saveRes.ok) throw new Error("Nie udało się zapisać załącznika");
+
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
+      toast({ title: "Sukces", description: "Załącznik dodany" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
     e.target.value = '';
   };
 
@@ -512,6 +525,10 @@ export default function Subleases() {
 
   const { data: apartments = [] } = useQuery<Apartment[]>({
     queryKey: ['/api/apartments'],
+  });
+
+  const { data: allAttachments = [] } = useQuery<SubleaseAttachment[]>({
+    queryKey: ['/api/sublease-attachments/all'],
   });
 
   const createMut = useMutation({
@@ -666,6 +683,7 @@ export default function Subleases() {
                 <TableHead>Okres</TableHead>
                 <TableHead>Czynsz</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Załączniki</TableHead>
                 <TableHead className="w-[100px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -702,6 +720,29 @@ export default function Subleases() {
                     ) : (
                       <Badge variant="outline" className="text-xs">Przyszła</Badge>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const atts = allAttachments.filter(a => a.subleaseId === s.id);
+                      if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+                      return (
+                        <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                          {atts.map(att => (
+                            <a
+                              key={att.id}
+                              href={att.objectPath}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={att.fileName}
+                              className="text-muted-foreground hover:text-foreground"
+                              data-testid={`link-attachment-${att.id}`}
+                            >
+                              <Paperclip className="h-4 w-4" />
+                            </a>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>

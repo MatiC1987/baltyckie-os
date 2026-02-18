@@ -648,6 +648,11 @@ export async function registerRoutes(
   });
 
   // Sublease Attachments
+  app.get('/api/sublease-attachments/all', isAuthenticated, async (_req, res) => {
+    const atts = await storage.getAllSubleaseAttachments();
+    res.json(atts);
+  });
+
   app.get('/api/subleases/:id/attachments', isAuthenticated, async (req, res) => {
     const atts = await storage.getSubleaseAttachments(Number(req.params.id));
     res.json(atts);
