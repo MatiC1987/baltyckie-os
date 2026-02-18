@@ -15,7 +15,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, ArrowUp, ArrowDown, GripVertical, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ServiceContract, ServiceContractCategory } from "@shared/schema";
 
@@ -34,6 +34,7 @@ export default function ServiceContracts() {
   const [activeTab, setActiveTab] = useState("all");
   const [showAddContract, setShowAddContract] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showReorderCategories, setShowReorderCategories] = useState(false);
   const [editingContract, setEditingContract] = useState<ServiceContract | null>(null);
 
   const createCategoryMutation = useMutation({
@@ -118,6 +119,9 @@ export default function ServiceContracts() {
           <p className="text-muted-foreground text-sm">Zarządzanie umowami na usługi.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowReorderCategories(true)} data-testid="button-reorder-categories">
+            <Settings className="mr-2 h-4 w-4" /> Kolejność kategorii
+          </Button>
           <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
             <Plus className="mr-2 h-4 w-4" /> Dodaj kategorię
           </Button>
@@ -211,6 +215,12 @@ export default function ServiceContracts() {
           if (editingContract) updateContractMutation.mutate({ id: editingContract.id, data });
         }}
         isPending={updateContractMutation.isPending}
+        categories={categories || []}
+      />
+
+      <ReorderCategoriesDialog
+        open={showReorderCategories}
+        onClose={() => setShowReorderCategories(false)}
         categories={categories || []}
       />
     </div>
@@ -458,6 +468,104 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
             </Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReorderCategoriesDialog({ open, onClose, categories }: {
+  open: boolean;
+  onClose: () => void;
+  categories: ServiceContractCategory[];
+}) {
+  const [orderedCats, setOrderedCats] = useState<ServiceContractCategory[]>([]);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (open) {
+      setOrderedCats([...categories].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+    }
+  }, [open, categories]);
+
+  const moveUp = (idx: number) => {
+    if (idx === 0) return;
+    setOrderedCats(prev => {
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next;
+    });
+  };
+
+  const moveDown = (idx: number) => {
+    if (idx >= orderedCats.length - 1) return;
+    setOrderedCats(prev => {
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await Promise.all(
+        orderedCats.map((cat, idx) =>
+          apiRequest("PUT", `/api/service-contract-categories/${cat.id}`, { sortOrder: idx })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["/api/service-contract-categories"] });
+      toast({ title: "Sukces", description: "Kolejność kategorii zapisana" });
+      onClose();
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się zapisać kolejności", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Kolejność kategorii</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1 py-2">
+          {orderedCats.map((cat, idx) => (
+            <div
+              key={cat.id}
+              className="flex items-center gap-2 rounded-md border border-border px-3 py-2"
+              data-testid={`reorder-category-${cat.id}`}
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="flex-1 text-sm">{cat.name}</span>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => moveUp(idx)}
+                disabled={idx === 0}
+                data-testid={`button-move-up-${cat.id}`}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => moveDown(idx)}
+                disabled={idx === orderedCats.length - 1}
+                data-testid={`button-move-down-${cat.id}`}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose}>Anuluj</Button>
+          <Button onClick={handleSave} disabled={saving} data-testid="button-save-reorder">
+            {saving ? "Zapisywanie..." : "Zapisz"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

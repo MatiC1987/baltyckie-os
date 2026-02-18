@@ -645,6 +645,15 @@ export async function registerRoutes(
     }
   });
 
+  app.put('/api/service-contract-categories/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateServiceContractCategory(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd aktualizacji" });
+    }
+  });
+
   app.delete('/api/service-contract-categories/:id', isAuthenticated, async (req, res) => {
     await storage.deleteServiceContractCategory(Number(req.params.id));
     res.status(204).send();

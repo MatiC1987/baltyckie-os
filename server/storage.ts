@@ -108,6 +108,7 @@ export interface IStorage {
   // Service Contract Categories
   getServiceContractCategories(): Promise<ServiceContractCategory[]>;
   createServiceContractCategory(cat: InsertServiceContractCategory): Promise<ServiceContractCategory>;
+  updateServiceContractCategory(id: number, data: Partial<InsertServiceContractCategory>): Promise<ServiceContractCategory>;
   deleteServiceContractCategory(id: number): Promise<void>;
 
   // Service Contracts
@@ -477,6 +478,11 @@ export class DatabaseStorage implements IStorage {
   async createServiceContractCategory(cat: InsertServiceContractCategory): Promise<ServiceContractCategory> {
     const [newCat] = await db.insert(serviceContractCategories).values(cat).returning();
     return newCat;
+  }
+
+  async updateServiceContractCategory(id: number, data: Partial<InsertServiceContractCategory>): Promise<ServiceContractCategory> {
+    const [updated] = await db.update(serviceContractCategories).set(data).where(eq(serviceContractCategories.id, id)).returning();
+    return updated;
   }
 
   async deleteServiceContractCategory(id: number): Promise<void> {
