@@ -165,6 +165,41 @@ export default function Revenue() {
     setForecastData(loadForecastData(newYear));
   };
 
+  const allActiveApartments = useMemo(() => {
+    return apartments.filter(a => a.active !== false);
+  }, [apartments]);
+
+  const globalTotals = useMemo(() => {
+    const totals: Record<number, { prognoza: number; przychody: number; najem: number; podnajem: number; doplaty_najem: number; doplaty_podnajem: number }> = {};
+    for (let m = 0; m < 12; m++) {
+      totals[m] = { prognoza: 0, przychody: 0, najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
+      for (const apt of allActiveApartments) {
+        const md = getMonthData(apt.id, m);
+        const forecast = getForecast(apt.id, m);
+        totals[m].prognoza += forecast;
+        totals[m].najem += md.najem;
+        totals[m].podnajem += md.podnajem;
+        totals[m].przychody += md.najem + md.podnajem;
+        totals[m].doplaty_najem += md.doplaty_najem;
+        totals[m].doplaty_podnajem += md.doplaty_podnajem;
+      }
+    }
+    return totals;
+  }, [allActiveApartments, revenueData, forecastData, year]);
+
+  const globalYearTotals = useMemo(() => {
+    let prognoza = 0, przychody = 0, najem = 0, podnajem = 0, doplaty = 0;
+    for (let m = 0; m < 12; m++) {
+      const t = globalTotals[m];
+      prognoza += t.prognoza;
+      przychody += t.przychody;
+      najem += t.najem;
+      podnajem += t.podnajem;
+      doplaty += t.doplaty_najem + t.doplaty_podnajem;
+    }
+    return { prognoza, przychody, najem, podnajem, doplaty };
+  }, [globalTotals]);
+
   const locationTotals = useMemo(() => {
     const totals: Record<number, { prognoza: number; przychody: number; najem: number; podnajem: number; doplaty_najem: number; doplaty_podnajem: number }> = {};
     for (let m = 0; m < 12; m++) {
@@ -219,6 +254,65 @@ export default function Revenue() {
           </Select>
         </div>
       </div>
+
+      <Card data-testid="card-global-summary">
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Podsumowanie łączne — wszystkie lokalizacje</span>
+            {globalYearTotals.prognoza > 0 && (() => {
+              const pct = globalYearTotals.przychody / globalYearTotals.prognoza;
+              return (
+                <Badge variant="outline" className={`text-[10px] ${pctColor(pct)}`}>
+                  Realizacja: {formatPct(pct)}
+                </Badge>
+              );
+            })()}
+          </div>
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Przychody ogółem</div>
+              <div className="text-lg font-bold tabular-nums" data-testid="text-global-revenue">{formatNum(globalYearTotals.przychody)} zł</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Prognoza</div>
+              <div className="text-lg font-medium tabular-nums text-muted-foreground" data-testid="text-global-forecast">{globalYearTotals.prognoza > 0 ? formatNum(globalYearTotals.prognoza) + " zł" : "—"}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Najem</div>
+              <div className="text-sm font-medium tabular-nums" data-testid="text-global-najem">{formatNum(globalYearTotals.najem)} zł</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Podnajem</div>
+              <div className="text-sm font-medium tabular-nums" data-testid="text-global-podnajem">{formatNum(globalYearTotals.podnajem)} zł</div>
+            </div>
+            {globalYearTotals.prognoza > 0 && (
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Saldo</div>
+                <div className={`text-sm font-semibold tabular-nums ${saldoColor(globalYearTotals.przychody - globalYearTotals.prognoza)}`} data-testid="text-global-saldo">
+                  {formatNum(globalYearTotals.przychody - globalYearTotals.prognoza)} zł
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-12 mt-3 pt-3 border-t border-border">
+            {MONTHS.map((mName, mi) => {
+              const t = globalTotals[mi];
+              const przychody = t.przychody;
+              const now = new Date();
+              const isCurrentMonth = year === now.getFullYear() && mi === now.getMonth();
+              return (
+                <div key={mi} className={`text-center ${isCurrentMonth ? "ring-1 ring-primary/30 rounded-md p-1" : "p-1"}`} data-testid={`global-month-${mi}`}>
+                  <div className="text-[10px] text-muted-foreground font-medium">{mName}</div>
+                  <div className="text-xs font-bold tabular-nums">{przychody > 0 ? formatNum(przychody) : "—"}</div>
+                  {t.prognoza > 0 && (
+                    <div className={`text-[9px] tabular-nums ${pctColor(przychody / t.prognoza)}`}>{formatPct(przychody / t.prognoza)}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs value={currentLocation} onValueChange={setActiveLocation}>
         <TabsList className="flex flex-wrap h-auto gap-1" data-testid="tabs-location">
