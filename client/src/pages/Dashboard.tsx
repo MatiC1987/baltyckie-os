@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useReservations } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +18,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { differenceInDays } from "date-fns";
+import { differenceInDays, format } from "date-fns";
+import { pl } from "date-fns/locale";
 import {
   ArrowUp, ArrowDown, ArrowUpDown, Plane, PlaneTakeoff, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target, Scale,
-  Plus, Receipt, FileSignature, Download,
+  Plus, Receipt, FileSignature, Download, LayoutDashboard,
 } from "lucide-react";
 import { useLocation } from "wouter";
+import { DashboardSkeleton } from "@/components/PageSkeleton";
 import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
 
 type CompanyBalanceAccount = {
@@ -126,38 +129,41 @@ function getForecastForMonth(year: number, month: number): number {
 
 function QuickActions() {
   const [, navigate] = useLocation();
+  const actions = [
+    { label: "Nowa rezerwacja", shortLabel: "Rezerwacja", icon: Plus, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", href: "/reservations?action=new", testId: "button-quick-reservation" },
+    { label: "Nowy wydatek", shortLabel: "Wydatek", icon: Receipt, color: "text-red-600 dark:text-red-400", bg: "bg-red-500/10", href: "/costs-expenses?action=new", testId: "button-quick-expense" },
+    { label: "Nowy podnajem", shortLabel: "Podnajem", icon: FileSignature, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", href: "/contracts-subrent?action=new", testId: "button-quick-sublease" },
+    { label: "Backup danych", shortLabel: "Backup", icon: Download, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", href: "/backup", testId: "button-quick-backup" },
+  ];
   return (
-    <Card>
-      <CardContent className="py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs sm:text-sm font-medium text-muted-foreground mr-1">Szybkie akcje:</span>
-          <Button size="sm" variant="outline" onClick={() => navigate("/reservations?action=new")} data-testid="button-quick-reservation" className="text-xs sm:text-sm">
-            <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Nowa rezerwacja</span>
-            <span className="sm:hidden">Rezerwacja</span>
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/costs-expenses?action=new")} data-testid="button-quick-expense" className="text-xs sm:text-sm">
-            <Receipt className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Nowy wydatek</span>
-            <span className="sm:hidden">Wydatek</span>
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/contracts-subrent?action=new")} data-testid="button-quick-sublease" className="text-xs sm:text-sm">
-            <FileSignature className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Nowy podnajem</span>
-            <span className="sm:hidden">Podnajem</span>
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/backup")} data-testid="button-quick-backup" className="text-xs sm:text-sm">
-            <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Backup danych</span>
-            <span className="sm:hidden">Backup</span>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {actions.map(a => (
+        <Card key={a.testId} className="hover-elevate cursor-pointer" onClick={() => navigate(a.href)} data-testid={a.testId}>
+          <CardContent className="py-3 px-4 flex items-center gap-3">
+            <div className={`h-9 w-9 rounded-md ${a.bg} flex items-center justify-center shrink-0`}>
+              <a.icon className={`h-4 w-4 ${a.color}`} />
+            </div>
+            <span className="text-sm font-medium">
+              <span className="hidden sm:inline">{a.label}</span>
+              <span className="sm:hidden">{a.shortLabel}</span>
+            </span>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 6) return "Dobrej nocy";
+  if (hour < 12) return "Dzień dobry";
+  if (hour < 18) return "Dzień dobry";
+  return "Dobry wieczór";
+}
+
 export default function Dashboard() {
+  const { user } = useAuth();
   const { data: reservations, isLoading: reservationsLoading } = useReservations();
   const { data: apartments } = useApartments();
   const { data: companyBalance, isLoading: balanceLoading } = useCompanyBalance();
@@ -224,11 +230,26 @@ export default function Dashboard() {
     return { monthRevenue, monthCount, revenueChange, lastMonthRevenue, unpaidCount };
   }, [reservations]);
 
+  if (reservationsLoading && !reservations) {
+    return <DashboardSkeleton />;
+  }
+
+  const todayFormatted = format(new Date(), "EEEE, d MMMM yyyy", { locale: pl });
+  const greeting = getGreeting();
+  const userName = user?.firstName || "";
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h2>
-        <p className="text-muted-foreground">Przegląd wyników finansowych i operacyjnych.</p>
+      <div className="flex items-center gap-3">
+        <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
+          <LayoutDashboard className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
+            {greeting}{userName ? `, ${userName}` : ""}
+          </h1>
+          <p className="text-sm text-muted-foreground capitalize" data-testid="text-dashboard-date">{todayFormatted}</p>
+        </div>
       </div>
 
       {kpiStats && (
@@ -237,14 +258,17 @@ export default function Dashboard() {
             <CardContent className="pt-4 pb-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground font-medium">Przychód (ten miesiąc)</p>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                <div className="h-8 w-8 rounded-md bg-emerald-500/10 flex items-center justify-center shrink-0">
+                  <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
               </div>
               <p className="text-xl font-bold mt-1">
                 {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
               </p>
               {kpiStats.lastMonthRevenue > 0 && (
-                <p className={`text-xs mt-1 ${kpiStats.revenueChange >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                  {kpiStats.revenueChange >= 0 ? "+" : ""}{kpiStats.revenueChange.toFixed(1)}% vs poprzedni mies.
+                <p className={`text-xs mt-1 flex items-center gap-1 ${kpiStats.revenueChange >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {kpiStats.revenueChange >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                  {Math.abs(kpiStats.revenueChange).toFixed(1)}% vs poprzedni mies.
                 </p>
               )}
             </CardContent>
@@ -254,7 +278,9 @@ export default function Dashboard() {
             <CardContent className="pt-4 pb-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground font-medium">Rezerwacje (ten miesiąc)</p>
-                <Plane className="h-4 w-4 text-muted-foreground" />
+                <div className="h-8 w-8 rounded-md bg-blue-500/10 flex items-center justify-center shrink-0">
+                  <Plane className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
               </div>
               <p className="text-xl font-bold mt-1">{kpiStats.monthCount}</p>
               <p className="text-xs text-muted-foreground mt-1">
@@ -267,7 +293,9 @@ export default function Dashboard() {
             <CardContent className="pt-4 pb-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground font-medium">Do opłacenia</p>
-                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${kpiStats.unpaidCount > 0 ? "bg-amber-500/10" : "bg-muted/50"}`}>
+                  <AlertCircle className={`h-4 w-4 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} />
+                </div>
               </div>
               <p className={`text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
                 {kpiStats.unpaidCount}
@@ -282,7 +310,9 @@ export default function Dashboard() {
             <CardContent className="pt-4 pb-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground font-medium">Saldo firmowe</p>
-                <Wallet className="h-4 w-4 text-muted-foreground" />
+                <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                  <Wallet className="h-4 w-4 text-primary" />
+                </div>
               </div>
               <p className={`text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                 {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł

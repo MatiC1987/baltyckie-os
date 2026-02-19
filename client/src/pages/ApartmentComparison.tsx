@@ -10,9 +10,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { ArrowUpDown, Building2 } from "lucide-react";
+import { ArrowUpDown, GitCompareArrows, Building2 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 
 type ApartmentComparisonData = {
   apartmentId: number;
@@ -43,7 +44,6 @@ export default function ApartmentComparison() {
 
   const years = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 + i));
 
-  // Sort data based on current sort field and direction
   const sortedData = useMemo(() => {
     if (!data) return [];
     const sorted = [...data];
@@ -57,7 +57,6 @@ export default function ApartmentComparison() {
     return sorted;
   }, [data, sortField, sortDirection]);
 
-  // Prepare chart data
   const chartData = useMemo(() => {
     if (!sortedData) return [];
     return sortedData.map(apt => ({
@@ -91,33 +90,26 @@ export default function ApartmentComparison() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2" data-testid="text-comparison-title">
-            <Building2 className="h-5 w-5" />
-            Porównanie apartamentów
-          </h2>
-          <p className="text-sm text-muted-foreground">Analiza rentowności, obłożenia i kosztów apartamentów.</p>
-        </div>
-        <Select value={year} onValueChange={setYear}>
-          <SelectTrigger className="w-28" data-testid="select-comparison-year">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Porównanie apartamentów"
+        description="Porównanie wyników finansowych między apartamentami."
+        icon={GitCompareArrows}
+        actions={
+          <Select value={year} onValueChange={setYear}>
+            <SelectTrigger className="w-28" data-testid="select-comparison-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        }
+      />
 
-      {isLoading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
-        </div>
-      )}
+      {isLoading && <AnalyticsSkeleton />}
 
       {!isLoading && data && data.length > 0 && (
         <>
-          {/* Chart Section */}
           <Card data-testid="card-comparison-chart">
             <CardHeader>
               <CardTitle className="text-base">Przychód vs Koszty</CardTitle>
@@ -153,7 +145,6 @@ export default function ApartmentComparison() {
             </CardContent>
           </Card>
 
-          {/* Table Section */}
           <Card>
             <CardContent className="p-0">
               <Table>

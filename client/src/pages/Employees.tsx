@@ -26,7 +26,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X, Eye, AlertTriangle, CheckCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X, Eye, AlertTriangle, CheckCircle, UserCog } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 
 const POSITIONS: Record<string, string> = {
   KIEROWNIK_RECEPCJI: "Kierownik recepcji",
@@ -325,28 +328,31 @@ export default function Employees() {
   const isEtat = form.cooperationType === "ETAT";
   const isCzasOkreslony = form.contractType === "CZAS_OKRESLONY";
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <h2 className="text-3xl font-bold tracking-tight">Pracownicy</h2>
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-16 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading && !employees) return <TablePageSkeleton />;
 
-  return (
+  if (employees && employees.length === 0) return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-employees-title">Pracownicy</h2>
-          <p className="text-muted-foreground">Zarządzanie danymi pracowników.</p>
-        </div>
+      <PageHeader title="Pracownicy" description="Zarządzanie danymi pracowników i badaniami lekarskimi." icon={UserCog} actions={
         <Button onClick={openAdd} data-testid="button-add-employee">
           <Plus className="mr-2 h-4 w-4" /> Dodaj pracownika
         </Button>
-      </div>
+      } />
+      <EmptyState icon={UserCog} title="Brak pracowników" description="Dodaj pierwszego pracownika." actionLabel="Dodaj pracownika" onAction={openAdd} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Pracownicy"
+        description="Zarządzanie danymi pracowników i badaniami lekarskimi."
+        icon={UserCog}
+        actions={
+          <Button onClick={openAdd} data-testid="button-add-employee">
+            <Plus className="mr-2 h-4 w-4" /> Dodaj pracownika
+          </Button>
+        }
+      />
 
       {expiringExams.length > 0 && (
         <Card className="border-amber-300 dark:border-amber-700">
@@ -374,14 +380,7 @@ export default function Employees() {
         </Card>
       )}
 
-      {(!employees || employees.length === 0) ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-            <UserCircle className="h-12 w-12 text-muted-foreground/50" />
-            <p className="text-muted-foreground">Brak pracowników. Dodaj pierwszego pracownika.</p>
-          </CardContent>
-        </Card>
-      ) : (
+      {employees && employees.length > 0 && (
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
           <Table>
             <TableHeader>

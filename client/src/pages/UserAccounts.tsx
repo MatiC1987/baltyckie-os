@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Shield } from "lucide-react";
+import { Plus, Pencil, Trash2, Shield, ScrollText } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
@@ -142,16 +143,12 @@ export default function UserAccounts() {
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-user-accounts-title">Konta użytkowników</h1>
-          <p className="text-muted-foreground text-sm">Zarządzanie użytkownikami systemu i ich uprawnieniami</p>
-        </div>
+      <PageHeader title="Konta użytkowników" description="Zarządzanie kontami i uprawnieniami użytkowników." icon={ScrollText} actions={
         <Button onClick={openAdd} data-testid="button-add-user">
           <Plus className="h-4 w-4 mr-2" />
           Dodaj użytkownika
         </Button>
-      </div>
+      } />
 
       <Card>
         <CardContent className="p-0">

@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp } from "lucide-react";
+import { LineChart as LineChartIcon, TrendingUp } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 import {
   ComposedChart,
   Bar,
@@ -51,15 +52,6 @@ function netCashFlowColor(v: number): string {
   return "";
 }
 
-function ChartSkeleton() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-[300px] w-full" />
-      <Skeleton className="h-[200px] w-full" />
-    </div>
-  );
-}
-
 export default function CashFlowForecast() {
   const { data: response, isLoading } = useQuery<CashFlowResponse>({
     queryKey: ["/api/cash-flow-forecast"],
@@ -79,31 +71,16 @@ export default function CashFlowForecast() {
   }, [months]);
 
   if (isLoading) {
-    return (
-      <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-cashflow-title">
-            Prognoza przepływów pieniężnych
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Prognoza wpływów i wydatków na najbliższe 6 miesięcy.
-          </p>
-        </div>
-        <ChartSkeleton />
-      </div>
-    );
+    return <AnalyticsSkeleton />;
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="text-cashflow-title">
-          Prognoza przepływów pieniężnych
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Prognoza wpływów i wydatków na najbliższe 6 miesięcy.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="Przepływy pieniężne"
+        description="6-miesięczna prognoza przepływów pieniężnych."
+        icon={LineChartIcon}
+      />
 
       <Card data-testid="card-cashflow-chart">
         <CardHeader className="pb-3">

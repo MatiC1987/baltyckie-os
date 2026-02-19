@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
@@ -11,7 +11,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Building2 } from "lucide-react";
+import { PieChart, Building2 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 
 type ProfitabilityData = {
   apartments: {
@@ -37,45 +39,46 @@ export default function Profitability() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2" data-testid="text-profitability-title">
-            <TrendingUp className="h-5 w-5" />
-            Rentowność apartamentów
-          </h2>
-          <p className="text-sm text-muted-foreground">Przychody z rezerwacji w podziale na apartamenty.</p>
-        </div>
-        <Select value={year} onValueChange={setYear}>
-          <SelectTrigger className="w-28" data-testid="select-profitability-year">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Rentowność apartamentów"
+        description="Przychody z rezerwacji w podziale na apartamenty."
+        icon={PieChart}
+        actions={
+          <Select value={year} onValueChange={setYear}>
+            <SelectTrigger className="w-28" data-testid="select-profitability-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        }
+      />
 
-      {isLoading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      )}
+      {isLoading && <AnalyticsSkeleton />}
 
       {data && (
         <>
-          <Card data-testid="card-total-revenue">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-base">Łączny przychód z rezerwacji ({year})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold" data-testid="text-total-revenue">
-                {data.totalRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {data.apartments.reduce((s, a) => s + a.reservationCount, 0)} rezerwacji łącznie
-              </p>
-            </CardContent>
-          </Card>
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground font-medium">Łączny przychód</p>
+                <p className="text-xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">{data.totalRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground font-medium">Rezerwacje</p>
+                <p className="text-xl font-bold mt-1">{data.apartments.reduce((s, a) => s + a.reservationCount, 0)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground font-medium">Apartamenty</p>
+                <p className="text-xl font-bold mt-1">{data.apartments.length}</p>
+              </CardContent>
+            </Card>
+          </div>
 
           <Card>
             <CardContent className="p-0">

@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -78,10 +79,7 @@ export default function Import() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight" data-testid="text-import-title">Import danych</h2>
-        <p className="text-muted-foreground">Import rezerwacji z HotRes lub z pliku Excel (.xlsx).</p>
-      </div>
+      <PageHeader title="Import danych" description="Import rezerwacji z pliku Excel lub HotRes CSV." icon={Upload} />
 
       <HotResSection />
 

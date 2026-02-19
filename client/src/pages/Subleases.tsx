@@ -9,8 +9,9 @@ import { useMemo } from "react";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
-  ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download
+  ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature
 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1146,17 +1147,16 @@ export default function Subleases() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Umowy Podnajmu</h1>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeader title="Umowy podnajem" description="Zarządzanie umowami podnajmu." icon={FileSignature} actions={
+        <>
           <Button variant="outline" onClick={handleExportCSV} disabled={sorted.length === 0} data-testid="button-export-csv">
             <Download className="h-4 w-4 mr-1" /> Eksport CSV
           </Button>
           <Button onClick={openAdd} data-testid="button-add-sublease">
             <Plus className="h-4 w-4 mr-1" /> Dodaj umowę
           </Button>
-        </div>
-      </div>
+        </>
+      } />
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative max-w-sm flex-1">

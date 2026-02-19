@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { BarChart3, Building2 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 
 type OccupancyData = {
   apartments: {
@@ -62,42 +64,57 @@ export default function OccupancyRates() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2" data-testid="text-occupancy-title">
-            <BarChart3 className="h-5 w-5" />
-            Obłożenie apartamentów
-          </h2>
-          <p className="text-sm text-muted-foreground">Wskaźnik zajętości apartamentów na podstawie rezerwacji.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={year} onValueChange={setYear}>
-            <SelectTrigger className="w-28" data-testid="select-year">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={month} onValueChange={setMonth}>
-            <SelectTrigger className="w-36" data-testid="select-month">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MONTH_OPTIONS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <PageHeader
+        title="Obłożenie apartamentów"
+        description="Wskaźnik zajętości apartamentów na podstawie rezerwacji."
+        icon={BarChart3}
+        actions={
+          <div className="flex items-center gap-2">
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger className="w-28" data-testid="select-year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="w-36" data-testid="select-month">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTH_OPTIONS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        }
+      />
 
-      {isLoading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      )}
+      {isLoading && <AnalyticsSkeleton />}
 
       {data && (
         <>
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground font-medium">Apartamenty</p>
+                <p className="text-xl font-bold mt-1">{data.apartments.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground font-medium">Średnie obłożenie</p>
+                <p className={`text-xl font-bold mt-1 ${getRateColor(data.overall.rate)}`}>{data.overall.rate}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-muted-foreground font-medium">Dni zajęte</p>
+                <p className="text-xl font-bold mt-1">{data.overall.occupiedDays} / {data.overall.totalDays}</p>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card data-testid="card-overall-occupancy">
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
               <CardTitle className="text-base">Ogólne obłożenie</CardTitle>

@@ -4,7 +4,10 @@ import { useApartments } from "@/hooks/use-apartments";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X, Pencil, Clock, Download, FileText } from "lucide-react";
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X, Pencil, Clock, Download, FileText, ClipboardList } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
@@ -63,11 +66,11 @@ function statusLabel(status: string): string {
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
     case "PRZYJETA":
-      return <Badge className="text-xs whitespace-nowrap bg-green-600 hover:bg-green-700 text-white border-green-600">{statusLabel(status)}</Badge>;
+      return <Badge className="text-xs whitespace-nowrap bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">{statusLabel(status)}</Badge>;
     case "ANULOWANA":
       return <Badge variant="destructive" className="text-xs whitespace-nowrap">{statusLabel(status)}</Badge>;
     case "DO_OPLACENIA":
-      return <Badge variant="secondary" className="text-xs whitespace-nowrap">{statusLabel(status)}</Badge>;
+      return <Badge className="text-xs whitespace-nowrap bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800">{statusLabel(status)}</Badge>;
     default:
       return <Badge variant="outline" className="text-xs whitespace-nowrap">{statusLabel(status)}</Badge>;
   }
@@ -186,72 +189,80 @@ export default function Reservations() {
     URL.revokeObjectURL(url);
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div className="h-10 w-48 bg-muted animate-pulse rounded-lg" />
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading && !reservations) return <TablePageSkeleton />;
+
+  if (reservations && reservations.length === 0) return (
+    <div className="space-y-6">
+      <PageHeader title="Rezerwacje" description="Zarządzanie rezerwacjami krótkoterminowymi." icon={ClipboardList} />
+      <EmptyState icon={ClipboardList} title="Brak rezerwacji" description="Dodaj pierwszą rezerwację lub zaimportuj dane." actionLabel="Dodaj rezerwację" onAction={() => setIsDialogOpen(true)} />
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Nowa rezerwacja</DialogTitle>
+          </DialogHeader>
+          <ReservationForm onSuccess={() => setIsDialogOpen(false)} />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-reservations-title">Rezerwacje</h2>
-          <p className="text-muted-foreground">Lista wszystkich rezerwacji krótkoterminowych.</p>
-          {(lastCsvImport || lastApiImport) && (
-            <div className="flex items-center gap-3 mt-1 flex-wrap" data-testid="text-last-import-info">
-              <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              {lastCsvImport && (
-                <span className="text-xs text-muted-foreground" data-testid="text-last-csv-import">
-                  Ostatni import CSV: <span className="font-medium text-foreground" data-testid="text-last-csv-import-date">{formatImportDate(lastCsvImport.importedAt)}</span>
-                  {lastCsvImport.recordsImported > 0 && <span> ({lastCsvImport.recordsImported} nowych</span>}
-                  {lastCsvImport.recordsUpdated > 0 && <span>, {lastCsvImport.recordsUpdated} zaktual.</span>}
-                  {(lastCsvImport.recordsImported > 0 || lastCsvImport.recordsUpdated > 0) && <span>)</span>}
-                </span>
-              )}
-              {lastApiImport && (
-                <span className="text-xs text-muted-foreground" data-testid="text-last-api-import">
-                  Ostatni sync API: <span className="font-medium text-foreground" data-testid="text-last-api-import-date">{formatImportDate(lastApiImport.importedAt)}</span>
-                  {lastApiImport.recordsImported > 0 && <span> ({lastApiImport.recordsImported} nowych</span>}
-                  {lastApiImport.recordsUpdated > 0 && <span>, {lastApiImport.recordsUpdated} zaktual.</span>}
-                  {(lastApiImport.recordsImported > 0 || lastApiImport.recordsUpdated > 0) && <span>)</span>}
-                </span>
-              )}
-            </div>
+      <PageHeader
+        title="Rezerwacje"
+        description="Zarządzanie rezerwacjami krótkoterminowymi."
+        icon={ClipboardList}
+        actions={
+          <>
+            <Button variant="outline" onClick={handleExportCSV} disabled={filteredAndSorted.length === 0} data-testid="button-export-csv">
+              <Download className="mr-2 h-4 w-4" /> Eksport CSV
+            </Button>
+            <Button
+              variant={showFilters ? "default" : "outline"}
+              onClick={() => setShowFilters(!showFilters)}
+              data-testid="button-toggle-filters"
+            >
+              <Filter className="mr-2 h-4 w-4" /> Filtry
+              {hasActiveFilters && <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">aktywne</Badge>}
+            </Button>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-reservation">
+                  <Plus className="mr-2 h-4 w-4" /> Dodaj rezerwację
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Nowa rezerwacja</DialogTitle>
+                </DialogHeader>
+                <ReservationForm onSuccess={() => setIsDialogOpen(false)} />
+              </DialogContent>
+            </Dialog>
+          </>
+        }
+      />
+
+      {(lastCsvImport || lastApiImport) && (
+        <div className="flex items-center gap-3 flex-wrap" data-testid="text-last-import-info">
+          <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          {lastCsvImport && (
+            <span className="text-xs text-muted-foreground" data-testid="text-last-csv-import">
+              Ostatni import CSV: <span className="font-medium text-foreground" data-testid="text-last-csv-import-date">{formatImportDate(lastCsvImport.importedAt)}</span>
+              {lastCsvImport.recordsImported > 0 && <span> ({lastCsvImport.recordsImported} nowych</span>}
+              {lastCsvImport.recordsUpdated > 0 && <span>, {lastCsvImport.recordsUpdated} zaktual.</span>}
+              {(lastCsvImport.recordsImported > 0 || lastCsvImport.recordsUpdated > 0) && <span>)</span>}
+            </span>
+          )}
+          {lastApiImport && (
+            <span className="text-xs text-muted-foreground" data-testid="text-last-api-import">
+              Ostatni sync API: <span className="font-medium text-foreground" data-testid="text-last-api-import-date">{formatImportDate(lastApiImport.importedAt)}</span>
+              {lastApiImport.recordsImported > 0 && <span> ({lastApiImport.recordsImported} nowych</span>}
+              {lastApiImport.recordsUpdated > 0 && <span>, {lastApiImport.recordsUpdated} zaktual.</span>}
+              {(lastApiImport.recordsImported > 0 || lastApiImport.recordsUpdated > 0) && <span>)</span>}
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" onClick={handleExportCSV} disabled={filteredAndSorted.length === 0} data-testid="button-export-csv">
-            <Download className="mr-2 h-4 w-4" /> Eksport CSV
-          </Button>
-          <Button
-            variant={showFilters ? "default" : "outline"}
-            onClick={() => setShowFilters(!showFilters)}
-            data-testid="button-toggle-filters"
-          >
-            <Filter className="mr-2 h-4 w-4" /> Filtry
-            {hasActiveFilters && <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">aktywne</Badge>}
-          </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-reservation">
-                <Plus className="mr-2 h-4 w-4" /> Dodaj rezerwację
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Nowa rezerwacja</DialogTitle>
-              </DialogHeader>
-              <ReservationForm onSuccess={() => setIsDialogOpen(false)} />
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+      )}
 
       {showFilters && (
         <Card data-testid="card-filters">

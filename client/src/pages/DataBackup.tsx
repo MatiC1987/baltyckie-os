@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileJson, FileSpreadsheet, Clock, Database } from "lucide-react";
+import { Download, FileJson, FileSpreadsheet, Clock, Database, DatabaseBackup } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -232,15 +233,7 @@ export default function DataBackup() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <Database className="h-8 w-8" />
-          Backup danych
-        </h2>
-        <p className="text-muted-foreground mt-1">
-          Eksportuj kopię zapasową całej bazy danych.
-        </p>
-      </div>
+      <PageHeader title="Backup danych" description="Eksport i tworzenie kopii zapasowych danych." icon={DatabaseBackup} />
 
       <Card>
         <CardHeader>

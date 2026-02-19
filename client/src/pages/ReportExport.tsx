@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FileText, Download, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
@@ -378,15 +379,7 @@ export default function ReportExport() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2" data-testid="text-page-title">
-          <FileText className="h-8 w-8" />
-          Raporty PDF
-        </h2>
-        <p className="text-muted-foreground mt-1" data-testid="text-page-description">
-          Generuj i pobieraj raporty w formacie PDF.
-        </p>
-      </div>
+      <PageHeader title="Raporty PDF" description="Generowanie raportów w formacie PDF." icon={FileText} />
 
       <Card>
         <CardHeader>

@@ -16,7 +16,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Users } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { type Owner, type Apartment, type InsertOwner, insertOwnerSchema } from "@shared/schema";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -46,29 +49,11 @@ export default function Owners() {
   }, [apartments]);
 
 
-  if (ownersLoading) {
-    return (
-      <div className="space-y-8">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-owners-title">Właściciele</h2>
-          <p className="text-muted-foreground">Zarządzaj właścicielami i ich apartamentami.</p>
-        </div>
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-32 w-full bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (ownersLoading && !ownersList) return <TablePageSkeleton />;
 
-  return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-owners-title">Właściciele</h2>
-          <p className="text-muted-foreground">Zarządzaj właścicielami i ich apartamentami.</p>
-        </div>
+  if (ownersList && ownersList.length === 0) return (
+    <div className="space-y-6">
+      <PageHeader title="Właściciele" description="Zarządzanie właścicielami apartamentów." icon={Users} actions={
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-owner">
@@ -82,7 +67,33 @@ export default function Owners() {
             <OwnerForm onSuccess={() => setIsDialogOpen(false)} />
           </DialogContent>
         </Dialog>
-      </div>
+      } />
+      <EmptyState icon={Users} title="Brak właścicieli" description="Dodaj pierwszego właściciela." actionLabel="Dodaj właściciela" onAction={() => setIsDialogOpen(true)} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        title="Właściciele"
+        description="Zarządzanie właścicielami apartamentów."
+        icon={Users}
+        actions={
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-owner">
+                <Plus className="mr-2 h-4 w-4" /> Dodaj właściciela
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Dodaj nowego właściciela</DialogTitle>
+              </DialogHeader>
+              <OwnerForm onSuccess={() => setIsDialogOpen(false)} />
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>

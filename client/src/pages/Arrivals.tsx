@@ -16,6 +16,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowUpDown, ArrowUp, ArrowDown, Filter, Plane, Eye, Calendar, User, Home, CreditCard, Pencil } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from "@/components/ui/dialog";
@@ -108,36 +111,32 @@ export default function Arrivals() {
 
   const hasActiveFilters = filterDateFrom || filterDateTo;
 
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Przyjazdy</h2>
-          <p className="text-muted-foreground">Ładowanie danych...</p>
-        </div>
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading && !reservations) return <TablePageSkeleton />;
+
+  if (reservations && arrivals.length === 0) return (
+    <div className="space-y-6">
+      <PageHeader title="Przyjazdy" description="Rezerwacje ze statusem PRZYJĘTA, chronologicznie wg daty przyjazdu." icon={Plane} />
+      <EmptyState icon={Plane} title="Brak przyjazdów" description="Nie znaleziono rezerwacji ze statusem PRZYJĘTA." />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-arrivals-page-title">Przyjazdy</h2>
-          <p className="text-muted-foreground">Rezerwacje ze statusem PRZYJĘTA, chronologicznie wg daty przyjazdu.</p>
-        </div>
-        <Button
-          variant={showFilters ? "default" : "outline"}
-          onClick={() => setShowFilters(!showFilters)}
-          data-testid="button-arrivals-page-toggle-filters"
-        >
-          <Filter className="mr-2 h-4 w-4" /> Filtry
-          {hasActiveFilters && <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">aktywne</Badge>}
-        </Button>
-      </div>
+      <PageHeader
+        title="Przyjazdy"
+        description="Rezerwacje ze statusem PRZYJĘTA, chronologicznie wg daty przyjazdu."
+        icon={Plane}
+        actions={
+          <Button
+            variant={showFilters ? "default" : "outline"}
+            onClick={() => setShowFilters(!showFilters)}
+            data-testid="button-arrivals-page-toggle-filters"
+          >
+            <Filter className="mr-2 h-4 w-4" /> Filtry
+            {hasActiveFilters && <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">aktywne</Badge>}
+          </Button>
+        }
+      />
 
       {showFilters && (
         <Card>

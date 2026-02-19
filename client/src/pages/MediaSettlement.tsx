@@ -15,7 +15,8 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
 } from "@/components/ui/dialog";
-import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign, Pencil } from "lucide-react";
+import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign, Pencil, Gauge } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 
 function formatDate(d: string | null | undefined) {
   if (!d) return "";
@@ -1186,15 +1187,11 @@ export default function MediaSettlement() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Rozliczenie mediów</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Umowy podnajmu z rozliczeniem mediów według liczników
-          </p>
-        </div>
-        <Badge variant="secondary" data-testid="badge-count">
-          {mediaSubleases.length} {mediaSubleases.length === 1 ? "umowa" : "umów"}
-        </Badge>
+        <PageHeader title="Rozliczenie mediów" description="Rozliczenia zużycia mediów w podnajmach." icon={Gauge} actions={
+          <Badge variant="secondary" data-testid="badge-count">
+            {mediaSubleases.length} {mediaSubleases.length === 1 ? "umowa" : "umów"}
+          </Badge>
+        } />
       </div>
 
       {isLoading ? (

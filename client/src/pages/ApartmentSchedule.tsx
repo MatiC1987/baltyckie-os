@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Search, ArrowUpDown, Building2, CheckCircle2, XCircle, Clock, Download } from "lucide-react";
+import { Search, ArrowUpDown, Building2, CheckCircle2, XCircle, Clock, Download, CalendarCheck } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -222,7 +223,7 @@ export default function ApartmentSchedule() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-bold tracking-tight">Apartamenty - Harmonogram</h2>
+        <PageHeader title="Harmonogram" description="Harmonogram płatności i rozliczeń apartamentów." icon={CalendarCheck} />
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-16 w-full bg-muted animate-pulse rounded-lg" />)}
         </div>
@@ -233,14 +234,12 @@ export default function ApartmentSchedule() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-apartment-schedule-title">Apartamenty - Harmonogram</h2>
-          <p className="text-muted-foreground">Chronologiczna lista opłat eksploatacyjnych apartamentów</p>
-        </div>
-        <Button variant="outline" onClick={handleExportCSV} disabled={sorted.length === 0} data-testid="button-export-csv">
-          <Download className="h-4 w-4 mr-2" />
-          Eksport CSV
-        </Button>
+        <PageHeader title="Harmonogram" description="Harmonogram płatności i rozliczeń apartamentów." icon={CalendarCheck} actions={
+          <Button variant="outline" onClick={handleExportCSV} disabled={sorted.length === 0} data-testid="button-export-csv">
+            <Download className="h-4 w-4 mr-2" />
+            Eksport CSV
+          </Button>
+        } />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

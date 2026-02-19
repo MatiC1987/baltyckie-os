@@ -5,7 +5,8 @@ import { format } from "date-fns";
 import { pl } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Plus, Pencil, Trash2, FileText, Upload, RefreshCw } from "lucide-react";
+import { Clock, Plus, Pencil, Trash2, FileText, Upload, RefreshCw, History } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import {
   Select,
   SelectContent,
@@ -85,7 +86,7 @@ export default function ActivityLogPage() {
   if (isLoading && logs.length === 0) {
     return (
       <div className="p-4 md:p-6 space-y-4">
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Historia zmian</h1>
+        <PageHeader title="Historia zmian" description="Dziennik aktywności i zmian w systemie." icon={History} />
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map(i => (
             <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
@@ -103,10 +104,7 @@ export default function ActivityLogPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Historia zmian</h1>
-        <p className="text-muted-foreground text-sm">Log aktywności i zmian w systemie.</p>
-      </div>
+      <PageHeader title="Historia zmian" description="Dziennik aktywności i zmian w systemie." icon={History} />
 
       {/* Filter Controls */}
       <Card>

@@ -6,7 +6,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Upload, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Upload, Loader2, Wallet } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -194,10 +195,7 @@ export default function Revenue() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-revenue-title">Przychody</h1>
-          <p className="text-muted-foreground text-sm">Zestawienie prognozy z przychodami w podziale na najem i podnajem</p>
-        </div>
+        <PageHeader title="Przychody" description="Przegląd przychodów z najmu i podnajmu." icon={Wallet} />
         <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"

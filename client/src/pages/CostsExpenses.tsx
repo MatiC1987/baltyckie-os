@@ -15,8 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { useToast } from "@/hooks/use-toast";
 import {
   ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight,
-  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2,
+  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt,
 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { format, addMonths, addQuarters, addYears, parseISO, isBefore, isAfter, startOfMonth } from "date-fns";
 import { pl } from "date-fns/locale";
 
@@ -781,30 +782,31 @@ export default function CostsExpenses() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-costs-title">Opłaty</h2>
-          <p className="text-muted-foreground">Zestawienie kosztów operacyjnych: prognoza vs rzeczywiste</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
-            <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
-          </Button>
-          <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
-            <Plus className="mr-1 h-4 w-4" /> Kategoria
-          </Button>
-          <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
-            <SelectTrigger className="w-[120px]" data-testid="select-year">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {years.map(y => (
-                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <PageHeader
+        title="Opłaty"
+        description="Zarządzanie kosztami i wydatkami."
+        icon={Receipt}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
+              <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
+            </Button>
+            <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
+              <Plus className="mr-1 h-4 w-4" /> Kategoria
+            </Button>
+            <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
+              <SelectTrigger className="w-[120px]" data-testid="select-year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map(y => (
+                  <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card>

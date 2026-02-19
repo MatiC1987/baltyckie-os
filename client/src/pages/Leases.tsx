@@ -15,7 +15,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Plus, FileText, Home, Users, Search } from "lucide-react";
+import { Plus, FileText, Home, Users, Search, FileSignature } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLeaseSchema, type InsertLease, type Apartment, type Owner } from "@shared/schema";
@@ -101,38 +103,30 @@ export default function Leases() {
     return { label: "Przyszła", variant: "outline" };
   }
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <h2 className="text-3xl font-bold tracking-tight">Umowy najmu</h2>
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-16 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <TablePageSkeleton />;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-leases-title">Umowy najmu</h2>
-          <p className="text-muted-foreground">Umowy właścicieli apartamentów i umowy najmu długoterminowego.</p>
-        </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-lease">
-              <Plus className="mr-2 h-4 w-4" /> Dodaj umowę najmu
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Nowa umowa najmu</DialogTitle>
-            </DialogHeader>
-            <LeaseForm onSuccess={() => setIsDialogOpen(false)} />
-          </DialogContent>
-        </Dialog>
-      </div>
+      <PageHeader
+        title="Umowy najmu"
+        description="Zarządzanie umowami najmu i kontraktami właścicieli."
+        icon={FileSignature}
+        actions={
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-lease">
+                <Plus className="mr-2 h-4 w-4" /> Dodaj umowę najmu
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Nowa umowa najmu</DialogTitle>
+              </DialogHeader>
+              <LeaseForm onSuccess={() => setIsDialogOpen(false)} />
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>

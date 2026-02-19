@@ -16,7 +16,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Pencil, ArrowUp, ArrowDown, GripVertical, Settings, FileText, Upload, X } from "lucide-react";
+import { Plus, Trash2, Pencil, ArrowUp, ArrowDown, GripVertical, Settings, FileText, Upload, X, Briefcase } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { useToast } from "@/hooks/use-toast";
 import type { ServiceContract, ServiceContractCategory, ServiceContractAttachment } from "@shared/schema";
 
@@ -92,16 +94,7 @@ export default function ServiceContracts() {
 
   const isLoading = loadingContracts || loadingCats;
 
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div className="h-10 w-48 bg-muted animate-pulse rounded-lg" />
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <TablePageSkeleton />;
 
   const getCategoryName = (catId: number | null) => {
     if (!catId) return "Bez kategorii";
@@ -117,23 +110,24 @@ export default function ServiceContracts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-service-contracts-title">Umowy (usługi)</h2>
-          <p className="text-muted-foreground text-sm">Zarządzanie umowami na usługi.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setShowReorderCategories(true)} data-testid="button-reorder-categories">
-            <Settings className="mr-2 h-4 w-4" /> Kolejność kategorii
-          </Button>
-          <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
-            <Plus className="mr-2 h-4 w-4" /> Dodaj kategorię
-          </Button>
-          <Button onClick={() => setShowAddContract(true)} data-testid="button-add-service-contract">
-            <Plus className="mr-2 h-4 w-4" /> Dodaj umowę
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Umowy usługi"
+        description="Zarządzanie umowami serwisowymi."
+        icon={Briefcase}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowReorderCategories(true)} data-testid="button-reorder-categories">
+              <Settings className="mr-2 h-4 w-4" /> Kolejność kategorii
+            </Button>
+            <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
+              <Plus className="mr-2 h-4 w-4" /> Dodaj kategorię
+            </Button>
+            <Button onClick={() => setShowAddContract(true)} data-testid="button-add-service-contract">
+              <Plus className="mr-2 h-4 w-4" /> Dodaj umowę
+            </Button>
+          </>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList data-testid="service-contracts-tabs" className="flex-wrap h-auto gap-1">

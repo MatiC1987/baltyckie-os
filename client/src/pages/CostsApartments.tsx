@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, Calculator } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
@@ -272,10 +273,7 @@ export default function CostsApartments() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-costs-apartments-title">Koszty (Apartamenty)</h1>
-          <p className="text-muted-foreground text-sm">Zestawienie kosztów w podziale na apartamenty i lokalizacje — P (prognoza), R (rzeczywiste), S (saldo)</p>
-        </div>
+        <PageHeader title="Koszty apartamentów" description="Analiza kosztów w podziale na apartamenty." icon={Calculator} />
         <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"

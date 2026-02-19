@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TrendingUp, Wallet } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from "recharts";
@@ -177,20 +178,18 @@ export default function FinanceForecast() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-finance-forecast-title">Finanse / Prognoza</h1>
-          <p className="text-muted-foreground text-sm">Prognoza salda firmowego i zestawienie miesięczne</p>
-        </div>
-        <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-          <SelectTrigger className="w-[100px]" data-testid="select-forecast-year">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <PageHeader title="Finanse / Prognoza" description="Prognoza przychodów i analiza trendów." icon={TrendingUp} actions={
+          <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
+            <SelectTrigger className="w-[100px]" data-testid="select-forecast-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[currentYear - 1, currentYear, currentYear + 1].map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        } />
       </div>
 
       <Card data-testid="card-balance-forecast">

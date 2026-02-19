@@ -12,6 +12,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import { Plus, Trash2, Pencil, MapPin } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { useToast } from "@/hooks/use-toast";
 import type { Location } from "@shared/schema";
 
@@ -64,28 +66,20 @@ export default function Lokalizacje() {
     onError: () => toast({ title: "Błąd", description: "Nie udało się usunąć", variant: "destructive" }),
   });
 
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div className="h-10 w-48 bg-muted animate-pulse rounded-lg" />
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading && !locations) return <TablePageSkeleton />;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-lokalizacje-title">Lokalizacje</h2>
-          <p className="text-muted-foreground text-sm">Zarządzaj lokalizacjami apartamentów.</p>
-        </div>
-        <Button onClick={() => setShowAdd(true)} data-testid="button-add-location">
-          <Plus className="mr-2 h-4 w-4" /> Dodaj lokalizację
-        </Button>
-      </div>
+      <PageHeader
+        title="Lokalizacje"
+        description="Zarządzanie kategoriami lokalizacji apartamentów."
+        icon={MapPin}
+        actions={
+          <Button onClick={() => setShowAdd(true)} data-testid="button-add-location">
+            <Plus className="mr-2 h-4 w-4" /> Dodaj lokalizację
+          </Button>
+        }
+      />
 
       <Card>
         <CardContent className="p-0">

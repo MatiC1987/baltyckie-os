@@ -11,8 +11,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { TrendingUp } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Thermometer } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 
 type MonthData = {
   month: number;
@@ -118,15 +119,7 @@ export default function PriceSeasonality() {
   }, [apartments]);
 
   if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-6 w-96" />
-        <Skeleton className="h-[350px] w-full" />
-        <Skeleton className="h-[200px] w-full" />
-        <Skeleton className="h-[400px] w-full" />
-      </div>
-    );
+    return <AnalyticsSkeleton />;
   }
 
   if (!data || data.data.length === 0) {
@@ -139,13 +132,11 @@ export default function PriceSeasonality() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold flex items-center gap-2" data-testid="text-seasonality-title">
-          <TrendingUp className="h-5 w-5" />
-          Sezonowość cen
-        </h2>
-        <p className="text-sm text-muted-foreground">Analiza średnich cen noclegowych w podziale na miesiące.</p>
-      </div>
+      <PageHeader
+        title="Sezonowość cen"
+        description="Analiza zmian cen rezerwacji w poszczególnych miesiącach."
+        icon={Thermometer}
+      />
 
       <Card data-testid="card-monthly-chart">
         <CardHeader>

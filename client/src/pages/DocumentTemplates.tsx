@@ -24,8 +24,9 @@ import {
 } from "@/components/ui/table";
 import {
   Plus, Trash2, Download, FileText, Search, FolderPlus, Pencil,
-  ArrowUpDown, ArrowUp, ArrowDown, Upload, X, FolderOpen, Tag
+  ArrowUpDown, ArrowUp, ArrowDown, Upload, X, FolderOpen, Tag, Files
 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 
 type SortKey = "name" | "category" | "fileName" | "uploadedAt";
 type SortDir = "asc" | "desc";
@@ -222,18 +223,16 @@ export default function DocumentTemplates() {
   return (
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Szablony dokumentów</h1>
-          <p className="text-muted-foreground text-sm">Baza plików do pobrania i edycji</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" onClick={openAddCategory} data-testid="button-add-category">
-            <FolderPlus className="h-4 w-4 mr-1" /> Dodaj kategorię
-          </Button>
-          <Button onClick={() => setDocDialogOpen(true)} data-testid="button-add-document">
-            <Plus className="h-4 w-4 mr-1" /> Dodaj dokument
-          </Button>
-        </div>
+        <PageHeader title="Szablony dokumentów" description="Zarządzanie szablonami dokumentów." icon={Files} actions={
+          <>
+            <Button variant="outline" onClick={openAddCategory} data-testid="button-add-category">
+              <FolderPlus className="h-4 w-4 mr-1" /> Dodaj kategorię
+            </Button>
+            <Button onClick={() => setDocDialogOpen(true)} data-testid="button-add-document">
+              <Plus className="h-4 w-4 mr-1" /> Dodaj dokument
+            </Button>
+          </>
+        } />
       </div>
 
       {categories.length > 0 && (

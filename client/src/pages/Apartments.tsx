@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { TablePageSkeleton } from "@/components/PageSkeleton";
 import {
   Dialog,
   DialogContent,
@@ -301,81 +304,87 @@ export default function Apartments() {
     }
   ];
 
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight" data-testid="text-apartments-title">Apartamenty</h2>
-            <p className="text-muted-foreground">Zarządzaj swoją bazą nieruchomości.</p>
-          </div>
-        </div>
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-20 w-full bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading && !apartments) return <TablePageSkeleton />;
+
+  if (apartments && apartments.length === 0) return (
+    <div className="space-y-6">
+      <PageHeader title="Apartamenty" description="Zarządzanie apartamentami i lokalizacjami." icon={Building2} actions={
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button data-testid="button-add-apartment">
+              <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Dodaj nowy apartament</DialogTitle>
+            </DialogHeader>
+            <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      } />
+      <EmptyState icon={Building2} title="Brak apartamentów" description="Dodaj pierwszy apartament." actionLabel="Dodaj apartament" onAction={() => setIsDialogOpen(true)} />
+    </div>
+  );
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-apartments-title">Apartamenty</h2>
-          <p className="text-muted-foreground">Zarządzaj swoją bazą nieruchomości.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" onClick={selectAll} data-testid="button-select-all">
-            <CheckSquare className="mr-2 h-4 w-4" />
-            {apartments && apartments.every(a => selectedIds.has(a.id)) && selectedIds.size > 0 ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
-          </Button>
-          {selectedIds.size > 0 && (
-            <>
-              <Select
-                key={moveSelectKey}
-                onValueChange={handleBulkMove}
-                disabled={isMoving}
-              >
-                <SelectTrigger className="w-auto min-w-[200px]" data-testid="select-move-to-location">
-                  <FolderInput className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder={isMoving ? "Przenoszenie..." : `Przenieś do... (${selectedIds.size})`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOCATIONS.map(loc => (
-                    <SelectItem key={loc} value={loc} data-testid={`option-move-${loc.toLowerCase().replace(/\s+/g, '-')}`}>
-                      {loc}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="destructive"
-                onClick={handleBulkDelete}
-                disabled={isDeletingBulk}
-                data-testid="button-delete-selected"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {isDeletingBulk ? "Usuwanie..." : `Usuń wybrane (${selectedIds.size})`}
-              </Button>
-            </>
-          )}
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-apartment">
-                <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Dodaj nowy apartament</DialogTitle>
-              </DialogHeader>
-              <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+      <PageHeader
+        title="Apartamenty"
+        description="Zarządzanie apartamentami i lokalizacjami."
+        icon={Building2}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" onClick={selectAll} data-testid="button-select-all">
+              <CheckSquare className="mr-2 h-4 w-4" />
+              {apartments && apartments.every(a => selectedIds.has(a.id)) && selectedIds.size > 0 ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
+            </Button>
+            {selectedIds.size > 0 && (
+              <>
+                <Select
+                  key={moveSelectKey}
+                  onValueChange={handleBulkMove}
+                  disabled={isMoving}
+                >
+                  <SelectTrigger className="w-auto min-w-[200px]" data-testid="select-move-to-location">
+                    <FolderInput className="mr-2 h-4 w-4" />
+                    <SelectValue placeholder={isMoving ? "Przenoszenie..." : `Przenieś do... (${selectedIds.size})`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LOCATIONS.map(loc => (
+                      <SelectItem key={loc} value={loc} data-testid={`option-move-${loc.toLowerCase().replace(/\s+/g, '-')}`}>
+                        {loc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="destructive"
+                  onClick={handleBulkDelete}
+                  disabled={isDeletingBulk}
+                  data-testid="button-delete-selected"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {isDeletingBulk ? "Usuwanie..." : `Usuń wybrane (${selectedIds.size})`}
+                </Button>
+              </>
+            )}
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-apartment">
+                  <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Dodaj nowy apartament</DialogTitle>
+                </DialogHeader>
+                <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
+              </DialogContent>
+            </Dialog>
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>

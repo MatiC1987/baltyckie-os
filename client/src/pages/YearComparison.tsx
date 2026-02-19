@@ -9,7 +9,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { GitCompareArrows } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 
 type YearComparisonData = {
   years: number[];
@@ -29,11 +31,7 @@ export default function YearComparison() {
     queryKey: ["/api/year-comparison"],
   });
 
-  if (isLoading) return (
-    <div className="space-y-3">
-      {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
-    </div>
-  );
+  if (isLoading) return <AnalyticsSkeleton />;
 
   if (!data || !data.years || data.years.length === 0) return (
     <div className="text-center text-muted-foreground py-8">Brak danych do wyświetlenia</div>
@@ -53,13 +51,11 @@ export default function YearComparison() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold flex items-center gap-2" data-testid="text-year-comparison-title">
-          <GitCompareArrows className="h-5 w-5" />
-          Porównanie rok do roku
-        </h2>
-        <p className="text-sm text-muted-foreground">Przychody z rezerwacji w podziale na miesiące — ostatnie 3 lata.</p>
-      </div>
+      <PageHeader
+        title="Porównanie rok do roku"
+        description="Analiza zmian przychodów w porównaniu z poprzednim rokiem."
+        icon={ArrowUpDown}
+      />
 
       <div className="grid gap-3 md:grid-cols-3">
         {data.years.map((year, idx) => (

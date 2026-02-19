@@ -191,68 +191,90 @@ export async function registerRoutes(
       const today = new Date().toISOString().split("T")[0];
       const in30days = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
 
-      const expiringExams = await db.select({
-        id: medicalExams.id,
-        examName: medicalExams.examName,
-        validUntil: medicalExams.validUntil,
-        employeeFirstName: employees.firstName,
-        employeeLastName: employees.lastName,
-      })
-        .from(medicalExams)
-        .innerJoin(employees, eq(medicalExams.employeeId, employees.id))
-        .where(lte(medicalExams.validUntil, in30days));
+      let expiringExamsResult: any[] = [];
+      let overdueCostsCount = 0;
+      let overdueSubleaseCount = 0;
+      let upcomingArrivalsResult: any[] = [];
+      let expiringLeasesResult: any[] = [];
+      let expiringSubleaseResult: any[] = [];
 
-      const overdueCosts = await db.select({ count: sql<number>`count(*)` })
-        .from(costSchedulePayments)
-        .where(and(ne(costSchedulePayments.status, "OPLACONE"), lt(costSchedulePayments.dueDate, today)));
+      try {
+        const rows = await db.select({
+          id: medicalExams.id,
+          examName: medicalExams.examName,
+          validUntil: medicalExams.validUntil,
+          employeeFirstName: employees.firstName,
+          employeeLastName: employees.lastName,
+        })
+          .from(medicalExams)
+          .innerJoin(employees, eq(medicalExams.employeeId, employees.id))
+          .where(lte(medicalExams.validUntil, in30days));
+        expiringExamsResult = rows;
+      } catch (e) { /* table may not exist yet */ }
 
-      const overdueSublease = await db.select({ count: sql<number>`count(*)` })
-        .from(subleasePayments)
-        .where(and(ne(subleasePayments.status, "oplacone"), lt(subleasePayments.dueDate, today)));
+      try {
+        const rows = await db.select({ count: sql<number>`count(*)` })
+          .from(costSchedulePayments)
+          .where(and(ne(costSchedulePayments.status, "OPLACONE"), lt(costSchedulePayments.dueDate, today)));
+        overdueCostsCount = Number(rows[0]?.count || 0);
+      } catch (e) { /* ignore */ }
 
-      const upcomingArrivals = await db.select({
-        id: reservations.id,
-        guestName: reservations.guestName,
-        startDate: reservations.startDate,
-        apartmentId: reservations.apartmentId,
-      })
-        .from(reservations)
-        .where(and(
-          gte(reservations.startDate, today),
-          lte(reservations.startDate, in30days),
-          ne(reservations.status, "ANULOWANA"),
-        ));
+      try {
+        const rows = await db.select({ count: sql<number>`count(*)` })
+          .from(subleasePayments)
+          .where(and(ne(subleasePayments.status, "oplacone"), lt(subleasePayments.dueDate, today)));
+        overdueSubleaseCount = Number(rows[0]?.count || 0);
+      } catch (e) { /* ignore */ }
 
-      const expiringLeases = await db.select({
-        id: leases.id,
-        tenantName: leases.tenantName,
-        endDate: leases.endDate,
-        apartmentId: leases.apartmentId,
-      })
-        .from(leases)
-        .where(and(lte(leases.endDate, in30days), gte(leases.endDate, today)));
+      try {
+        upcomingArrivalsResult = await db.select({
+          id: reservations.id,
+          guestName: reservations.guestName,
+          startDate: reservations.startDate,
+          apartmentId: reservations.apartmentId,
+        })
+          .from(reservations)
+          .where(and(
+            gte(reservations.startDate, today),
+            lte(reservations.startDate, in30days),
+            ne(reservations.status, "ANULOWANA"),
+          ));
+      } catch (e) { /* ignore */ }
 
-      const expiringSubleases = await db.select({
-        id: subleases.id,
-        tenantName: subleases.tenantName,
-        endDate: subleases.endDate,
-        apartmentId: subleases.apartmentId,
-      })
-        .from(subleases)
-        .where(and(lte(subleases.endDate, in30days), gte(subleases.endDate, today)));
+      try {
+        expiringLeasesResult = await db.select({
+          id: leases.id,
+          tenantName: leases.tenantName,
+          endDate: leases.endDate,
+          apartmentId: leases.apartmentId,
+        })
+          .from(leases)
+          .where(and(lte(leases.endDate, in30days), gte(leases.endDate, today)));
+      } catch (e) { /* ignore */ }
+
+      try {
+        expiringSubleaseResult = await db.select({
+          id: subleases.id,
+          tenantName: subleases.tenantName,
+          endDate: subleases.endDate,
+          apartmentId: subleases.apartmentId,
+        })
+          .from(subleases)
+          .where(and(lte(subleases.endDate, in30days), gte(subleases.endDate, today)));
+      } catch (e) { /* ignore */ }
 
       res.json({
-        expiringExams: expiringExams.map(e => ({
+        expiringExams: expiringExamsResult.map(e => ({
           id: e.id,
           examName: e.examName,
           validUntil: e.validUntil,
           employeeName: `${e.employeeFirstName} ${e.employeeLastName}`,
         })),
-        overdueCosts: Number(overdueCosts[0]?.count || 0),
-        overdueSubleasePayments: Number(overdueSublease[0]?.count || 0),
-        upcomingArrivals: upcomingArrivals.length,
-        expiringLeases,
-        expiringSubleases,
+        overdueCosts: overdueCostsCount,
+        overdueSubleasePayments: overdueSubleaseCount,
+        upcomingArrivals: upcomingArrivalsResult.length,
+        expiringLeases: expiringLeasesResult,
+        expiringSubleases: expiringSubleaseResult,
       });
     } catch (err) {
       console.error("Dashboard reminders error:", err);

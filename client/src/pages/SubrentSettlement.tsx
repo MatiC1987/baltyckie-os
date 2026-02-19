@@ -6,7 +6,8 @@ import type { Sublease, SubleasePayment, Apartment } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Check, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, Check, X, ArrowUpDown, ArrowUp, ArrowDown, HandCoins } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
@@ -170,10 +171,7 @@ export default function SubrentSettlement() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-subrent-settlement-title">Podnajem - Rozliczenie</h1>
-          <p className="text-muted-foreground text-sm">Zestawienie płatności z aktywnych umów podnajmu</p>
-        </div>
+        <PageHeader title="Podnajem - Rozliczenie" description="Rozliczenia finansowe podnajmów." icon={HandCoins} />
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input

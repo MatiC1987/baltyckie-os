@@ -15,7 +15,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -27,7 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FileDown, Trash2, Loader2 } from "lucide-react";
+import { Plus, FileDown, Trash2, Loader2, FileSpreadsheet } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -242,9 +242,8 @@ export default function Invoices() {
 
   return (
     <div className="p-6 space-y-6" data-testid="page-invoices">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Faktury</h1>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeader title="Faktury" description="Zarządzanie fakturami i dokumentami sprzedaży." icon={FileSpreadsheet} actions={
+        <>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[180px]" data-testid="select-status-filter">
               <SelectValue placeholder="Filtruj status" />
@@ -256,17 +255,18 @@ export default function Invoices() {
               <SelectItem value="ANULOWANA">Anulowana</SelectItem>
             </SelectContent>
           </Select>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-create-invoice">
-                <Plus className="h-4 w-4 mr-2" />
-                Nowa faktura
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Nowa faktura</DialogTitle>
-              </DialogHeader>
+          <Button onClick={() => setDialogOpen(true)} data-testid="button-create-invoice">
+            <Plus className="h-4 w-4 mr-2" />
+            Nowa faktura
+          </Button>
+        </>
+      } />
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nowa faktura</DialogTitle>
+          </DialogHeader>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nr faktury</Label>
@@ -402,10 +402,8 @@ export default function Invoices() {
                   Utwórz fakturę
                 </Button>
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>

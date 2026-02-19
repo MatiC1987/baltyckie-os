@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -325,12 +326,8 @@ export default function Saldo({ personName }: { personName: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-saldo-title">Saldo</h2>
-          <p className="text-muted-foreground">{personName}</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader title={`Saldo - ${personName}`} description="Rozliczenie salda osoby." icon={Scale} actions={
+        <>
           <div className="flex items-center border border-border rounded-md overflow-visible">
             <button
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "wpisy" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
@@ -357,8 +354,8 @@ export default function Saldo({ personName }: { personName: string }) {
               </Button>
             </>
           )}
-        </div>
-      </div>
+        </>
+      } />
 
       {activeTab === "wpisy" && (
         <Card>
