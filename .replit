@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["python3", "python312Packages.openpyxl", "imagemagick"]
+packages = ["python3", "python312Packages.openpyxl", "imagemagick", "poppler_utils"]
 
 [[ports]]
 localPort = 5000

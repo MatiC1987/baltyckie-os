@@ -9,7 +9,8 @@ import { useMemo } from "react";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
-  ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature
+  ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
+  FileUp, Loader2
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -977,6 +978,10 @@ export default function Subleases() {
     startDate: "",
     endDate: "",
   });
+  const [pdfImportOpen, setPdfImportOpen] = useState(false);
+  const [pdfImportStep, setPdfImportStep] = useState<"upload" | "loading" | "review">("upload");
+  const [pdfExtracted, setPdfExtracted] = useState<Record<string, any> | null>(null);
+  const [pdfImportForm, setPdfImportForm] = useState<Record<string, any>>({});
 
   const { data: subleases = [], isLoading } = useQuery<Sublease[]>({
     queryKey: ['/api/subleases'],
@@ -1027,6 +1032,71 @@ export default function Subleases() {
     setEditId(null);
     setActiveTab("dane");
     setForm({ tenantType: "osoba_fizyczna", startDate: "", endDate: "" });
+  };
+
+  const handlePdfUpload = async (file: File) => {
+    setPdfImportStep("loading");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/parse-sublease-pdf", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Błąd parsowania");
+      }
+      const { extracted } = await res.json();
+      setPdfExtracted(extracted);
+
+      const matchedApartment = apartments.find((a) => {
+        const addr = (extracted.apartmentAddress || "").toLowerCase();
+        return addr.includes(a.name?.toLowerCase() || "___") ||
+               addr.includes(a.address?.toLowerCase() || "___");
+      });
+
+      setPdfImportForm({
+        tenantType: extracted.tenantType || "osoba_fizyczna",
+        firstName: extracted.firstName || "",
+        lastName: extracted.lastName || "",
+        companyName: extracted.companyName || "",
+        nip: extracted.nip || "",
+        peselOrPassport: extracted.peselOrPassport || "",
+        street: extracted.street || "",
+        postalCode: extracted.postalCode || "",
+        city: extracted.city || "",
+        phone: extracted.phone || "",
+        email: extracted.email || "",
+        vatRate: extracted.vatRate || "23%",
+        apartmentId: matchedApartment?.id || null,
+        apartmentIds: matchedApartment ? [matchedApartment.id] : [],
+        startDate: extracted.startDate || "",
+        endDate: extracted.endDate || "",
+        rentAmount: extracted.rentAmount?.toString() || "",
+        additionalFees: extracted.additionalFees?.toString() || "",
+        mediaByMeters: extracted.mediaByMeters || false,
+        hasDeposit: extracted.hasDeposit || false,
+        depositAmount: extracted.depositAmount?.toString() || "",
+        _apartmentAddress: extracted.apartmentAddress || "",
+      });
+      setPdfImportStep("review");
+    } catch (err: any) {
+      toast({ title: "Błąd importu PDF", description: err.message, variant: "destructive" });
+      setPdfImportStep("upload");
+    }
+  };
+
+  const handlePdfImportSave = () => {
+    const { _apartmentAddress, ...data } = pdfImportForm;
+    createMut.mutate(data, {
+      onSuccess: () => {
+        setPdfImportOpen(false);
+        setPdfImportStep("upload");
+        setPdfExtracted(null);
+      },
+    });
   };
 
   const openAdd = () => {
@@ -1151,6 +1221,9 @@ export default function Subleases() {
         <>
           <Button variant="outline" onClick={handleExportCSV} disabled={sorted.length === 0} data-testid="button-export-csv">
             <Download className="h-4 w-4 mr-1" /> Eksport CSV
+          </Button>
+          <Button variant="outline" onClick={() => { setPdfImportOpen(true); setPdfImportStep("upload"); }} data-testid="button-import-pdf">
+            <FileUp className="h-4 w-4 mr-1" /> Import z PDF
           </Button>
           <Button onClick={openAdd} data-testid="button-add-sublease">
             <Plus className="h-4 w-4 mr-1" /> Dodaj umowę
@@ -1357,6 +1430,68 @@ export default function Subleases() {
                 {editId ? "Zapisz zmiany" : "Dodaj umowę"}
               </Button>
             </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pdfImportOpen} onOpenChange={(v) => { if (!v) { setPdfImportOpen(false); setPdfImportStep("upload"); setPdfExtracted(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import umowy z PDF</DialogTitle>
+          </DialogHeader>
+
+          {pdfImportStep === "upload" && (
+            <div className="flex flex-col items-center justify-center py-8 gap-4">
+              <div className="border-2 border-dashed rounded-md p-8 w-full flex flex-col items-center gap-3 text-muted-foreground">
+                <FileUp className="h-10 w-10" />
+                <p className="text-sm">Wybierz plik PDF z umową podnajmu</p>
+                <p className="text-xs">Obsługiwane są zarówno umowy z osobami fizycznymi jak i firmami</p>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  id="pdf-upload-input"
+                  data-testid="input-pdf-upload"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handlePdfUpload(f);
+                    e.target.value = "";
+                  }}
+                />
+                <Button variant="outline" onClick={() => document.getElementById("pdf-upload-input")?.click()} data-testid="button-select-pdf">
+                  <Upload className="h-4 w-4 mr-1" /> Wybierz plik
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {pdfImportStep === "loading" && (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Analizuję dokument...</p>
+              <p className="text-xs text-muted-foreground">Trwa rozpoznawanie tekstu i ekstrakcja danych z PDF</p>
+            </div>
+          )}
+
+          {pdfImportStep === "review" && (
+            <>
+              <p className="text-sm text-muted-foreground mb-2">Sprawdź i popraw wyciągnięte dane przed zapisem:</p>
+              {pdfImportForm._apartmentAddress && (
+                <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md mb-2">
+                  Adres z PDF: <span className="font-medium">{pdfImportForm._apartmentAddress}</span>
+                </div>
+              )}
+              <SubleaseFormFields form={pdfImportForm} setForm={setPdfImportForm} apartments={apartments} />
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => { setPdfImportOpen(false); setPdfImportStep("upload"); setPdfExtracted(null); }}>
+                  Anuluj
+                </Button>
+                <Button onClick={handlePdfImportSave} disabled={createMut.isPending || !pdfImportForm.startDate || !pdfImportForm.endDate} data-testid="button-save-pdf-import">
+                  {createMut.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+                  Zapisz umowę
+                </Button>
+              </DialogFooter>
+            </>
           )}
         </DialogContent>
       </Dialog>

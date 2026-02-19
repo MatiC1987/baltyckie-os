@@ -3469,5 +3469,114 @@ export async function registerRoutes(
     }
   });
 
+  const pdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+  app.post('/api/parse-sublease-pdf', isAuthenticated, pdfUpload.single('file'), async (req, res) => {
+    const tmpFiles: string[] = [];
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Brak pliku PDF" });
+      }
+      if (req.file.mimetype !== 'application/pdf' && !req.file.originalname.toLowerCase().endsWith('.pdf')) {
+        return res.status(400).json({ message: "Plik musi być w formacie PDF" });
+      }
+
+      const { execSync } = require('child_process');
+      const os = require('os');
+      const tmpDir = os.tmpdir();
+      const pdfPath = path.join(tmpDir, `sublease_${Date.now()}.pdf`);
+      fs.writeFileSync(pdfPath, req.file.buffer);
+      tmpFiles.push(pdfPath);
+
+      const pageImages: string[] = [];
+      const prefix = path.join(tmpDir, `sublease_pages_${Date.now()}`);
+      execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+
+      const pageFiles = fs.readdirSync(tmpDir)
+        .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+        .sort();
+
+      for (const pageFile of pageFiles) {
+        const pagePath = path.join(tmpDir, pageFile);
+        tmpFiles.push(pagePath);
+        const imgBuffer = fs.readFileSync(pagePath);
+        pageImages.push(imgBuffer.toString('base64'));
+      }
+
+      if (pageImages.length === 0) {
+        return res.status(400).json({ message: "Nie udało się odczytać stron PDF" });
+      }
+
+      const OpenAI = require('openai');
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const maxPages = Math.min(pageImages.length, 4);
+      const content: any[] = [
+        {
+          type: 'text',
+          text: `Przeanalizuj tę umowę podnajmu/najmu mieszkania. Wyciągnij następujące dane w formacie JSON.
+Jeśli dane nie występują w dokumencie, wpisz null.
+{
+  "tenantType": "osoba_fizyczna" lub "firma",
+  "firstName": "imię najemcy",
+  "lastName": "nazwisko najemcy",
+  "companyName": "nazwa firmy (jeśli firma)",
+  "nip": "NIP firmy",
+  "peselOrPassport": "PESEL lub numer paszportu osoby fizycznej",
+  "street": "ulica i numer najemcy",
+  "postalCode": "kod pocztowy najemcy",
+  "city": "miasto najemcy",
+  "phone": "telefon",
+  "email": "email",
+  "apartmentAddress": "pełny adres wynajmowanej nieruchomości (ulica, numer, kod pocztowy, miasto)",
+  "startDate": "YYYY-MM-DD data rozpoczęcia",
+  "endDate": "YYYY-MM-DD data zakończenia",
+  "rentAmount": kwota czynszu miesięcznego netto jako liczba,
+  "additionalFees": dodatkowe opłaty jako liczba lub null,
+  "mediaByMeters": true jeśli media wg liczników, false jeśli ryczałt,
+  "hasDeposit": true jeśli jest kaucja,
+  "depositAmount": kwota kaucji jako liczba lub null,
+  "vatRate": "stawka VAT np. 23%"
+}
+Odpowiedz TYLKO czystym JSON bez żadnych komentarzy ani markdown.`
+        }
+      ];
+
+      for (let i = 0; i < maxPages; i++) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:image/png;base64,${pageImages[i]}` }
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content }],
+        max_tokens: 2000,
+      });
+
+      const rawText = response.choices[0]?.message?.content || '';
+      const jsonMatch = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+      let extracted;
+      try {
+        extracted = JSON.parse(jsonMatch);
+      } catch {
+        return res.status(422).json({ message: "Nie udało się sparsować odpowiedzi AI", raw: rawText });
+      }
+
+      res.json({ extracted, pages: pageImages.length });
+    } catch (err: any) {
+      console.error("PDF parse error:", err);
+      res.status(500).json({ message: "Błąd parsowania PDF: " + (err.message || "Nieznany błąd") });
+    } finally {
+      for (const f of tmpFiles) {
+        try { fs.unlinkSync(f); } catch {}
+      }
+    }
+  });
+
   return httpServer;
 }

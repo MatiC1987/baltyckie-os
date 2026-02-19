@@ -29,7 +29,7 @@ The application is built with a modern full-stack architecture.
 -   **Calendar (Terminarz)**: A graphical Gantt-chart-style calendar for visualizing reservations, blockades, and subleases, offering date range selection and dynamic apartment grouping.
 -   **Location Management**: Dynamic categories for apartment locations.
 -   **Service Contract Management**: Tracking of service agreements with various categories.
--   **Sublease Management**: Comprehensive system for managing subleases, including tenant details, payments, deposits, and attachments.
+-   **Sublease Management**: Comprehensive system for managing subleases, including tenant details, payments, deposits, and attachments. Includes AI-powered PDF contract import: scanned PDF → pdftoppm → GPT-4o vision OCR → structured data extraction → user review form → save.
 -   **User Account Management**: Internal system for managing application users with role-based permissions.
 -   **Reporting & Forecasting**: Includes pages for aggregated sublease settlements, revenue forecasting (P/R/S spreadsheet view per apartment/location), apartment cost analysis, and a detailed revenue page consolidating actual and forecasted income.
 -   **Analytics (ANALIZY section)**: Occupancy rates per apartment with year/month filtering, profitability rankings with revenue bars, year-over-year comparison with bar charts and monthly tables, apartment comparison analytics, 6-month cash flow forecast, and price seasonality analysis.
