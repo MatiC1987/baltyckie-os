@@ -142,19 +142,24 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   profitability: { id: "profitability", href: "/profitability", label: "Rentowność", iconName: "TrendingUp" },
   "year-comparison": { id: "year-comparison", href: "/year-comparison", label: "Porównanie r/r", iconName: "GitCompareArrows" },
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "TrendingUp" },
+  "apartment-comparison": { id: "apartment-comparison", href: "/apartment-comparison", label: "Porównanie apartamentów", iconName: "GitCompareArrows" },
+  "cash-flow-forecast": { id: "cash-flow-forecast", href: "/cash-flow-forecast", label: "Przepływy pieniężne", iconName: "TrendingUp" },
+  backup: { id: "backup", href: "/backup", label: "Backup danych", iconName: "Download" },
+  reports: { id: "reports", href: "/reports", label: "Raporty PDF", iconName: "FileText" },
+  invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileText" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit", "finance-forecast", "calendar"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "costs-apartments", "costs-expenses", "saldo-ml", "saldo-jg", "saldo-mc"] },
+  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "costs-apartments", "costs-expenses", "saldo-ml", "saldo-jg", "saldo-mc", "invoices"] },
   { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
   { id: "umowy-new", title: "UMOWY", itemIds: ["apartment-schedule"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
-  { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "price-seasonality"] },
+  { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "price-seasonality", "apartment-comparison", "cash-flow-forecast"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
   { id: "dokumenty", title: "DOKUMENTY", itemIds: ["document-templates"] },
-  { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations", "activity-log"] },
+  { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "backup", "reports", "user-accounts", "locations", "activity-log"] },
 ];
 
 const STORAGE_KEY = "sidebar-layout-v1";

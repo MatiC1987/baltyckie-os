@@ -56,7 +56,7 @@ export function DataTable<T>({
         <TableHeader className="bg-muted/50 sticky top-0 z-20">
           <TableRow>
             {columns.map((col, index) => (
-              <TableHead key={index} className={cn("font-semibold", col.className)}>
+              <TableHead key={index} className={cn("font-semibold text-sm md:text-base", col.className)}>
                 {col.header}
               </TableHead>
             ))}
@@ -70,7 +70,7 @@ export function DataTable<T>({
               onClick={() => onRowClick?.(item)}
             >
               {columns.map((col, colIndex) => (
-                <TableCell key={colIndex} className={col.className}>
+                <TableCell key={colIndex} className={cn("text-sm md:text-base", col.className)}>
                   {col.cell 
                     ? col.cell(item) 
                     : (col.accessorKey ? String(item[col.accessorKey]) : null)

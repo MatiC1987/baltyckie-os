@@ -38,6 +38,8 @@ import ApartmentComparison from "@/pages/ApartmentComparison";
 import PriceSeasonality from "@/pages/PriceSeasonality";
 import PlaceholderPage from "@/pages/Placeholder";
 import DataBackup from "@/pages/DataBackup";
+import ReportExport from "@/pages/ReportExport";
+import Invoices from "@/pages/Invoices";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -118,6 +120,8 @@ function Router() {
       <Route path="/apartment-comparison" component={() => <AuthenticatedRoute component={ApartmentComparison} />} />
       <Route path="/price-seasonality" component={() => <AuthenticatedRoute component={PriceSeasonality} />} />
       <Route path="/backup" component={() => <AuthenticatedRoute component={DataBackup} />} />
+      <Route path="/reports" component={() => <AuthenticatedRoute component={ReportExport} />} />
+      <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

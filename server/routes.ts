@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -2797,6 +2797,310 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Backup export error:", err);
       res.status(500).json({ message: "Failed to export backup" });
+    }
+  });
+
+  // Invoices
+  app.get("/api/invoices", isAuthenticated, async (_req, res) => {
+    try {
+      const allInvoices = await storage.getInvoices();
+      res.json(allInvoices);
+    } catch (err) {
+      console.error("Get invoices error:", err);
+      res.status(500).json({ message: "Failed to get invoices" });
+    }
+  });
+
+  app.post("/api/invoices", isAuthenticated, async (req, res) => {
+    try {
+      const input = insertInvoiceSchema.parse(req.body);
+      const invoice = await storage.createInvoice(input);
+      logActivity(req, "create", "invoice", invoice.id, invoice.invoiceNumber);
+      res.status(201).json(invoice);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Create invoice error:", err);
+      res.status(500).json({ message: "Failed to create invoice" });
+    }
+  });
+
+  app.patch("/api/invoices/:id", isAuthenticated, async (req, res) => {
+    try {
+      const invoice = await storage.updateInvoice(Number(req.params.id), req.body);
+      logActivity(req, "update", "invoice", invoice.id, invoice.invoiceNumber);
+      res.json(invoice);
+    } catch (err) {
+      console.error("Update invoice error:", err);
+      res.status(500).json({ message: "Failed to update invoice" });
+    }
+  });
+
+  app.delete("/api/invoices/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteInvoice(Number(req.params.id));
+      logActivity(req, "delete", "invoice", Number(req.params.id));
+      res.status(204).send();
+    } catch (err) {
+      console.error("Delete invoice error:", err);
+      res.status(500).json({ message: "Failed to delete invoice" });
+    }
+  });
+
+  app.post("/api/invoices/generate-from-reservation/:id", isAuthenticated, async (req, res) => {
+    try {
+      const reservationId = Number(req.params.id);
+      const allReservations = await storage.getReservations({});
+      const reservation = allReservations.find(r => r.id === reservationId);
+      if (!reservation) return res.status(404).json({ message: "Rezerwacja nie znaleziona" });
+
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const existingInvoices = await storage.getInvoices();
+      const monthInvoices = existingInvoices.filter(inv => inv.invoiceNumber.startsWith(`FV/${year}/${month}/`));
+      const nextNum = String(monthInvoices.length + 1).padStart(3, "0");
+      const invoiceNumber = `FV/${year}/${month}/${nextNum}`;
+
+      const netAmount = Number(reservation.price);
+      const vatRate = 23;
+      const vatAmount = Math.round(netAmount * vatRate) / 100;
+      const grossAmount = netAmount + vatAmount;
+
+      const items = JSON.stringify([{
+        name: `Rezerwacja ${reservation.reservationNumber}`,
+        quantity: 1,
+        unitPrice: netAmount,
+        netAmount: netAmount,
+        vatRate: `${vatRate}%`,
+        vatAmount: vatAmount,
+        grossAmount: grossAmount,
+      }]);
+
+      const invoice = await storage.createInvoice({
+        invoiceNumber,
+        issueDate: now.toISOString().split("T")[0],
+        dueDate: new Date(now.getTime() + 14 * 86400000).toISOString().split("T")[0],
+        sellerName: "Bałtyckie Apartamenty",
+        buyerName: reservation.guestName,
+        items,
+        netAmount: netAmount.toFixed(2),
+        vatRate: `${vatRate}%`,
+        vatAmount: vatAmount.toFixed(2),
+        grossAmount: grossAmount.toFixed(2),
+        status: "WYSTAWIONA",
+        sourceType: "reservation",
+        sourceId: reservationId,
+      });
+
+      logActivity(req, "create", "invoice", invoice.id, invoice.invoiceNumber, `Z rezerwacji ${reservation.reservationNumber}`);
+      res.status(201).json(invoice);
+    } catch (err) {
+      console.error("Generate invoice from reservation error:", err);
+      res.status(500).json({ message: "Failed to generate invoice from reservation" });
+    }
+  });
+
+  app.post("/api/invoices/generate-from-sublease/:id", isAuthenticated, async (req, res) => {
+    try {
+      const subleaseId = Number(req.params.id);
+      const sublease = await storage.getSublease(subleaseId);
+      if (!sublease) return res.status(404).json({ message: "Podnajem nie znaleziony" });
+
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const existingInvoices = await storage.getInvoices();
+      const monthInvoices = existingInvoices.filter(inv => inv.invoiceNumber.startsWith(`FV/${year}/${month}/`));
+      const nextNum = String(monthInvoices.length + 1).padStart(3, "0");
+      const invoiceNumber = `FV/${year}/${month}/${nextNum}`;
+
+      const tenantName = sublease.companyName || `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim() || "Najemca";
+      const netAmount = Number(sublease.rentAmount || 0);
+      const vatRateNum = parseInt(sublease.vatRate || "23%") || 23;
+      const vatAmount = Math.round(netAmount * vatRateNum) / 100;
+      const grossAmount = netAmount + vatAmount;
+
+      const items = JSON.stringify([{
+        name: `Czynsz najmu`,
+        quantity: 1,
+        unitPrice: netAmount,
+        netAmount: netAmount,
+        vatRate: `${vatRateNum}%`,
+        vatAmount: vatAmount,
+        grossAmount: grossAmount,
+      }]);
+
+      const invoice = await storage.createInvoice({
+        invoiceNumber,
+        issueDate: now.toISOString().split("T")[0],
+        dueDate: new Date(now.getTime() + 14 * 86400000).toISOString().split("T")[0],
+        sellerName: "Bałtyckie Apartamenty",
+        buyerName: tenantName,
+        buyerNip: sublease.nip || undefined,
+        buyerAddress: [sublease.street, sublease.postalCode, sublease.city].filter(Boolean).join(", ") || undefined,
+        items,
+        netAmount: netAmount.toFixed(2),
+        vatRate: `${vatRateNum}%`,
+        vatAmount: vatAmount.toFixed(2),
+        grossAmount: grossAmount.toFixed(2),
+        status: "WYSTAWIONA",
+        sourceType: "sublease",
+        sourceId: subleaseId,
+      });
+
+      logActivity(req, "create", "invoice", invoice.id, invoice.invoiceNumber, `Z podnajmu ${tenantName}`);
+      res.status(201).json(invoice);
+    } catch (err) {
+      console.error("Generate invoice from sublease error:", err);
+      res.status(500).json({ message: "Failed to generate invoice from sublease" });
+    }
+  });
+
+  app.get("/api/notifications", isAuthenticated, async (_req, res) => {
+    try {
+      const allNotifications = await storage.getNotifications();
+      res.json(allNotifications);
+    } catch (err) {
+      console.error("Get notifications error:", err);
+      res.status(500).json({ message: "Failed to get notifications" });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", isAuthenticated, async (_req, res) => {
+    try {
+      const unread = await storage.getUnreadNotifications();
+      res.json({ count: unread.length });
+    } catch (err) {
+      console.error("Get unread count error:", err);
+      res.status(500).json({ message: "Failed to get unread count" });
+    }
+  });
+
+  app.post("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      await storage.markNotificationRead(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Mark notification read error:", err);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  app.post("/api/notifications/read-all", isAuthenticated, async (_req, res) => {
+    try {
+      await storage.markAllNotificationsRead();
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Mark all read error:", err);
+      res.status(500).json({ message: "Failed to mark all as read" });
+    }
+  });
+
+  app.post("/api/notifications/generate", isAuthenticated, async (_req, res) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const in30days = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+      const existing = await storage.getNotifications();
+      const existingKeys = new Set(existing.map(n => `${n.entityType}:${n.entityId}`));
+      let created = 0;
+
+      const overduePayments = await db.select({
+        id: subleasePayments.id,
+        title: subleasePayments.title,
+        amount: subleasePayments.amount,
+        dueDate: subleasePayments.dueDate,
+      })
+        .from(subleasePayments)
+        .where(and(ne(subleasePayments.status, "oplacone"), lt(subleasePayments.dueDate, today)));
+
+      for (const p of overduePayments) {
+        if (!existingKeys.has(`sublease_payment:${p.id}`)) {
+          await storage.createNotification({
+            type: "payment_due",
+            title: "Zaległa płatność podnajmu",
+            message: `Płatność "${p.title}" (${p.amount} zł) miała termin ${p.dueDate}`,
+            entityType: "sublease_payment",
+            entityId: p.id,
+            dueDate: p.dueDate,
+          });
+          created++;
+        }
+      }
+
+      const expiringLeasesList = await db.select({
+        id: leases.id,
+        tenantName: leases.tenantName,
+        endDate: leases.endDate,
+      })
+        .from(leases)
+        .where(and(lte(leases.endDate, in30days), gte(leases.endDate, today)));
+
+      for (const l of expiringLeasesList) {
+        if (!existingKeys.has(`lease:${l.id}`)) {
+          await storage.createNotification({
+            type: "lease_expiring",
+            title: "Wygasająca umowa najmu",
+            message: `Umowa najmu${l.tenantName ? ` (${l.tenantName})` : ""} wygasa ${l.endDate}`,
+            entityType: "lease",
+            entityId: l.id,
+            dueDate: l.endDate,
+          });
+          created++;
+        }
+      }
+
+      const expiringExams = await db.select({
+        id: medicalExams.id,
+        examName: medicalExams.examName,
+        validUntil: medicalExams.validUntil,
+        employeeId: medicalExams.employeeId,
+      })
+        .from(medicalExams)
+        .where(and(lte(medicalExams.validUntil, in30days), gte(medicalExams.validUntil, today)));
+
+      for (const e of expiringExams) {
+        if (!existingKeys.has(`medical_exam:${e.id}`)) {
+          await storage.createNotification({
+            type: "exam_expiring",
+            title: "Wygasające badanie lekarskie",
+            message: `Badanie "${e.examName}" ważne do ${e.validUntil}`,
+            entityType: "medical_exam",
+            entityId: e.id,
+            dueDate: e.validUntil,
+          });
+          created++;
+        }
+      }
+
+      const expiringSubleasesList = await db.select({
+        id: subleases.id,
+        firstName: subleases.firstName,
+        lastName: subleases.lastName,
+        companyName: subleases.companyName,
+        endDate: subleases.endDate,
+      })
+        .from(subleases)
+        .where(and(lte(subleases.endDate, in30days), gte(subleases.endDate, today)));
+
+      for (const s of expiringSubleasesList) {
+        if (!existingKeys.has(`sublease:${s.id}`)) {
+          const tenantName = s.companyName || `${s.firstName || ""} ${s.lastName || ""}`.trim() || "Najemca";
+          await storage.createNotification({
+            type: "sublease_expiring",
+            title: "Wygasający podnajem",
+            message: `Podnajem (${tenantName}) wygasa ${s.endDate}`,
+            entityType: "sublease",
+            entityId: s.id,
+            dueDate: s.endDate,
+          });
+          created++;
+        }
+      }
+
+      res.json({ created, message: `Wygenerowano ${created} nowych powiadomień` });
+    } catch (err) {
+      console.error("Generate notifications error:", err);
+      res.status(500).json({ message: "Failed to generate notifications" });
     }
   });
 

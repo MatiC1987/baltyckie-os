@@ -129,23 +129,27 @@ function QuickActions() {
   return (
     <Card>
       <CardContent className="py-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-muted-foreground mr-1">Szybkie akcje:</span>
-          <Button size="sm" variant="outline" onClick={() => navigate("/reservations?action=new")} data-testid="button-quick-reservation">
-            <Plus className="h-4 w-4 mr-1" />
-            Nowa rezerwacja
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs sm:text-sm font-medium text-muted-foreground mr-1">Szybkie akcje:</span>
+          <Button size="sm" variant="outline" onClick={() => navigate("/reservations?action=new")} data-testid="button-quick-reservation" className="text-xs sm:text-sm">
+            <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Nowa rezerwacja</span>
+            <span className="sm:hidden">Rezerwacja</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/costs-expenses?action=new")} data-testid="button-quick-expense">
-            <Receipt className="h-4 w-4 mr-1" />
-            Nowy wydatek
+          <Button size="sm" variant="outline" onClick={() => navigate("/costs-expenses?action=new")} data-testid="button-quick-expense" className="text-xs sm:text-sm">
+            <Receipt className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Nowy wydatek</span>
+            <span className="sm:hidden">Wydatek</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/contracts-subrent?action=new")} data-testid="button-quick-sublease">
-            <FileSignature className="h-4 w-4 mr-1" />
-            Nowy podnajem
+          <Button size="sm" variant="outline" onClick={() => navigate("/contracts-subrent?action=new")} data-testid="button-quick-sublease" className="text-xs sm:text-sm">
+            <FileSignature className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Nowy podnajem</span>
+            <span className="sm:hidden">Podnajem</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate("/backup")} data-testid="button-quick-backup">
-            <Download className="h-4 w-4 mr-1" />
-            Backup danych
+          <Button size="sm" variant="outline" onClick={() => navigate("/backup")} data-testid="button-quick-backup" className="text-xs sm:text-sm">
+            <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Backup danych</span>
+            <span className="sm:hidden">Backup</span>
           </Button>
         </div>
       </CardContent>
@@ -306,26 +310,31 @@ export default function Dashboard() {
       <RevenueForecastSection forecastData={forecastData || []} />
 
       <Tabs defaultValue="unpaid-arrivals" className="space-y-4">
-        <TabsList className="flex-wrap h-auto gap-1" data-testid="dashboard-tabs">
-          <TabsTrigger value="unpaid-arrivals" data-testid="tab-unpaid-arrivals">
-            <AlertCircle className="h-4 w-4 mr-1" />
-            Nieopłacone przyjazdy
+        <TabsList className="flex flex-wrap h-auto gap-2 bg-background" data-testid="dashboard-tabs">
+          <TabsTrigger value="unpaid-arrivals" data-testid="tab-unpaid-arrivals" className="text-xs sm:text-sm">
+            <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Nieopłacone przyjazdy</span>
+            <span className="sm:hidden">Nieopłacone</span>
           </TabsTrigger>
-          <TabsTrigger value="upcoming-arrivals" data-testid="tab-upcoming-arrivals">
-            <Plane className="h-4 w-4 mr-1" />
-            Najbliższe przyjazdy
+          <TabsTrigger value="upcoming-arrivals" data-testid="tab-upcoming-arrivals" className="text-xs sm:text-sm">
+            <Plane className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Najbliższe przyjazdy</span>
+            <span className="sm:hidden">Przyjazdy</span>
           </TabsTrigger>
-          <TabsTrigger value="upcoming-departures" data-testid="tab-upcoming-departures">
-            <PlaneTakeoff className="h-4 w-4 mr-1" />
-            Najbliższe wyjazdy
+          <TabsTrigger value="upcoming-departures" data-testid="tab-upcoming-departures" className="text-xs sm:text-sm">
+            <PlaneTakeoff className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Najbliższe wyjazdy</span>
+            <span className="sm:hidden">Wyjazdy</span>
           </TabsTrigger>
-          <TabsTrigger value="unpaid-subleases" data-testid="tab-unpaid-subleases">
-            <FileWarning className="h-4 w-4 mr-1" />
-            Nieopłacone podnajmy
+          <TabsTrigger value="unpaid-subleases" data-testid="tab-unpaid-subleases" className="text-xs sm:text-sm">
+            <FileWarning className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Nieopłacone podnajmy</span>
+            <span className="sm:hidden">Podnajmy</span>
           </TabsTrigger>
-          <TabsTrigger value="expiring-leases" data-testid="tab-expiring-leases">
-            <CalendarClock className="h-4 w-4 mr-1" />
-            Kończące się umowy
+          <TabsTrigger value="expiring-leases" data-testid="tab-expiring-leases" className="text-xs sm:text-sm">
+            <CalendarClock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Kończące się umowy</span>
+            <span className="sm:hidden">Umowy</span>
           </TabsTrigger>
         </TabsList>
 

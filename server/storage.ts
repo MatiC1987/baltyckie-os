@@ -35,6 +35,8 @@ import {
   serviceContractAttachments, ServiceContractAttachment, InsertServiceContractAttachment,
   importMetadata, ImportMetadata,
   activityLogs, ActivityLog, InsertActivityLog,
+  invoices, Invoice, InsertInvoice,
+  notifications, Notification, InsertNotification,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -234,6 +236,20 @@ export interface IStorage {
   // Activity Logs
   getActivityLogs(limit?: number): Promise<ActivityLog[]>;
   createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+
+  // Invoices
+  getInvoices(): Promise<Invoice[]>;
+  getInvoice(id: number): Promise<Invoice | undefined>;
+  createInvoice(data: InsertInvoice): Promise<Invoice>;
+  updateInvoice(id: number, data: Partial<InsertInvoice>): Promise<Invoice>;
+  deleteInvoice(id: number): Promise<void>;
+
+  // Notifications
+  getNotifications(): Promise<Notification[]>;
+  getUnreadNotifications(): Promise<Notification[]>;
+  createNotification(data: InsertNotification): Promise<Notification>;
+  markNotificationRead(id: number): Promise<void>;
+  markAllNotificationsRead(): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1063,6 +1079,50 @@ export class DatabaseStorage implements IStorage {
   async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
     const [created] = await db.insert(activityLogs).values(log).returning();
     return created;
+  }
+
+  async getInvoices(): Promise<Invoice[]> {
+    return db.select().from(invoices).orderBy(desc(invoices.createdAt));
+  }
+
+  async getInvoice(id: number): Promise<Invoice | undefined> {
+    const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id));
+    return invoice;
+  }
+
+  async createInvoice(data: InsertInvoice): Promise<Invoice> {
+    const [created] = await db.insert(invoices).values(data).returning();
+    return created;
+  }
+
+  async updateInvoice(id: number, data: Partial<InsertInvoice>): Promise<Invoice> {
+    const [updated] = await db.update(invoices).set(data).where(eq(invoices.id, id)).returning();
+    return updated;
+  }
+
+  async deleteInvoice(id: number): Promise<void> {
+    await db.delete(invoices).where(eq(invoices.id, id));
+  }
+
+  async getNotifications(): Promise<Notification[]> {
+    return db.select().from(notifications).orderBy(desc(notifications.createdAt)).limit(100);
+  }
+
+  async getUnreadNotifications(): Promise<Notification[]> {
+    return db.select().from(notifications).where(eq(notifications.isRead, false)).orderBy(desc(notifications.createdAt));
+  }
+
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [created] = await db.insert(notifications).values(data).returning();
+    return created;
+  }
+
+  async markNotificationRead(id: number): Promise<void> {
+    await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+  }
+
+  async markAllNotificationsRead(): Promise<void> {
+    await db.update(notifications).set({ isRead: true }).where(eq(notifications.isRead, false));
   }
 }
 

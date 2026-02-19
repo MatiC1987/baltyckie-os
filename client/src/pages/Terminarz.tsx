@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useReservations, useCreateReservation } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Lock, ChevronLeft, ChevronRight, X, Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 import type { Location, Sublease } from "@shared/schema";
 
@@ -176,6 +177,116 @@ export default function Terminarz() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sz = compact ? COMPACT : NORMAL;
+
+  const dragDataRef = useRef<{
+    reservationId: number;
+    originalStartDate: string;
+    originalEndDate: string;
+    originalApartmentId: number;
+    dayOffset: number;
+  } | null>(null);
+  const [dragOverAptId, setDragOverAptId] = useState<number | null>(null);
+  const [isDraggingRes, setIsDraggingRes] = useState(false);
+
+  const { toast } = useToast();
+
+  const moveReservationMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiRequest("PUT", `/api/reservations/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      toast({ title: "Rezerwacja przeniesiona", description: "Daty rezerwacji zostały zaktualizowane." });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się przenieść rezerwacji.", variant: "destructive" });
+    },
+  });
+
+  const handleDragStart = useCallback((e: React.DragEvent, res: Reservation, aptId: number) => {
+    const rowRect = e.currentTarget.parentElement?.getBoundingClientRect();
+    const clickXInRow = rowRect ? e.clientX - rowRect.left : 0;
+    const clickDayIdx = Math.floor(clickXInRow / sz.dayWidth);
+
+    const resStart = new Date(res.startDate);
+    const resStartIdx = days.findIndex(d => isSameDay(d, resStart));
+    const startDayInView = resStartIdx >= 0 ? resStartIdx : 0;
+
+    const dayOffset = clickDayIdx - startDayInView;
+
+    dragDataRef.current = {
+      reservationId: res.id,
+      originalStartDate: res.startDate,
+      originalEndDate: res.endDate,
+      originalApartmentId: aptId,
+      dayOffset: Math.max(0, dayOffset),
+    };
+    setIsDraggingRes(true);
+
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(res.id));
+  }, [sz.dayWidth, days]);
+
+  const handleDragOver = useCallback((e: React.DragEvent, aptId: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverAptId(aptId);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverAptId(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetAptId: number) => {
+    e.preventDefault();
+    setDragOverAptId(null);
+    setIsDraggingRes(false);
+
+    const dragData = dragDataRef.current;
+    if (!dragData) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const dropDayIdx = Math.floor(x / sz.dayWidth);
+
+    const newStartIdx = dropDayIdx - dragData.dayOffset;
+    if (newStartIdx < 0 || newStartIdx >= days.length) {
+      dragDataRef.current = null;
+      return;
+    }
+
+    const origStart = new Date(dragData.originalStartDate);
+    const origEnd = new Date(dragData.originalEndDate);
+    const durationMs = origEnd.getTime() - origStart.getTime();
+
+    const newStartDate = days[newStartIdx];
+    const newEndDate = new Date(newStartDate.getTime() + durationMs);
+
+    const newStartStr = formatDate(newStartDate);
+    const newEndStr = formatDate(newEndDate);
+
+    const hasChanged = newStartStr !== dragData.originalStartDate ||
+      newEndStr !== dragData.originalEndDate ||
+      targetAptId !== dragData.originalApartmentId;
+
+    if (hasChanged) {
+      const updateData: any = {
+        startDate: newStartStr,
+        endDate: newEndStr,
+      };
+      if (targetAptId !== dragData.originalApartmentId) {
+        updateData.apartmentId = targetAptId;
+      }
+      moveReservationMutation.mutate({ id: dragData.reservationId, data: updateData });
+    }
+
+    dragDataRef.current = null;
+  }, [sz.dayWidth, days, moveReservationMutation]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDraggingRes(false);
+    setDragOverAptId(null);
+    dragDataRef.current = null;
+  }, []);
 
   useEffect(() => {
     const handleGlobalMouseUp = () => {
@@ -414,8 +525,12 @@ export default function Terminarz() {
                       <span className="font-semibold truncate" style={{ fontSize: sz.aptFontSize }} title={apt.name}>{apt.name}</span>
                     </div>
                     <div
-                      className="relative border-b border-border flex-1 select-none"
+                      className={`relative border-b border-border flex-1 select-none ${dragOverAptId === apt.id ? "bg-primary/10" : ""}`}
                       style={{ height: sz.rowHeight, width: totalWidth, minWidth: totalWidth }}
+                      data-testid={`apt-drop-zone-${apt.id}`}
+                      onDragOver={(e) => handleDragOver(e, apt.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, apt.id)}
                       onMouseDown={(e) => {
                         if (e.button !== 0) return;
                         const rect = e.currentTarget.getBoundingClientRect();
@@ -572,12 +687,23 @@ export default function Terminarz() {
                         const rightEdge = effectiveEnd * sz.dayWidth + (endsInRange ? halfDay : sz.dayWidth);
                         const width = Math.max(rightEdge - left, halfDay);
                         const barColor = getColorForStatus(res.status || "PRZYJETA", colors);
+                        const isGroupRes = res.apartmentIds && res.apartmentIds.length > 1;
 
                         return (
                           <div
                             key={`res-${res.id}`}
-                            className="absolute rounded-md z-[3] flex items-center cursor-pointer shadow-sm border border-black/10"
-                            style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: barColor }}
+                            className="absolute rounded-md z-[3] flex items-center shadow-sm border border-black/10"
+                            style={{
+                              left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: barColor,
+                              cursor: isGroupRes ? "pointer" : "grab",
+                              opacity: isDraggingRes && dragDataRef.current?.reservationId === res.id ? 0.4 : 1,
+                            }}
+                            draggable={!isGroupRes}
+                            onDragStart={(e) => {
+                              if (isGroupRes) { e.preventDefault(); return; }
+                              handleDragStart(e, res, apt.id);
+                            }}
+                            onDragEnd={handleDragEnd}
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={() => setPreviewRes(res)}
                             onMouseEnter={(e) => {
@@ -590,9 +716,9 @@ export default function Terminarz() {
                             onMouseLeave={() => setHoveredRes(null)}
                             data-testid={`cal-res-${res.id}`}
                           >
-                            {res.apartmentIds && res.apartmentIds.length > 1 && (
+                            {isGroupRes && (
                               <span className="bg-white/30 text-white font-bold rounded-sm px-0.5 ml-0.5 flex-shrink-0" style={{ fontSize: compact ? "7px" : "8px", lineHeight: "1.2" }}>
-                                {res.apartmentIds.length}
+                                {res.apartmentIds!.length}
                               </span>
                             )}
                             <span className="text-white font-semibold truncate px-1 drop-shadow-sm" style={{ fontSize: sz.barFontSize }}>
@@ -643,6 +769,9 @@ export default function Terminarz() {
           <div className="flex items-center gap-1">
             <div className="w-[2px] h-3 border-l-2 border-dashed border-black/20 dark:border-white/20" />
             <span>Dzisiaj</span>
+          </div>
+          <div className="flex items-center gap-1 text-muted-foreground/70" data-testid="text-drag-hint">
+            <span>Przeciągnij rezerwację aby zmienić termin lub apartament</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
