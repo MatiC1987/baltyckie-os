@@ -1116,6 +1116,12 @@ export async function registerRoutes(
       if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
       if (data.depositAmount === "" || data.depositAmount === undefined) data.depositAmount = null;
       if (data.depositReturnDate === "") data.depositReturnDate = null;
+      if (data.status === "W_TRAKCIE_PODPISYWANIA" && !data.preparedAt) {
+        data.preparedAt = new Date();
+      }
+      if (typeof data.preparedAt === "string") {
+        data.preparedAt = new Date(data.preparedAt);
+      }
       const parsed = insertSubleaseSchema.parse(data);
       const created = await storage.createSublease(parsed);
       logActivity(req, "create", "sublease", created.id, parsed.firstName ? `${parsed.firstName} ${parsed.lastName || ""}` : parsed.companyName || undefined);
@@ -1132,6 +1138,9 @@ export async function registerRoutes(
       if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
       if (data.depositAmount === "" || data.depositAmount === undefined) data.depositAmount = null;
       if (data.depositReturnDate === "") data.depositReturnDate = null;
+      if (typeof data.preparedAt === "string") {
+        data.preparedAt = new Date(data.preparedAt);
+      }
       const updated = await storage.updateSublease(Number(req.params.id), data);
       logActivity(req, "update", "sublease", updated.id);
       res.status(200).json(updated);
@@ -1216,13 +1225,75 @@ export async function registerRoutes(
       const Docxtemplater = (await import("docxtemplater")).default;
 
       const zip = new PizZip(fileBuffer);
+      const nullGetter = () => "";
       const doc = new Docxtemplater(zip, {
         paragraphLoop: true,
         linebreaks: true,
         delimiters: { start: "{{", end: "}}" },
+        nullGetter,
       });
 
-      doc.render(data || {});
+      const aptIds: number[] = data.apartmentIds || (data.apartmentId ? [data.apartmentId] : []);
+      const allApartments = await storage.getApartments();
+      const aptNames = aptIds.map(id => allApartments.find(a => a.id === id)?.name || "").filter(Boolean);
+
+      const today = new Date();
+      const formatDatePL = (d: string) => {
+        if (!d) return "";
+        const [y, m, dd] = d.split("-");
+        return `${dd}.${m}.${y}`;
+      };
+
+      const templateData: Record<string, string> = {
+        ...data,
+        imie: data.firstName || "",
+        nazwisko: data.lastName || "",
+        imie_nazwisko: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+        nazwa_firmy: data.companyName || "",
+        firma: data.companyName || "",
+        nip: data.nip || "",
+        ulica: data.street || "",
+        kod_pocztowy: data.postalCode || "",
+        miasto: data.city || "",
+        pesel: data.peselOrPassport || "",
+        pesel_paszport: data.peselOrPassport || "",
+        telefon: data.phone || "",
+        email: data.email || "",
+        email_faktury: data.invoiceEmail || "",
+        stawka_vat: data.vatRate || "23%",
+        apartament: aptNames.join(", "),
+        apartamenty: aptNames.join(", "),
+        nazwa_apartamentu: aptNames[0] || "",
+        data_rozpoczecia: formatDatePL(data.startDate || ""),
+        data_zakonczenia: formatDatePL(data.endDate || ""),
+        data_od: formatDatePL(data.startDate || ""),
+        data_do: formatDatePL(data.endDate || ""),
+        start_date: data.startDate || "",
+        end_date: data.endDate || "",
+        czynsz: data.rentAmount ? Number(data.rentAmount).toFixed(2) : "",
+        kwota_czynszu: data.rentAmount ? Number(data.rentAmount).toFixed(2) : "",
+        czynsz_slownie: "",
+        dodatkowe_oplaty: data.additionalFees ? Number(data.additionalFees).toFixed(2) : "",
+        kaucja: data.depositAmount ? Number(data.depositAmount).toFixed(2) : "",
+        kwota_kaucji: data.depositAmount ? Number(data.depositAmount).toFixed(2) : "",
+        data_zwrotu_kaucji: formatDatePL(data.depositReturnDate || ""),
+        data_dzisiejsza: formatDatePL(today.toISOString().slice(0, 10)),
+        dzisiejsza_data: formatDatePL(today.toISOString().slice(0, 10)),
+        data_umowy: formatDatePL(today.toISOString().slice(0, 10)),
+        typ_najemcy: data.tenantType === "firma" ? "Firma" : "Osoba fizyczna",
+        firstName: data.firstName || "",
+        lastName: data.lastName || "",
+        companyName: data.companyName || "",
+        street: data.street || "",
+        postalCode: data.postalCode || "",
+        city: data.city || "",
+        phone: data.phone || "",
+        rentAmount: data.rentAmount || "",
+        additionalFees: data.additionalFees || "",
+        depositAmount: data.depositAmount || "",
+      };
+
+      doc.render(templateData);
       const buf = doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
 
       const tenantName = data.tenantType === 'firma' 

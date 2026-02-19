@@ -1421,13 +1421,34 @@ export default function Subleases() {
       link.click();
       URL.revokeObjectURL(url);
 
-      const subleaseData = {
-        ...generateForm,
+      const { tenantType, firstName, lastName, companyName, nip, street, postalCode, city, peselOrPassport, phone, email, invoiceEmail, vatRate, apartmentId, apartmentIds, startDate, endDate, rentAmount, additionalFees, mediaByMeters, hasDeposit, depositAmount, depositReturnDate } = generateForm;
+      const subleaseData: Record<string, any> = {
+        tenantType: tenantType || "osoba_fizyczna",
+        firstName: firstName || null,
+        lastName: lastName || null,
+        companyName: companyName || null,
+        nip: nip || null,
+        street: street || null,
+        postalCode: postalCode || null,
+        city: city || null,
+        peselOrPassport: peselOrPassport || null,
+        phone: phone || null,
+        email: email || null,
+        invoiceEmail: invoiceEmail || null,
+        vatRate: vatRate || "23%",
+        apartmentId: apartmentId || (apartmentIds?.length ? apartmentIds[0] : null),
+        apartmentIds: apartmentIds || (apartmentId ? [apartmentId] : null),
+        startDate,
+        endDate,
+        rentAmount: rentAmount || null,
+        additionalFees: additionalFees || null,
+        mediaByMeters: mediaByMeters || false,
+        hasDeposit: hasDeposit || false,
+        depositAmount: depositAmount || null,
+        depositReturnDate: depositReturnDate || null,
         status: "W_TRAKCIE_PODPISYWANIA",
-        preparedAt: new Date().toISOString(),
       };
-      const createRes = await apiRequest('POST', '/api/subleases', subleaseData);
-      const created = await createRes.json();
+      await apiRequest('POST', '/api/subleases', subleaseData);
       queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
       toast({ title: "Sukces", description: "Wygenerowano umowę i dodano do podpisywania" });
       setGenerateOpen(false);
