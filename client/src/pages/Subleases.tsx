@@ -1581,10 +1581,12 @@ export default function Subleases() {
                             if (aptIds.length <= 1) return;
                             const newRows: typeof pdfPaymentSchedule = [];
                             for (const row of pdfPaymentSchedule) {
+                              const originalAmount = parseFloat(row.amount) || 0;
+                              const splitAmount = originalAmount > 0 ? Math.round((originalAmount / aptIds.length) * 100) / 100 : 0;
                               for (const aptId of aptIds) {
                                 newRows.push({
                                   date: row.date,
-                                  amount: "",
+                                  amount: splitAmount > 0 ? String(splitAmount) : "",
                                   description: row.description + " - " + (apartments.find(a => a.id === aptId)?.name || `Apt ${aptId}`),
                                   apartmentId: aptId,
                                 });
