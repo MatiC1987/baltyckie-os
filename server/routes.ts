@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -2331,11 +2331,473 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  // Activity Logs
+  // Activity Logs (Enhanced)
   app.get('/api/activity-logs', isAuthenticated, async (req, res) => {
-    const limit = req.query.limit ? Number(req.query.limit) : 100;
-    const logs = await storage.getActivityLogs(limit);
-    res.json(logs);
+    try {
+      const limitVal = req.query.limit ? Number(req.query.limit) : 100;
+      const offsetVal = req.query.offset ? Number(req.query.offset) : 0;
+      const entityType = req.query.entityType as string | undefined;
+      const action = req.query.action as string | undefined;
+
+      const conditions = [];
+      if (entityType) conditions.push(eq(activityLogs.entityType, entityType));
+      if (action) conditions.push(eq(activityLogs.action, action));
+
+      const whereClause = conditions.length ? and(...conditions) : undefined;
+
+      const [totalResult] = await db.select({ count: sql<number>`count(*)` })
+        .from(activityLogs)
+        .where(whereClause);
+
+      const logs = await db.select()
+        .from(activityLogs)
+        .where(whereClause)
+        .orderBy(desc(activityLogs.createdAt))
+        .limit(limitVal)
+        .offset(offsetVal);
+
+      res.json({ logs, total: Number(totalResult?.count || 0) });
+    } catch (err) {
+      console.error("Activity logs error:", err);
+      res.status(500).json({ message: "Failed to get activity logs" });
+    }
+  });
+
+  const MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+  // Apartment Comparison
+  app.get('/api/apartment-comparison', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const startDate = `${year}-01-01`;
+      const endDate = `${year}-12-31`;
+      const daysInYear = ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) ? 366 : 365;
+
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+
+      const yearReservations = await db.select({
+        apartmentId: reservations.apartmentId,
+        price: reservations.price,
+        startDate: reservations.startDate,
+        endDate: reservations.endDate,
+      })
+        .from(reservations)
+        .where(and(
+          lte(reservations.startDate, endDate),
+          gte(reservations.endDate, startDate),
+          ne(reservations.status, "ANULOWANA"),
+        ));
+
+      const yearExpenses = await db.select({
+        apartmentId: expenses.apartmentId,
+        amount: expenses.amount,
+      })
+        .from(expenses)
+        .where(and(
+          gte(expenses.date, startDate),
+          lte(expenses.date, endDate),
+        ));
+
+      const result = allApartments.map(apt => {
+        const aptReservations = yearReservations.filter(r => r.apartmentId === apt.id);
+        const revenue = aptReservations.reduce((s, r) => s + Number(r.price || 0), 0);
+        const aptExpenses = yearExpenses.filter(e => e.apartmentId === apt.id);
+        const expenseTotal = aptExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+        let occupiedDays = 0;
+        for (const r of aptReservations) {
+          const rStart = new Date(Math.max(new Date(r.startDate).getTime(), new Date(startDate).getTime()));
+          const rEnd = new Date(Math.min(new Date(r.endDate).getTime(), new Date(endDate).getTime()));
+          occupiedDays += Math.max(0, Math.ceil((rEnd.getTime() - rStart.getTime()) / 86400000));
+        }
+
+        return {
+          apartmentId: apt.id,
+          apartmentName: apt.name,
+          revenue: Math.round(revenue * 100) / 100,
+          expenses: Math.round(expenseTotal * 100) / 100,
+          reservationCount: aptReservations.length,
+          occupancyRate: Math.round((occupiedDays / daysInYear) * 100 * 100) / 100,
+          netProfit: Math.round((revenue - expenseTotal) * 100) / 100,
+        };
+      });
+
+      res.json(result);
+    } catch (err) {
+      console.error("Apartment comparison error:", err);
+      res.status(500).json({ message: "Failed to get apartment comparison" });
+    }
+  });
+
+  // Price Seasonality
+  app.get('/api/price-seasonality', isAuthenticated, async (req, res) => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const year = Number(req.query.year) || currentYear;
+      const startDate = `${year}-01-01`;
+      const endDate = `${year}-12-31`;
+
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+
+      const monthNames = [
+        "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
+        "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"
+      ];
+
+      // Get all reservations for the year
+      const yearReservations = await db.select({
+        apartmentId: reservations.apartmentId,
+        price: reservations.price,
+        startDate: reservations.startDate,
+        endDate: reservations.endDate,
+      })
+        .from(reservations)
+        .where(and(
+          lte(reservations.startDate, endDate),
+          gte(reservations.endDate, startDate),
+          ne(reservations.status, "ANULOWANA"),
+        ));
+
+      // Calculate monthly aggregates
+      const monthlyData: Record<number, { prices: number[]; count: number; occupancyRate: number }> = {};
+      for (let m = 0; m < 12; m++) {
+        monthlyData[m] = { prices: [], count: 0, occupancyRate: 0 };
+      }
+
+      // For each apartment, collect monthly rate data
+      const apartmentMonthlyData: Record<number, { prices: number[]; count: number }[]> = {};
+      for (const apt of allApartments) {
+        apartmentMonthlyData[apt.id] = Array.from({ length: 12 }, () => ({ prices: [], count: 0 }));
+      }
+
+      // Process reservations
+      for (const r of yearReservations) {
+        const rStart = new Date(r.startDate);
+        const rEnd = new Date(r.endDate);
+        const price = Number(r.price || 0);
+        const nights = Math.ceil((rEnd.getTime() - rStart.getTime()) / 86400000);
+        const pricePerNight = nights > 0 ? price / nights : price;
+
+        // Determine which months this reservation spans
+        let currentDate = new Date(rStart);
+        while (currentDate < rEnd) {
+          const month = currentDate.getMonth();
+          const year = currentDate.getFullYear();
+
+          // Only count if within our target year
+          if (year === parseInt(startDate.split('-')[0])) {
+            monthlyData[month].prices.push(pricePerNight);
+            monthlyData[month].count++;
+
+            if (apartmentMonthlyData[r.apartmentId]) {
+              apartmentMonthlyData[r.apartmentId][month].prices.push(pricePerNight);
+              apartmentMonthlyData[r.apartmentId][month].count++;
+            }
+          }
+
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+      }
+
+      // Calculate occupancy for each month
+      const daysInMonth = (m: number) => {
+        if ([0, 2, 4, 6, 7, 9, 11].includes(m)) return 31;
+        if ([3, 5, 8, 10].includes(m)) return 30;
+        return (parseInt(startDate.split('-')[0]) % 4 === 0) ? 29 : 28;
+      };
+
+      // Build monthly data
+      const monthlyResult: Record<string, any>[] = [];
+      const yearNum = parseInt(startDate.split('-')[0]);
+      for (let m = 0; m < 12; m++) {
+        const monthReservations = yearReservations.filter(r => {
+          const rStart = new Date(r.startDate);
+          const rEnd = new Date(r.endDate);
+          // Check if reservation overlaps with this month
+          const monthStart = new Date(yearNum, m, 1);
+          const monthEnd = new Date(yearNum, m + 1, 0);
+          return rStart <= monthEnd && rEnd >= monthStart;
+        });
+
+        // Calculate occupancy
+        let totalOccupiedDays = 0;
+        for (const r of monthReservations) {
+          const rStart = new Date(r.startDate);
+          const rEnd = new Date(r.endDate);
+          const monthStart = new Date(yearNum, m, 1);
+          const monthEnd = new Date(yearNum, m + 1, 0);
+
+          const overlapStart = new Date(Math.max(rStart.getTime(), monthStart.getTime()));
+          const overlapEnd = new Date(Math.min(rEnd.getTime(), monthEnd.getTime()));
+          const days = Math.max(0, Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / 86400000));
+          totalOccupiedDays += days;
+        }
+
+        const data = monthlyData[m];
+        const avgRate = data.prices.length > 0 ? data.prices.reduce((a, b) => a + b, 0) / data.prices.length : 0;
+        const avgOccupancy = daysInMonth(m) > 0 ? totalOccupiedDays / (daysInMonth(m) * allApartments.length) : 0;
+
+        monthlyResult.push({
+          month: m + 1,
+          monthName: monthNames[m],
+          avgNightlyRate: avgRate,
+          reservationCount: data.count,
+          avgOccupancy: Math.min(avgOccupancy, 1), // Cap at 100%
+        });
+      }
+
+      // Build per-apartment data
+      const byApartmentResult = allApartments.map(apt => {
+        const aptMonths = apartmentMonthlyData[apt.id] || Array.from({ length: 12 }, () => ({ prices: [], count: 0 }));
+        return {
+          apartmentId: apt.id,
+          apartmentName: apt.name,
+          monthlyRates: aptMonths.map((md, m) => ({
+            month: m,
+            avgRate: md.prices.length > 0 ? md.prices.reduce((a, b) => a + b, 0) / md.prices.length : 0,
+            count: md.count,
+          })),
+        };
+      });
+
+      res.json({
+        data: monthlyResult,
+        byApartment: byApartmentResult,
+      });
+    } catch (err) {
+      console.error("Price seasonality error:", err);
+      res.status(500).json({ message: "Failed to get price seasonality data" });
+    }
+  });
+
+  // Cash Flow Forecast
+  app.get('/api/cash-flow-forecast', isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+      const months: any[] = [];
+
+      for (let i = 0; i < 6; i++) {
+        const targetDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        const year = targetDate.getFullYear();
+        const month = targetDate.getMonth() + 1;
+        const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const monthEnd = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+        const monthReservations = await db.select({ price: reservations.price })
+          .from(reservations)
+          .where(and(
+            lte(reservations.startDate, monthEnd),
+            gte(reservations.endDate, monthStart),
+            ne(reservations.status, "ANULOWANA"),
+          ));
+        const expectedIncome = monthReservations.reduce((s, r) => s + Number(r.price || 0), 0);
+
+        const activeSubleases = await db.select({ rentAmount: subleases.rentAmount })
+          .from(subleases)
+          .where(and(
+            lte(subleases.startDate, monthEnd),
+            gte(subleases.endDate, monthStart),
+          ));
+        const expectedSubleaseIncome = activeSubleases.reduce((s, sl) => s + Number(sl.rentAmount || 0), 0);
+
+        const costPayments = await db.select({ amount: costSchedulePayments.amount })
+          .from(costSchedulePayments)
+          .where(and(
+            gte(costSchedulePayments.dueDate, monthStart),
+            lte(costSchedulePayments.dueDate, monthEnd),
+            eq(costSchedulePayments.status, "NIEOPLACONE"),
+          ));
+        const expectedExpenses = costPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+
+        const instPayments = await db.select({ amount: installmentPayments.amount })
+          .from(installmentPayments)
+          .where(and(
+            gte(installmentPayments.dueDate, monthStart),
+            lte(installmentPayments.dueDate, monthEnd),
+            eq(installmentPayments.status, "NIEOPLACONE"),
+          ));
+        const expectedInstallments = instPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+
+        months.push({
+          year,
+          month,
+          monthName: MONTH_NAMES[month - 1],
+          expectedIncome: Math.round(expectedIncome * 100) / 100,
+          expectedSubleaseIncome: Math.round(expectedSubleaseIncome * 100) / 100,
+          expectedExpenses: Math.round(expectedExpenses * 100) / 100,
+          expectedInstallments: Math.round(expectedInstallments * 100) / 100,
+          netCashFlow: Math.round((expectedIncome + expectedSubleaseIncome - expectedExpenses - expectedInstallments) * 100) / 100,
+        });
+      }
+
+      res.json({ months });
+    } catch (err) {
+      console.error("Cash flow forecast error:", err);
+      res.status(500).json({ message: "Failed to get cash flow forecast" });
+    }
+  });
+
+  // Price Seasonality
+  app.get('/api/price-seasonality', isAuthenticated, async (req, res) => {
+    try {
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+
+      const allReservations = await db.select({
+        apartmentId: reservations.apartmentId,
+        startDate: reservations.startDate,
+        endDate: reservations.endDate,
+        price: reservations.price,
+      })
+        .from(reservations)
+        .where(ne(reservations.status, "ANULOWANA"));
+
+      const monthlyData: Record<number, { totalRate: number; count: number; totalDays: number }> = {};
+      const apartmentMonthlyData: Record<number, Record<number, { totalRate: number; count: number }>> = {};
+
+      for (let m = 0; m < 12; m++) {
+        monthlyData[m] = { totalRate: 0, count: 0, totalDays: 0 };
+      }
+
+      for (const apt of allApartments) {
+        apartmentMonthlyData[apt.id] = {};
+        for (let m = 0; m < 12; m++) {
+          apartmentMonthlyData[apt.id][m] = { totalRate: 0, count: 0 };
+        }
+      }
+
+      for (const r of allReservations) {
+        const start = new Date(r.startDate);
+        const end = new Date(r.endDate);
+        const nights = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+        const nightlyRate = Number(r.price || 0) / nights;
+        const month = start.getMonth();
+
+        monthlyData[month].totalRate += nightlyRate;
+        monthlyData[month].count += 1;
+        monthlyData[month].totalDays += nights;
+
+        if (r.apartmentId && apartmentMonthlyData[r.apartmentId]) {
+          apartmentMonthlyData[r.apartmentId][month].totalRate += nightlyRate;
+          apartmentMonthlyData[r.apartmentId][month].count += 1;
+        }
+      }
+
+      const data = Array.from({ length: 12 }, (_, m) => ({
+        month: m + 1,
+        monthName: MONTH_NAMES[m],
+        avgNightlyRate: monthlyData[m].count > 0 ? Math.round((monthlyData[m].totalRate / monthlyData[m].count) * 100) / 100 : 0,
+        reservationCount: monthlyData[m].count,
+        avgOccupancy: monthlyData[m].count > 0 ? Math.round((monthlyData[m].totalDays / 30) * 100) / 100 : 0,
+      }));
+
+      const byApartment = allApartments.map(apt => ({
+        apartmentId: apt.id,
+        apartmentName: apt.name,
+        monthlyRates: Array.from({ length: 12 }, (_, m) => ({
+          month: m + 1,
+          avgRate: apartmentMonthlyData[apt.id][m].count > 0 ? Math.round((apartmentMonthlyData[apt.id][m].totalRate / apartmentMonthlyData[apt.id][m].count) * 100) / 100 : 0,
+          count: apartmentMonthlyData[apt.id][m].count,
+        })),
+      }));
+
+      res.json({ data, byApartment });
+    } catch (err) {
+      console.error("Price seasonality error:", err);
+      res.status(500).json({ message: "Failed to get price seasonality" });
+    }
+  });
+
+  // Data Backup Export
+  app.get('/api/backup/export', isAuthenticated, async (_req, res) => {
+    try {
+      const [
+        allReservations,
+        allApartments,
+        allExpenses,
+        allLeases,
+        allSubleases,
+        allEmployees,
+        allAccounts,
+        allOwners,
+        allBlockades,
+        allLocations,
+        allServiceContracts,
+        allServiceContractCats,
+        allCostSchedules,
+        allInstallmentSchedules,
+        allDocumentCategories,
+        allDocumentTemplates,
+        allAppUsers,
+      ] = await Promise.all([
+        storage.getReservations(),
+        storage.getApartments(),
+        storage.getExpenses(),
+        storage.getLeases(),
+        storage.getSubleases(),
+        storage.getEmployees(),
+        storage.getAccounts(),
+        storage.getOwners(),
+        storage.getBlockades(),
+        storage.getLocations(),
+        storage.getServiceContracts(),
+        storage.getServiceContractCategories(),
+        storage.getCostSchedules(),
+        storage.getInstallmentSchedules(),
+        storage.getDocumentCategories(),
+        storage.getDocumentTemplates(),
+        storage.getAppUsers(),
+      ]);
+
+      const [
+        allSnapshots,
+        allAttachments,
+        allCostSchedulePayments,
+        allInstallmentPayments,
+        allServiceContractAttachments,
+        allSaldoEntries,
+        allActivityLogs,
+      ] = await Promise.all([
+        storage.getSnapshots(),
+        storage.getAllAttachments(),
+        storage.getAllCostSchedulePayments(),
+        storage.getAllInstallmentPayments(),
+        storage.getAllServiceContractAttachments(),
+        storage.getSaldoEntries(),
+        storage.getActivityLogs(10000),
+      ]);
+
+      res.json({
+        exportDate: new Date().toISOString(),
+        reservations: allReservations,
+        apartments: allApartments,
+        expenses: allExpenses,
+        leases: allLeases,
+        subleases: allSubleases,
+        employees: allEmployees,
+        accounts: allAccounts,
+        accountSnapshots: allSnapshots,
+        owners: allOwners,
+        blockades: allBlockades,
+        locations: allLocations,
+        serviceContracts: allServiceContracts,
+        serviceContractCategories: allServiceContractCats,
+        costSchedules: allCostSchedules,
+        costSchedulePayments: allCostSchedulePayments,
+        installmentSchedules: allInstallmentSchedules,
+        installmentPayments: allInstallmentPayments,
+        documentCategories: allDocumentCategories,
+        documentTemplates: allDocumentTemplates,
+        appUsers: allAppUsers,
+        attachments: allAttachments,
+        serviceContractAttachments: allServiceContractAttachments,
+        saldoEntries: allSaldoEntries,
+        activityLogs: allActivityLogs,
+      });
+    } catch (err) {
+      console.error("Backup export error:", err);
+      res.status(500).json({ message: "Failed to export backup" });
+    }
   });
 
   return httpServer;

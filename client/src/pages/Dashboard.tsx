@@ -20,7 +20,9 @@ import {
 import { differenceInDays } from "date-fns";
 import {
   ArrowUp, ArrowDown, ArrowUpDown, Plane, PlaneTakeoff, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target, Scale,
+  Plus, Receipt, FileSignature, Download,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
 
 type CompanyBalanceAccount = {
@@ -120,6 +122,35 @@ function getForecastForMonth(year: number, month: number): number {
     if (monthData) total += monthData.p || 0;
   }
   return total;
+}
+
+function QuickActions() {
+  const [, navigate] = useLocation();
+  return (
+    <Card>
+      <CardContent className="py-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-muted-foreground mr-1">Szybkie akcje:</span>
+          <Button size="sm" variant="outline" onClick={() => navigate("/reservations?action=new")} data-testid="button-quick-reservation">
+            <Plus className="h-4 w-4 mr-1" />
+            Nowa rezerwacja
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => navigate("/costs-expenses?action=new")} data-testid="button-quick-expense">
+            <Receipt className="h-4 w-4 mr-1" />
+            Nowy wydatek
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => navigate("/contracts-subrent?action=new")} data-testid="button-quick-sublease">
+            <FileSignature className="h-4 w-4 mr-1" />
+            Nowy podnajem
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => navigate("/backup")} data-testid="button-quick-backup">
+            <Download className="h-4 w-4 mr-1" />
+            Backup danych
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function Dashboard() {
@@ -259,6 +290,8 @@ export default function Dashboard() {
           </Card>
         </div>
       )}
+
+      <QuickActions />
 
       <CompanyBalanceCard
         companyBalance={companyBalance}

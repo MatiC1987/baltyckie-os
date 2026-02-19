@@ -28,12 +28,16 @@ import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
 import Revenue from "@/pages/Revenue";
 import FinanceForecast from "@/pages/FinanceForecast";
+import CashFlowForecast from "@/pages/CashFlowForecast";
 import ApartmentSchedule from "@/pages/ApartmentSchedule";
 import ActivityLog from "@/pages/ActivityLog";
 import OccupancyRates from "@/pages/OccupancyRates";
 import Profitability from "@/pages/Profitability";
 import YearComparison from "@/pages/YearComparison";
+import ApartmentComparison from "@/pages/ApartmentComparison";
+import PriceSeasonality from "@/pages/PriceSeasonality";
 import PlaceholderPage from "@/pages/Placeholder";
+import DataBackup from "@/pages/DataBackup";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -88,6 +92,7 @@ function Router() {
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
 
       <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
+      <Route path="/cash-flow-forecast" component={() => <AuthenticatedRoute component={CashFlowForecast} />} />
       <Route path="/costs-apartments" component={() => <AuthenticatedRoute component={CostsApartments} />} />
       <Route path="/costs-expenses" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
       <Route path="/saldo-ml" component={() => <Layout><Saldo personName="Małgorzata Latasiewicz" /></Layout>} />
@@ -110,6 +115,9 @@ function Router() {
       <Route path="/occupancy" component={() => <AuthenticatedRoute component={OccupancyRates} />} />
       <Route path="/profitability" component={() => <AuthenticatedRoute component={Profitability} />} />
       <Route path="/year-comparison" component={() => <AuthenticatedRoute component={YearComparison} />} />
+      <Route path="/apartment-comparison" component={() => <AuthenticatedRoute component={ApartmentComparison} />} />
+      <Route path="/price-seasonality" component={() => <AuthenticatedRoute component={PriceSeasonality} />} />
+      <Route path="/backup" component={() => <AuthenticatedRoute component={DataBackup} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

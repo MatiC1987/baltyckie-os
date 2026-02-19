@@ -141,6 +141,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   occupancy: { id: "occupancy", href: "/occupancy", label: "Obłożenie", iconName: "BarChart3" },
   profitability: { id: "profitability", href: "/profitability", label: "Rentowność", iconName: "TrendingUp" },
   "year-comparison": { id: "year-comparison", href: "/year-comparison", label: "Porównanie r/r", iconName: "GitCompareArrows" },
+  "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "TrendingUp" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
@@ -150,7 +151,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
   { id: "umowy-new", title: "UMOWY", itemIds: ["apartment-schedule"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
-  { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison"] },
+  { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "price-seasonality"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
   { id: "dokumenty", title: "DOKUMENTY", itemIds: ["document-templates"] },
   { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations", "activity-log"] },
