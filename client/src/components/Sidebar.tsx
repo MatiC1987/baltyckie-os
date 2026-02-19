@@ -28,6 +28,7 @@ import {
   X,
   GripVertical,
   ChevronDown,
+  ChevronUp,
   Pencil,
   Check,
   CalendarRange,
@@ -536,6 +537,27 @@ export function Sidebar() {
     });
   }, [syncAllToServer]);
 
+  const titledSectionIds = useMemo(() => {
+    return layout.sections.filter(s => !!s.title).map(s => s.id);
+  }, [layout.sections]);
+
+  const moveSection = useCallback((sectionId: string, direction: "up" | "down") => {
+    setLayout(prev => {
+      const titled = prev.sections.filter(s => !!s.title);
+      const untitled = prev.sections.filter(s => !s.title);
+      const idx = titled.findIndex(s => s.id === sectionId);
+      if (idx < 0) return prev;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= titled.length) return prev;
+      const newTitled = [...titled];
+      [newTitled[idx], newTitled[targetIdx]] = [newTitled[targetIdx], newTitled[idx]];
+      const newSections = [...untitled, ...newTitled];
+      saveLayout(newSections);
+      syncAllToServer();
+      return { ...prev, sections: newSections };
+    });
+  }, [syncAllToServer]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 5 },
@@ -667,15 +689,42 @@ export function Sidebar() {
                     )}
                     {section.title && (
                       <div
-                        className="px-3 pt-1 pb-2 flex items-center justify-between cursor-pointer select-none group"
-                        onClick={() => toggleSection(section.id)}
-                        data-testid={`toggle-section-${section.id}`}
+                        className="px-3 pt-1 pb-2 flex items-center justify-between select-none group/section"
+                        data-testid={`section-header-${section.id}`}
                       >
-                        <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">{section.title}</span>
-                        <ChevronDown className={cn(
-                          "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:text-slate-300",
-                          isCollapsed ? "-rotate-90" : ""
-                        )} />
+                        <div
+                          className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer"
+                          onClick={() => toggleSection(section.id)}
+                          data-testid={`toggle-section-${section.id}`}
+                        >
+                          <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">{section.title}</span>
+                          <ChevronDown className={cn(
+                            "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover/section:text-slate-300",
+                            isCollapsed ? "-rotate-90" : ""
+                          )} />
+                        </div>
+                        <div className="invisible group-hover/section:visible flex items-center gap-0.5 shrink-0">
+                          {titledSectionIds.indexOf(section.id) > 0 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); moveSection(section.id, "up"); }}
+                              className="flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-white hover:bg-white/10 transition-colors"
+                              data-testid={`button-section-up-${section.id}`}
+                              title="Przesuń w górę"
+                            >
+                              <ChevronUp className="h-3 w-3" />
+                            </button>
+                          )}
+                          {titledSectionIds.indexOf(section.id) < titledSectionIds.length - 1 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); moveSection(section.id, "down"); }}
+                              className="flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-white hover:bg-white/10 transition-colors"
+                              data-testid={`button-section-down-${section.id}`}
+                              title="Przesuń w dół"
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                     <div className={cn(
