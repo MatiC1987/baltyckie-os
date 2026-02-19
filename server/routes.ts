@@ -13,6 +13,9 @@ import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { testConnection, fetchReservations } from "./hotres";
+import { execSync } from "child_process";
+import os from "os";
+import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -3480,8 +3483,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Plik musi być w formacie PDF" });
       }
 
-      const { execSync } = require('child_process');
-      const os = require('os');
       const tmpDir = os.tmpdir();
       const pdfPath = path.join(tmpDir, `sublease_${Date.now()}.pdf`);
       fs.writeFileSync(pdfPath, req.file.buffer);
@@ -3506,7 +3507,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Nie udało się odczytać stron PDF" });
       }
 
-      const OpenAI = require('openai');
       const openai = new OpenAI({
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
