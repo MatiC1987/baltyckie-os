@@ -202,6 +202,30 @@ export default function Terminarz() {
     },
   });
 
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+      }
+    };
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, [isDragging]);
+
+  const locationNames = useMemo(() => {
+    if (!dbLocations || dbLocations.length === 0) return ["GRAND BALTIC", "BULWAR PORTOWY", "WCZASOWA", "PRZEWŁOKA", "NA WYDMIE", "INNE"];
+    return [...dbLocations.map(l => l.name), "INNE"];
+  }, [dbLocations]);
+
+  const rangeStart = useMemo(() => new Date(startDate), [startDate]);
+  const rangeEnd = useMemo(() => {
+    const end = addMonths(rangeStart, monthsToShow);
+    end.setDate(end.getDate() - 1);
+    return end;
+  }, [rangeStart, monthsToShow]);
+
+  const days = useMemo(() => getDaysArray(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
+
   const handleDragStart = useCallback((e: React.DragEvent, res: Reservation, aptId: number) => {
     const rowRect = e.currentTarget.parentElement?.getBoundingClientRect();
     const clickXInRow = rowRect ? e.clientX - rowRect.left : 0;
@@ -287,30 +311,6 @@ export default function Terminarz() {
     setDragOverAptId(null);
     dragDataRef.current = null;
   }, []);
-
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      if (isDragging) {
-        setIsDragging(false);
-      }
-    };
-    window.addEventListener("mouseup", handleGlobalMouseUp);
-    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
-  }, [isDragging]);
-
-  const locationNames = useMemo(() => {
-    if (!dbLocations || dbLocations.length === 0) return ["GRAND BALTIC", "BULWAR PORTOWY", "WCZASOWA", "PRZEWŁOKA", "NA WYDMIE", "INNE"];
-    return [...dbLocations.map(l => l.name), "INNE"];
-  }, [dbLocations]);
-
-  const rangeStart = useMemo(() => new Date(startDate), [startDate]);
-  const rangeEnd = useMemo(() => {
-    const end = addMonths(rangeStart, monthsToShow);
-    end.setDate(end.getDate() - 1);
-    return end;
-  }, [rangeStart, monthsToShow]);
-
-  const days = useMemo(() => getDaysArray(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
 
   const filteredApartments = useMemo(() => {
     if (!apartments) return [];

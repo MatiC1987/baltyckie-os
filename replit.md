@@ -32,9 +32,14 @@ The application is built with a modern full-stack architecture.
 -   **Sublease Management**: Comprehensive system for managing subleases, including tenant details, payments, deposits, and attachments.
 -   **User Account Management**: Internal system for managing application users with role-based permissions.
 -   **Reporting & Forecasting**: Includes pages for aggregated sublease settlements, revenue forecasting (P/R/S spreadsheet view per apartment/location), apartment cost analysis, and a detailed revenue page consolidating actual and forecasted income.
--   **Analytics (ANALIZY section)**: Occupancy rates per apartment with year/month filtering, profitability rankings with revenue bars, and year-over-year comparison with bar charts and monthly tables.
+-   **Analytics (ANALIZY section)**: Occupancy rates per apartment with year/month filtering, profitability rankings with revenue bars, year-over-year comparison with bar charts and monthly tables, apartment comparison analytics, 6-month cash flow forecast, and price seasonality analysis.
 -   **Dashboard Reminders**: Automatic alert card showing overdue payments, expiring medical exams, expiring leases/subleases, with clickable links to relevant pages.
--   **Activity Log**: Tracks user actions (create/update/delete) across reservations, expenses, and subleases with timestamps and user attribution.
+-   **Activity Log**: Tracks user actions (create/update/delete) across reservations, expenses, and subleases with timestamps and user attribution. Supports filtering by action type, entity type, user, and date range.
+-   **Invoice System**: Full CRUD for invoices with auto-generation from reservations and subleases. Invoice numbering format FV/YYYY/MM/NNN. PDF export with jsPDF. Status tracking (WYSTAWIONA, OPLACONA, ANULOWANA).
+-   **Notification Center**: Bell icon in header with unread count badge. Internal notification system for overdue payments, expiring leases/subleases, and expiring medical exams. Auto-generation endpoint with deduplication.
+-   **PDF Report Export**: Monthly financial reports, reservation lists, occupancy reports, and owner settlement reports. Uses jsPDF with autoTable. Polish diacritics converted to ASCII for helvetica font compatibility.
+-   **Data Backup**: JSON/CSV export of all application data for backup purposes.
+-   **Calendar Drag & Drop**: HTML5 drag and drop in Terminarz view to move reservations between dates and apartments. Maintains reservation duration, updates via PATCH API.
 -   **CSV Export**: Semicolon-delimited CSV export with BOM for Excel compatibility on Reservations and Subleases pages.
 -   **Reservation Notes**: Text notes field on reservations with FileText indicator in tables.
 -   **Document Templates**: System for managing document categories and uploading/downloading document templates.
@@ -50,3 +55,4 @@ The application is built with a modern full-stack architecture.
 -   **xlsx library**: For parsing `.xlsx` Excel files.
 -   **date-fns**: For date formatting and manipulation, specifically with the Polish locale.
 -   **HotRes**: CSV export integration for importing reservation data.
+-   **jsPDF + jspdf-autotable**: For PDF report generation with table support.
