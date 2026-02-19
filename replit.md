@@ -49,6 +49,7 @@ The application is built with a modern full-stack architecture.
 -   **Dashboard KPI Cards**: Four summary cards at the top of the dashboard showing monthly revenue (with month-over-month change), reservation count, unpaid reservations, and total company balance.
 -   **Global Search**: Ctrl+K shortcut or search button in top-right corner. Searches across reservations, apartments, and subleases with instant results.
 -   **UI/UX**: Features a collapsible sidebar with sections for navigation, consistent Polish language UI, and a clean, modern design using Tailwind CSS and shadcn/ui. Accent color `#5ADBFA` for active navigation items. Chart colors use CSS variables (chart-1..5) for theme consistency.
+-   **Cost Invoice Management (Dokumenty Księgowe)**: Combined page with two tabs - Faktury kosztowe (cost invoices) and Noty księgowe (accounting notes). Features drag-drop file upload with auto-date detection from filename, monthly accordion grouping, inline status management (NOWA/WYSLANA/ZAKSIĘGOWANA), search and filtering, bulk selection with ZIP download (auto-marks as WYSLANA), post-upload expense linking dialog, file preview (images inline, PDF iframe), deadline reminder banner (5 days before 15th), and ZIP download history panel. Dashboard quick-add shortcut available.
 -   **Architectural Patterns**: API endpoints are defined with Zod schemas for validation, and data fetching/caching is managed with TanStack Query. Database interactions are abstracted through an `IStorage` interface.
 
 ## External Dependencies

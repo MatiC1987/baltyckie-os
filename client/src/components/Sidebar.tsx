@@ -170,6 +170,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   employees: { id: "employees", href: "/employees", label: "Pracownicy", iconName: "UserCog" },
   locations: { id: "locations", href: "/locations", label: "Lokalizacje", iconName: "MapPin" },
   "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Umowy usługi", iconName: "Briefcase" },
+  "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
   reports: { id: "reports", href: "/reports", label: "Raporty PDF", iconName: "FileText" },
   backup: { id: "backup", href: "/backup", label: "Backup danych", iconName: "DatabaseBackup" },
   "document-templates": { id: "document-templates", href: "/document-templates", label: "Szablony dokumentów", iconName: "Files" },
@@ -185,7 +186,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "cash-flow-forecast"] },
   { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "employees", "locations", "contracts-services"] },
-  { id: "narzedzia", title: "NARZĘDZIA", itemIds: ["reports", "backup", "document-templates", "company-settings", "activity-log", "user-accounts"] },
+  { id: "narzedzia", title: "NARZĘDZIA", itemIds: ["dokumenty-ksiegowe", "reports", "backup", "document-templates", "company-settings", "activity-log", "user-accounts"] },
 ];
 
 const STORAGE_KEY = "sidebar-layout-v3";

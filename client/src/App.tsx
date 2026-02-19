@@ -41,6 +41,7 @@ import DataBackup from "@/pages/DataBackup";
 import ReportExport from "@/pages/ReportExport";
 import Invoices from "@/pages/Invoices";
 import CompanySettings from "@/pages/CompanySettings";
+import DokumentyKsiegowe from "@/pages/DokumentyKsiegowe";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -124,6 +125,7 @@ function Router() {
       <Route path="/reports" component={() => <AuthenticatedRoute component={ReportExport} />} />
       <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
       <Route path="/company-settings" component={() => <AuthenticatedRoute component={CompanySettings} />} />
+      <Route path="/dokumenty-ksiegowe" component={() => <AuthenticatedRoute component={DokumentyKsiegowe} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

@@ -797,3 +797,36 @@ export const accountingNotes = pgTable("accounting_notes", {
 export const insertAccountingNoteSchema = createInsertSchema(accountingNotes).omit({ id: true, generatedAt: true });
 export type AccountingNote = typeof accountingNotes.$inferSelect;
 export type InsertAccountingNote = z.infer<typeof insertAccountingNoteSchema>;
+
+export const costInvoices = pgTable("cost_invoices", {
+  id: serial("id").primaryKey(),
+  fileName: text("file_name").notNull(),
+  originalFileName: text("original_file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  objectStoragePath: text("object_storage_path").notNull(),
+  invoiceDate: date("invoice_date").notNull(),
+  invoiceMonth: integer("invoice_month").notNull(),
+  invoiceYear: integer("invoice_year").notNull(),
+  comment: text("comment"),
+  status: text("status").notNull().default("NOWA"),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+  linkedExpenseId: integer("linked_expense_id").references(() => expenses.id),
+});
+
+export const insertCostInvoiceSchema = createInsertSchema(costInvoices).omit({ id: true, uploadedAt: true });
+export type CostInvoice = typeof costInvoices.$inferSelect;
+export type InsertCostInvoice = z.infer<typeof insertCostInvoiceSchema>;
+
+export const zipDownloadHistory = pgTable("zip_download_history", {
+  id: serial("id").primaryKey(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  downloadedAt: timestamp("downloaded_at").defaultNow(),
+  downloadedBy: text("downloaded_by").notNull(),
+  invoiceCount: integer("invoice_count").notNull(),
+});
+
+export const insertZipDownloadHistorySchema = createInsertSchema(zipDownloadHistory).omit({ id: true, downloadedAt: true });
+export type ZipDownloadHistory = typeof zipDownloadHistory.$inferSelect;
+export type InsertZipDownloadHistory = z.infer<typeof insertZipDownloadHistorySchema>;

@@ -41,6 +41,8 @@ import {
   revenueForecasts, RevenueForecast, InsertRevenueForecast,
   companySettings, CompanySettings, InsertCompanySettings,
   accountingNotes, AccountingNote, InsertAccountingNote,
+  costInvoices, CostInvoice, InsertCostInvoice,
+  zipDownloadHistory, ZipDownloadHistory, InsertZipDownloadHistory,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNotNull } from "drizzle-orm";
@@ -277,6 +279,17 @@ export interface IStorage {
   getAccountingNoteByReportId(reportId: number): Promise<AccountingNote | null>;
   createAccountingNote(data: InsertAccountingNote): Promise<AccountingNote>;
   getNextNoteNumber(year: number, month: number): Promise<string>;
+
+  // Cost Invoices
+  getCostInvoices(): Promise<CostInvoice[]>;
+  getCostInvoice(id: number): Promise<CostInvoice | undefined>;
+  createCostInvoice(data: InsertCostInvoice): Promise<CostInvoice>;
+  updateCostInvoice(id: number, data: Partial<InsertCostInvoice>): Promise<CostInvoice>;
+  deleteCostInvoice(id: number): Promise<void>;
+
+  // ZIP Download History
+  getZipDownloadHistory(): Promise<ZipDownloadHistory[]>;
+  createZipDownloadHistory(data: InsertZipDownloadHistory): Promise<ZipDownloadHistory>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1260,6 +1273,38 @@ export class DatabaseStorage implements IStorage {
       if (lastNum) next = parseInt(lastNum, 10) + 1;
     }
     return `${prefix}${String(next).padStart(3, "0")}`;
+  }
+
+  async getCostInvoices(): Promise<CostInvoice[]> {
+    return db.select().from(costInvoices).orderBy(desc(costInvoices.uploadedAt));
+  }
+
+  async getCostInvoice(id: number): Promise<CostInvoice | undefined> {
+    const [row] = await db.select().from(costInvoices).where(eq(costInvoices.id, id));
+    return row;
+  }
+
+  async createCostInvoice(data: InsertCostInvoice): Promise<CostInvoice> {
+    const [created] = await db.insert(costInvoices).values(data).returning();
+    return created;
+  }
+
+  async updateCostInvoice(id: number, data: Partial<InsertCostInvoice>): Promise<CostInvoice> {
+    const [updated] = await db.update(costInvoices).set(data).where(eq(costInvoices.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCostInvoice(id: number): Promise<void> {
+    await db.delete(costInvoices).where(eq(costInvoices.id, id));
+  }
+
+  async getZipDownloadHistory(): Promise<ZipDownloadHistory[]> {
+    return db.select().from(zipDownloadHistory).orderBy(desc(zipDownloadHistory.downloadedAt));
+  }
+
+  async createZipDownloadHistory(data: InsertZipDownloadHistory): Promise<ZipDownloadHistory> {
+    const [created] = await db.insert(zipDownloadHistory).values(data).returning();
+    return created;
   }
 }
 

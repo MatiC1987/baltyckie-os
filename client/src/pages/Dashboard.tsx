@@ -133,10 +133,11 @@ function QuickActions() {
     { label: "Nowa rezerwacja", shortLabel: "Rezerwacja", icon: Plus, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", href: "/reservations?action=new", testId: "button-quick-reservation" },
     { label: "Nowy wydatek", shortLabel: "Wydatek", icon: Receipt, color: "text-red-600 dark:text-red-400", bg: "bg-red-500/10", href: "/costs-expenses?action=new", testId: "button-quick-expense" },
     { label: "Nowy podnajem", shortLabel: "Podnajem", icon: FileSignature, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", href: "/contracts-subrent?action=new", testId: "button-quick-sublease" },
+    { label: "Dodaj fakturę", shortLabel: "Faktura", icon: Receipt, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", href: "/dokumenty-ksiegowe", testId: "button-quick-cost-invoice" },
     { label: "Backup danych", shortLabel: "Backup", icon: Download, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", href: "/backup", testId: "button-quick-backup" },
   ];
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
       {actions.map(a => (
         <Card key={a.testId} className="hover-elevate cursor-pointer" onClick={() => navigate(a.href)} data-testid={a.testId}>
           <CardContent className="py-3 px-4 flex items-center gap-3">

@@ -2309,6 +2309,217 @@ export async function registerRoutes(
     }
   });
 
+  // ---- Cost Invoices (Faktury kosztowe) ----
+  app.get('/api/cost-invoices', isAuthenticated, async (_req, res) => {
+    const invoicesList = await storage.getCostInvoices();
+    res.json(invoicesList);
+  });
+
+  app.post('/api/cost-invoices', isAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const allowedMimes = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({ message: "Dozwolone formaty: PDF, PNG, JPG, WEBP" });
+      }
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
+
+      const uniqueId = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+      const ext = req.file.originalname.split(".").pop() || "pdf";
+      const storedName = `cost_invoice_${uniqueId}.${ext}`;
+      const storagePath = `${privateDir}/cost-invoices/${storedName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(req.file.buffer, { contentType: req.file.mimetype });
+
+      let invoiceDate = req.body.invoiceDate;
+      if (!invoiceDate) {
+        const dateMatch = req.file.originalname.match(/(\d{4})[_\-.](\d{2})[_\-.](\d{2})/);
+        if (dateMatch) {
+          invoiceDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+        } else {
+          const dateMatch2 = req.file.originalname.match(/(\d{2})[_\-.](\d{2})[_\-.](\d{4})/);
+          if (dateMatch2) {
+            invoiceDate = `${dateMatch2[3]}-${dateMatch2[2]}-${dateMatch2[1]}`;
+          } else {
+            invoiceDate = new Date().toISOString().slice(0, 10);
+          }
+        }
+      }
+
+      const d = new Date(invoiceDate);
+      const invoiceMonth = d.getMonth() + 1;
+      const invoiceYear = d.getFullYear();
+      const user = req.user as any;
+
+      const invoice = await storage.createCostInvoice({
+        fileName: storedName,
+        originalFileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        objectStoragePath: storagePath,
+        invoiceDate,
+        invoiceMonth,
+        invoiceYear,
+        comment: req.body.comment || null,
+        status: "NOWA",
+        uploadedBy: user?.username || user?.firstName || "Nieznany",
+        linkedExpenseId: null,
+      });
+
+      await logActivity(req, "create", "cost_invoice", invoice.id, req.file.originalname, `Dodano fakturę kosztową: ${req.file.originalname}`);
+      res.status(201).json(invoice);
+    } catch (err: any) {
+      console.error("Cost invoice upload error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/cost-invoices/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates: any = {};
+      if (req.body.status) updates.status = req.body.status;
+      if (req.body.comment !== undefined) updates.comment = req.body.comment;
+      if (req.body.linkedExpenseId !== undefined) updates.linkedExpenseId = req.body.linkedExpenseId;
+      const updated = await storage.updateCostInvoice(id, updates);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/cost-invoices/bulk-status', isAuthenticated, async (req, res) => {
+    try {
+      const { ids, status } = req.body;
+      if (!ids || !Array.isArray(ids) || !status) return res.status(400).json({ message: "Brak ids lub status" });
+      const results = [];
+      for (const id of ids) {
+        const updated = await storage.updateCostInvoice(id, { status });
+        results.push(updated);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/cost-invoices/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const invoice = await storage.getCostInvoice(id);
+      if (invoice) {
+        try {
+          const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const p = invoice.objectStoragePath.startsWith("/") ? invoice.objectStoragePath.slice(1) : invoice.objectStoragePath;
+          const parts = p.split("/");
+          const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+          await storageFile.delete().catch(() => {});
+        } catch (e) {}
+        await storage.deleteCostInvoice(id);
+        await logActivity(req, "delete", "cost_invoice", id, invoice.originalFileName);
+      }
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/cost-invoices/:id/file', isAuthenticated, async (req, res) => {
+    try {
+      const invoice = await storage.getCostInvoice(parseInt(req.params.id));
+      if (!invoice) return res.status(404).json({ message: "Nie znaleziono faktury" });
+
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const p = invoice.objectStoragePath.startsWith("/") ? invoice.objectStoragePath.slice(1) : invoice.objectStoragePath;
+      const parts = p.split("/");
+      const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+      const [fileBuffer] = await storageFile.download();
+
+      res.setHeader("Content-Type", invoice.mimeType);
+      if (req.query.download === "true") {
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(invoice.originalFileName)}"`);
+      } else {
+        res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(invoice.originalFileName)}"`);
+      }
+      res.send(fileBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/cost-invoices/download-zip', isAuthenticated, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Brak wybranych faktur" });
+      }
+
+      const JSZip = (await import("jszip")).default;
+      const zipFile = new JSZip();
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+
+      const invoicesList = [];
+      for (const id of ids) {
+        const invoice = await storage.getCostInvoice(id);
+        if (!invoice) continue;
+        invoicesList.push(invoice);
+        try {
+          const p = invoice.objectStoragePath.startsWith("/") ? invoice.objectStoragePath.slice(1) : invoice.objectStoragePath;
+          const parts = p.split("/");
+          const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+          const [fileBuffer] = await storageFile.download();
+          zipFile.file(invoice.originalFileName, fileBuffer);
+        } catch (e) {
+          console.error(`Error downloading file for invoice ${id}:`, e);
+        }
+      }
+
+      if (invoicesList.length > 0) {
+        const months = [...new Set(invoicesList.map(i => `${i.invoiceYear}-${String(i.invoiceMonth).padStart(2, "0")}`))];
+        const user = req.user as any;
+        for (const m of months) {
+          const [y, mo] = m.split("-").map(Number);
+          await storage.createZipDownloadHistory({
+            month: mo,
+            year: y,
+            downloadedBy: user?.username || user?.firstName || "Nieznany",
+            invoiceCount: invoicesList.filter(i => i.invoiceYear === y && i.invoiceMonth === mo).length,
+          });
+        }
+
+        for (const inv of invoicesList) {
+          if (inv.status === "NOWA") {
+            await storage.updateCostInvoice(inv.id, { status: "WYSLANA" });
+          }
+        }
+      }
+
+      const zipBuffer = await zipFile.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+      const now = new Date();
+      const zipName = `faktury_kosztowe_${now.toISOString().slice(0, 10)}.zip`;
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
+      res.send(zipBuffer);
+    } catch (err: any) {
+      console.error("ZIP download error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/zip-download-history', isAuthenticated, async (_req, res) => {
+    const history = await storage.getZipDownloadHistory();
+    res.json(history);
+  });
+
   app.get('/api/document-templates', isAuthenticated, async (_req, res) => {
     const templates = await storage.getDocumentTemplates();
     res.json(templates);
