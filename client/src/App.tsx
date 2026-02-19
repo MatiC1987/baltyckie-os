@@ -23,7 +23,6 @@ import SubrentSettlement from "@/pages/SubrentSettlement";
 import MediaSettlement from "@/pages/MediaSettlement";
 import CostsExpenses from "@/pages/CostsExpenses";
 import CostsApartments from "@/pages/CostsApartments";
-import Forecast from "@/pages/Forecast";
 import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
@@ -86,7 +85,6 @@ function Router() {
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
 
       <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
-      <Route path="/forecast" component={() => <AuthenticatedRoute component={Forecast} />} />
       <Route path="/costs-apartments" component={() => <AuthenticatedRoute component={CostsApartments} />} />
       <Route path="/costs-expenses" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
       <Route path="/costs-schedule" component={() => <AuthenticatedRoute component={CostsSchedule} />} />

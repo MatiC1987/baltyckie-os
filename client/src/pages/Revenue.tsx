@@ -1,13 +1,16 @@
-import { useState, useMemo, Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback, Fragment } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Apartment, Location } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronRight, Upload, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -53,19 +56,23 @@ function loadForecastData(year: number): Record<string, Record<number, { p: numb
   return {};
 }
 
+function saveForecastData(year: number, data: Record<string, Record<number, { p: number; r: number }>>) {
+  localStorage.setItem(forecastStorageKey(year), JSON.stringify(data));
+}
+
 export default function Revenue() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [activeLocation, setActiveLocation] = useState<string>("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [forecastData, setForecastData] = useState(() => loadForecastData(currentYear));
+  const { toast } = useToast();
 
   const { data: apartments = [] } = useQuery<Apartment[]>({ queryKey: ["/api/apartments"] });
   const { data: locations = [] } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
   const { data: revenueData = {}, isLoading } = useQuery<RevenueData>({
     queryKey: [`/api/revenue?year=${year}`],
   });
-
-  const forecastData = useMemo(() => loadForecastData(year), [year]);
 
   const sortedLocations = useMemo(() =>
     [...locations].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
@@ -103,8 +110,58 @@ export default function Revenue() {
     });
   };
 
+  const handleForecastChange = useCallback((aptId: number, month: number, value: string) => {
+    setForecastData(prev => {
+      const next = { ...prev };
+      const key = String(aptId);
+      if (!next[key]) next[key] = {};
+      if (!next[key][month]) next[key][month] = { p: 0, r: 0 };
+      next[key][month] = { ...next[key][month], p: parseFloat(value) || 0 };
+      saveForecastData(year, next);
+      return next;
+    });
+  }, [year]);
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/import-forecast");
+      return res.json();
+    },
+    onSuccess: (result: { data: Record<number, Record<number, Record<number, { p: number; r: number }>>>; summary: Record<number, number>; message: string }) => {
+      let totalImported = 0;
+      for (const [yr, apts] of Object.entries(result.data)) {
+        const yearNum = Number(yr);
+        const existing = loadForecastData(yearNum);
+        const merged = { ...existing };
+        for (const [aptId, months] of Object.entries(apts as Record<string, Record<number, { p: number; r: number }>>)) {
+          if (!merged[aptId]) merged[aptId] = {};
+          for (const [month, val] of Object.entries(months as Record<number, { p: number; r: number }>)) {
+            merged[aptId][Number(month)] = val;
+            totalImported++;
+          }
+        }
+        saveForecastData(yearNum, merged);
+      }
+      setForecastData(loadForecastData(year));
+      const yearsList = Object.keys(result.summary).sort().join(", ");
+      toast({
+        title: "Import zakończony",
+        description: `Zaimportowano dane prognozy dla lat: ${yearsList} (${totalImported} rekordów)`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Błąd importu",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleYearChange = (y: string) => {
-    setYear(Number(y));
+    const newYear = Number(y);
+    setYear(newYear);
+    setForecastData(loadForecastData(newYear));
   };
 
   const locationTotals = useMemo(() => {
@@ -141,16 +198,28 @@ export default function Revenue() {
           <h1 className="text-2xl font-bold" data-testid="text-revenue-title">Przychody</h1>
           <p className="text-muted-foreground text-sm">Zestawienie prognozy z przychodami w podziale na najem i podnajem</p>
         </div>
-        <Select value={String(year)} onValueChange={handleYearChange}>
-          <SelectTrigger className="w-[100px]" data-testid="select-revenue-year">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
-              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => importMutation.mutate()}
+            disabled={importMutation.isPending}
+            data-testid="button-import-forecast"
+          >
+            {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            <span className="ml-1.5">Import prognozy z Excel</span>
+          </Button>
+          <Select value={String(year)} onValueChange={handleYearChange}>
+            <SelectTrigger className="w-[100px]" data-testid="select-revenue-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Tabs value={currentLocation} onValueChange={setActiveLocation}>
@@ -328,7 +397,15 @@ export default function Revenue() {
                       const doplaty = md.doplaty_najem + md.doplaty_podnajem;
                       return (
                         <Fragment key={mi}>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] bg-blue-50/50 dark:bg-blue-950/20">{formatNum(forecast)}</td>
+                          <td className="border-r border-b border-border px-0 py-0 bg-blue-50/50 dark:bg-blue-950/20">
+                            <input
+                              type="number"
+                              className="w-full h-full px-1 py-0.5 text-right text-[10px] tabular-nums bg-transparent outline-none focus:bg-primary/10 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={forecast || ""}
+                              onChange={(e) => handleForecastChange(apt.id, mi, e.target.value)}
+                              data-testid={`input-forecast-${apt.id}-${mi}`}
+                            />
+                          </td>
                           <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold">{formatNum(przychody)}</td>
                           <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(md.najem)}</td>
                           <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(md.podnajem)}</td>

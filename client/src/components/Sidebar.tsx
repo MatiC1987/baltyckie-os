@@ -112,7 +112,6 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
   arrivals: { id: "arrivals", href: "/arrivals", label: "Przyjazdy", iconName: "Plane" },
   "revenue": { id: "revenue", href: "/revenue", label: "Przychody", iconName: "Wallet" },
-  forecast: { id: "forecast", href: "/forecast", label: "Prognoza", iconName: "BarChart3" },
   "costs-apartments": { id: "costs-apartments", href: "/costs-apartments", label: "Koszty (Apartamenty)", iconName: "Building2" },
   "costs-expenses": { id: "costs-expenses", href: "/costs-expenses", label: "Opłaty", iconName: "Receipt" },
   "costs-schedule": { id: "costs-schedule", href: "/costs-schedule", label: "Koszty - Harmonogram", iconName: "CalendarRange" },
@@ -138,7 +137,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
 const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit", "finance-forecast", "calendar"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "forecast", "costs-apartments", "costs-expenses", "costs-schedule", "installment-schedule", "saldo-ml", "saldo-jg", "saldo-mc"] },
+  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "costs-apartments", "costs-expenses", "costs-schedule", "installment-schedule", "saldo-ml", "saldo-jg", "saldo-mc"] },
   { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
   { id: "umowy-new", title: "UMOWY", itemIds: ["apartment-schedule"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
