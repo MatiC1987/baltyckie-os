@@ -752,52 +752,52 @@ export function Sidebar() {
             </button>
           </div>
 
-          <div className="px-3 pb-4 pt-2 border-t border-white/10">
-            <div className="flex items-center gap-3 px-3 mb-3">
+          <div className="px-3 pb-3 pt-2 border-t border-white/10">
+            <div className="flex items-center gap-2.5 px-3 mb-2">
               {user?.profileImageUrl ? (
-                <img src={user.profileImageUrl} alt="Profile" className="h-8 w-8 rounded-full border border-white/10" />
+                <img src={user.profileImageUrl} alt="Profile" className="h-6 w-6 rounded-full border border-white/10" />
               ) : (
-                <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
+                <div className="h-6 w-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold shrink-0">
                   {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
                 </div>
               )}
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-medium text-white truncate">{user?.firstName}</span>
-                <span className="text-xs text-slate-400">Admin</span>
+                <span className="text-xs font-medium text-white truncate">{user?.firstName}</span>
+                <span className="text-[10px] text-slate-400 leading-tight">Admin</span>
               </div>
             </div>
             <Link href="/ustawienia">
               <div
                 onClick={() => setIsOpen(false)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 cursor-pointer",
+                  "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors mb-0.5 cursor-pointer",
                   location === "/ustawienia"
                     ? "text-[#5ADBFA]"
                     : "text-slate-400 hover:text-white hover:bg-white/5"
                 )}
                 data-testid="link-nav-ustawienia"
               >
-                <Settings className={cn("h-4 w-4", location === "/ustawienia" ? "text-[#5ADBFA]" : "")} />
-                <span className="text-sm font-medium">Ustawienia</span>
+                <Settings className={cn("h-3.5 w-3.5", location === "/ustawienia" ? "text-[#5ADBFA]" : "")} />
+                <span className="text-xs font-medium">Ustawienia</span>
               </div>
             </Link>
-            <div className="flex items-center gap-3 px-3 py-2 mb-1">
-              <Sun className="h-4 w-4 text-slate-400" />
+            <div className="flex items-center gap-2.5 px-3 py-1.5 mb-0.5">
+              <Sun className="h-3.5 w-3.5 text-slate-400" />
               <Switch
                 checked={theme === "dark"}
                 onCheckedChange={toggleTheme}
                 data-testid="switch-toggle-theme"
                 className="data-[state=checked]:bg-slate-600 data-[state=unchecked]:bg-slate-600"
               />
-              <Moon className="h-4 w-4 text-slate-400" />
+              <Moon className="h-3.5 w-3.5 text-slate-400" />
             </div>
             <button
               onClick={() => logout()}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
               data-testid="button-logout"
             >
-              <LogOut className="h-4 w-4" />
-              <span className="text-sm font-medium">Wyloguj</span>
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="text-xs font-medium">Wyloguj</span>
             </button>
           </div>
         </div>
