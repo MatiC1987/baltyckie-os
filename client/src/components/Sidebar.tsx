@@ -17,7 +17,8 @@ import {
   FileSignature,
   Briefcase,
   Files,
-  Upload, 
+  Upload,
+  GitCompareArrows, 
   Download,
   Users,
   Settings,
@@ -35,6 +36,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
 import {
@@ -103,6 +106,7 @@ const ICON_MAP: Record<string, any> = {
   CalendarRange,
   CalendarCheck,
   Landmark,
+  GitCompareArrows,
 };
 
 const DEFAULT_ITEMS: Record<string, NavItem> = {
@@ -130,6 +134,10 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   export: { id: "export", href: "/export", label: "Eksport rezerwacji", iconName: "Download" },
   "user-accounts": { id: "user-accounts", href: "/user-accounts", label: "Konta użytkowników", iconName: "Users" },
   locations: { id: "locations", href: "/locations", label: "Lokalizacje", iconName: "MapPin" },
+  "activity-log": { id: "activity-log", href: "/activity-log", label: "Historia zmian", iconName: "FileText" },
+  occupancy: { id: "occupancy", href: "/occupancy", label: "Obłożenie", iconName: "BarChart3" },
+  profitability: { id: "profitability", href: "/profitability", label: "Rentowność", iconName: "TrendingUp" },
+  "year-comparison": { id: "year-comparison", href: "/year-comparison", label: "Porównanie r/r", iconName: "GitCompareArrows" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
@@ -139,9 +147,10 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "umowy", title: "ROZLICZENIE", itemIds: ["contracts-services"] },
   { id: "umowy-new", title: "UMOWY", itemIds: ["apartment-schedule"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
+  { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison"] },
   { id: "dane", title: "DANE", itemIds: ["apartments", "owners", "employees"] },
   { id: "dokumenty", title: "DOKUMENTY", itemIds: ["document-templates"] },
-  { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations"] },
+  { id: "ustawienia", title: "USTAWIENIA", itemIds: ["import", "export", "user-accounts", "locations", "activity-log"] },
 ];
 
 const STORAGE_KEY = "sidebar-layout-v1";
@@ -172,44 +181,47 @@ function saveCollapsed(collapsed: Set<string>) {
   try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed])); } catch {}
 }
 
+function reconcileLayout(stored: { sections: NavSection[] }): SidebarLayout {
+  const allDefaultIds = Object.keys(DEFAULT_ITEMS);
+  const storedIds = new Set(stored.sections.flatMap(s => s.itemIds));
+  const missingIds = allDefaultIds.filter(id => !storedIds.has(id));
+  if (missingIds.length > 0) {
+    const lastSection = stored.sections[stored.sections.length - 1];
+    if (lastSection) {
+      lastSection.itemIds.push(...missingIds);
+    }
+  }
+  const defaultTitles = Object.fromEntries(DEFAULT_SECTIONS.map(s => [s.id, s.title]));
+  const storedSectionIds = new Set(stored.sections.map(s => s.id));
+  const missingSections = DEFAULT_SECTIONS.filter(s => !storedSectionIds.has(s.id));
+  let sections = stored.sections.map(s => ({
+    ...s,
+    title: defaultTitles[s.id] !== undefined ? defaultTitles[s.id] : s.title,
+  }));
+  for (const ms of missingSections) {
+    const defaultIdx = DEFAULT_SECTIONS.findIndex(s => s.id === ms.id);
+    const insertAt = Math.min(defaultIdx, sections.length);
+    sections.splice(insertAt, 0, { ...ms });
+  }
+  const validIds = new Set(allDefaultIds);
+  const seen = new Set<string>();
+  sections = sections.map(s => ({
+    ...s,
+    itemIds: s.itemIds.filter(id => {
+      if (!validIds.has(id) || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    }),
+  }));
+  return { sections, items: { ...DEFAULT_ITEMS } };
+}
+
 function loadLayout(): SidebarLayout {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored) as SidebarLayout;
-      const allDefaultIds = Object.keys(DEFAULT_ITEMS);
-      const storedIds = new Set(parsed.sections.flatMap(s => s.itemIds));
-      const missingIds = allDefaultIds.filter(id => !storedIds.has(id));
-      if (missingIds.length > 0) {
-        const lastSection = parsed.sections[parsed.sections.length - 1];
-        if (lastSection) {
-          lastSection.itemIds.push(...missingIds);
-        }
-      }
-      const defaultTitles = Object.fromEntries(DEFAULT_SECTIONS.map(s => [s.id, s.title]));
-      const storedSectionIds = new Set(parsed.sections.map(s => s.id));
-      const missingSections = DEFAULT_SECTIONS.filter(s => !storedSectionIds.has(s.id));
-      let sections = parsed.sections.map(s => ({
-        ...s,
-        title: defaultTitles[s.id] !== undefined ? defaultTitles[s.id] : s.title,
-      }));
-      for (const ms of missingSections) {
-        const defaultIdx = DEFAULT_SECTIONS.findIndex(s => s.id === ms.id);
-        const insertAt = Math.min(defaultIdx, sections.length);
-        sections.splice(insertAt, 0, { ...ms });
-      }
-      const validIds = new Set(allDefaultIds);
-      const seen = new Set<string>();
-      sections = sections.map(s => ({
-        ...s,
-        itemIds: s.itemIds.filter(id => {
-          if (!validIds.has(id) || seen.has(id)) return false;
-          seen.add(id);
-          return true;
-        }),
-      }));
-      const items = { ...DEFAULT_ITEMS };
-      return { sections, items };
+      const parsed = JSON.parse(stored) as { sections: NavSection[] };
+      return reconcileLayout(parsed);
     }
   } catch {}
   return { sections: DEFAULT_SECTIONS, items: DEFAULT_ITEMS };
@@ -221,6 +233,20 @@ function saveLayout(sections: NavSection[]) {
   } catch {}
 }
 
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+function syncToServer(layout: NavSection[], collapsed: Set<string>, labels: Record<string, string>) {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    try {
+      await apiRequest("PUT", "/api/user-preferences", {
+        sidebarLayout: JSON.stringify({ sections: layout }),
+        sidebarCollapsed: JSON.stringify([...collapsed]),
+        sidebarLabels: JSON.stringify(labels),
+      });
+    } catch {}
+  }, 1000);
+}
+
 function findSectionOfItem(sections: NavSection[], itemId: string): string | null {
   for (const section of sections) {
     if (section.itemIds.includes(itemId)) return section.id;
@@ -228,7 +254,7 @@ function findSectionOfItem(sections: NavSection[], itemId: string): string | nul
   return null;
 }
 
-function SortableNavItem({ item, isActive, onClick, onRename }: { item: NavItem; isActive: boolean; onClick: () => void; onRename: (id: string, newLabel: string) => void }) {
+function SortableNavItem({ item, isActive, onClick, onRename, badgeCount }: { item: NavItem; isActive: boolean; onClick: () => void; onRename: (id: string, newLabel: string) => void; badgeCount?: number }) {
   const {
     attributes,
     listeners,
@@ -314,6 +340,11 @@ function SortableNavItem({ item, isActive, onClick, onRename }: { item: NavItem;
             >
               <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-white" : "text-slate-400 group-hover/navitem:text-white")} />
               <span className="font-medium text-xs truncate">{item.label}</span>
+              {badgeCount && badgeCount > 0 ? (
+                <span className="ml-auto shrink-0 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" data-testid={`badge-overdue-${item.id}`}>
+                  {badgeCount > 99 ? "99+" : badgeCount}
+                </span>
+              ) : null}
             </div>
           </Link>
           <button
@@ -374,6 +405,58 @@ export function Sidebar() {
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
   const [customLabels, setCustomLabels] = useState<Record<string, string>>(loadCustomLabels);
+  const serverLoaded = useRef(false);
+
+  const { data: serverPrefs } = useQuery<any>({
+    queryKey: ["/api/user-preferences"],
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const { data: overdueCounts } = useQuery<{ costs: number; subleases: number }>({
+    queryKey: ["/api/overdue-counts"],
+    staleTime: 1000 * 60 * 5,
+  });
+
+  useEffect(() => {
+    if (!serverPrefs || serverLoaded.current) return;
+    serverLoaded.current = true;
+    try {
+      if (serverPrefs.sidebarLayout) {
+        const parsed = JSON.parse(serverPrefs.sidebarLayout);
+        if (parsed?.sections) {
+          const reconciled = reconcileLayout(parsed);
+          setLayout(reconciled);
+          saveLayout(reconciled.sections);
+        }
+      }
+      if (serverPrefs.sidebarCollapsed) {
+        const parsed = JSON.parse(serverPrefs.sidebarCollapsed);
+        if (Array.isArray(parsed)) {
+          const set = new Set<string>(parsed);
+          setCollapsedSections(set);
+          saveCollapsed(set);
+        }
+      }
+      if (serverPrefs.sidebarLabels) {
+        const parsed = JSON.parse(serverPrefs.sidebarLabels);
+        if (parsed && typeof parsed === "object") {
+          setCustomLabels(parsed);
+          saveCustomLabels(parsed);
+        }
+      }
+    } catch {}
+  }, [serverPrefs]);
+
+  const layoutRef = useRef(layout.sections);
+  const collapsedRef = useRef(collapsedSections);
+  const labelsRef = useRef(customLabels);
+  useEffect(() => { layoutRef.current = layout.sections; }, [layout.sections]);
+  useEffect(() => { collapsedRef.current = collapsedSections; }, [collapsedSections]);
+  useEffect(() => { labelsRef.current = customLabels; }, [customLabels]);
+
+  const syncAllToServer = useCallback(() => {
+    syncToServer(layoutRef.current, collapsedRef.current, labelsRef.current);
+  }, []);
 
   const itemsWithLabels = useMemo(() => {
     const merged: Record<string, NavItem> = {};
@@ -383,13 +466,28 @@ export function Sidebar() {
     return merged;
   }, [layout.items, customLabels]);
 
+  const badgeMap = useMemo<Record<string, number>>(() => {
+    if (!overdueCounts) return {};
+    const map: Record<string, number> = {};
+    if (overdueCounts.costs > 0) {
+      map["costs-expenses"] = overdueCounts.costs;
+      map["apartment-schedule"] = overdueCounts.costs;
+    }
+    if (overdueCounts.subleases > 0) {
+      map["contracts-subrent"] = overdueCounts.subleases;
+      map["subrent-settlement"] = overdueCounts.subleases;
+    }
+    return map;
+  }, [overdueCounts]);
+
   const handleRenameItem = useCallback((id: string, newLabel: string) => {
     setCustomLabels(prev => {
       const next = { ...prev, [id]: newLabel };
       saveCustomLabels(next);
+      syncAllToServer();
       return next;
     });
-  }, []);
+  }, [syncAllToServer]);
 
   const toggleSection = useCallback((sectionId: string) => {
     setCollapsedSections(prev => {
@@ -397,9 +495,10 @@ export function Sidebar() {
       if (next.has(sectionId)) next.delete(sectionId);
       else next.add(sectionId);
       saveCollapsed(next);
+      syncAllToServer();
       return next;
     });
-  }, []);
+  }, [syncAllToServer]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -483,6 +582,7 @@ export function Sidebar() {
             return s;
           });
           saveLayout(newSections);
+          syncAllToServer();
           return { ...prev, sections: newSections };
         });
         return;
@@ -491,9 +591,10 @@ export function Sidebar() {
 
     setLayout(prev => {
       saveLayout(prev.sections);
+      syncAllToServer();
       return prev;
     });
-  }, [layout.sections]);
+  }, [layout.sections, syncAllToServer]);
 
   return (
     <>
@@ -556,6 +657,7 @@ export function Sidebar() {
                               isActive={location === item.href}
                               onClick={() => setIsOpen(false)}
                               onRename={handleRenameItem}
+                              badgeCount={badgeMap[item.id]}
                             />
                           );
                         })}

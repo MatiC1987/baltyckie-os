@@ -34,6 +34,7 @@ import {
   installmentPayments, InstallmentPayment, InsertInstallmentPayment,
   serviceContractAttachments, ServiceContractAttachment, InsertServiceContractAttachment,
   importMetadata, ImportMetadata,
+  activityLogs, ActivityLog, InsertActivityLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -229,6 +230,10 @@ export interface IStorage {
 
   // Reservations by number
   getReservationByNumber(reservationNumber: string): Promise<Reservation | undefined>;
+
+  // Activity Logs
+  getActivityLogs(limit?: number): Promise<ActivityLog[]>;
+  createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1049,6 +1054,15 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db.select().from(reservations)
       .where(eq(reservations.reservationNumber, reservationNumber));
     return result;
+  }
+
+  async getActivityLogs(limit: number = 100): Promise<ActivityLog[]> {
+    return db.select().from(activityLogs).orderBy(desc(activityLogs.createdAt)).limit(limit);
+  }
+
+  async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
+    const [created] = await db.insert(activityLogs).values(log).returning();
+    return created;
   }
 }
 

@@ -29,6 +29,10 @@ import DocumentTemplates from "@/pages/DocumentTemplates";
 import Revenue from "@/pages/Revenue";
 import FinanceForecast from "@/pages/FinanceForecast";
 import ApartmentSchedule from "@/pages/ApartmentSchedule";
+import ActivityLog from "@/pages/ActivityLog";
+import OccupancyRates from "@/pages/OccupancyRates";
+import Profitability from "@/pages/Profitability";
+import YearComparison from "@/pages/YearComparison";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
 
@@ -101,6 +105,10 @@ function Router() {
       <Route path="/export" component={() => <AuthenticatedPlaceholder title="Eksport rezerwacji" description="Eksport danych rezerwacji do pliku." />} />
       <Route path="/user-accounts" component={() => <AuthenticatedRoute component={UserAccounts} />} />
       <Route path="/locations" component={() => <AuthenticatedRoute component={Lokalizacje} />} />
+      <Route path="/activity-log" component={() => <AuthenticatedRoute component={ActivityLog} />} />
+      <Route path="/occupancy" component={() => <AuthenticatedRoute component={OccupancyRates} />} />
+      <Route path="/profitability" component={() => <AuthenticatedRoute component={Profitability} />} />
+      <Route path="/year-comparison" component={() => <AuthenticatedRoute component={YearComparison} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

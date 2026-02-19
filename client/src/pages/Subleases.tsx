@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
-  ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw
+  ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1128,13 +1128,34 @@ export default function Subleases() {
     return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
   };
 
+  const handleExportCSV = () => {
+    const header = "Najemca;Typ;Apartamenty;Od;Do;Czynsz;Status";
+    const rows = sorted.map(s => {
+      const status = isActive(s) ? "Aktywna" : s.endDate < new Date().toISOString().slice(0, 10) ? "Zakończona" : "Przyszła";
+      return `${getTenantName(s)};${s.tenantType === "firma" ? "Firma" : "Osoba fizyczna"};${getApartmentNames(s)};${s.startDate || ""};${s.endDate || ""};${parseFloat(s.rentAmount || "0").toFixed(2).replace(".", ",")};${status}`;
+    });
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `podnajmy-${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold" data-testid="text-page-title">Umowy Podnajmu</h1>
-        <Button onClick={openAdd} data-testid="button-add-sublease">
-          <Plus className="h-4 w-4 mr-1" /> Dodaj umowę
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={handleExportCSV} disabled={sorted.length === 0} data-testid="button-export-csv">
+            <Download className="h-4 w-4 mr-1" /> Eksport CSV
+          </Button>
+          <Button onClick={openAdd} data-testid="button-add-sublease">
+            <Plus className="h-4 w-4 mr-1" /> Dodaj umowę
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

@@ -4,7 +4,7 @@ import { useApartments } from "@/hooks/use-apartments";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X, Pencil, Clock } from "lucide-react";
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home, CreditCard, X, Pencil, Clock, Download, FileText } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
@@ -170,6 +170,22 @@ export default function Reservations() {
 
   const hasActiveFilters = filterDateFrom || filterDateTo || filterStatus !== "ALL";
 
+  const handleExportCSV = () => {
+    const header = "Nr rezerwacji;Data dodania;Apartament;Od;Do;Gość;Cena;Zaliczka;Zapłacono;Pozostało;Status";
+    const rows = filteredAndSorted.map(r => {
+      const aptName = getApartmentName(r, apartments || []);
+      return `${r.reservationNumber || ""};${r.addDate || ""};${aptName};${r.startDate || ""};${r.endDate || ""};${r.guestName || ""};${Number(r.price || 0).toFixed(2).replace(".", ",")};${Number(r.prepayment || 0).toFixed(2).replace(".", ",")};${Number(r.paidAmount || 0).toFixed(2).replace(".", ",")};${calcRemaining(r).toFixed(2).replace(".", ",")};${r.status || ""}`;
+    });
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rezerwacje-${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-8">
@@ -210,6 +226,9 @@ export default function Reservations() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={handleExportCSV} disabled={filteredAndSorted.length === 0} data-testid="button-export-csv">
+            <Download className="mr-2 h-4 w-4" /> Eksport CSV
+          </Button>
           <Button
             variant={showFilters ? "default" : "outline"}
             onClick={() => setShowFilters(!showFilters)}
@@ -420,7 +439,14 @@ function ReservationRow({ reservation: r, apartments, onPreview, onEdit }: { res
         {r.endDate}
       </TableCell>
       <TableCell className="text-xs whitespace-nowrap" data-testid={`text-res-guest-${r.id}`}>
-        {r.guestName}
+        <span className="flex items-center gap-1">
+          {r.guestName}
+          {r.notes && (
+            <span title={r.notes} className="text-muted-foreground cursor-help">
+              <FileText className="h-3 w-3" />
+            </span>
+          )}
+        </span>
       </TableCell>
       <TableCell className="text-xs font-bold whitespace-nowrap" data-testid={`text-res-price-${r.id}`}>
         {Number(r.price).toFixed(2)} zł
@@ -557,6 +583,16 @@ function ReservationPreviewDialog({ reservation, apartments, onClose }: {
             )}
           </div>
 
+          {r.notes && (
+            <div className="rounded-lg border border-border p-4 space-y-0">
+              <div className="flex items-center gap-2 mb-3">
+                <FileText className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-primary">Notatki</span>
+              </div>
+              <p className="text-sm whitespace-pre-wrap" data-testid={`text-res-notes-${r.id}`}>{r.notes}</p>
+            </div>
+          )}
+
           <div className="flex justify-end pt-2">
             <Button variant="ghost" onClick={onClose} data-testid="button-close-preview">
               Zamknij
@@ -606,6 +642,7 @@ function EditReservationForm({ reservation, onSuccess }: { reservation: Reservat
       paidAmount: reservation.paidAmount ?? "0",
       surcharge: reservation.surcharge ?? "0",
       status: reservation.status,
+      notes: reservation.notes ?? "",
     }
   });
 
@@ -697,6 +734,16 @@ function EditReservationForm({ reservation, onSuccess }: { reservation: Reservat
               </SelectContent>
             </Select>
           )}
+        />
+      </div>
+
+      <div className="space-y-2 col-span-2">
+        <Label>Notatki</Label>
+        <textarea
+          {...form.register("notes")}
+          placeholder="Dodaj notatki do rezerwacji..."
+          className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          data-testid="edit-input-reservation-notes"
         />
       </div>
 
@@ -799,6 +846,16 @@ function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
               </SelectContent>
             </Select>
           )}
+        />
+      </div>
+
+      <div className="space-y-2 col-span-2">
+        <Label>Notatki</Label>
+        <textarea
+          {...form.register("notes")}
+          placeholder="Dodaj notatki do rezerwacji..."
+          className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          data-testid="input-reservation-notes"
         />
       </div>
 

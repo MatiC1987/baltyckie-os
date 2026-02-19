@@ -6,13 +6,30 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments } from "@shared/schema";
+import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
+import { db } from "./db";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { testConnection, fetchReservations } from "./hotres";
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+async function logActivity(req: any, action: string, entityType: string, entityId?: number, entityName?: string, details?: string) {
+  try {
+    const user = req.user;
+    await storage.createActivityLog({
+      userId: user?.id || null,
+      userName: user?.username || user?.firstName || null,
+      action,
+      entityType,
+      entityId: entityId || null,
+      entityName: entityName || null,
+      details: details || null,
+    });
+  } catch (e) {}
+}
 
 function excelDateToISO(val: any): string | null {
   if (!val) return null;
@@ -115,6 +132,271 @@ export async function registerRoutes(
   seedServiceContractCategories().catch(console.error);
   seedAccounts().catch(console.error);
 
+  app.get("/api/user-preferences", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const [pref] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+      res.json(pref || null);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load preferences" });
+    }
+  });
+
+  app.put("/api/user-preferences", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { sidebarLayout, sidebarCollapsed, sidebarLabels } = req.body;
+      const [existing] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+      if (existing) {
+        const updates: any = { updatedAt: new Date() };
+        if (sidebarLayout !== undefined) updates.sidebarLayout = sidebarLayout;
+        if (sidebarCollapsed !== undefined) updates.sidebarCollapsed = sidebarCollapsed;
+        if (sidebarLabels !== undefined) updates.sidebarLabels = sidebarLabels;
+        await db.update(userPreferences).set(updates).where(eq(userPreferences.userId, userId));
+      } else {
+        await db.insert(userPreferences).values({
+          userId,
+          sidebarLayout: sidebarLayout || null,
+          sidebarCollapsed: sidebarCollapsed || null,
+          sidebarLabels: sidebarLabels || null,
+        });
+      }
+      const [updated] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save preferences" });
+    }
+  });
+
+  app.get("/api/overdue-counts", isAuthenticated, async (_req, res) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const [costResult] = await db.select({ count: sql<number>`count(*)` })
+        .from(costSchedulePayments)
+        .where(and(ne(costSchedulePayments.status, "OPLACONE"), lt(costSchedulePayments.dueDate, today)));
+      const [subleaseResult] = await db.select({ count: sql<number>`count(*)` })
+        .from(subleasePayments)
+        .where(and(ne(subleasePayments.status, "oplacone"), lt(subleasePayments.dueDate, today)));
+      res.json({
+        costs: Number(costResult?.count || 0),
+        subleases: Number(subleaseResult?.count || 0),
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to get overdue counts" });
+    }
+  });
+
+  app.get("/api/dashboard-reminders", isAuthenticated, async (_req, res) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const in30days = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+
+      const expiringExams = await db.select({
+        id: medicalExams.id,
+        examName: medicalExams.examName,
+        validUntil: medicalExams.validUntil,
+        employeeName: employees.name,
+      })
+        .from(medicalExams)
+        .innerJoin(employees, eq(medicalExams.employeeId, employees.id))
+        .where(lte(medicalExams.validUntil, in30days));
+
+      const overdueCosts = await db.select({ count: sql<number>`count(*)` })
+        .from(costSchedulePayments)
+        .where(and(ne(costSchedulePayments.status, "OPLACONE"), lt(costSchedulePayments.dueDate, today)));
+
+      const overdueSublease = await db.select({ count: sql<number>`count(*)` })
+        .from(subleasePayments)
+        .where(and(ne(subleasePayments.status, "oplacone"), lt(subleasePayments.dueDate, today)));
+
+      const upcomingArrivals = await db.select({
+        id: reservations.id,
+        guestName: reservations.guestName,
+        startDate: reservations.startDate,
+        apartmentId: reservations.apartmentId,
+      })
+        .from(reservations)
+        .where(and(
+          gte(reservations.startDate, today),
+          lte(reservations.startDate, in30days),
+          ne(reservations.status, "ANULOWANA"),
+        ));
+
+      const expiringLeases = await db.select({
+        id: leases.id,
+        tenantName: leases.tenantName,
+        endDate: leases.endDate,
+        apartmentId: leases.apartmentId,
+      })
+        .from(leases)
+        .where(and(lte(leases.endDate, in30days), gte(leases.endDate, today)));
+
+      const expiringSubleases = await db.select({
+        id: subleases.id,
+        tenantName: subleases.tenantName,
+        endDate: subleases.endDate,
+        apartmentId: subleases.apartmentId,
+      })
+        .from(subleases)
+        .where(and(lte(subleases.endDate, in30days), gte(subleases.endDate, today)));
+
+      res.json({
+        expiringExams,
+        overdueCosts: Number(overdueCosts[0]?.count || 0),
+        overdueSubleasePayments: Number(overdueSublease[0]?.count || 0),
+        upcomingArrivals: upcomingArrivals.length,
+        expiringLeases,
+        expiringSubleases,
+      });
+    } catch (err) {
+      console.error("Dashboard reminders error:", err);
+      res.status(500).json({ message: "Failed to get reminders" });
+    }
+  });
+
+  app.get("/api/occupancy-rates", isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const month = req.query.month ? Number(req.query.month) : undefined;
+
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+
+      let startDate: string, endDate: string;
+      if (month) {
+        startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+      } else {
+        startDate = `${year}-01-01`;
+        endDate = `${year}-12-31`;
+      }
+
+      const totalDays = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
+
+      const allReservations = await db.select({
+        apartmentId: reservations.apartmentId,
+        startDate: reservations.startDate,
+        endDate: reservations.endDate,
+      })
+        .from(reservations)
+        .where(and(
+          lte(reservations.startDate, endDate),
+          gte(reservations.endDate, startDate),
+          ne(reservations.status, "ANULOWANA"),
+        ));
+
+      const result = allApartments.map(apt => {
+        const aptReservations = allReservations.filter(r => r.apartmentId === apt.id);
+        let occupiedDays = 0;
+        for (const r of aptReservations) {
+          const rStart = new Date(Math.max(new Date(r.startDate).getTime(), new Date(startDate).getTime()));
+          const rEnd = new Date(Math.min(new Date(r.endDate).getTime(), new Date(endDate).getTime()));
+          occupiedDays += Math.max(0, Math.ceil((rEnd.getTime() - rStart.getTime()) / 86400000));
+        }
+        return {
+          apartmentId: apt.id,
+          apartmentName: apt.name,
+          occupiedDays,
+          totalDays,
+          rate: totalDays > 0 ? Math.round((occupiedDays / totalDays) * 100) : 0,
+        };
+      });
+
+      const totalOccupied = result.reduce((s, r) => s + r.occupiedDays, 0);
+      const totalPossible = result.reduce((s, r) => s + r.totalDays, 0);
+
+      res.json({
+        apartments: result,
+        overall: {
+          rate: totalPossible > 0 ? Math.round((totalOccupied / totalPossible) * 100) : 0,
+          occupiedDays: totalOccupied,
+          totalDays: totalPossible,
+        },
+      });
+    } catch (err) {
+      console.error("Occupancy rates error:", err);
+      res.status(500).json({ message: "Failed to calculate occupancy rates" });
+    }
+  });
+
+  app.get("/api/profitability", isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const startDate = `${year}-01-01`;
+      const endDate = `${year}-12-31`;
+
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+
+      const yearReservations = await db.select({
+        apartmentId: reservations.apartmentId,
+        price: reservations.price,
+      })
+        .from(reservations)
+        .where(and(
+          gte(reservations.startDate, startDate),
+          lte(reservations.startDate, endDate),
+          ne(reservations.status, "ANULOWANA"),
+        ));
+
+      const result = allApartments.map(apt => {
+        const aptReservations = yearReservations.filter(r => r.apartmentId === apt.id);
+        const revenue = aptReservations.reduce((s, r) => s + Number(r.price || 0), 0);
+        return {
+          apartmentId: apt.id,
+          apartmentName: apt.name,
+          revenue,
+          reservationCount: aptReservations.length,
+        };
+      });
+
+      result.sort((a, b) => b.revenue - a.revenue);
+
+      res.json({
+        apartments: result,
+        totalRevenue: result.reduce((s, r) => s + r.revenue, 0),
+      });
+    } catch (err) {
+      console.error("Profitability error:", err);
+      res.status(500).json({ message: "Failed to calculate profitability" });
+    }
+  });
+
+  app.get("/api/year-comparison", isAuthenticated, async (req, res) => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const years = [currentYear - 2, currentYear - 1, currentYear];
+
+      const result: Record<number, number[]> = {};
+
+      for (const year of years) {
+        const monthlyRevenue: number[] = new Array(12).fill(0);
+
+        const yearReservations = await db.select({
+          startDate: reservations.startDate,
+          price: reservations.price,
+        })
+          .from(reservations)
+          .where(and(
+            gte(reservations.startDate, `${year}-01-01`),
+            lte(reservations.startDate, `${year}-12-31`),
+            ne(reservations.status, "ANULOWANA"),
+          ));
+
+        for (const r of yearReservations) {
+          const month = new Date(r.startDate).getMonth();
+          monthlyRevenue[month] += Number(r.price || 0);
+        }
+
+        result[year] = monthlyRevenue;
+      }
+
+      res.json({ years, data: result });
+    } catch (err) {
+      console.error("Year comparison error:", err);
+      res.status(500).json({ message: "Failed to get year comparison" });
+    }
+  });
+
   // Owners
   app.get(api.owners.list.path, isAuthenticated, async (req, res) => {
     const ownersList = await storage.getOwners();
@@ -213,6 +495,7 @@ export async function registerRoutes(
     try {
       const input = api.reservations.create.input.parse(req.body);
       const reservation = await storage.createReservation(input);
+      logActivity(req, "create", "reservation", reservation.id, reservation.guestName, `Nr: ${reservation.reservationNumber}`);
       res.status(201).json(reservation);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -224,6 +507,7 @@ export async function registerRoutes(
     try {
       const input = api.reservations.update.input.parse(req.body);
       const reservation = await storage.updateReservation(Number(req.params.id), input);
+      logActivity(req, "update", "reservation", reservation.id, reservation.guestName);
       res.json(reservation);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -233,6 +517,7 @@ export async function registerRoutes(
 
   app.delete(api.reservations.delete.path, isAuthenticated, async (req, res) => {
     await storage.deleteReservation(Number(req.params.id));
+    logActivity(req, "delete", "reservation", Number(req.params.id));
     res.status(204).send();
   });
 
@@ -280,6 +565,7 @@ export async function registerRoutes(
       });
       const input = bodySchema.parse(req.body);
       const expense = await storage.createExpense(input);
+      logActivity(req, "create", "expense", expense.id, input.description);
       res.status(201).json(expense);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -771,6 +1057,7 @@ export async function registerRoutes(
     try {
       const parsed = insertSubleaseSchema.parse(req.body);
       const created = await storage.createSublease(parsed);
+      logActivity(req, "create", "sublease", created.id, parsed.firstName ? `${parsed.firstName} ${parsed.lastName || ""}` : parsed.companyName || undefined);
       res.status(201).json(created);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Błąd zapisu" });
@@ -783,6 +1070,7 @@ export async function registerRoutes(
       if (data.rentAmount === "" || data.rentAmount === undefined) data.rentAmount = null;
       if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
       const updated = await storage.updateSublease(Number(req.params.id), data);
+      logActivity(req, "update", "sublease", updated.id);
       res.status(200).json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Błąd aktualizacji" });
@@ -791,6 +1079,7 @@ export async function registerRoutes(
 
   app.delete('/api/subleases/:id', isAuthenticated, async (req, res) => {
     await storage.deleteSublease(Number(req.params.id));
+    logActivity(req, "delete", "sublease", Number(req.params.id));
     res.status(204).send();
   });
 
@@ -2034,6 +2323,13 @@ export async function registerRoutes(
   app.delete('/api/installment-payments/:id', isAuthenticated, async (req, res) => {
     await storage.deleteInstallmentPayment(Number(req.params.id));
     res.json({ success: true });
+  });
+
+  // Activity Logs
+  app.get('/api/activity-logs', isAuthenticated, async (req, res) => {
+    const limit = req.query.limit ? Number(req.query.limit) : 100;
+    const logs = await storage.getActivityLogs(limit);
+    res.json(logs);
   });
 
   return httpServer;

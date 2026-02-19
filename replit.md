@@ -32,6 +32,11 @@ The application is built with a modern full-stack architecture.
 -   **Sublease Management**: Comprehensive system for managing subleases, including tenant details, payments, deposits, and attachments.
 -   **User Account Management**: Internal system for managing application users with role-based permissions.
 -   **Reporting & Forecasting**: Includes pages for aggregated sublease settlements, revenue forecasting (P/R/S spreadsheet view per apartment/location), apartment cost analysis, and a detailed revenue page consolidating actual and forecasted income.
+-   **Analytics (ANALIZY section)**: Occupancy rates per apartment with year/month filtering, profitability rankings with revenue bars, and year-over-year comparison with bar charts and monthly tables.
+-   **Dashboard Reminders**: Automatic alert card showing overdue payments, expiring medical exams, expiring leases/subleases, with clickable links to relevant pages.
+-   **Activity Log**: Tracks user actions (create/update/delete) across reservations, expenses, and subleases with timestamps and user attribution.
+-   **CSV Export**: Semicolon-delimited CSV export with BOM for Excel compatibility on Reservations and Subleases pages.
+-   **Reservation Notes**: Text notes field on reservations with FileText indicator in tables.
 -   **Document Templates**: System for managing document categories and uploading/downloading document templates.
 -   **UI/UX**: Features a collapsible sidebar with sections for navigation, consistent Polish language UI, and a clean, modern design using Tailwind CSS and shadcn/ui. Accent color `#5ADBFA` for active navigation items.
 -   **Architectural Patterns**: API endpoints are defined with Zod schemas for validation, and data fetching/caching is managed with TanStack Query. Database interactions are abstracted through an `IStorage` interface.

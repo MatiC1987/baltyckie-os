@@ -129,6 +129,14 @@ export default function Dashboard() {
   const { data: leases } = useQuery<Lease[]>({ queryKey: ["/api/leases"] });
   const { data: allSubleasePayments } = useQuery<SubleasePaymentExtended[]>({ queryKey: ["/api/dashboard/all-sublease-payments"] });
   const { data: forecastData } = useQuery<ForecastMonth[]>({ queryKey: ["/api/dashboard/revenue-forecast"] });
+  const { data: reminders } = useQuery<{
+    expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[];
+    overdueCosts: number;
+    overdueSubleasePayments: number;
+    upcomingArrivals: number;
+    expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[];
+    expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[];
+  }>({ queryKey: ["/api/dashboard-reminders"] });
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingBalance, setEditingBalance] = useState("");
 
@@ -378,8 +386,69 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading }: { reservatio
 
   if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}</div>;
 
+  const hasReminders = reminders && (
+    reminders.expiringExams.length > 0 ||
+    reminders.overdueCosts > 0 ||
+    reminders.overdueSubleasePayments > 0 ||
+    reminders.expiringLeases.length > 0 ||
+    reminders.expiringSubleases.length > 0
+  );
+
   return (
     <div className="space-y-3">
+      {hasReminders && (
+        <Card data-testid="card-reminders">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+              Przypomnienia
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {reminders!.overdueCosts > 0 && (
+              <Link href="/costs-expenses">
+                <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-overdue-costs">
+                  <FileWarning className="h-4 w-4 text-red-500 shrink-0" />
+                  <span>Zaległe opłaty kosztów: <strong>{reminders!.overdueCosts}</strong></span>
+                </div>
+              </Link>
+            )}
+            {reminders!.overdueSubleasePayments > 0 && (
+              <Link href="/subrent-settlement">
+                <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-overdue-sublease">
+                  <FileWarning className="h-4 w-4 text-red-500 shrink-0" />
+                  <span>Zaległe płatności podnajmu: <strong>{reminders!.overdueSubleasePayments}</strong></span>
+                </div>
+              </Link>
+            )}
+            {reminders!.expiringExams.map(exam => (
+              <Link key={exam.id} href="/employees">
+                <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-exam-${exam.id}`}>
+                  <CalendarClock className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span>Badanie <strong>{exam.examName}</strong> pracownika {exam.employeeName} wygasa {exam.validUntil}</span>
+                </div>
+              </Link>
+            ))}
+            {reminders!.expiringLeases.map(lease => (
+              <Link key={lease.id} href="/apartment-schedule">
+                <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-lease-${lease.id}`}>
+                  <CalendarClock className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span>Najem {lease.tenantName || "—"} kończy się {lease.endDate}</span>
+                </div>
+              </Link>
+            ))}
+            {reminders!.expiringSubleases.map(sub => (
+              <Link key={sub.id} href="/contracts-subrent">
+                <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-sublease-${sub.id}`}>
+                  <CalendarClock className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span>Podnajem {sub.tenantName || "—"} kończy się {sub.endDate}</span>
+                </div>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="text-lg font-semibold" data-testid="text-unpaid-arrivals-title">Nieopłacone przyjazdy</h3>

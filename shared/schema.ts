@@ -43,6 +43,7 @@ export const reservations = pgTable("reservations", {
   paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).default("0"),
   surcharge: decimal("surcharge", { precision: 10, scale: 2 }).default("0"),
   status: text("status").notNull(), // 'DO_OPLACENIA', 'PRZYJETA', 'ANULOWANA'
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -637,6 +638,17 @@ export const insertInstallmentPaymentSchema = createInsertSchema(installmentPaym
 export type InstallmentPayment = typeof installmentPayments.$inferSelect;
 export type InsertInstallmentPayment = z.infer<typeof insertInstallmentPaymentSchema>;
 
+export const userPreferences = pgTable("user_preferences", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  sidebarLayout: text("sidebar_layout"),
+  sidebarCollapsed: text("sidebar_collapsed"),
+  sidebarLabels: text("sidebar_labels"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type UserPreference = typeof userPreferences.$inferSelect;
+
 export const importMetadata = pgTable("import_metadata", {
   id: serial("id").primaryKey(),
   importType: text("import_type").notNull(),
@@ -650,3 +662,19 @@ export const importMetadata = pgTable("import_metadata", {
 export const insertImportMetadataSchema = createInsertSchema(importMetadata).omit({ id: true, importedAt: true });
 export type ImportMetadata = typeof importMetadata.$inferSelect;
 export type InsertImportMetadata = z.infer<typeof insertImportMetadataSchema>;
+
+export const activityLogs = pgTable("activity_logs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id"),
+  userName: text("user_name"),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id"),
+  entityName: text("entity_name"),
+  details: text("details"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
