@@ -175,7 +175,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
 ];
 
 const STORAGE_KEY = "sidebar-layout-v5";
-const COLLAPSED_KEY = "sidebar-collapsed-v1";
+const COLLAPSED_KEY = "sidebar-collapsed-v2";
 const LABELS_KEY = "sidebar-custom-labels-v1";
 
 function loadCustomLabels(): Record<string, string> {
@@ -647,19 +647,8 @@ export function Sidebar() {
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col">
-          <div className="px-5 pt-5 pb-3 flex items-center justify-center">
+          <div className="px-5 pt-5 pb-5 flex items-center justify-center">
             <img src={logoSrc} alt="Bałtyckie Finanse" className="h-7 object-contain" data-testid="img-logo" />
-          </div>
-
-          <div className="px-3 pb-3">
-            <button
-              onClick={() => setShowQuickActions(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-[#5ADBFA]/15 text-[#5ADBFA] hover:bg-[#5ADBFA]/25 border border-[#5ADBFA]/20"
-              data-testid="button-quick-actions"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Nowe...</span>
-            </button>
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-1" data-testid="nav-sidebar">
@@ -737,6 +726,16 @@ export function Sidebar() {
                           );
                         })}
                       </SortableContext>
+                      {section.id === "main" && (
+                        <button
+                          onClick={() => setShowQuickActions(true)}
+                          className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors text-[#5ADBFA]/80 hover:text-[#5ADBFA] hover:bg-white/5"
+                          data-testid="button-quick-actions"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>Akcje</span>
+                        </button>
+                      )}
                       {section.itemIds.length === 0 && (
                         <DroppableEmptySection sectionId={section.id} />
                       )}
@@ -813,7 +812,7 @@ export function Sidebar() {
       <Dialog open={showQuickActions} onOpenChange={setShowQuickActions}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Nowe...</DialogTitle>
+            <DialogTitle>Akcje</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 pt-2">
             {[
