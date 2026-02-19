@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment, SubleaseApartmentChange } from "@shared/schema";
+import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment, SubleaseApartmentChange, DocumentTemplate } from "@shared/schema";
 import { format, addDays, addWeeks, addMonths, addQuarters, isBefore, isEqual } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useMemo } from "react";
@@ -10,7 +10,7 @@ import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
-  FileUp, Loader2, CalendarDays, Image
+  FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -1122,7 +1122,7 @@ export default function Subleases() {
   const [editId, setEditId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("dane");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortKey, setSortKey] = useState<"tenant" | "type" | "apartment" | "startDate" | "endDate" | "rent" | "status">("tenant");
+  const [sortKey, setSortKey] = useState<"tenant" | "type" | "apartment" | "startDate" | "endDate" | "rent">("tenant");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [form, setForm] = useState<Record<string, any>>({
     tenantType: "osoba_fizyczna",
@@ -1134,6 +1134,10 @@ export default function Subleases() {
   const [pdfExtracted, setPdfExtracted] = useState<Record<string, any> | null>(null);
   const [pdfImportFiles, setPdfImportFiles] = useState<File[]>([]);
   const [pdfImportForm, setPdfImportForm] = useState<Record<string, any>>({});
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [generateForm, setGenerateForm] = useState<Record<string, any>>({ tenantType: "osoba_fizyczna", startDate: "", endDate: "" });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [generating, setGenerating] = useState(false);
 
   const { data: subleases = [], isLoading } = useQuery<Sublease[]>({
     queryKey: ['/api/subleases'],
@@ -1145,6 +1149,10 @@ export default function Subleases() {
 
   const { data: allAttachments = [] } = useQuery<SubleaseAttachment[]>({
     queryKey: ['/api/sublease-attachments/all'],
+  });
+
+  const { data: docTemplates = [] } = useQuery<DocumentTemplate[]>({
+    queryKey: ['/api/document-templates'],
   });
 
   const createMut = useMutation({
@@ -1361,10 +1369,75 @@ export default function Subleases() {
       hasDeposit: s.hasDeposit || false,
       depositAmount: s.depositAmount || "",
       depositReturnDate: s.depositReturnDate || "",
+      status: s.status || "AKTYWNA",
+      comment: s.comment || "",
     });
     setEditId(s.id);
     setActiveTab("dane");
     setOpen(true);
+  };
+
+  const updateCommentMut = useMutation({
+    mutationFn: async ({ id, comment }: { id: number; comment: string }) => apiRequest('PUT', `/api/subleases/${id}`, { comment }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/subleases'] }); },
+  });
+
+  const confirmSigningMut = useMutation({
+    mutationFn: async (id: number) => apiRequest('PUT', `/api/subleases/${id}`, { status: "AKTYWNA" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
+      toast({ title: "Sukces", description: "Umowa potwierdzona jako aktywna" });
+    },
+  });
+
+  const handleGenerateContract = async () => {
+    if (!selectedTemplateId) {
+      toast({ title: "Błąd", description: "Wybierz szablon dokumentu", variant: "destructive" });
+      return;
+    }
+    if (!generateForm.startDate || !generateForm.endDate) {
+      toast({ title: "Błąd", description: "Daty są wymagane", variant: "destructive" });
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/subleases/generate-contract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ templateId: parseInt(selectedTemplateId), data: generateForm }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Błąd generowania");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const disposition = res.headers.get("content-disposition");
+      const fileNameMatch = disposition?.match(/filename="?([^"]+)"?/);
+      link.href = url;
+      link.download = fileNameMatch ? decodeURIComponent(fileNameMatch[1]) : "umowa.docx";
+      link.click();
+      URL.revokeObjectURL(url);
+
+      const subleaseData = {
+        ...generateForm,
+        status: "W_TRAKCIE_PODPISYWANIA",
+        preparedAt: new Date().toISOString(),
+      };
+      const createRes = await apiRequest('POST', '/api/subleases', subleaseData);
+      const created = await createRes.json();
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
+      toast({ title: "Sukces", description: "Wygenerowano umowę i dodano do podpisywania" });
+      setGenerateOpen(false);
+      setGenerateForm({ tenantType: "osoba_fizyczna", startDate: "", endDate: "" });
+      setSelectedTemplateId("");
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleSave = () => {
@@ -1390,12 +1463,14 @@ export default function Subleases() {
     return ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ");
   };
 
-  const isActive = (s: Sublease) => {
+  const getEffectiveStatus = (s: Sublease) => {
+    if (s.status === "W_TRAKCIE_PODPISYWANIA") return "W_TRAKCIE_PODPISYWANIA";
     const now = new Date().toISOString().slice(0, 10);
-    return s.startDate <= now && s.endDate >= now;
+    if (s.endDate < now) return "ZAKONCZONA";
+    return "AKTYWNA";
   };
 
-  const getStatusOrder = (s: Sublease) => isActive(s) ? 0 : s.endDate < new Date().toISOString().slice(0, 10) ? 2 : 1;
+  const isActive = (s: Sublease) => getEffectiveStatus(s) === "AKTYWNA";
 
   const filtered = subleases.filter((s) => {
     if (!searchQuery) return true;
@@ -1405,7 +1480,11 @@ export default function Subleases() {
     return name.includes(q) || apt.includes(q);
   });
 
-  const sorted = [...filtered].sort((a, b) => {
+  const signingList = filtered.filter(s => getEffectiveStatus(s) === "W_TRAKCIE_PODPISYWANIA");
+  const activeList = filtered.filter(s => getEffectiveStatus(s) === "AKTYWNA");
+  const archiveList = filtered.filter(s => getEffectiveStatus(s) === "ZAKONCZONA");
+
+  const sortList = (list: Sublease[]) => [...list].sort((a, b) => {
     const dir = sortDir === "asc" ? 1 : -1;
     switch (sortKey) {
       case "tenant": return dir * getTenantName(a).localeCompare(getTenantName(b), "pl");
@@ -1414,10 +1493,16 @@ export default function Subleases() {
       case "startDate": return dir * (a.startDate || "").localeCompare(b.startDate || "");
       case "endDate": return dir * (a.endDate || "").localeCompare(b.endDate || "");
       case "rent": return dir * ((parseFloat(a.rentAmount || "0") || 0) - (parseFloat(b.rentAmount || "0") || 0));
-      case "status": return dir * (getStatusOrder(a) - getStatusOrder(b));
       default: return 0;
     }
   });
+
+  const getDaysSincePrepared = (s: Sublease) => {
+    if (!s.preparedAt) return null;
+    const prepared = new Date(s.preparedAt);
+    const now = new Date();
+    return Math.floor((now.getTime() - prepared.getTime()) / (1000 * 60 * 60 * 24));
+  };
 
   const handleSort = (key: typeof sortKey) => {
     if (sortKey === key) setSortDir(prev => prev === "asc" ? "desc" : "asc");
@@ -1431,8 +1516,9 @@ export default function Subleases() {
 
   const handleExportCSV = () => {
     const header = "Najemca;Typ;Apartamenty;Od;Do;Czynsz;Status";
-    const rows = sorted.map(s => {
-      const status = isActive(s) ? "Aktywna" : s.endDate < new Date().toISOString().slice(0, 10) ? "Zakończona" : "Przyszła";
+    const allFiltered = [...signingList, ...activeList, ...archiveList];
+    const rows = allFiltered.map(s => {
+      const status = getEffectiveStatus(s) === "W_TRAKCIE_PODPISYWANIA" ? "W trakcie podpisywania" : getEffectiveStatus(s) === "AKTYWNA" ? "Aktywna" : "Zakończona";
       return `${getTenantName(s)};${s.tenantType === "firma" ? "Firma" : "Osoba fizyczna"};${getApartmentNames(s)};${s.startDate || ""};${s.endDate || ""};${parseFloat(s.rentAmount || "0").toFixed(2).replace(".", ",")};${status}`;
     });
     const csv = [header, ...rows].join("\n");
@@ -1445,15 +1531,20 @@ export default function Subleases() {
     URL.revokeObjectURL(url);
   };
 
+  const [editingComment, setEditingComment] = useState<{ id: number; value: string } | null>(null);
+
   return (
     <div className="p-4 md:p-6 space-y-4">
       <PageHeader title="Umowy podnajem" description="Zarządzanie umowami podnajmu." icon={FileSignature} actions={
         <>
-          <Button variant="outline" onClick={handleExportCSV} disabled={sorted.length === 0} data-testid="button-export-csv">
+          <Button variant="outline" onClick={handleExportCSV} disabled={filtered.length === 0} data-testid="button-export-csv">
             <Download className="h-4 w-4 mr-1" /> Eksport CSV
           </Button>
           <Button variant="outline" onClick={() => { setPdfImportOpen(true); setPdfImportStep("upload"); }} data-testid="button-import-pdf">
             <FileUp className="h-4 w-4 mr-1" /> Import z PDF
+          </Button>
+          <Button variant="outline" onClick={() => setGenerateOpen(true)} data-testid="button-generate-contract">
+            <FilePlus2 className="h-4 w-4 mr-1" /> Generuj umowę
           </Button>
           <Button onClick={openAdd} data-testid="button-add-sublease">
             <Plus className="h-4 w-4 mr-1" /> Dodaj umowę
@@ -1477,131 +1568,344 @@ export default function Subleases() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground">Ładowanie...</div>
-      ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <FileText className="h-10 w-10 mb-2" />
-            <p>Brak umów podnajmu</p>
-          </CardContent>
-        </Card>
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("tenant")} data-testid="th-tenant">
-                  <div className="flex items-center">Najemca<SortIcon column="tenant" /></div>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("type")} data-testid="th-type">
-                  <div className="flex items-center">Typ<SortIcon column="type" /></div>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("apartment")} data-testid="th-apartment">
-                  <div className="flex items-center">Apartament<SortIcon column="apartment" /></div>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("startDate")} data-testid="th-start-date">
-                  <div className="flex items-center">Data rozpoczęcia<SortIcon column="startDate" /></div>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("endDate")} data-testid="th-end-date">
-                  <div className="flex items-center">Data zakończenia<SortIcon column="endDate" /></div>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("rent")} data-testid="th-rent">
-                  <div className="flex items-center">Czynsz<SortIcon column="rent" /></div>
-                </TableHead>
-                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("status")} data-testid="th-status">
-                  <div className="flex items-center">Status<SortIcon column="status" /></div>
-                </TableHead>
-                <TableHead>Załączniki</TableHead>
-                <TableHead className="w-[100px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sorted.map((s) => (
-                <TableRow key={s.id} className="cursor-pointer" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
-                      {getTenantName(s)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">
-                      {s.tenantType === "firma" ? "Firma" : "Osoba"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
-                        const apt = apartments.find(a => a.id === id);
-                        return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+        <div className="space-y-6">
+          {signingList.length > 0 && (
+            <Card className="border-amber-500/50 dark:border-amber-400/40" data-testid="module-signing">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-amber-500" />
+                  <CardTitle className="text-base">W trakcie podpisywania</CardTitle>
+                  <Badge variant="outline" className="text-xs">{signingList.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Najemca</TableHead>
+                        <TableHead>Typ</TableHead>
+                        <TableHead>Apartament</TableHead>
+                        <TableHead>Od</TableHead>
+                        <TableHead>Do</TableHead>
+                        <TableHead>Czynsz</TableHead>
+                        <TableHead>Przygotowano</TableHead>
+                        <TableHead>Komentarz</TableHead>
+                        <TableHead className="w-[140px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortList(signingList).map((s) => {
+                        const daysSince = getDaysSincePrepared(s);
+                        return (
+                          <TableRow key={s.id} className="cursor-pointer" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
+                                {getTenantName(s)}
+                              </div>
+                            </TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                                  const apt = apartments.find(a => a.id === id);
+                                  return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+                                })}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">{s.startDate}</TableCell>
+                            <TableCell className="text-sm">{s.endDate}</TableCell>
+                            <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
+                            <TableCell>
+                              {s.preparedAt ? (
+                                <div className="flex flex-col">
+                                  <span className="text-xs">{format(new Date(s.preparedAt), "dd.MM.yyyy", { locale: pl })}</span>
+                                  <span className={`text-xs font-medium ${daysSince !== null && daysSince > 7 ? "text-destructive" : daysSince !== null && daysSince > 3 ? "text-amber-500" : "text-muted-foreground"}`}>
+                                    {daysSince !== null ? `${daysSince} dni temu` : ""}
+                                  </span>
+                                </div>
+                              ) : <span className="text-muted-foreground text-xs">—</span>}
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              {editingComment?.id === s.id ? (
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    value={editingComment.value}
+                                    onChange={(e) => setEditingComment({ ...editingComment, value: e.target.value })}
+                                    className="h-7 text-xs min-w-[120px]"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        updateCommentMut.mutate({ id: s.id, comment: editingComment.value });
+                                        setEditingComment(null);
+                                      }
+                                      if (e.key === "Escape") setEditingComment(null);
+                                    }}
+                                    autoFocus
+                                    data-testid={`input-comment-${s.id}`}
+                                  />
+                                  <Button size="icon" variant="ghost" onClick={() => { updateCommentMut.mutate({ id: s.id, comment: editingComment.value }); setEditingComment(null); }}>
+                                    <Check className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div
+                                  className="text-xs text-muted-foreground cursor-text min-w-[80px] min-h-[24px] flex items-center"
+                                  onClick={() => setEditingComment({ id: s.id, value: s.comment || "" })}
+                                  data-testid={`text-comment-${s.id}`}
+                                >
+                                  {s.comment || <span className="italic text-muted-foreground/50">Kliknij aby dodać...</span>}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <Button size="sm" variant="default" onClick={() => confirmSigningMut.mutate(s.id)} data-testid={`button-confirm-signing-${s.id}`}>
+                                  <CheckCircle2 className="h-3 w-3 mr-1" /> Potwierdź
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => openEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button size="icon" variant="ghost" data-testid={`button-delete-sublease-${s.id}`}>
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
+                                      <AlertDialogDescription>Usunięcie umowy usunie również powiązane opłaty i załączniki.</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => deleteMut.mutate(s.id)} data-testid="button-confirm-delete">Usuń</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
                       })}
-                      {!(s.apartmentIds?.length) && !s.apartmentId && "—"}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm" data-testid={`cell-start-date-${s.id}`}>{s.startDate}</TableCell>
-                  <TableCell className="text-sm" data-testid={`cell-end-date-${s.id}`}>{s.endDate}</TableCell>
-                  <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
-                  <TableCell>
-                    {isActive(s) ? (
-                      <Badge variant="default" className="text-xs">Aktywna</Badge>
-                    ) : s.endDate < new Date().toISOString().slice(0, 10) ? (
-                      <Badge variant="secondary" className="text-xs">Zakończona</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">Przyszła</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const atts = allAttachments.filter(a => a.subleaseId === s.id);
-                      if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
-                      return (
-                        <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                          {atts.map(att => (
-                            <a
-                              key={att.id}
-                              href={att.objectPath}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={att.fileName}
-                              data-testid={`link-attachment-${att.id}`}
-                            >
-                              <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
-                                <FileText className="h-3 w-3" />
-                                {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
-                              </Badge>
-                            </a>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" data-testid={`button-delete-sublease-${s.id}`}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
-                            <AlertDialogDescription>Usunięcie umowy usunie również powiązane opłaty i załączniki.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Anuluj</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteMut.mutate(s.id)} data-testid="button-confirm-delete">Usuń</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card data-testid="module-active">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                <CardTitle className="text-base">Aktywne umowy</CardTitle>
+                <Badge variant="outline" className="text-xs">{activeList.length}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {activeList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <FileText className="h-8 w-8 mb-2" />
+                  <p className="text-sm">Brak aktywnych umów</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("tenant")}>
+                          <div className="flex items-center">Najemca<SortIcon column="tenant" /></div>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("type")}>
+                          <div className="flex items-center">Typ<SortIcon column="type" /></div>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("apartment")}>
+                          <div className="flex items-center">Apartament<SortIcon column="apartment" /></div>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("startDate")}>
+                          <div className="flex items-center">Od<SortIcon column="startDate" /></div>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("endDate")}>
+                          <div className="flex items-center">Do<SortIcon column="endDate" /></div>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("rent")}>
+                          <div className="flex items-center">Czynsz<SortIcon column="rent" /></div>
+                        </TableHead>
+                        <TableHead>Załączniki</TableHead>
+                        <TableHead className="w-[100px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortList(activeList).map((s) => (
+                        <TableRow key={s.id} className="cursor-pointer" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
+                              {getTenantName(s)}
+                            </div>
+                          </TableCell>
+                          <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                                const apt = apartments.find(a => a.id === id);
+                                return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+                              })}
+                              {!(s.apartmentIds?.length) && !s.apartmentId && "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">{s.startDate}</TableCell>
+                          <TableCell className="text-sm">{s.endDate}</TableCell>
+                          <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const atts = allAttachments.filter(a => a.subleaseId === s.id);
+                              if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+                              return (
+                                <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                                  {atts.map(att => (
+                                    <a key={att.id} href={att.objectPath} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                      <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                                        <FileText className="h-3 w-3" />
+                                        {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
+                                      </Badge>
+                                    </a>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Button size="icon" variant="ghost" onClick={() => openEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="icon" variant="ghost" data-testid={`button-delete-sublease-${s.id}`}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
+                                    <AlertDialogDescription>Usunięcie umowy usunie również powiązane opłaty i załączniki.</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => deleteMut.mutate(s.id)} data-testid="button-confirm-delete">Usuń</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {archiveList.length > 0 && (
+            <Card data-testid="module-archive">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+                <div className="flex items-center gap-2">
+                  <Archive className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-base">Archiwum</CardTitle>
+                  <Badge variant="outline" className="text-xs">{archiveList.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Najemca</TableHead>
+                        <TableHead>Typ</TableHead>
+                        <TableHead>Apartament</TableHead>
+                        <TableHead>Od</TableHead>
+                        <TableHead>Do</TableHead>
+                        <TableHead>Czynsz</TableHead>
+                        <TableHead>Załączniki</TableHead>
+                        <TableHead className="w-[100px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortList(archiveList).map((s) => (
+                        <TableRow key={s.id} className="cursor-pointer opacity-70" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
+                              {getTenantName(s)}
+                            </div>
+                          </TableCell>
+                          <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                                const apt = apartments.find(a => a.id === id);
+                                return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+                              })}
+                              {!(s.apartmentIds?.length) && !s.apartmentId && "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">{s.startDate}</TableCell>
+                          <TableCell className="text-sm">{s.endDate}</TableCell>
+                          <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const atts = allAttachments.filter(a => a.subleaseId === s.id);
+                              if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+                              return (
+                                <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                                  {atts.map(att => (
+                                    <a key={att.id} href={att.objectPath} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                      <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                                        <FileText className="h-3 w-3" />
+                                        {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
+                                      </Badge>
+                                    </a>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Button size="icon" variant="ghost" onClick={() => openEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="icon" variant="ghost" data-testid={`button-delete-sublease-${s.id}`}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
+                                    <AlertDialogDescription>Usunięcie umowy usunie również powiązane opłaty i załączniki.</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => deleteMut.mutate(s.id)} data-testid="button-confirm-delete">Usuń</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -1856,6 +2160,44 @@ export default function Subleases() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Generuj umowę z szablonu</DialogTitle>
+            <DialogDescription>Wypełnij dane najemcy, wybierz szablon i wygeneruj dokument Word.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Szablon dokumentu</Label>
+              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                <SelectTrigger data-testid="select-template">
+                  <SelectValue placeholder="Wybierz szablon..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {docTemplates.filter((t: any) => t.category === "PODNAJEM").map((t: any) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                  {docTemplates.filter((t: any) => t.category !== "PODNAJEM").map((t: any) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.category})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <SubleaseFormFields form={generateForm} setForm={setGenerateForm} apartments={apartments} />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenerateOpen(false)}>Anuluj</Button>
+            <Button onClick={handleGenerateContract} disabled={generating} data-testid="button-do-generate">
+              {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FilePlus2 className="h-4 w-4 mr-1" />}
+              Generuj i zapisz
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -1198,6 +1198,47 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post('/api/subleases/generate-contract', isAuthenticated, async (req, res) => {
+    try {
+      const { templateId, data } = req.body;
+      if (!templateId) return res.status(400).json({ message: "Brak ID szablonu" });
+
+      const templates = await storage.getDocumentTemplates();
+      const template = templates.find(t => t.id === templateId);
+      if (!template) return res.status(404).json({ message: "Szablon nie znaleziony" });
+
+      const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const objectFile = await osService.getObjectEntityFile(template.objectPath);
+      const [fileBuffer] = await objectFile.download();
+
+      const PizZip = (await import("pizzip")).default;
+      const Docxtemplater = (await import("docxtemplater")).default;
+
+      const zip = new PizZip(fileBuffer);
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: "{{", end: "}}" },
+      });
+
+      doc.render(data || {});
+      const buf = doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+
+      const tenantName = data.tenantType === 'firma' 
+        ? (data.companyName || 'firma') 
+        : `${data.firstName || ''}_${data.lastName || ''}`.trim();
+      const fileName = `Umowa_podnajem_${tenantName}_${new Date().toISOString().slice(0, 10)}.docx`;
+
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.send(buf);
+    } catch (error: any) {
+      console.error("Error generating contract:", error);
+      res.status(500).json({ message: error.message || "Błąd generowania umowy" });
+    }
+  });
+
   // Sublease Attachments
   app.get('/api/sublease-attachments/all', isAuthenticated, async (_req, res) => {
     const atts = await storage.getAllSubleaseAttachments();

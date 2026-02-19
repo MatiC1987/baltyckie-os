@@ -402,6 +402,9 @@ export const subleases = pgTable("subleases", {
   hasDeposit: boolean("has_deposit").default(false),
   depositAmount: numeric("deposit_amount", { precision: 12, scale: 2 }),
   depositReturnDate: date("deposit_return_date"),
+  status: text("status").notNull().default("AKTYWNA"),
+  comment: text("comment"),
+  preparedAt: timestamp("prepared_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
