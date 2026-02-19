@@ -71,6 +71,9 @@ export const expenses = pgTable("expenses", {
   vendor: text("vendor"),
   invoiceIssued: boolean("invoice_issued").default(false),
   invoiceNumber: text("invoice_number"),
+  recurrenceType: text("recurrence_type"), // 'MIESIECZNIE', 'KWARTALNIE', 'ROCZNIE'
+  recurrenceEndDate: date("recurrence_end_date"),
+  parentExpenseId: integer("parent_expense_id"),
 });
 
 export const accounts = pgTable("accounts", {
