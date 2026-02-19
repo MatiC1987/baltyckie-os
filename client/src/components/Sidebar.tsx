@@ -405,11 +405,12 @@ export function Sidebar() {
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
   const [customLabels, setCustomLabels] = useState<Record<string, string>>(loadCustomLabels);
-  const serverLoaded = useRef(false);
+  const lastAppliedTimestamp = useRef<string | null>(null);
 
   const { data: serverPrefs } = useQuery<any>({
     queryKey: ["/api/user-preferences"],
-    staleTime: 1000 * 60 * 10,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const { data: overdueCounts } = useQuery<{ costs: number; subleases: number }>({
@@ -418,8 +419,10 @@ export function Sidebar() {
   });
 
   useEffect(() => {
-    if (!serverPrefs || serverLoaded.current) return;
-    serverLoaded.current = true;
+    if (!serverPrefs) return;
+    const serverTimestamp = serverPrefs.updatedAt || "";
+    if (lastAppliedTimestamp.current === serverTimestamp) return;
+    lastAppliedTimestamp.current = serverTimestamp;
     try {
       if (serverPrefs.sidebarLayout) {
         const parsed = JSON.parse(serverPrefs.sidebarLayout);
