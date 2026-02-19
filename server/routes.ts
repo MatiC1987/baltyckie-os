@@ -1105,6 +1105,8 @@ export async function registerRoutes(
       const data = { ...req.body };
       if (data.rentAmount === "" || data.rentAmount === undefined) data.rentAmount = null;
       if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
+      if (data.depositAmount === "" || data.depositAmount === undefined) data.depositAmount = null;
+      if (data.depositReturnDate === "") data.depositReturnDate = null;
       const updated = await storage.updateSublease(Number(req.params.id), data);
       logActivity(req, "update", "sublease", updated.id);
       res.status(200).json(updated);

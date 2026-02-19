@@ -981,6 +981,7 @@ export default function Subleases() {
   const [pdfImportOpen, setPdfImportOpen] = useState(false);
   const [pdfImportStep, setPdfImportStep] = useState<"upload" | "loading" | "review">("upload");
   const [pdfExtracted, setPdfExtracted] = useState<Record<string, any> | null>(null);
+  const [pdfImportFiles, setPdfImportFiles] = useState<File[]>([]);
   const [pdfImportForm, setPdfImportForm] = useState<Record<string, any>>({});
 
   const { data: subleases = [], isLoading } = useQuery<Sublease[]>({
@@ -1041,6 +1042,7 @@ export default function Subleases() {
 
   const handlePdfUpload = async (fileList: FileList) => {
     setPdfImportStep("loading");
+    setPdfImportFiles(Array.from(fileList));
     try {
       const formData = new FormData();
       for (let i = 0; i < fileList.length; i++) {
@@ -1064,6 +1066,7 @@ export default function Subleases() {
                addr.includes(a.address?.toLowerCase() || "___");
       });
 
+      const mainEmail = extracted.email || "";
       setPdfImportForm({
         tenantType: extracted.tenantType || "osoba_fizyczna",
         firstName: extracted.firstName || "",
@@ -1075,7 +1078,8 @@ export default function Subleases() {
         postalCode: extracted.postalCode || "",
         city: extracted.city || "",
         phone: extracted.phone || "",
-        email: extracted.email || "",
+        email: mainEmail,
+        invoiceEmail: extracted.invoiceEmail || mainEmail,
         vatRate: extracted.vatRate || "23%",
         apartmentId: matchedApartment?.id || null,
         apartmentIds: matchedApartment ? [matchedApartment.id] : [],
@@ -1132,10 +1136,42 @@ export default function Subleases() {
             toast({ title: "Uwaga", description: "Umowa zapisana, ale nie udalo sie dodac czesci harmonogramu", variant: "destructive" });
           }
         }
+        if (subleaseId && pdfImportFiles.length > 0) {
+          try {
+            for (const file of pdfImportFiles) {
+              const fileName = file.name;
+              const fileType = file.type || "application/octet-stream";
+              const urlRes = await fetch("/api/uploads/request-url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: fileName, size: file.size, contentType: fileType }),
+              });
+              if (!urlRes.ok) continue;
+              const { uploadURL, objectPath } = await urlRes.json();
+              const uploadRes = await fetch(uploadURL, {
+                method: "PUT",
+                body: file,
+                headers: { "Content-Type": fileType },
+              });
+              if (!uploadRes.ok) continue;
+              await fetch(`/api/subleases/${subleaseId}/attachments`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ fileName, objectPath, fileType, category: "UMOWA" }),
+              });
+            }
+            queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'attachments'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
+          } catch (err: any) {
+            toast({ title: "Uwaga", description: "Umowa zapisana, ale nie udalo sie dodac zalacznikow", variant: "destructive" });
+          }
+        }
         setPdfImportOpen(false);
         setPdfImportStep("upload");
         setPdfExtracted(null);
         setPdfPaymentSchedule([]);
+        setPdfImportFiles([]);
       },
     });
   };
