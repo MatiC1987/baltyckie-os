@@ -203,37 +203,28 @@ function saveCollapsed(collapsed: Set<string>) {
 }
 
 function reconcileLayout(stored: { sections: NavSection[] }): SidebarLayout {
-  const allDefaultIds = Object.keys(DEFAULT_ITEMS);
-  const storedIds = new Set(stored.sections.flatMap(s => s.itemIds));
-  const missingIds = allDefaultIds.filter(id => !storedIds.has(id));
-  if (missingIds.length > 0) {
-    const lastSection = stored.sections[stored.sections.length - 1];
-    if (lastSection) {
-      lastSection.itemIds.push(...missingIds);
-    }
-  }
-  const defaultTitles = Object.fromEntries(DEFAULT_SECTIONS.map(s => [s.id, s.title]));
-  const storedSectionIds = new Set(stored.sections.map(s => s.id));
-  const missingSections = DEFAULT_SECTIONS.filter(s => !storedSectionIds.has(s.id));
-  let sections = stored.sections.map(s => ({
-    ...s,
-    title: defaultTitles[s.id] !== undefined ? defaultTitles[s.id] : s.title,
-  }));
-  for (const ms of missingSections) {
-    const defaultIdx = DEFAULT_SECTIONS.findIndex(s => s.id === ms.id);
-    const insertAt = Math.min(defaultIdx, sections.length);
-    sections.splice(insertAt, 0, { ...ms });
-  }
-  const validIds = new Set(allDefaultIds);
+  const allDefaultIds = new Set(Object.keys(DEFAULT_ITEMS));
+  const validSectionIds = new Set(DEFAULT_SECTIONS.map(s => s.id));
+
+  const validStoredSections = stored.sections.filter(s => validSectionIds.has(s.id));
+
   const seen = new Set<string>();
-  sections = sections.map(s => ({
-    ...s,
-    itemIds: s.itemIds.filter(id => {
-      if (!validIds.has(id) || seen.has(id)) return false;
+  let sections: NavSection[] = DEFAULT_SECTIONS.map(ds => {
+    const match = validStoredSections.find(s => s.id === ds.id);
+    const itemIds = (match ? match.itemIds : ds.itemIds).filter(id => {
+      if (!allDefaultIds.has(id) || seen.has(id)) return false;
       seen.add(id);
       return true;
-    }),
-  }));
+    });
+    return { id: ds.id, title: ds.title, itemIds };
+  });
+
+  const orphaned = [...allDefaultIds].filter(id => !seen.has(id));
+  if (orphaned.length > 0 && sections.length > 0) {
+    sections[sections.length - 1].itemIds.push(...orphaned);
+  }
+
+  sections = sections.filter(s => s.itemIds.length > 0);
   return { sections, items: { ...DEFAULT_ITEMS } };
 }
 
