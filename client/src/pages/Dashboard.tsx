@@ -199,7 +199,7 @@ export default function Dashboard() {
         </TabsList>
 
         <TabsContent value="unpaid-arrivals">
-          <UnpaidArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
+          <UnpaidArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} />
         </TabsContent>
 
         <TabsContent value="upcoming-arrivals">
@@ -346,7 +346,7 @@ function CompanyBalanceCard({
   );
 }
 
-function UnpaidArrivalsTab({ reservations, apartments, isLoading }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean }) {
+function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean; reminders?: { expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[]; overdueCosts: number; overdueSubleasePayments: number; upcomingArrivals: number; expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[] } }) {
   const [sortField, setSortField] = useState<SortField>("endDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 

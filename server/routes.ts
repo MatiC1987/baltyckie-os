@@ -195,7 +195,8 @@ export async function registerRoutes(
         id: medicalExams.id,
         examName: medicalExams.examName,
         validUntil: medicalExams.validUntil,
-        employeeName: employees.name,
+        employeeFirstName: employees.firstName,
+        employeeLastName: employees.lastName,
       })
         .from(medicalExams)
         .innerJoin(employees, eq(medicalExams.employeeId, employees.id))
@@ -241,7 +242,12 @@ export async function registerRoutes(
         .where(and(lte(subleases.endDate, in30days), gte(subleases.endDate, today)));
 
       res.json({
-        expiringExams,
+        expiringExams: expiringExams.map(e => ({
+          id: e.id,
+          examName: e.examName,
+          validUntil: e.validUntil,
+          employeeName: `${e.employeeFirstName} ${e.employeeLastName}`,
+        })),
         overdueCosts: Number(overdueCosts[0]?.count || 0),
         overdueSubleasePayments: Number(overdueSublease[0]?.count || 0),
         upcomingArrivals: upcomingArrivals.length,
