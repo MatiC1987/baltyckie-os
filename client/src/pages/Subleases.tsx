@@ -1572,7 +1572,7 @@ export default function Subleases() {
                       <Label className="text-sm font-medium">Harmonogram oplat ({pdfPaymentSchedule.length})</Label>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {(pdfImportForm.apartmentIds || []).length > 1 && (
+                      {(pdfImportForm.apartmentIds || []).length > 1 && !pdfPaymentSchedule.some(r => r.apartmentId) && (
                         <Button
                           variant="outline"
                           size="sm"
