@@ -10,7 +10,7 @@ import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
-  FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare
+  FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -833,7 +833,7 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
               <div className="flex items-center gap-3 min-w-0">
                 <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                 <div className="min-w-0">
-                  <a href={att.objectPath} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:underline truncate block">
+                  <a href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:underline truncate block">
                     {att.fileName}
                   </a>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1382,13 +1382,26 @@ export default function Subleases() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['/api/subleases'] }); },
   });
 
+  const [meterReminderOpen, setMeterReminderOpen] = useState(false);
+  const [pendingConfirmId, setPendingConfirmId] = useState<number | null>(null);
+
   const confirmSigningMut = useMutation({
     mutationFn: async (id: number) => apiRequest('PUT', `/api/subleases/${id}`, { status: "AKTYWNA" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
       toast({ title: "Sukces", description: "Umowa potwierdzona jako aktywna" });
+      setPendingConfirmId(null);
     },
   });
+
+  const handleConfirmSigning = (s: Sublease) => {
+    if (s.mediaByMeters) {
+      setPendingConfirmId(s.id);
+      setMeterReminderOpen(true);
+    } else {
+      confirmSigningMut.mutate(s.id);
+    }
+  };
 
   const handleGenerateContract = async () => {
     if (!selectedTemplateId) {
@@ -1421,35 +1434,8 @@ export default function Subleases() {
       link.click();
       URL.revokeObjectURL(url);
 
-      const { tenantType, firstName, lastName, companyName, nip, street, postalCode, city, peselOrPassport, phone, email, invoiceEmail, vatRate, apartmentId, apartmentIds, startDate, endDate, rentAmount, additionalFees, mediaByMeters, hasDeposit, depositAmount, depositReturnDate } = generateForm;
-      const subleaseData: Record<string, any> = {
-        tenantType: tenantType || "osoba_fizyczna",
-        firstName: firstName || null,
-        lastName: lastName || null,
-        companyName: companyName || null,
-        nip: nip || null,
-        street: street || null,
-        postalCode: postalCode || null,
-        city: city || null,
-        peselOrPassport: peselOrPassport || null,
-        phone: phone || null,
-        email: email || null,
-        invoiceEmail: invoiceEmail || null,
-        vatRate: vatRate || "23%",
-        apartmentId: apartmentId || (apartmentIds?.length ? apartmentIds[0] : null),
-        apartmentIds: apartmentIds || (apartmentId ? [apartmentId] : null),
-        startDate,
-        endDate,
-        rentAmount: rentAmount || null,
-        additionalFees: additionalFees || null,
-        mediaByMeters: mediaByMeters || false,
-        hasDeposit: hasDeposit || false,
-        depositAmount: depositAmount || null,
-        depositReturnDate: depositReturnDate || null,
-        status: "W_TRAKCIE_PODPISYWANIA",
-      };
-      await apiRequest('POST', '/api/subleases', subleaseData);
       queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
       toast({ title: "Sukces", description: "Wygenerowano umowę i dodano do podpisywania" });
       setGenerateOpen(false);
       setGenerateForm({ tenantType: "osoba_fizyczna", startDate: "", endDate: "" });
@@ -1612,6 +1598,7 @@ export default function Subleases() {
                         <TableHead>Do</TableHead>
                         <TableHead>Czynsz</TableHead>
                         <TableHead>Przygotowano</TableHead>
+                        <TableHead>Dokument</TableHead>
                         <TableHead>Komentarz</TableHead>
                         <TableHead className="w-[140px]"></TableHead>
                       </TableRow>
@@ -1650,6 +1637,24 @@ export default function Subleases() {
                               ) : <span className="text-muted-foreground text-xs">—</span>}
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
+                              {(() => {
+                                const atts = allAttachments.filter(a => a.subleaseId === s.id);
+                                if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+                                return (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    {atts.map(att => (
+                                      <a key={att.id} href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                        <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                                          <FileText className="h-3 w-3" />
+                                          {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
+                                        </Badge>
+                                      </a>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
                               {editingComment?.id === s.id ? (
                                 <div className="flex items-center gap-1">
                                   <Input
@@ -1682,7 +1687,7 @@ export default function Subleases() {
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                <Button size="sm" variant="default" onClick={() => confirmSigningMut.mutate(s.id)} data-testid={`button-confirm-signing-${s.id}`}>
+                                <Button size="sm" variant="default" onClick={() => handleConfirmSigning(s)} data-testid={`button-confirm-signing-${s.id}`}>
                                   <CheckCircle2 className="h-3 w-3 mr-1" /> Potwierdź
                                 </Button>
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
@@ -1787,7 +1792,7 @@ export default function Subleases() {
                               return (
                                 <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
                                   {atts.map(att => (
-                                    <a key={att.id} href={att.objectPath} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                    <a key={att.id} href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
                                       <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
                                         <FileText className="h-3 w-3" />
                                         {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
@@ -1884,7 +1889,7 @@ export default function Subleases() {
                               return (
                                 <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
                                   {atts.map(att => (
-                                    <a key={att.id} href={att.objectPath} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                    <a key={att.id} href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
                                       <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
                                         <FileText className="h-3 w-3" />
                                         {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
@@ -2217,6 +2222,41 @@ export default function Subleases() {
             <Button onClick={handleGenerateContract} disabled={generating} data-testid="button-do-generate">
               {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FilePlus2 className="h-4 w-4 mr-1" />}
               Generuj i zapisz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={meterReminderOpen} onOpenChange={setMeterReminderOpen}>
+        <DialogContent className="max-w-md">
+          <div className="flex flex-col items-center text-center gap-4 py-4">
+            <div className="rounded-full bg-amber-500/20 p-4">
+              <AlertTriangle className="h-12 w-12 text-amber-500" />
+            </div>
+            <DialogTitle className="text-xl">Spisz liczniki!</DialogTitle>
+            <DialogDescription className="text-base leading-relaxed">
+              Ta umowa ma zaznaczone rozliczanie mediow wedlug zuzycia licznikowego.
+              <span className="block mt-2 font-semibold text-foreground">
+                Przed potwierdzeniem podpisania umowy upewnij sie, ze spisano stany licznikow na dzien rozpoczecia umowy.
+              </span>
+            </DialogDescription>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => { setMeterReminderOpen(false); setPendingConfirmId(null); }} data-testid="button-cancel-meter-reminder">
+              Anuluj
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                if (pendingConfirmId) {
+                  confirmSigningMut.mutate(pendingConfirmId);
+                }
+                setMeterReminderOpen(false);
+              }}
+              data-testid="button-confirm-meter-reminder"
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1" />
+              Liczniki spisane - potwierdz
             </Button>
           </DialogFooter>
         </DialogContent>

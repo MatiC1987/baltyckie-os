@@ -1216,7 +1216,7 @@ export async function registerRoutes(
       const template = templates.find(t => t.id === templateId);
       if (!template) return res.status(404).json({ message: "Szablon nie znaleziony" });
 
-      const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
       const osService = new ObjectStorageService();
       const objectFile = await osService.getObjectEntityFile(template.objectPath);
       const [fileBuffer] = await objectFile.download();
@@ -1301,8 +1301,69 @@ export async function registerRoutes(
         : `${data.firstName || ''}_${data.lastName || ''}`.trim();
       const fileName = `Umowa_podnajem_${tenantName}_${new Date().toISOString().slice(0, 10)}.docx`;
 
+      // Create the sublease record
+      const subleaseData: any = {
+        tenantType: data.tenantType || "osoba_fizyczna",
+        firstName: data.firstName || null,
+        lastName: data.lastName || null,
+        companyName: data.companyName || null,
+        nip: data.nip || null,
+        street: data.street || null,
+        postalCode: data.postalCode || null,
+        city: data.city || null,
+        peselOrPassport: data.peselOrPassport || null,
+        phone: data.phone || null,
+        email: data.email || null,
+        invoiceEmail: data.invoiceEmail || null,
+        vatRate: data.vatRate || "23%",
+        apartmentId: data.apartmentId || (data.apartmentIds?.length ? data.apartmentIds[0] : null),
+        apartmentIds: data.apartmentIds || (data.apartmentId ? [data.apartmentId] : null),
+        startDate: data.startDate,
+        endDate: data.endDate,
+        rentAmount: data.rentAmount || null,
+        additionalFees: data.additionalFees || null,
+        mediaByMeters: data.mediaByMeters || false,
+        hasDeposit: data.hasDeposit || false,
+        depositAmount: data.depositAmount || null,
+        depositReturnDate: data.depositReturnDate || null,
+        status: "W_TRAKCIE_PODPISYWANIA",
+        preparedAt: new Date(),
+      };
+      if (subleaseData.rentAmount === "") subleaseData.rentAmount = null;
+      if (subleaseData.additionalFees === "") subleaseData.additionalFees = null;
+      if (subleaseData.depositAmount === "") subleaseData.depositAmount = null;
+      if (subleaseData.depositReturnDate === "") subleaseData.depositReturnDate = null;
+      const parsed = insertSubleaseSchema.parse(subleaseData);
+      const created = await storage.createSublease(parsed);
+
+      // Save generated document to Object Storage
+      const privateDir = osService.getPrivateObjectDir();
+      const storagePath = `${privateDir}/contracts/${created.id}_${fileName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(buf, { contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+
+      const objectPath = `/objects/contracts/${created.id}_${fileName}`;
+
+      // Create attachment record
+      await storage.createSubleaseAttachment({
+        subleaseId: created.id,
+        fileName,
+        objectPath,
+        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        category: "UMOWA",
+      });
+
+      logActivity(req, "create", "sublease", created.id, parsed.firstName ? `${parsed.firstName} ${parsed.lastName || ""}` : parsed.companyName || undefined);
+
+      // Return file as download + sublease info in header
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("X-Sublease-Id", String(created.id));
       res.send(buf);
     } catch (error: any) {
       console.error("Error generating contract:", error);
@@ -1335,6 +1396,22 @@ export async function registerRoutes(
       res.status(201).json(att);
     } catch (err: any) {
       res.status(500).json({ message: "Błąd zapisu załącznika" });
+    }
+  });
+
+  app.get('/api/sublease-attachments/:id/download', isAuthenticated, async (req, res) => {
+    try {
+      const atts = await storage.getAllSubleaseAttachments();
+      const att = atts.find(a => a.id === Number(req.params.id));
+      if (!att) return res.status(404).json({ message: "Załącznik nie znaleziony" });
+      const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const os = new ObjectStorageService();
+      const objectFile = await os.getObjectEntityFile(att.objectPath);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(att.fileName)}"`);
+      await os.downloadObject(objectFile, res, 0);
+    } catch (err: any) {
+      console.error("Download attachment error:", err);
+      res.status(500).json({ message: "Błąd pobierania załącznika" });
     }
   });
 
