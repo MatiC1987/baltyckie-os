@@ -10,7 +10,7 @@ import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
-  FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle
+  FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle, Zap, Droplets
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -1420,7 +1420,17 @@ export default function Subleases() {
   });
 
   const [meterReminderOpen, setMeterReminderOpen] = useState(false);
+  const [meterReminderStep, setMeterReminderStep] = useState<"ask" | "form">("ask");
   const [pendingConfirmId, setPendingConfirmId] = useState<number | null>(null);
+  const [initialMeters, setInitialMeters] = useState({
+    energia_odczyt: "",
+    energia_stawka: "",
+    woda_ciepla_odczyt: "",
+    woda_ciepla_stawka: "",
+    woda_zimna_odczyt: "",
+    woda_zimna_stawka: "",
+  });
+  const [savingMeters, setSavingMeters] = useState(false);
 
   const confirmSigningMut = useMutation({
     mutationFn: async (id: number) => apiRequest('PUT', `/api/subleases/${id}`, { status: "AKTYWNA" }),
@@ -1434,9 +1444,48 @@ export default function Subleases() {
   const handleConfirmSigning = (s: Sublease) => {
     if (s.mediaByMeters) {
       setPendingConfirmId(s.id);
+      setMeterReminderStep("ask");
+      setInitialMeters({ energia_odczyt: "", energia_stawka: "", woda_ciepla_odczyt: "", woda_ciepla_stawka: "", woda_zimna_odczyt: "", woda_zimna_stawka: "" });
       setMeterReminderOpen(true);
     } else {
       confirmSigningMut.mutate(s.id);
+    }
+  };
+
+  const saveMeterReadingsAndConfirm = async () => {
+    if (!pendingConfirmId) return;
+    setSavingMeters(true);
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const types = [
+        { type: "energia", reading: initialMeters.energia_odczyt, price: initialMeters.energia_stawka },
+        { type: "woda_ciepla", reading: initialMeters.woda_ciepla_odczyt, price: initialMeters.woda_ciepla_stawka },
+        { type: "woda_zimna", reading: initialMeters.woda_zimna_odczyt, price: initialMeters.woda_zimna_stawka },
+      ];
+      for (const { type, reading, price } of types) {
+        if (reading) {
+          await apiRequest('POST', `/api/subleases/${pendingConfirmId}/meter-settings`, {
+            meterType: type,
+            initialReading: reading,
+            initialDate: todayStr,
+            unitPrice: price || null,
+          });
+        }
+        if (price) {
+          await apiRequest('POST', `/api/subleases/${pendingConfirmId}/meter-prices`, {
+            meterType: type,
+            unitPrice: price,
+            validFrom: todayStr,
+          });
+        }
+      }
+      confirmSigningMut.mutate(pendingConfirmId);
+      setMeterReminderOpen(false);
+      toast({ title: "Sukces", description: "Zapisano stany poczatkowe licznikow" });
+    } catch (err: any) {
+      toast({ title: "Blad", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingMeters(false);
     }
   };
 
@@ -2264,38 +2313,166 @@ export default function Subleases() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={meterReminderOpen} onOpenChange={setMeterReminderOpen}>
-        <DialogContent className="max-w-md">
-          <div className="flex flex-col items-center text-center gap-4 py-4">
-            <div className="rounded-full bg-amber-500/20 p-4">
-              <AlertTriangle className="h-12 w-12 text-amber-500" />
-            </div>
-            <DialogTitle className="text-xl">Spisz liczniki!</DialogTitle>
-            <DialogDescription className="text-base leading-relaxed">
-              Ta umowa ma zaznaczone rozliczanie mediow wedlug zuzycia licznikowego.
-              <span className="block mt-2 font-semibold text-foreground">
-                Przed potwierdzeniem podpisania umowy upewnij sie, ze spisano stany licznikow na dzien rozpoczecia umowy.
-              </span>
-            </DialogDescription>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => { setMeterReminderOpen(false); setPendingConfirmId(null); }} data-testid="button-cancel-meter-reminder">
-              Anuluj
-            </Button>
-            <Button
-              variant="default"
-              onClick={() => {
-                if (pendingConfirmId) {
-                  confirmSigningMut.mutate(pendingConfirmId);
-                }
-                setMeterReminderOpen(false);
-              }}
-              data-testid="button-confirm-meter-reminder"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1" />
-              Liczniki spisane - potwierdz
-            </Button>
-          </DialogFooter>
+      <Dialog open={meterReminderOpen} onOpenChange={(open) => { if (!open) { setMeterReminderOpen(false); setPendingConfirmId(null); } }}>
+        <DialogContent className="max-w-lg">
+          {meterReminderStep === "ask" ? (
+            <>
+              <div className="flex flex-col items-center text-center gap-4 py-4">
+                <div className="rounded-full bg-amber-500/20 p-4">
+                  <AlertTriangle className="h-12 w-12 text-amber-500" />
+                </div>
+                <DialogTitle className="text-xl">Spisz liczniki!</DialogTitle>
+                <DialogDescription className="text-base leading-relaxed">
+                  Ta umowa ma zaznaczone rozliczanie mediow wedlug zuzycia licznikowego.
+                  <span className="block mt-2 font-semibold text-foreground">
+                    Czy chcesz teraz wprowadzic stany poczatkowe licznikow i stawki jednostkowe?
+                  </span>
+                  <span className="block mt-1 text-sm text-muted-foreground">
+                    Mozesz rowniez wprowadzic je pozniej w szczegolach umowy.
+                  </span>
+                </DialogDescription>
+              </div>
+              <DialogFooter className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="outline" onClick={() => { setMeterReminderOpen(false); setPendingConfirmId(null); }} data-testid="button-cancel-meter-reminder">
+                  Anuluj
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (pendingConfirmId) confirmSigningMut.mutate(pendingConfirmId);
+                    setMeterReminderOpen(false);
+                  }}
+                  data-testid="button-skip-meters"
+                >
+                  Wprowadze pozniej
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => setMeterReminderStep("form")}
+                  data-testid="button-enter-meters"
+                >
+                  Wprowadz teraz
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Stany poczatkowe licznikow</DialogTitle>
+                <DialogDescription>
+                  Wprowadz odczyty licznikow oraz stawki jednostkowe na dzien dzisiejszy ({format(new Date(), "dd.MM.yyyy", { locale: pl })}).
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Zap className="h-4 w-4 text-amber-500" />
+                    Energia elektryczna
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Stan licznika (kWh)</Label>
+                      <Input
+                        type="number"
+                        step="0.001"
+                        placeholder="np. 12345.678"
+                        value={initialMeters.energia_odczyt}
+                        onChange={(e) => setInitialMeters({ ...initialMeters, energia_odczyt: e.target.value })}
+                        data-testid="input-meter-energia-reading"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Stawka (PLN/kWh)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        placeholder="np. 0.85"
+                        value={initialMeters.energia_stawka}
+                        onChange={(e) => setInitialMeters({ ...initialMeters, energia_stawka: e.target.value })}
+                        data-testid="input-meter-energia-price"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Droplets className="h-4 w-4 text-red-400" />
+                    Woda ciepla
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Stan licznika (m3)</Label>
+                      <Input
+                        type="number"
+                        step="0.001"
+                        placeholder="np. 123.456"
+                        value={initialMeters.woda_ciepla_odczyt}
+                        onChange={(e) => setInitialMeters({ ...initialMeters, woda_ciepla_odczyt: e.target.value })}
+                        data-testid="input-meter-woda-ciepla-reading"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Stawka (PLN/m3)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        placeholder="np. 25.00"
+                        value={initialMeters.woda_ciepla_stawka}
+                        onChange={(e) => setInitialMeters({ ...initialMeters, woda_ciepla_stawka: e.target.value })}
+                        data-testid="input-meter-woda-ciepla-price"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Droplets className="h-4 w-4 text-blue-400" />
+                    Woda zimna
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Stan licznika (m3)</Label>
+                      <Input
+                        type="number"
+                        step="0.001"
+                        placeholder="np. 234.567"
+                        value={initialMeters.woda_zimna_odczyt}
+                        onChange={(e) => setInitialMeters({ ...initialMeters, woda_zimna_odczyt: e.target.value })}
+                        data-testid="input-meter-woda-zimna-reading"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Stawka (PLN/m3)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        placeholder="np. 12.00"
+                        value={initialMeters.woda_zimna_stawka}
+                        onChange={(e) => setInitialMeters({ ...initialMeters, woda_zimna_stawka: e.target.value })}
+                        data-testid="input-meter-woda-zimna-price"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="outline" onClick={() => setMeterReminderStep("ask")} data-testid="button-back-meter-form">
+                  Wstecz
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={saveMeterReadingsAndConfirm}
+                  disabled={savingMeters}
+                  data-testid="button-save-meters-confirm"
+                >
+                  {savingMeters ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+                  Zapisz i potwierdz podpisanie
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
