@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { Apartment, Location } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -159,6 +161,68 @@ export default function Revenue() {
           ))}
         </TabsList>
       </Tabs>
+
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" data-testid="grid-revenue-cards">
+        {MONTHS.map((mName, mi) => {
+          const t = locationTotals[mi];
+          const pct = t.prognoza > 0 ? t.przychody / t.prognoza : 0;
+          const saldo = t.przychody - t.prognoza;
+          const doplaty = t.doplaty_najem + t.doplaty_podnajem;
+          const now = new Date();
+          const isCurrentMonth = year === now.getFullYear() && mi === now.getMonth();
+          const isPastMonth = year < now.getFullYear() || (year === now.getFullYear() && mi < now.getMonth());
+          return (
+            <Card key={mi} className={isCurrentMonth ? "border-primary/30" : isPastMonth ? "opacity-75" : ""} data-testid={`card-revenue-month-${mi}`}>
+              <CardHeader className="pb-1 pt-3 px-3">
+                <CardTitle className="text-sm flex items-center justify-between gap-2 flex-wrap">
+                  <span>{mName}</span>
+                  {isCurrentMonth && <Badge variant="outline" className="text-[10px]">Bieżący</Badge>}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1.5 pb-3 px-3">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Prognoza</span>
+                  <span className="font-medium tabular-nums">{t.prognoza > 0 ? formatNum(t.prognoza) + " zł" : "—"}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Przychody</span>
+                  <span className="font-bold tabular-nums">{t.przychody > 0 ? formatNum(t.przychody) + " zł" : "—"}</span>
+                </div>
+                {(t.najem > 0 || t.podnajem > 0) && (
+                  <div className="pl-2 border-l-2 border-muted space-y-0.5">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-muted-foreground">Najem</span>
+                      <span className="tabular-nums">{formatNum(t.najem)} zł</span>
+                    </div>
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-muted-foreground">Podnajem</span>
+                      <span className="tabular-nums">{formatNum(t.podnajem)} zł</span>
+                    </div>
+                  </div>
+                )}
+                {t.prognoza > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Realizacja</span>
+                    <span className={`font-bold tabular-nums ${pctColor(pct)}`}>{formatPct(pct)}</span>
+                  </div>
+                )}
+                {saldo !== 0 && t.prognoza > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Saldo</span>
+                    <span className={`tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)} zł</span>
+                  </div>
+                )}
+                {doplaty > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-amber-700 dark:text-amber-400">Dopłaty</span>
+                    <span className="tabular-nums text-amber-700 dark:text-amber-400">{formatNum(doplaty)} zł</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-revenue">
         <table className="w-full text-xs border-collapse">
