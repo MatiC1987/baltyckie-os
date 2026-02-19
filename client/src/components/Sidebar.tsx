@@ -375,7 +375,7 @@ function SortableNavItem({ item, isActive, onClick, onRename, badgeCount }: { it
               style={isActive ? { backgroundColor: "#5ADBFA", boxShadow: "0 4px 14px rgba(90, 219, 250, 0.3)" } : undefined}
             >
               <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-white" : "text-slate-400 group-hover/navitem:text-white")} />
-              <span className="font-medium text-xs truncate">{item.label}</span>
+              <span className="font-medium text-xs leading-tight">{item.label}</span>
               {badgeCount && badgeCount > 0 ? (
                 <span className="ml-auto shrink-0 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" data-testid={`badge-overdue-${item.id}`}>
                   {badgeCount > 99 ? "99+" : badgeCount}
