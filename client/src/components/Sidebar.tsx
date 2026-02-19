@@ -144,52 +144,30 @@ const ICON_MAP: Record<string, any> = {
 };
 
 const DEFAULT_ITEMS: Record<string, NavItem> = {
-  kokpit: { id: "kokpit", href: "/", label: "Kokpit", iconName: "LayoutDashboard" },
+  kokpit: { id: "kokpit", href: "/", label: "Pulpit", iconName: "LayoutDashboard" },
   calendar: { id: "calendar", href: "/calendar", label: "Terminarz", iconName: "CalendarDays" },
   reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
-  arrivals: { id: "arrivals", href: "/arrivals", label: "Przyjazdy", iconName: "Plane" },
-  "import-export": { id: "import-export", href: "/import-export", label: "Import & Eksport", iconName: "ArrowUpDown" },
   "revenue": { id: "revenue", href: "/revenue", label: "Przychody", iconName: "Wallet" },
-  "finance-forecast": { id: "finance-forecast", href: "/finance-forecast", label: "Finanse / Prognoza", iconName: "TrendingUp" },
-  "costs-apartments": { id: "costs-apartments", href: "/costs-apartments", label: "Koszty apartamentów", iconName: "Calculator" },
-  "costs-expenses": { id: "costs-expenses", href: "/costs-expenses", label: "Opłaty", iconName: "Receipt" },
+  "finance-forecast": { id: "finance-forecast", href: "/finance-forecast", label: "Prognoza finansowa", iconName: "TrendingUp" },
+  "koszty": { id: "koszty", href: "/koszty", label: "Koszty", iconName: "Calculator" },
   invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
   "apartment-schedule": { id: "apartment-schedule", href: "/apartment-schedule", label: "Harmonogram", iconName: "CalendarCheck" },
-  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
-  "contracts-subrent": { id: "contracts-subrent", href: "/contracts-subrent", label: "Umowy podnajem", iconName: "FileSignature" },
-  "subrent-settlement": { id: "subrent-settlement", href: "/subrent-settlement", label: "Rozliczenie", iconName: "HandCoins" },
-  "subrent-media": { id: "subrent-media", href: "/subrent-media", label: "Rozliczenie mediów", iconName: "Gauge" },
-  occupancy: { id: "occupancy", href: "/occupancy", label: "Obłożenie", iconName: "BarChart3" },
-  profitability: { id: "profitability", href: "/profitability", label: "Rentowność", iconName: "PieChart" },
-  "year-comparison": { id: "year-comparison", href: "/year-comparison", label: "Porównanie r/r", iconName: "ArrowUpDown" },
-  "apartment-comparison": { id: "apartment-comparison", href: "/apartment-comparison", label: "Porównanie apartamentów", iconName: "GitCompareArrows" },
-  "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
-  "cash-flow-forecast": { id: "cash-flow-forecast", href: "/cash-flow-forecast", label: "Przepływy pieniężne", iconName: "LineChart" },
-  apartments: { id: "apartments", href: "/apartments", label: "Apartamenty", iconName: "Building2" },
-  owners: { id: "owners", href: "/owners", label: "Właściciele", iconName: "Users" },
-  employees: { id: "employees", href: "/employees", label: "Pracownicy", iconName: "UserCog" },
-  locations: { id: "locations", href: "/locations", label: "Lokalizacje", iconName: "MapPin" },
-  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Umowy usługi", iconName: "Briefcase" },
+  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Umowy serwisowe", iconName: "Briefcase" },
   "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
-  reports: { id: "reports", href: "/reports", label: "Raporty PDF", iconName: "FileText" },
-  backup: { id: "backup", href: "/backup", label: "Backup danych", iconName: "DatabaseBackup" },
-  "document-templates": { id: "document-templates", href: "/document-templates", label: "Szablony dokumentów", iconName: "Files" },
-  "activity-log": { id: "activity-log", href: "/activity-log", label: "Historia zmian", iconName: "History" },
-  "user-accounts": { id: "user-accounts", href: "/user-accounts", label: "Konta użytkowników", iconName: "ScrollText" },
-  "company-settings": { id: "company-settings", href: "/company-settings", label: "Dane firmowe", iconName: "Building" },
+  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
+  podnajem: { id: "podnajem", href: "/podnajem", label: "Podnajem", iconName: "FileSignature" },
+  analizy: { id: "analizy", href: "/analizy", label: "Analizy", iconName: "BarChart3" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit", "calendar"] },
-  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals", "import-export"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "finance-forecast", "costs-apartments", "costs-expenses", "invoices", "apartment-schedule", "salda"] },
-  { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
-  { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "cash-flow-forecast"] },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "employees", "locations", "contracts-services"] },
-  { id: "narzedzia", title: "NARZĘDZIA", itemIds: ["dokumenty-ksiegowe", "reports", "backup", "document-templates", "company-settings", "activity-log", "user-accounts"] },
+  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations"] },
+  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "finance-forecast", "koszty", "invoices", "apartment-schedule", "contracts-services", "dokumenty-ksiegowe", "salda"] },
+  { id: "podnajem", title: "PODNAJEM", itemIds: ["podnajem"] },
+  { id: "analizy", title: "ANALIZY", itemIds: ["analizy"] },
 ];
 
-const STORAGE_KEY = "sidebar-layout-v3";
+const STORAGE_KEY = "sidebar-layout-v4";
 const COLLAPSED_KEY = "sidebar-collapsed-v1";
 const LABELS_KEY = "sidebar-custom-labels-v1";
 
@@ -510,12 +488,11 @@ export function Sidebar() {
     if (!overdueCounts) return {};
     const map: Record<string, number> = {};
     if (overdueCounts.costs > 0) {
-      map["costs-expenses"] = overdueCounts.costs;
+      map["koszty"] = overdueCounts.costs;
       map["apartment-schedule"] = overdueCounts.costs;
     }
     if (overdueCounts.subleases > 0) {
-      map["contracts-subrent"] = overdueCounts.subleases;
-      map["subrent-settlement"] = overdueCounts.subleases;
+      map["podnajem"] = overdueCounts.subleases;
     }
     return map;
   }, [overdueCounts]);
@@ -778,10 +755,26 @@ export function Sidebar() {
                 <span className="text-xs text-slate-400">Admin</span>
               </div>
             </div>
+            <Link href="/ustawienia">
+              <div
+                onClick={() => setIsOpen(false)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 cursor-pointer",
+                  location === "/ustawienia"
+                    ? "text-white shadow-lg"
+                    : "text-slate-400 hover:text-white hover:bg-white/10"
+                )}
+                style={location === "/ustawienia" ? { backgroundColor: "#5ADBFA", boxShadow: "0 4px 14px rgba(90, 219, 250, 0.3)" } : undefined}
+                data-testid="link-nav-ustawienia"
+              >
+                <Settings className="h-4 w-4" />
+                <span className="text-sm font-medium">Ustawienia</span>
+              </div>
+            </Link>
             <Button
               variant="ghost"
               onClick={toggleTheme}
-              className="w-full justify-start gap-3 text-slate-400 mb-2"
+              className="w-full justify-start gap-3 text-slate-400 mb-1"
               data-testid="button-toggle-theme"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

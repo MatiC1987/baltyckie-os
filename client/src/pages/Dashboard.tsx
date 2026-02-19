@@ -136,10 +136,10 @@ function QuickActions() {
   const [showReservationDialog, setShowReservationDialog] = useState(false);
   const actions = [
     { label: "Nowa rezerwacja", shortLabel: "Rezerwacja", icon: Plus, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", action: () => setShowReservationDialog(true), testId: "button-quick-reservation" },
-    { label: "Nowy wydatek", shortLabel: "Wydatek", icon: Receipt, color: "text-red-600 dark:text-red-400", bg: "bg-red-500/10", action: () => navigate("/costs-expenses?action=new"), testId: "button-quick-expense" },
-    { label: "Nowy podnajem", shortLabel: "Podnajem", icon: FileSignature, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", action: () => navigate("/contracts-subrent?action=new"), testId: "button-quick-sublease" },
+    { label: "Nowy wydatek", shortLabel: "Wydatek", icon: Receipt, color: "text-red-600 dark:text-red-400", bg: "bg-red-500/10", action: () => navigate("/koszty?tab=operacyjne&action=new"), testId: "button-quick-expense" },
+    { label: "Nowy podnajem", shortLabel: "Podnajem", icon: FileSignature, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", action: () => navigate("/podnajem?action=new"), testId: "button-quick-sublease" },
     { label: "Dodaj fakturę", shortLabel: "Faktura", icon: Receipt, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", action: () => navigate("/dokumenty-ksiegowe"), testId: "button-quick-cost-invoice" },
-    { label: "Backup danych", shortLabel: "Backup", icon: Download, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", action: () => navigate("/backup"), testId: "button-quick-backup" },
+    { label: "Backup danych", shortLabel: "Backup", icon: Download, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", action: () => navigate("/import-export"), testId: "button-quick-backup" },
   ];
   return (
     <>
@@ -592,7 +592,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
           </CardHeader>
           <CardContent className="space-y-2">
             {reminders!.overdueCosts > 0 && (
-              <Link href="/costs-expenses">
+              <Link href="/koszty">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-overdue-costs">
                   <FileWarning className="h-4 w-4 text-red-500 shrink-0" />
                   <span>Zaległe opłaty kosztów: <strong>{reminders!.overdueCosts}</strong></span>
@@ -600,7 +600,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
               </Link>
             )}
             {reminders!.overdueSubleasePayments > 0 && (
-              <Link href="/subrent-settlement">
+              <Link href="/podnajem">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-overdue-sublease">
                   <FileWarning className="h-4 w-4 text-red-500 shrink-0" />
                   <span>Zaległe płatności podnajmu: <strong>{reminders!.overdueSubleasePayments}</strong></span>
@@ -624,7 +624,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
               </Link>
             ))}
             {reminders!.expiringSubleases.map(sub => (
-              <Link key={sub.id} href="/contracts-subrent">
+              <Link key={sub.id} href="/podnajem">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-sublease-${sub.id}`}>
                   <CalendarClock className="h-4 w-4 text-amber-500 shrink-0" />
                   <span>Podnajem {sub.tenantName || "—"} kończy się {sub.endDate}</span>

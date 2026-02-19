@@ -97,7 +97,7 @@ export function GlobalSearch() {
           id: s.id,
           label: tenant,
           sublabel: "Podnajem",
-          href: "/contracts-subrent",
+          href: "/podnajem",
         });
       }
     });
