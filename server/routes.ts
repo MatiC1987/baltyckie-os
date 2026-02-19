@@ -1222,16 +1222,6 @@ export async function registerRoutes(
       const [fileBuffer] = await objectFile.download();
 
       const PizZip = (await import("pizzip")).default;
-      const Docxtemplater = (await import("docxtemplater")).default;
-
-      const zip = new PizZip(fileBuffer);
-      const nullGetter = () => "";
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        delimiters: { start: "{{", end: "}}" },
-        nullGetter,
-      });
 
       const aptIds: number[] = data.apartmentIds || (data.apartmentId ? [data.apartmentId] : []);
       const allApartments = await storage.getApartments();
@@ -1244,53 +1234,116 @@ export async function registerRoutes(
         return `${dd}.${m}.${y}`;
       };
 
+      const fullName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
+      const fullAddress = [data.street, data.postalCode, data.city].filter(Boolean).join(", ");
+
+      const replacements: Record<string, string> = {
+        "IMIĘ_I_NAZWISKO_NAJEMCY": fullName,
+        "IMIE_I_NAZWISKO_NAJEMCY": fullName,
+        "IMIĘ_NAZWISKO_NAJEMCY": fullName,
+        "IMIE_NAZWISKO_NAJEMCY": fullName,
+        "IMIĘ_NAZWISKO_REPREZENTANTA": fullName,
+        "IMIE_NAZWISKO_REPREZENTANTA": fullName,
+        "IMIĘ_NAZWISKO_WYNAJMUJĄCEGO": "",
+        "ADRES_NAJEMCY": fullAddress,
+        "ULICA_NAJEMCY": data.street || "",
+        "KOD_POCZTOWY_NAJEMCY": data.postalCode || "",
+        "MIEJSCOWOŚĆ_NAJEMCY": data.city || "",
+        "MIEJSCOWOSC_NAJEMCY": data.city || "",
+        "PESEL": data.peselOrPassport || "",
+        "NR_DOWODU": "",
+        "NAZWA_FIRMY_NAJEMCY": data.companyName || "",
+        "NIP_NAJEMCY": data.nip || "",
+        "REGON_NAJEMCY": "",
+        "NAZWA_FIRMY_WYNAJMUJĄCEGO": "",
+        "NAZWA_FIRMY_WYNAJMUJACEGO": "",
+        "ADRES_FIRMY": "",
+        "ULICA_WYNAJMUJĄCEGO": "",
+        "ULICA_WYNAJMUJACEGO": "",
+        "KOD_POCZTOWY_WYNAJMUJĄCEGO": "",
+        "KOD_POCZTOWY_WYNAJMUJACEGO": "",
+        "MIEJSCOWOŚĆ_WYNAJMUJĄCEGO": "",
+        "MIEJSCOWOSC_WYNAJMUJACEGO": "",
+        "NIP_WYNAJMUJĄCEGO": "",
+        "NIP_WYNAJMUJACEGO": "",
+        "NUMER_LOKALU": aptNames[0] || "",
+        "ADRES_LOKALU": aptNames.join(", "),
+        "MIEJSCOWOŚĆ": data.city || "",
+        "MIEJSCOWOSC": data.city || "",
+        "DATA_ZAWARCIA": formatDatePL(today.toISOString().slice(0, 10)),
+        "DATA_OD": formatDatePL(data.startDate || ""),
+        "DATA_DO": formatDatePL(data.endDate || ""),
+        "DATA_ROZPOCZECIA": formatDatePL(data.startDate || ""),
+        "DATA_ZAKONCZENIA": formatDatePL(data.endDate || ""),
+        "KWOTA_CZYNSZU": data.rentAmount ? Number(data.rentAmount).toFixed(2) : "",
+        "KWOTA_CZYNSZU_NETTO": data.rentAmount ? Number(data.rentAmount).toFixed(2) : "",
+        "KWOTA_VAT": data.vatRate || "23%",
+        "KWOTA_KAUCJI": data.depositAmount ? Number(data.depositAmount).toFixed(2) : "",
+        "NUMER_KONTA": "",
+        "DZIEŃ_PŁATNOŚCI": "",
+        "DZIEN_PLATNOSCI": "",
+        "LICZBA_DNI_ZALEGŁOŚCI": "",
+        "LICZBA_DNI_ZALEGLOSCI": "",
+        "DATA_PROPORCJONALNIE_OD": formatDatePL(data.startDate || ""),
+        "DATA_PROPORCJONALNIE_DO": formatDatePL(data.endDate || ""),
+        "DATA_CZYNSZ_OD": formatDatePL(data.startDate || ""),
+        "DATA_CZYNSZ_DO": formatDatePL(data.endDate || ""),
+        "KWOTA_PROPORCJONALNA": "",
+        "ADRES_RECEPCJI": "",
+        "ILOŚĆ_KOMPLETÓW_KLUCZY": "",
+        "ILOSC_KOMPLETOW_KLUCZY": "",
+        "SZCZEGÓŁY_HARMONOGRAMU": "",
+        "SZCZEGOLY_HARMONOGRAMU": "",
+      };
+
+      const zip = new PizZip(fileBuffer);
+      const xmlFiles = ["word/document.xml", "word/header1.xml", "word/header2.xml", "word/header3.xml", "word/footer1.xml", "word/footer2.xml", "word/footer3.xml"];
+      for (const xmlFile of xmlFiles) {
+        const entry = zip.files[xmlFile];
+        if (!entry) continue;
+        let xml = entry.asText();
+
+        for (const [placeholder, value] of Object.entries(replacements)) {
+          const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const pattern = new RegExp(`\\[${escaped}\\]`, 'g');
+          xml = xml.replace(pattern, value);
+
+          const chars = placeholder.split("");
+          const flexPattern = "\\[" + chars.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join("(?:</w:t></w:r><w:r[^>]*><w:t[^>]*>)?") + "\\]";
+          const flexRegex = new RegExp(flexPattern, 'g');
+          xml = xml.replace(flexRegex, value);
+        }
+
+        zip.file(xmlFile, xml);
+      }
+
+      const nullGetter = () => "";
+      const Docxtemplater = (await import("docxtemplater")).default;
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: "{{", end: "}}" },
+        nullGetter,
+      });
+
       const templateData: Record<string, string> = {
         ...data,
         imie: data.firstName || "",
         nazwisko: data.lastName || "",
-        imie_nazwisko: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+        imie_nazwisko: fullName,
         nazwa_firmy: data.companyName || "",
-        firma: data.companyName || "",
-        nip: data.nip || "",
-        ulica: data.street || "",
-        kod_pocztowy: data.postalCode || "",
-        miasto: data.city || "",
-        pesel: data.peselOrPassport || "",
-        pesel_paszport: data.peselOrPassport || "",
-        telefon: data.phone || "",
-        email: data.email || "",
-        email_faktury: data.invoiceEmail || "",
-        stawka_vat: data.vatRate || "23%",
         apartament: aptNames.join(", "),
         apartamenty: aptNames.join(", "),
-        nazwa_apartamentu: aptNames[0] || "",
         data_rozpoczecia: formatDatePL(data.startDate || ""),
         data_zakonczenia: formatDatePL(data.endDate || ""),
         data_od: formatDatePL(data.startDate || ""),
         data_do: formatDatePL(data.endDate || ""),
-        start_date: data.startDate || "",
-        end_date: data.endDate || "",
         czynsz: data.rentAmount ? Number(data.rentAmount).toFixed(2) : "",
         kwota_czynszu: data.rentAmount ? Number(data.rentAmount).toFixed(2) : "",
-        czynsz_slownie: "",
-        dodatkowe_oplaty: data.additionalFees ? Number(data.additionalFees).toFixed(2) : "",
         kaucja: data.depositAmount ? Number(data.depositAmount).toFixed(2) : "",
         kwota_kaucji: data.depositAmount ? Number(data.depositAmount).toFixed(2) : "",
-        data_zwrotu_kaucji: formatDatePL(data.depositReturnDate || ""),
         data_dzisiejsza: formatDatePL(today.toISOString().slice(0, 10)),
-        dzisiejsza_data: formatDatePL(today.toISOString().slice(0, 10)),
         data_umowy: formatDatePL(today.toISOString().slice(0, 10)),
-        typ_najemcy: data.tenantType === "firma" ? "Firma" : "Osoba fizyczna",
-        firstName: data.firstName || "",
-        lastName: data.lastName || "",
-        companyName: data.companyName || "",
-        street: data.street || "",
-        postalCode: data.postalCode || "",
-        city: data.city || "",
-        phone: data.phone || "",
-        rentAmount: data.rentAmount || "",
-        additionalFees: data.additionalFees || "",
-        depositAmount: data.depositAmount || "",
       };
 
       doc.render(templateData);
