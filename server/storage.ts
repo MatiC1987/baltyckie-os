@@ -21,6 +21,7 @@ import {
   subleases, Sublease, InsertSublease,
   subleasePayments, SubleasePayment, InsertSubleasePayment,
   subleaseAttachments, SubleaseAttachment, InsertSubleaseAttachment,
+  subleaseApartmentChanges, SubleaseApartmentChange, InsertSubleaseApartmentChange,
   subleaseMeterReadings, SubleaseMeterReading, InsertSubleaseMeterReading,
   subleaseMeterSettings, SubleaseMeterSetting, InsertSubleaseMeterSetting,
   subleaseMeterPrices, SubleaseMeterPrice, InsertSubleaseMeterPrice,
@@ -164,6 +165,12 @@ export interface IStorage {
   createSubleasePayment(payment: InsertSubleasePayment): Promise<SubleasePayment>;
   updateSubleasePayment(id: number, payment: Partial<InsertSubleasePayment>): Promise<SubleasePayment>;
   deleteSubleasePayment(id: number): Promise<void>;
+
+  // Sublease Apartment Changes
+  getAllSubleaseApartmentChanges(): Promise<SubleaseApartmentChange[]>;
+  getSubleaseApartmentChanges(subleaseId: number): Promise<SubleaseApartmentChange[]>;
+  createSubleaseApartmentChange(change: InsertSubleaseApartmentChange): Promise<SubleaseApartmentChange>;
+  deleteSubleaseApartmentChange(id: number): Promise<void>;
 
   // Sublease Attachments
   getSubleaseAttachments(subleaseId: number): Promise<SubleaseAttachment[]>;
@@ -797,6 +804,24 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSubleasePayment(id: number): Promise<void> {
     await db.delete(subleasePayments).where(eq(subleasePayments.id, id));
+  }
+
+  // Sublease Apartment Changes
+  async getAllSubleaseApartmentChanges(): Promise<SubleaseApartmentChange[]> {
+    return db.select().from(subleaseApartmentChanges).orderBy(subleaseApartmentChanges.changeDate);
+  }
+
+  async getSubleaseApartmentChanges(subleaseId: number): Promise<SubleaseApartmentChange[]> {
+    return db.select().from(subleaseApartmentChanges).where(eq(subleaseApartmentChanges.subleaseId, subleaseId)).orderBy(subleaseApartmentChanges.changeDate);
+  }
+
+  async createSubleaseApartmentChange(change: InsertSubleaseApartmentChange): Promise<SubleaseApartmentChange> {
+    const [created] = await db.insert(subleaseApartmentChanges).values(change).returning();
+    return created;
+  }
+
+  async deleteSubleaseApartmentChange(id: number): Promise<void> {
+    await db.delete(subleaseApartmentChanges).where(eq(subleaseApartmentChanges.id, id));
   }
 
   // Sublease Attachments

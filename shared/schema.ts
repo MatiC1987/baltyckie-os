@@ -427,10 +427,20 @@ export const subleaseAttachments = pgTable("sublease_attachments", {
   uploadedAt: timestamp("uploaded_at").defaultNow(),
 });
 
+export const subleaseApartmentChanges = pgTable("sublease_apartment_changes", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  oldApartmentId: integer("old_apartment_id").references(() => apartments.id).notNull(),
+  newApartmentId: integer("new_apartment_id").references(() => apartments.id).notNull(),
+  changeDate: date("change_date").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const subleasesRelations = relations(subleases, ({ one, many }) => ({
   apartment: one(apartments, { fields: [subleases.apartmentId], references: [apartments.id] }),
   payments: many(subleasePayments),
   attachments: many(subleaseAttachments),
+  apartmentChanges: many(subleaseApartmentChanges),
 }));
 
 export const subleasePaymentsRelations = relations(subleasePayments, ({ one }) => ({
@@ -439,6 +449,12 @@ export const subleasePaymentsRelations = relations(subleasePayments, ({ one }) =
 
 export const subleaseAttachmentsRelations = relations(subleaseAttachments, ({ one }) => ({
   sublease: one(subleases, { fields: [subleaseAttachments.subleaseId], references: [subleases.id] }),
+}));
+
+export const subleaseApartmentChangesRelations = relations(subleaseApartmentChanges, ({ one }) => ({
+  sublease: one(subleases, { fields: [subleaseApartmentChanges.subleaseId], references: [subleases.id] }),
+  oldApartment: one(apartments, { fields: [subleaseApartmentChanges.oldApartmentId], references: [apartments.id] }),
+  newApartment: one(apartments, { fields: [subleaseApartmentChanges.newApartmentId], references: [apartments.id] }),
 }));
 
 export const insertSubleaseSchema = createInsertSchema(subleases).omit({ id: true, createdAt: true });
@@ -452,6 +468,10 @@ export type InsertSubleasePayment = z.infer<typeof insertSubleasePaymentSchema>;
 export const insertSubleaseAttachmentSchema = createInsertSchema(subleaseAttachments).omit({ id: true, uploadedAt: true });
 export type SubleaseAttachment = typeof subleaseAttachments.$inferSelect;
 export type InsertSubleaseAttachment = z.infer<typeof insertSubleaseAttachmentSchema>;
+
+export const insertSubleaseApartmentChangeSchema = createInsertSchema(subleaseApartmentChanges).omit({ id: true, createdAt: true });
+export type SubleaseApartmentChange = typeof subleaseApartmentChanges.$inferSelect;
+export type InsertSubleaseApartmentChange = z.infer<typeof insertSubleaseApartmentChangeSchema>;
 
 export const subleaseMeterReadings = pgTable("sublease_meter_readings", {
   id: serial("id").primaryKey(),

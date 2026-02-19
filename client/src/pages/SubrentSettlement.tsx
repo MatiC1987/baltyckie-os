@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, SubleasePayment, Apartment } from "@shared/schema";
+import type { Sublease, SubleasePayment, Apartment, SubleaseApartmentChange } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -56,15 +56,18 @@ export default function SubrentSettlement() {
 
   const subleaseIds = useMemo(() => activeSubleases.map(s => s.id), [activeSubleases]);
 
-  const paymentQueries = useQuery<{ subleaseId: number; payments: SubleasePayment[] }[]>({
+  const paymentQueries = useQuery<{ subleaseId: number; payments: SubleasePayment[]; changes: SubleaseApartmentChange[] }[]>({
     queryKey: ["/api/sublease-payments/all", subleaseIds],
     queryFn: async () => {
       const results = await Promise.all(
         subleaseIds.map(async (id) => {
-          const res = await fetch(`/api/subleases/${id}/payments`, { credentials: "include" });
-          if (!res.ok) return { subleaseId: id, payments: [] };
-          const payments = await res.json();
-          return { subleaseId: id, payments };
+          const [payRes, chRes] = await Promise.all([
+            fetch(`/api/subleases/${id}/payments`, { credentials: "include" }),
+            fetch(`/api/subleases/${id}/apartment-changes`, { credentials: "include" }),
+          ]);
+          const payments = payRes.ok ? await payRes.json() : [];
+          const changes = chRes.ok ? await chRes.json() : [];
+          return { subleaseId: id, payments, changes };
         })
       );
       return results;
@@ -75,15 +78,29 @@ export default function SubrentSettlement() {
   const allPayments = useMemo(() => {
     if (!paymentQueries.data) return [];
     const items: { payment: SubleasePayment; sublease: Sublease; apartmentName: string; tenantName: string }[] = [];
-    for (const { subleaseId, payments } of paymentQueries.data) {
+    for (const { subleaseId, payments, changes } of paymentQueries.data) {
       const sub = activeSubleases.find(s => s.id === subleaseId);
       if (!sub) continue;
-      const ids = sub.apartmentIds || (sub.apartmentId ? [sub.apartmentId] : []);
-      const apartmentName = ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ") || "—";
+      const baseIds = sub.apartmentIds || (sub.apartmentId ? [sub.apartmentId] : []);
       const tenantName = sub.tenantType === "firma"
         ? (sub.companyName || "—")
         : [sub.firstName, sub.lastName].filter(Boolean).join(" ") || "—";
       for (const p of payments) {
+        let resolvedIds: number[];
+        if (p.apartmentId) {
+          resolvedIds = [p.apartmentId];
+        } else {
+          resolvedIds = baseIds.map(id => {
+            let currentId = id;
+            for (const ch of changes) {
+              if (ch.oldApartmentId === currentId && p.dueDate >= ch.changeDate) {
+                currentId = ch.newApartmentId;
+              }
+            }
+            return currentId;
+          });
+        }
+        const apartmentName = resolvedIds.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ") || "—";
         items.push({ payment: p, sublease: sub, apartmentName, tenantName });
       }
     }

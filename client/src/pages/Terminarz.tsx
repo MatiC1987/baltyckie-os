@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-import type { Location, Sublease } from "@shared/schema";
+import type { Location, Sublease, SubleaseApartmentChange } from "@shared/schema";
 
 const MONTH_NAMES_PL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 const DAY_NAMES_PL = ["Nd", "Pn", "Wt", "Śr", "Cz", "Pt", "So"];
@@ -152,6 +152,7 @@ export default function Terminarz() {
   const { data: blockades, isLoading: loadingBlk } = useBlockades();
   const { data: dbLocations } = useLocations();
   const { data: subleases = [] } = useQuery<Sublease[]>({ queryKey: ['/api/subleases'] });
+  const { data: allAptChanges = [] } = useQuery<SubleaseApartmentChange[]>({ queryKey: ['/api/sublease-apartment-changes/all'] });
 
   const [monthsToShow, setMonthsToShow] = useState(2);
   const [startDate, setStartDate] = useState(() => {
@@ -633,41 +634,78 @@ export default function Terminarz() {
                         );
                       })}
 
-                      {subleases.filter(s => {
-                        const ids = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
-                        return ids.includes(apt.id);
-                      }).map((sub) => {
-                        const subStart = new Date(sub.startDate);
-                        const subEnd = new Date(sub.endDate);
-                        const startIdx = days.findIndex(d => isSameDay(d, subStart));
-                        const endIdx = days.findIndex(d => isSameDay(d, subEnd));
-                        const effectiveStart = startIdx >= 0 ? startIdx : (subStart < rangeStart ? 0 : -1);
-                        const effectiveEnd = endIdx >= 0 ? endIdx : (subEnd > rangeEnd ? days.length - 1 : -1);
-                        if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
-                        const halfDay = sz.dayWidth / 2;
-                        const startsInRange = startIdx >= 0;
-                        const endsInRange = endIdx >= 0;
-                        const left = effectiveStart * sz.dayWidth + (startsInRange ? halfDay : 0);
-                        const rightEdge = effectiveEnd * sz.dayWidth + (endsInRange ? halfDay : sz.dayWidth);
-                        const width = Math.max(rightEdge - left, halfDay);
-                        const tenantName = sub.tenantType === 'firma' ? (sub.companyName || 'Podnajem') : [sub.firstName, sub.lastName].filter(Boolean).join(' ') || 'Podnajem';
-                        return (
-                          <div
-                            key={`sub-${sub.id}`}
-                            className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
-                            style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.PODNAJEM, opacity: 0.85 }}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            title={`Podnajem: ${tenantName} (${sub.startDate} - ${sub.endDate})`}
-                            data-testid={`sublease-bar-${sub.id}`}
-                          >
-                            {width > (compact ? 40 : 60) && (
-                              <span className="text-white font-medium truncate px-1" style={{ fontSize: sz.barFontSize }}>
-                                {tenantName}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {(() => {
+                        const subleaseSegments: { sub: Sublease; segStart: string; segEnd: string; segKey: string }[] = [];
+                        for (const sub of subleases) {
+                          const baseIds = sub.apartmentIds || (sub.apartmentId ? [sub.apartmentId] : []);
+                          const changes = allAptChanges.filter(ch => ch.subleaseId === sub.id);
+                          if (changes.length === 0) {
+                            if (baseIds.includes(apt.id)) {
+                              subleaseSegments.push({ sub, segStart: sub.startDate, segEnd: sub.endDate, segKey: `sub-${sub.id}` });
+                            }
+                            continue;
+                          }
+                          const sortedChanges = [...changes].sort((a, b) => {
+                            const diff = new Date(a.changeDate).getTime() - new Date(b.changeDate).getTime();
+                            return diff !== 0 ? diff : a.id - b.id;
+                          });
+                          const changeDates = [...new Set(sortedChanges.map(c => c.changeDate))].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+                          const timelinePoints = [sub.startDate, ...changeDates.filter(d => d > sub.startDate && d < sub.endDate), sub.endDate];
+                          const subtractDay = (dateStr: string) => {
+                            const d = new Date(dateStr);
+                            d.setDate(d.getDate() - 1);
+                            return d.toISOString().slice(0, 10);
+                          };
+                          for (let i = 0; i < timelinePoints.length - 1; i++) {
+                            const segStart = timelinePoints[i];
+                            const isLastSegment = i === timelinePoints.length - 2;
+                            const segEnd = isLastSegment ? timelinePoints[i + 1] : subtractDay(timelinePoints[i + 1]);
+                            if (new Date(segStart).getTime() > new Date(segEnd).getTime()) continue;
+                            const activeApts = new Set(baseIds);
+                            for (const ch of sortedChanges) {
+                              if (new Date(ch.changeDate).getTime() <= new Date(segStart).getTime()) {
+                                activeApts.delete(ch.oldApartmentId);
+                                activeApts.add(ch.newApartmentId);
+                              }
+                            }
+                            if (activeApts.has(apt.id)) {
+                              subleaseSegments.push({ sub, segStart, segEnd, segKey: `sub-${sub.id}-seg-${i}` });
+                            }
+                          }
+                        }
+                        return subleaseSegments.map(({ sub, segStart, segEnd, segKey }) => {
+                          const subStart = new Date(segStart);
+                          const subEnd = new Date(segEnd);
+                          const startIdx = days.findIndex(d => isSameDay(d, subStart));
+                          const endIdx = days.findIndex(d => isSameDay(d, subEnd));
+                          const effectiveStart = startIdx >= 0 ? startIdx : (subStart < rangeStart ? 0 : -1);
+                          const effectiveEnd = endIdx >= 0 ? endIdx : (subEnd > rangeEnd ? days.length - 1 : -1);
+                          if (effectiveStart < 0 || effectiveEnd < 0 || effectiveStart > effectiveEnd) return null;
+                          const halfDay = sz.dayWidth / 2;
+                          const startsInRange = startIdx >= 0;
+                          const endsInRange = endIdx >= 0;
+                          const left = effectiveStart * sz.dayWidth + (startsInRange ? halfDay : 0);
+                          const rightEdge = effectiveEnd * sz.dayWidth + (endsInRange ? halfDay : sz.dayWidth);
+                          const width = Math.max(rightEdge - left, halfDay);
+                          const tenantName = sub.tenantType === 'firma' ? (sub.companyName || 'Podnajem') : [sub.firstName, sub.lastName].filter(Boolean).join(' ') || 'Podnajem';
+                          return (
+                            <div
+                              key={segKey}
+                              className="absolute rounded-md z-[2] flex items-center justify-center cursor-pointer border border-black/10"
+                              style={{ left, width, top: sz.barTop, height: sz.barHeight, backgroundColor: colors.PODNAJEM, opacity: 0.85 }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              title={`Podnajem: ${tenantName} (${segStart} - ${segEnd})`}
+                              data-testid={`sublease-bar-${sub.id}`}
+                            >
+                              {width > (compact ? 40 : 60) && (
+                                <span className="text-white font-medium truncate px-1" style={{ fontSize: sz.barFontSize }}>
+                                  {tenantName}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
 
                       {aptReservations.map((res) => {
                         const resStart = new Date(res.startDate);

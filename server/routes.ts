@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -720,6 +720,31 @@ export async function registerRoutes(
       }
     }
 
+    const allChangesRaw = await storage.getAllSubleaseApartmentChanges();
+    const allApartmentChanges: Record<number, any[]> = {};
+    for (const ch of allChangesRaw) {
+      if (!allApartmentChanges[ch.subleaseId]) allApartmentChanges[ch.subleaseId] = [];
+      allApartmentChanges[ch.subleaseId].push(ch);
+    }
+
+    const resolveAptIds = (s: any, dueDate: string, paymentAptId: number | null): number[] => {
+      if (paymentAptId) return [paymentAptId];
+      const baseIds = s.apartmentIds && s.apartmentIds.length > 0
+        ? [...s.apartmentIds]
+        : (s.apartmentId ? [s.apartmentId] : []);
+      const changes = allApartmentChanges[s.id] || [];
+      const resolved = baseIds.map((id: number) => {
+        let currentId = id;
+        for (const ch of changes) {
+          if (ch.oldApartmentId === currentId && dueDate >= ch.changeDate) {
+            currentId = ch.newApartmentId;
+          }
+        }
+        return currentId;
+      });
+      return resolved;
+    };
+
     for (const s of subleases) {
       const aptIds = s.apartmentIds && s.apartmentIds.length > 0
         ? s.apartmentIds
@@ -734,7 +759,7 @@ export async function registerRoutes(
         if (pd.getFullYear() !== year) continue;
         const month = pd.getMonth();
         const amount = Number(p.amount) || 0;
-        const payAptIds = p.apartmentId ? [p.apartmentId] : aptIds;
+        const payAptIds = resolveAptIds(s, p.dueDate, p.apartmentId);
 
         for (const aptId of payAptIds) {
           if (!aptId) continue;
@@ -1147,6 +1172,29 @@ export async function registerRoutes(
 
   app.delete('/api/sublease-payments/:id', isAuthenticated, async (req, res) => {
     await storage.deleteSubleasePayment(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // Sublease Apartment Changes
+  app.get('/api/sublease-apartment-changes/all', isAuthenticated, async (_req, res) => {
+    const changes = await storage.getAllSubleaseApartmentChanges();
+    res.json(changes);
+  });
+
+  app.get('/api/subleases/:id/apartment-changes', isAuthenticated, async (req, res) => {
+    const changes = await storage.getSubleaseApartmentChanges(Number(req.params.id));
+    res.json(changes);
+  });
+
+  app.post('/api/subleases/:id/apartment-changes', isAuthenticated, async (req, res) => {
+    const parsed = insertSubleaseApartmentChangeSchema.safeParse({ ...req.body, subleaseId: Number(req.params.id) });
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const created = await storage.createSubleaseApartmentChange(parsed.data);
+    res.status(201).json(created);
+  });
+
+  app.delete('/api/sublease-apartment-changes/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteSubleaseApartmentChange(Number(req.params.id));
     res.status(204).send();
   });
 

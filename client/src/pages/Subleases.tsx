@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment } from "@shared/schema";
+import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment, SubleaseApartmentChange } from "@shared/schema";
 import { format, addDays, addWeeks, addMonths, addQuarters, isBefore, isEqual } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useMemo } from "react";
@@ -965,6 +965,157 @@ function DepositsToReturn({ subleases, apartments }: { subleases: Sublease[]; ap
   );
 }
 
+function ApartmentChangesSection({ subleaseId, apartments, currentApartmentIds }: {
+  subleaseId: number;
+  apartments: Apartment[];
+  currentApartmentIds: number[];
+}) {
+  const { toast } = useToast();
+  const [showForm, setShowForm] = useState(false);
+  const [changeForm, setChangeForm] = useState({ oldApartmentId: "", newApartmentId: "", changeDate: "" });
+
+  const { data: changes = [] } = useQuery<SubleaseApartmentChange[]>({
+    queryKey: ['/api/subleases', subleaseId, 'apartment-changes'],
+  });
+
+  const createMut = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest('POST', `/api/subleases/${subleaseId}/apartment-changes`, data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'apartment-changes'] });
+      toast({ title: "Zapisano zmiane apartamentu" });
+      setShowForm(false);
+      setChangeForm({ oldApartmentId: "", newApartmentId: "", changeDate: "" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Blad", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest('DELETE', `/api/sublease-apartment-changes/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'apartment-changes'] });
+      toast({ title: "Usunieto zmiane" });
+    },
+  });
+
+  const getAptName = (id: number) => apartments.find(a => a.id === id)?.name || `#${id}`;
+
+  return (
+    <div className="mt-4 border-t pt-4 space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-4 w-4 text-muted-foreground" />
+          <Label className="text-sm font-medium">Zmiany apartamentow</Label>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowForm(true)}
+          data-testid="button-add-apartment-change"
+        >
+          <Plus className="h-3 w-3 mr-1" /> Dodaj zmiane
+        </Button>
+      </div>
+
+      {showForm && (
+        <div className="border rounded-md p-3 space-y-3 bg-muted/30">
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <Label className="text-xs">Stary apartament</Label>
+              <Select
+                value={changeForm.oldApartmentId}
+                onValueChange={(val) => setChangeForm(prev => ({ ...prev, oldApartmentId: val }))}
+              >
+                <SelectTrigger className="h-8 text-xs" data-testid="select-old-apartment">
+                  <SelectValue placeholder="Wybierz..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {currentApartmentIds.map(id => {
+                    const apt = apartments.find(a => a.id === id);
+                    return apt ? <SelectItem key={id} value={id.toString()}>{apt.name}</SelectItem> : null;
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Nowy apartament</Label>
+              <Select
+                value={changeForm.newApartmentId}
+                onValueChange={(val) => setChangeForm(prev => ({ ...prev, newApartmentId: val }))}
+              >
+                <SelectTrigger className="h-8 text-xs" data-testid="select-new-apartment">
+                  <SelectValue placeholder="Wybierz..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {apartments.map(apt => (
+                    <SelectItem key={apt.id} value={apt.id.toString()}>{apt.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Data zmiany</Label>
+              <Input
+                type="date"
+                value={changeForm.changeDate}
+                onChange={(e) => setChangeForm(prev => ({ ...prev, changeDate: e.target.value }))}
+                className="h-8 text-xs"
+                data-testid="input-change-date"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="ghost" size="sm" onClick={() => { setShowForm(false); setChangeForm({ oldApartmentId: "", newApartmentId: "", changeDate: "" }); }}>
+              Anuluj
+            </Button>
+            <Button
+              size="sm"
+              disabled={!changeForm.oldApartmentId || !changeForm.newApartmentId || !changeForm.changeDate || createMut.isPending}
+              onClick={() => createMut.mutate({
+                oldApartmentId: Number(changeForm.oldApartmentId),
+                newApartmentId: Number(changeForm.newApartmentId),
+                changeDate: changeForm.changeDate,
+              })}
+              data-testid="button-save-apartment-change"
+            >
+              Zapisz
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {changes.length > 0 && (
+        <div className="space-y-1">
+          {changes.map(ch => (
+            <div key={ch.id} className="flex items-center justify-between gap-2 text-sm border rounded-md p-2" data-testid={`row-apt-change-${ch.id}`}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className="text-xs">{ch.changeDate}</Badge>
+                <span className="text-muted-foreground">{getAptName(ch.oldApartmentId)}</span>
+                <ArrowDown className="h-3 w-3 text-muted-foreground rotate-[-90deg]" />
+                <span className="font-medium">{getAptName(ch.newApartmentId)}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => deleteMut.mutate(ch.id)}
+                data-testid={`button-delete-apt-change-${ch.id}`}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Subleases() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -1483,6 +1634,13 @@ export default function Subleases() {
 
             <TabsContent value="dane" className="flex-1 overflow-y-auto mt-0">
               <SubleaseFormFields form={form} setForm={setForm} apartments={apartments} />
+              {editId && (
+                <ApartmentChangesSection
+                  subleaseId={editId}
+                  apartments={apartments}
+                  currentApartmentIds={form.apartmentIds || (form.apartmentId ? [form.apartmentId] : [])}
+                />
+              )}
             </TabsContent>
 
             {editId && (
