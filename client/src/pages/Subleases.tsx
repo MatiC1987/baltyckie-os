@@ -847,9 +847,9 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
               <div className="flex items-center gap-3 min-w-0">
                 <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                 <div className="min-w-0">
-                  <a href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:underline truncate block">
+                  <button type="button" onClick={() => downloadAttachmentFile(att.id, att.fileName)} className="text-sm font-medium hover:underline truncate block text-left">
                     {att.fileName}
-                  </a>
+                  </button>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="secondary" className="text-xs">{att.category}</Badge>
                     {att.uploadedAt && <span>{format(new Date(att.uploadedAt), "dd.MM.yyyy", { locale: pl })}</span>}
@@ -1452,6 +1452,24 @@ export default function Subleases() {
     }
   };
 
+  const downloadAttachmentFile = async (attId: number, fileName: string) => {
+    try {
+      const resp = await fetch(`/api/sublease-attachments/${attId}/download`);
+      if (!resp.ok) throw new Error("Blad pobierania pliku");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({ title: "Blad", description: err.message || "Nie udalo sie pobrac pliku", variant: "destructive" });
+    }
+  };
+
   const saveMeterReadingsAndConfirm = async () => {
     if (!pendingConfirmId) return;
     setSavingMeters(true);
@@ -1729,12 +1747,12 @@ export default function Subleases() {
                                 return (
                                   <div className="flex items-center gap-1 flex-wrap">
                                     {atts.map(att => (
-                                      <a key={att.id} href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                      <button key={att.id} type="button" onClick={() => downloadAttachmentFile(att.id, att.fileName)} title={att.fileName} data-testid={`link-attachment-${att.id}`} className="inline-flex">
                                         <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
                                           <FileText className="h-3 w-3" />
                                           {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
                                         </Badge>
-                                      </a>
+                                      </button>
                                     ))}
                                   </div>
                                 );
@@ -1878,12 +1896,12 @@ export default function Subleases() {
                               return (
                                 <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
                                   {atts.map(att => (
-                                    <a key={att.id} href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                    <button key={att.id} type="button" onClick={() => downloadAttachmentFile(att.id, att.fileName)} title={att.fileName} data-testid={`link-attachment-${att.id}`} className="inline-flex">
                                       <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
                                         <FileText className="h-3 w-3" />
                                         {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
                                       </Badge>
-                                    </a>
+                                    </button>
                                   ))}
                                 </div>
                               );
@@ -1975,12 +1993,12 @@ export default function Subleases() {
                               return (
                                 <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
                                   {atts.map(att => (
-                                    <a key={att.id} href={`/api/sublease-attachments/${att.id}/download`} target="_blank" rel="noopener noreferrer" title={att.fileName} data-testid={`link-attachment-${att.id}`}>
+                                    <button key={att.id} type="button" onClick={() => downloadAttachmentFile(att.id, att.fileName)} title={att.fileName} data-testid={`link-attachment-${att.id}`} className="inline-flex">
                                       <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
                                         <FileText className="h-3 w-3" />
                                         {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
                                       </Badge>
-                                    </a>
+                                    </button>
                                   ))}
                                 </div>
                               );
