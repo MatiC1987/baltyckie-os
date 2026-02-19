@@ -716,9 +716,23 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
                         })} data-testid={`button-edit-payment-${p.id}`}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => deleteMut.mutate(p.id)} data-testid={`button-delete-payment-${p.id}`}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="ghost" data-testid={`button-delete-payment-${p.id}`}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Usunac platnosc?</AlertDialogTitle>
+                              <AlertDialogDescription>Tej operacji nie mozna cofnac.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteMut.mutate(p.id)} data-testid="button-confirm-delete-payment">Usun</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -842,9 +856,23 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
                   </div>
                 </div>
               </div>
-              <Button size="icon" variant="ghost" onClick={() => deleteMut.mutate(att.id)} disabled={deleteMut.isPending} data-testid={`button-delete-sublease-att-${att.id}`}>
-                <X className="h-4 w-4" />
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="icon" variant="ghost" disabled={deleteMut.isPending} data-testid={`button-delete-sublease-att-${att.id}`}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Usunac zalacznik?</AlertDialogTitle>
+                    <AlertDialogDescription>Plik "{att.fileName}" zostanie trwale usuniety.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => deleteMut.mutate(att.id)} data-testid="button-confirm-delete-att">Usun</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           ))
         ) : (
@@ -1100,14 +1128,23 @@ function ApartmentChangesSection({ subleaseId, apartments, currentApartmentIds }
                 <ArrowDown className="h-3 w-3 text-muted-foreground rotate-[-90deg]" />
                 <span className="font-medium">{getAptName(ch.newApartmentId)}</span>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => deleteMut.mutate(ch.id)}
-                data-testid={`button-delete-apt-change-${ch.id}`}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" data-testid={`button-delete-apt-change-${ch.id}`}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Usunac zmiane apartamentu?</AlertDialogTitle>
+                    <AlertDialogDescription>Tej operacji nie mozna cofnac.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => deleteMut.mutate(ch.id)} data-testid="button-confirm-delete-apt-change">Usun</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           ))}
         </div>
