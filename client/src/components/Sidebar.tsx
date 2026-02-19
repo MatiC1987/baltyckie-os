@@ -646,8 +646,19 @@ export function Sidebar() {
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col">
-          <div className="px-5 pt-5 pb-5 flex items-center justify-center">
+          <div className="px-5 pt-5 pb-3 flex items-center justify-center">
             <img src={logoSrc} alt="Bałtyckie Finanse" className="h-7 object-contain" data-testid="img-logo" />
+          </div>
+
+          <div className="flex justify-center pb-4">
+            <button
+              onClick={() => setShowQuickActions(true)}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors bg-[#5ADBFA]/15 text-[#5ADBFA] hover:bg-[#5ADBFA]/25 border border-[#5ADBFA]/20"
+              data-testid="button-quick-actions"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Akcje</span>
+            </button>
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-1" data-testid="nav-sidebar">
@@ -659,7 +670,7 @@ export function Sidebar() {
               onDragEnd={handleDragEnd}
             >
               {layout.sections.map((section, sIdx) => {
-                const isCollapsed = section.title ? collapsedSections.has(section.id) : false;
+                const isCollapsed = (section.title && section.id !== "finanse") ? collapsedSections.has(section.id) : false;
                 return (
                   <div key={section.id} data-testid={`nav-section-${section.id}`}>
                     {sIdx > 0 && (
@@ -671,15 +682,17 @@ export function Sidebar() {
                         data-testid={`section-header-${section.id}`}
                       >
                         <div
-                          className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer"
-                          onClick={() => toggleSection(section.id)}
+                          className={cn("flex items-center gap-1 flex-1 min-w-0", section.id !== "finanse" && "cursor-pointer")}
+                          onClick={() => section.id !== "finanse" && toggleSection(section.id)}
                           data-testid={`toggle-section-${section.id}`}
                         >
                           <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">{section.title}</span>
-                          <ChevronDown className={cn(
-                            "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover/section:text-slate-300",
-                            isCollapsed ? "-rotate-90" : ""
-                          )} />
+                          {section.id !== "finanse" && (
+                            <ChevronDown className={cn(
+                              "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover/section:text-slate-300",
+                              isCollapsed ? "-rotate-90" : ""
+                            )} />
+                          )}
                         </div>
                         <div className="invisible group-hover/section:visible flex items-center gap-0.5 shrink-0">
                           {titledSectionIds.indexOf(section.id) > 0 && (
@@ -725,16 +738,6 @@ export function Sidebar() {
                           );
                         })}
                       </SortableContext>
-                      {section.id === "main" && (
-                        <button
-                          onClick={() => setShowQuickActions(true)}
-                          className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-[#5ADBFA]/15 text-[#5ADBFA] hover:bg-[#5ADBFA]/25 border border-[#5ADBFA]/20"
-                          data-testid="button-quick-actions"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          <span>Akcje</span>
-                        </button>
-                      )}
                       {section.itemIds.length === 0 && (
                         <DroppableEmptySection sectionId={section.id} />
                       )}
