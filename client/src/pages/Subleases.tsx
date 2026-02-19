@@ -94,6 +94,10 @@ function SubleaseFormFields({ form, setForm, apartments }: {
             <Label>PESEL / Paszport</Label>
             <Input value={form.peselOrPassport || ""} onChange={(e) => setForm({ ...form, peselOrPassport: e.target.value })} data-testid="input-pesel" />
           </div>
+          <div className="space-y-2">
+            <Label>Nr dowodu osobistego</Label>
+            <Input value={form.idNumber || ""} onChange={(e) => setForm({ ...form, idNumber: e.target.value })} placeholder="np. ABC 123456" data-testid="input-id-number" />
+          </div>
         </>
       )}
 
@@ -189,7 +193,7 @@ function SubleaseFormFields({ form, setForm, apartments }: {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div className="space-y-2">
           <Label>Kwota czynszu (PLN)</Label>
           <Input type="number" step="0.01" value={form.rentAmount || ""} onChange={(e) => setForm({ ...form, rentAmount: e.target.value })} data-testid="input-rent-amount" />
@@ -197,6 +201,10 @@ function SubleaseFormFields({ form, setForm, apartments }: {
         <div className="space-y-2">
           <Label>Opłaty dodatkowe (PLN)</Label>
           <Input type="number" step="0.01" value={form.additionalFees || ""} onChange={(e) => setForm({ ...form, additionalFees: e.target.value })} data-testid="input-additional-fees" />
+        </div>
+        <div className="space-y-2">
+          <Label>Dzien platnosci (co miesiac)</Label>
+          <Input type="number" min="1" max="28" value={form.paymentDay || ""} onChange={(e) => setForm({ ...form, paymentDay: e.target.value })} placeholder="np. 10" data-testid="input-payment-day" />
         </div>
       </div>
 
@@ -1270,6 +1278,7 @@ export default function Subleases() {
         companyName: extracted.companyName || "",
         nip: extracted.nip || "",
         peselOrPassport: extracted.peselOrPassport || "",
+        idNumber: extracted.idNumber || "",
         street: extracted.street || "",
         postalCode: extracted.postalCode || "",
         city: extracted.city || "",
@@ -1283,6 +1292,7 @@ export default function Subleases() {
         endDate: extracted.endDate || "",
         rentAmount: extracted.rentAmount?.toString() || "",
         additionalFees: extracted.additionalFees?.toString() || "",
+        paymentDay: extracted.paymentDay?.toString() || "",
         mediaByMeters: extracted.mediaByMeters || false,
         hasDeposit: extracted.hasDeposit || false,
         depositAmount: extracted.depositAmount?.toString() || "",
@@ -1392,6 +1402,7 @@ export default function Subleases() {
       postalCode: s.postalCode || "",
       city: s.city || "",
       peselOrPassport: s.peselOrPassport || "",
+      idNumber: s.idNumber || "",
       phone: s.phone || "",
       email: s.email || "",
       invoiceEmail: s.invoiceEmail || "",
@@ -1402,6 +1413,7 @@ export default function Subleases() {
       endDate: s.endDate,
       rentAmount: s.rentAmount || "",
       additionalFees: s.additionalFees || "",
+      paymentDay: s.paymentDay || "",
       mediaByMeters: s.mediaByMeters || false,
       hasDeposit: s.hasDeposit || false,
       depositAmount: s.depositAmount || "",

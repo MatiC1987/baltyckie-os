@@ -40,6 +40,7 @@ import PlaceholderPage from "@/pages/Placeholder";
 import DataBackup from "@/pages/DataBackup";
 import ReportExport from "@/pages/ReportExport";
 import Invoices from "@/pages/Invoices";
+import CompanySettings from "@/pages/CompanySettings";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -122,6 +123,7 @@ function Router() {
       <Route path="/backup" component={() => <AuthenticatedRoute component={DataBackup} />} />
       <Route path="/reports" component={() => <AuthenticatedRoute component={ReportExport} />} />
       <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
+      <Route path="/company-settings" component={() => <AuthenticatedRoute component={CompanySettings} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

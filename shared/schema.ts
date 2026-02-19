@@ -388,6 +388,7 @@ export const subleases = pgTable("subleases", {
   postalCode: text("postal_code"),
   city: text("city"),
   peselOrPassport: text("pesel_or_passport"),
+  idNumber: text("id_number"),
   phone: text("phone"),
   email: text("email"),
   invoiceEmail: text("invoice_email"),
@@ -396,6 +397,7 @@ export const subleases = pgTable("subleases", {
   apartmentIds: integer("apartment_ids").array(),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
+  paymentDay: integer("payment_day"),
   rentAmount: numeric("rent_amount", { precision: 12, scale: 2 }),
   additionalFees: numeric("additional_fees", { precision: 12, scale: 2 }),
   mediaByMeters: boolean("media_by_meters").default(false),
@@ -758,3 +760,24 @@ export const revenueForecasts = pgTable("revenue_forecasts", {
 export const insertRevenueForecastSchema = createInsertSchema(revenueForecasts).omit({ id: true });
 export type RevenueForecast = typeof revenueForecasts.$inferSelect;
 export type InsertRevenueForecast = z.infer<typeof insertRevenueForecastSchema>;
+
+export const companySettings = pgTable("company_settings", {
+  id: serial("id").primaryKey(),
+  companyName: text("company_name"),
+  nip: text("nip"),
+  regon: text("regon"),
+  street: text("street"),
+  postalCode: text("postal_code"),
+  city: text("city"),
+  bankAccount: text("bank_account"),
+  bankName: text("bank_name"),
+  representativeName: text("representative_name"),
+  representativeRole: text("representative_role"),
+  phone: text("phone"),
+  email: text("email"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({ id: true, updatedAt: true });
+export type CompanySettings = typeof companySettings.$inferSelect;
+export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;

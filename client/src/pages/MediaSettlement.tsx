@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport } from "@shared/schema";
+import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport, CompanySettings } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
 } from "@/components/ui/dialog";
-import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign, Pencil, Gauge } from "lucide-react";
+import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign, Pencil, Gauge, Download } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 
 function formatDate(d: string | null | undefined) {
@@ -36,6 +36,129 @@ function daysBetween(dateA: string, dateB: string): number {
   const a = new Date(dateA);
   const b = new Date(dateB);
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function removeDiacritics(text: string): string {
+  const map: Record<string, string> = {
+    "ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n", "ó": "o", "ś": "s", "ź": "z", "ż": "z",
+    "Ą": "A", "Ć": "C", "Ę": "E", "Ł": "L", "Ń": "N", "Ó": "O", "Ś": "S", "Ź": "Z", "Ż": "Z",
+  };
+  return text.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, (ch) => map[ch] || ch);
+}
+
+function pln(amount: number | string | null | undefined): string {
+  const num = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (num === null || num === undefined || isNaN(num as number)) return "0,00";
+  return (num as number).toFixed(2).replace(".", ",");
+}
+
+async function generateAccountingNote(
+  report: MediaSettlementReport,
+  sublease: Sublease,
+  apartment: Apartment | undefined,
+  companySettings: CompanySettings | null
+) {
+  const jsPDF = (await import("jspdf")).default;
+  await import("jspdf-autotable");
+  const doc = new jsPDF();
+  const rd = removeDiacritics;
+  const aptName = apartment?.name || "";
+  const tenantName = sublease.tenantType === "firma"
+    ? (sublease.companyName || "")
+    : `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
+  const tenantAddress = [sublease.street, sublease.postalCode, sublease.city].filter(Boolean).join(", ");
+  const companyName = companySettings?.companyName || "Baltyckie Finanse";
+  const companyAddress = companySettings
+    ? [companySettings.street, companySettings.postalCode, companySettings.city].filter(Boolean).join(", ")
+    : "";
+  const noteNumber = `NK/${report.id}/${formatDate(report.periodTo)?.replace(/\./g, "/")}`;
+  const generatedDate = report.generatedAt
+    ? new Date(report.generatedAt).toLocaleDateString("pl-PL")
+    : new Date().toLocaleDateString("pl-PL");
+
+  doc.setFontSize(16);
+  doc.text(rd("NOTA KSIEGOWA"), 105, 20, { align: "center" });
+  doc.setFontSize(10);
+  doc.text(rd(`Nr: ${noteNumber}`), 105, 28, { align: "center" });
+  doc.text(rd(`Data wystawienia: ${generatedDate}`), 105, 34, { align: "center" });
+
+  doc.setFontSize(9);
+  let y = 46;
+  doc.setFont("helvetica", "bold");
+  doc.text(rd("Wystawca:"), 14, y);
+  doc.setFont("helvetica", "normal");
+  y += 6;
+  doc.text(rd(companyName), 14, y);
+  if (companySettings?.nip) { y += 5; doc.text(rd(`NIP: ${companySettings.nip}`), 14, y); }
+  if (companyAddress) { y += 5; doc.text(rd(companyAddress), 14, y); }
+  if (companySettings?.bankAccount) { y += 5; doc.text(rd(`Konto: ${companySettings.bankAccount}`), 14, y); }
+
+  let y2 = 46;
+  doc.setFont("helvetica", "bold");
+  doc.text(rd("Obciazony:"), 110, y2);
+  doc.setFont("helvetica", "normal");
+  y2 += 6;
+  doc.text(rd(tenantName), 110, y2);
+  if (sublease.nip) { y2 += 5; doc.text(rd(`NIP: ${sublease.nip}`), 110, y2); }
+  if (tenantAddress) { y2 += 5; doc.text(rd(tenantAddress), 110, y2); }
+
+  const startY = Math.max(y, y2) + 14;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text(rd(`Rozliczenie mediow - ${aptName}`), 14, startY);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(rd(`Okres: ${formatDate(report.periodFrom)} - ${formatDate(report.periodTo)}`), 14, startY + 7);
+
+  const rows: string[][] = [];
+  if (report.electricityConsumption && Number(report.electricityConsumption) > 0) {
+    rows.push([
+      rd("Energia elektryczna"),
+      `${pln(report.electricityConsumption)} kWh`,
+      `${pln(report.electricityCost)} PLN`,
+    ]);
+  }
+  if (report.coldWaterConsumption && Number(report.coldWaterConsumption) > 0) {
+    rows.push([
+      rd("Woda zimna"),
+      rd(`${pln(report.coldWaterConsumption)} m3`),
+      `${pln(report.coldWaterCost)} PLN`,
+    ]);
+  }
+  if (report.hotWaterConsumption && Number(report.hotWaterConsumption) > 0) {
+    rows.push([
+      rd("Woda ciepla"),
+      rd(`${pln(report.hotWaterConsumption)} m3`),
+      `${pln(report.hotWaterCost)} PLN`,
+    ]);
+  }
+
+  (doc as any).autoTable({
+    startY: startY + 12,
+    head: [["Medium", rd("Zuzycie"), "Koszt"]],
+    body: rows,
+    foot: [[rd("RAZEM DO ZAPLATY"), "", `${pln(report.totalCost)} PLN`]],
+    theme: "grid",
+    headStyles: { fillColor: [41, 128, 185], fontSize: 9 },
+    footStyles: { fillColor: [236, 240, 241], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 9 },
+    styles: { fontSize: 9 },
+    columnStyles: {
+      1: { halign: "right" },
+      2: { halign: "right" },
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  const finalY = (doc as any).lastAutoTable?.finalY || startY + 60;
+  doc.setFontSize(8);
+  doc.text(rd("Nota ksiegowa nie jest faktura VAT."), 14, finalY + 14);
+  doc.text(rd("Termin platnosci: 14 dni od daty wystawienia."), 14, finalY + 20);
+
+  doc.setFontSize(8);
+  doc.text(rd(`Wygenerowano: ${new Date().toLocaleDateString("pl-PL")} | Baltyckie Finanse`), 105, 285, { align: "center" });
+
+  const fileName = rd(`Nota_ksiegowa_${tenantName.replace(/\s+/g, "_")}_${report.periodFrom}_${report.periodTo}.pdf`);
+  doc.save(fileName);
 }
 
 const METER_TYPES = {
@@ -453,6 +576,10 @@ function SubleaseMediaCard({
   const tenantName = sublease.tenantType === "firma"
     ? sublease.companyName || ""
     : `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
+
+  const { data: companySettings } = useQuery<CompanySettings>({
+    queryKey: ["/api/company-settings"],
+  });
 
   const readingsKey = [`/api/subleases/${sublease.id}/meter-readings`];
   const settingsKey = [`/api/subleases/${sublease.id}/meter-settings`];
@@ -1046,6 +1173,15 @@ function SubleaseMediaCard({
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                data-testid={`button-accounting-note-${report.id}`}
+                                title="Pobierz notę księgową"
+                                onClick={() => generateAccountingNote(report, sublease, apt, companySettings || null)}
+                              >
+                                <Download className="w-3 h-3" />
+                              </Button>
                               <Button
                                 size="icon"
                                 variant="ghost"

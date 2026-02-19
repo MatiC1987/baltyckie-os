@@ -29,7 +29,7 @@ The application is built with a modern full-stack architecture.
 -   **Calendar (Terminarz)**: A graphical Gantt-chart-style calendar for visualizing reservations, blockades, and subleases, offering date range selection and dynamic apartment grouping.
 -   **Location Management**: Dynamic categories for apartment locations.
 -   **Service Contract Management**: Tracking of service agreements with various categories.
--   **Sublease Management**: Comprehensive system for managing subleases, including tenant details, payments, deposits, and attachments. Includes AI-powered PDF contract import: scanned PDF → pdftoppm → GPT-4o vision OCR → structured data extraction → user review form → save.
+-   **Sublease Management**: Comprehensive system for managing subleases, including tenant details (with ID number for individuals, payment day), payments, deposits, and attachments. Includes AI-powered PDF contract import: scanned PDF → pdftoppm → GPT-4o vision OCR → structured data extraction → user review form → save. Word contract generation fills company data from settings.
 -   **User Account Management**: Internal system for managing application users with role-based permissions.
 -   **Reporting & Forecasting**: Includes pages for aggregated sublease settlements, revenue forecasting (P/R/S spreadsheet view per apartment/location), apartment cost analysis, and a detailed revenue page consolidating actual and forecasted income.
 -   **Analytics (ANALIZY section)**: Occupancy rates per apartment with year/month filtering, profitability rankings with revenue bars, year-over-year comparison with bar charts and monthly tables, apartment comparison analytics, 6-month cash flow forecast, and price seasonality analysis.
@@ -43,6 +43,8 @@ The application is built with a modern full-stack architecture.
 -   **CSV Export**: Semicolon-delimited CSV export with BOM for Excel compatibility on Reservations and Subleases pages.
 -   **Reservation Notes**: Text notes field on reservations with FileText indicator in tables.
 -   **Document Templates**: System for managing document categories and uploading/downloading document templates.
+-   **Company Settings (Dane firmowe)**: Management page for landlord company data (name, NIP, REGON, address, bank account, representative). Data auto-fills into generated contracts.
+-   **Media Settlement Accounting Notes**: PDF accounting note (nota księgowa) generator from media settlement reports, including company and tenant data, consumption details, and totals.
 -   **Dark Mode**: Full dark mode support with theme toggle in the sidebar footer. CSS variables for both light and dark themes. Theme persists in localStorage.
 -   **Dashboard KPI Cards**: Four summary cards at the top of the dashboard showing monthly revenue (with month-over-month change), reservation count, unpaid reservations, and total company balance.
 -   **Global Search**: Ctrl+K shortcut or search button in top-right corner. Searches across reservations, apartments, and subleases with instant results.

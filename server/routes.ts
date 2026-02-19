@@ -1227,6 +1227,8 @@ export async function registerRoutes(
       const allApartments = await storage.getApartments();
       const aptNames = aptIds.map(id => allApartments.find(a => a.id === id)?.name || "").filter(Boolean);
 
+      const companyData = await storage.getCompanySettings();
+
       const today = new Date();
       const formatDatePL = (d: string) => {
         if (!d) return "";
@@ -1236,6 +1238,24 @@ export async function registerRoutes(
 
       const fullName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
       const fullAddress = [data.street, data.postalCode, data.city].filter(Boolean).join(", ");
+      const companyFullAddress = companyData ? [companyData.street, companyData.postalCode, companyData.city].filter(Boolean).join(", ") : "";
+
+      const paymentDayStr = data.paymentDay ? String(data.paymentDay) : "";
+
+      let scheduleDetails = "";
+      if (data.startDate && data.endDate && data.rentAmount && data.paymentDay) {
+        const start = new Date(data.startDate);
+        const end = new Date(data.endDate);
+        const lines: string[] = [];
+        const rent = Number(data.rentAmount);
+        let current = new Date(start.getFullYear(), start.getMonth(), data.paymentDay);
+        if (current < start) current.setMonth(current.getMonth() + 1);
+        while (current <= end) {
+          lines.push(`${formatDatePL(current.toISOString().slice(0, 10))} - ${rent.toFixed(2)} PLN`);
+          current.setMonth(current.getMonth() + 1);
+        }
+        scheduleDetails = lines.join("; ");
+      }
 
       const replacements: Record<string, string> = {
         "IMIĘ_I_NAZWISKO_NAJEMCY": fullName,
@@ -1244,28 +1264,36 @@ export async function registerRoutes(
         "IMIE_NAZWISKO_NAJEMCY": fullName,
         "IMIĘ_NAZWISKO_REPREZENTANTA": fullName,
         "IMIE_NAZWISKO_REPREZENTANTA": fullName,
-        "IMIĘ_NAZWISKO_WYNAJMUJĄCEGO": "",
+        "IMIĘ_NAZWISKO_WYNAJMUJĄCEGO": companyData?.representativeName || "",
+        "IMIE_NAZWISKO_WYNAJMUJACEGO": companyData?.representativeName || "",
+        "STANOWISKO_WYNAJMUJĄCEGO": companyData?.representativeRole || "",
+        "STANOWISKO_WYNAJMUJACEGO": companyData?.representativeRole || "",
         "ADRES_NAJEMCY": fullAddress,
         "ULICA_NAJEMCY": data.street || "",
         "KOD_POCZTOWY_NAJEMCY": data.postalCode || "",
         "MIEJSCOWOŚĆ_NAJEMCY": data.city || "",
         "MIEJSCOWOSC_NAJEMCY": data.city || "",
         "PESEL": data.peselOrPassport || "",
-        "NR_DOWODU": "",
+        "NR_DOWODU": data.idNumber || "",
+        "NUMER_DOWODU": data.idNumber || "",
         "NAZWA_FIRMY_NAJEMCY": data.companyName || "",
         "NIP_NAJEMCY": data.nip || "",
         "REGON_NAJEMCY": "",
-        "NAZWA_FIRMY_WYNAJMUJĄCEGO": "",
-        "NAZWA_FIRMY_WYNAJMUJACEGO": "",
-        "ADRES_FIRMY": "",
-        "ULICA_WYNAJMUJĄCEGO": "",
-        "ULICA_WYNAJMUJACEGO": "",
-        "KOD_POCZTOWY_WYNAJMUJĄCEGO": "",
-        "KOD_POCZTOWY_WYNAJMUJACEGO": "",
-        "MIEJSCOWOŚĆ_WYNAJMUJĄCEGO": "",
-        "MIEJSCOWOSC_WYNAJMUJACEGO": "",
-        "NIP_WYNAJMUJĄCEGO": "",
-        "NIP_WYNAJMUJACEGO": "",
+        "NAZWA_FIRMY_WYNAJMUJĄCEGO": companyData?.companyName || "",
+        "NAZWA_FIRMY_WYNAJMUJACEGO": companyData?.companyName || "",
+        "ADRES_FIRMY": companyFullAddress,
+        "ADRES_WYNAJMUJĄCEGO": companyFullAddress,
+        "ADRES_WYNAJMUJACEGO": companyFullAddress,
+        "ULICA_WYNAJMUJĄCEGO": companyData?.street || "",
+        "ULICA_WYNAJMUJACEGO": companyData?.street || "",
+        "KOD_POCZTOWY_WYNAJMUJĄCEGO": companyData?.postalCode || "",
+        "KOD_POCZTOWY_WYNAJMUJACEGO": companyData?.postalCode || "",
+        "MIEJSCOWOŚĆ_WYNAJMUJĄCEGO": companyData?.city || "",
+        "MIEJSCOWOSC_WYNAJMUJACEGO": companyData?.city || "",
+        "NIP_WYNAJMUJĄCEGO": companyData?.nip || "",
+        "NIP_WYNAJMUJACEGO": companyData?.nip || "",
+        "REGON_WYNAJMUJĄCEGO": companyData?.regon || "",
+        "REGON_WYNAJMUJACEGO": companyData?.regon || "",
         "NUMER_LOKALU": aptNames[0] || "",
         "ADRES_LOKALU": aptNames.join(", "),
         "MIEJSCOWOŚĆ": data.city || "",
@@ -1279,9 +1307,10 @@ export async function registerRoutes(
         "KWOTA_CZYNSZU_NETTO": data.rentAmount ? Number(data.rentAmount).toFixed(2) : "",
         "KWOTA_VAT": data.vatRate || "23%",
         "KWOTA_KAUCJI": data.depositAmount ? Number(data.depositAmount).toFixed(2) : "",
-        "NUMER_KONTA": "",
-        "DZIEŃ_PŁATNOŚCI": "",
-        "DZIEN_PLATNOSCI": "",
+        "NUMER_KONTA": companyData?.bankAccount || "",
+        "NAZWA_BANKU": companyData?.bankName || "",
+        "DZIEŃ_PŁATNOŚCI": paymentDayStr,
+        "DZIEN_PLATNOSCI": paymentDayStr,
         "LICZBA_DNI_ZALEGŁOŚCI": "",
         "LICZBA_DNI_ZALEGLOSCI": "",
         "DATA_PROPORCJONALNIE_OD": formatDatePL(data.startDate || ""),
@@ -1292,8 +1321,12 @@ export async function registerRoutes(
         "ADRES_RECEPCJI": "",
         "ILOŚĆ_KOMPLETÓW_KLUCZY": "",
         "ILOSC_KOMPLETOW_KLUCZY": "",
-        "SZCZEGÓŁY_HARMONOGRAMU": "",
-        "SZCZEGOLY_HARMONOGRAMU": "",
+        "SZCZEGÓŁY_HARMONOGRAMU": scheduleDetails,
+        "SZCZEGOLY_HARMONOGRAMU": scheduleDetails,
+        "TELEFON_WYNAJMUJĄCEGO": companyData?.phone || "",
+        "TELEFON_WYNAJMUJACEGO": companyData?.phone || "",
+        "EMAIL_WYNAJMUJĄCEGO": companyData?.email || "",
+        "EMAIL_WYNAJMUJACEGO": companyData?.email || "",
       };
 
       const zip = new PizZip(fileBuffer);
@@ -1376,6 +1409,18 @@ export async function registerRoutes(
         kwota_kaucji: data.depositAmount ? Number(data.depositAmount).toFixed(2) : "",
         data_dzisiejsza: formatDatePL(today.toISOString().slice(0, 10)),
         data_umowy: formatDatePL(today.toISOString().slice(0, 10)),
+        nr_dowodu: data.idNumber || "",
+        numer_dowodu: data.idNumber || "",
+        dzien_platnosci: paymentDayStr,
+        numer_konta: companyData?.bankAccount || "",
+        nazwa_banku: companyData?.bankName || "",
+        nazwa_firmy_wynajmujacego: companyData?.companyName || "",
+        nip_wynajmujacego: companyData?.nip || "",
+        regon_wynajmujacego: companyData?.regon || "",
+        adres_wynajmujacego: companyFullAddress,
+        imie_nazwisko_wynajmujacego: companyData?.representativeName || "",
+        stanowisko_wynajmujacego: companyData?.representativeRole || "",
+        harmonogram: scheduleDetails,
       };
 
       doc.render(templateData);
@@ -1397,6 +1442,7 @@ export async function registerRoutes(
         postalCode: data.postalCode || null,
         city: data.city || null,
         peselOrPassport: data.peselOrPassport || null,
+        idNumber: data.idNumber || null,
         phone: data.phone || null,
         email: data.email || null,
         invoiceEmail: data.invoiceEmail || null,
@@ -1405,6 +1451,7 @@ export async function registerRoutes(
         apartmentIds: data.apartmentIds || (data.apartmentId ? [data.apartmentId] : null),
         startDate: data.startDate,
         endDate: data.endDate,
+        paymentDay: data.paymentDay ? Number(data.paymentDay) : null,
         rentAmount: data.rentAmount || null,
         additionalFees: data.additionalFees || null,
         mediaByMeters: data.mediaByMeters || false,
@@ -1851,6 +1898,20 @@ export async function registerRoutes(
   });
 
   // Document Templates
+  app.get('/api/company-settings', isAuthenticated, async (_req, res) => {
+    const settings = await storage.getCompanySettings();
+    res.json(settings || {});
+  });
+
+  app.put('/api/company-settings', isAuthenticated, async (req, res) => {
+    try {
+      const saved = await storage.upsertCompanySettings(req.body);
+      res.json(saved);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.get('/api/document-templates', isAuthenticated, async (_req, res) => {
     const templates = await storage.getDocumentTemplates();
     res.json(templates);

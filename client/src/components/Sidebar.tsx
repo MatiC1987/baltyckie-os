@@ -10,6 +10,7 @@ import {
   Receipt,
   HandCoins,
   BarChart3,
+  Building,
   Building2,
   Coins,
   Scale,
@@ -109,6 +110,7 @@ const ICON_MAP: Record<string, any> = {
   Receipt,
   HandCoins,
   BarChart3,
+  Building,
   Building2,
   Coins,
   Scale,
@@ -173,6 +175,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   "document-templates": { id: "document-templates", href: "/document-templates", label: "Szablony dokumentów", iconName: "Files" },
   "activity-log": { id: "activity-log", href: "/activity-log", label: "Historia zmian", iconName: "History" },
   "user-accounts": { id: "user-accounts", href: "/user-accounts", label: "Konta użytkowników", iconName: "ScrollText" },
+  "company-settings": { id: "company-settings", href: "/company-settings", label: "Dane firmowe", iconName: "Building" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
@@ -182,7 +185,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "cash-flow-forecast"] },
   { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "employees", "locations", "contracts-services"] },
-  { id: "narzedzia", title: "NARZĘDZIA", itemIds: ["reports", "backup", "document-templates", "activity-log", "user-accounts"] },
+  { id: "narzedzia", title: "NARZĘDZIA", itemIds: ["reports", "backup", "document-templates", "company-settings", "activity-log", "user-accounts"] },
 ];
 
 const STORAGE_KEY = "sidebar-layout-v3";

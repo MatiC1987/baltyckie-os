@@ -39,6 +39,7 @@ import {
   invoices, Invoice, InsertInvoice,
   notifications, Notification, InsertNotification,
   revenueForecasts, RevenueForecast, InsertRevenueForecast,
+  companySettings, CompanySettings, InsertCompanySettings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNotNull } from "drizzle-orm";
@@ -265,6 +266,10 @@ export interface IStorage {
   createRevenueForecastsBulk(data: InsertRevenueForecast[]): Promise<void>;
   deleteRevenueForecasts(year?: number): Promise<void>;
   deleteLocationLevelForecasts(): Promise<void>;
+
+  // Company Settings
+  getCompanySettings(): Promise<CompanySettings | null>;
+  upsertCompanySettings(data: InsertCompanySettings): Promise<CompanySettings>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1203,6 +1208,21 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLocationLevelForecasts(): Promise<void> {
     await db.delete(revenueForecasts).where(isNotNull(revenueForecasts.locationName));
+  }
+
+  async getCompanySettings(): Promise<CompanySettings | null> {
+    const rows = await db.select().from(companySettings).limit(1);
+    return rows[0] || null;
+  }
+
+  async upsertCompanySettings(data: InsertCompanySettings): Promise<CompanySettings> {
+    const existing = await this.getCompanySettings();
+    if (existing) {
+      const [updated] = await db.update(companySettings).set({ ...data, updatedAt: new Date() }).where(eq(companySettings.id, existing.id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(companySettings).values(data).returning();
+    return created;
   }
 }
 
