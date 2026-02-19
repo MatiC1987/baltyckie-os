@@ -97,6 +97,7 @@ function Router() {
       <Route path="/cash-flow-forecast" component={() => <AuthenticatedRoute component={CashFlowForecast} />} />
       <Route path="/costs-apartments" component={() => <AuthenticatedRoute component={CostsApartments} />} />
       <Route path="/costs-expenses" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
+      <Route path="/salda" component={() => <AuthenticatedRoute component={Saldo} />} />
       <Route path="/saldo-ml" component={() => <Layout><Saldo personName="Małgorzata Latasiewicz" /></Layout>} />
       <Route path="/saldo-jg" component={() => <Layout><Saldo personName="Jolanta Głodkowska" /></Layout>} />
       <Route path="/saldo-mc" component={() => <Layout><Saldo personName="Mateusz Cieślak" /></Layout>} />

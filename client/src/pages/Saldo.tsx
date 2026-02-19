@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,7 +31,15 @@ function formatNum(v: string | null | undefined): string {
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function Saldo({ personName }: { personName: string }) {
+const SALDO_PERSONS = [
+  { key: "ml", name: "Małgorzata Latasiewicz" },
+  { key: "jg", name: "Jolanta Głodkowska" },
+  { key: "mc", name: "Mateusz Cieślak" },
+];
+
+export default function Saldo({ personName: personNameProp }: { personName?: string }) {
+  const [selectedPerson, setSelectedPerson] = useState(personNameProp || SALDO_PERSONS[0].name);
+  const personName = personNameProp || selectedPerson;
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,6 +53,17 @@ export default function Saldo({ personName }: { personName: string }) {
   const [importing, setImporting] = useState(false);
   const [previewEntry, setPreviewEntry] = useState<SaldoEntry | null>(null);
   const [editEntry, setEditEntry] = useState<SaldoEntry | null>(null);
+
+  useEffect(() => {
+    setSearchQuery("");
+    setDateFrom("");
+    setDateTo("");
+    setPaymentFilter("all");
+    setTypeFilter("all");
+    setPage(0);
+    setPreviewEntry(null);
+    setEditEntry(null);
+  }, [personName]);
   const [editForm, setEditForm] = useState({
     date: "", operationName: "", reservationNumber: "", guestName: "",
     type: "", paymentMethod: "", kasaFiskalna: "NIE", faktura: "NIE",
@@ -326,7 +345,7 @@ export default function Saldo({ personName }: { personName: string }) {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={`Saldo - ${personName}`} description="Rozliczenie salda osoby." icon={Scale} actions={
+      <PageHeader title={personNameProp ? `Saldo - ${personName}` : "Salda"} description={personNameProp ? "Rozliczenie salda osoby." : "Rozliczenia sald osób."} icon={Scale} actions={
         <>
           <div className="flex items-center border border-border rounded-md overflow-visible">
             <button
@@ -356,6 +375,21 @@ export default function Saldo({ personName }: { personName: string }) {
           )}
         </>
       } />
+
+      {!personNameProp && (
+        <div className="flex items-center gap-1 border border-border rounded-md p-1 w-fit" data-testid="person-tabs">
+          {SALDO_PERSONS.map(p => (
+            <button
+              key={p.key}
+              className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${selectedPerson === p.name ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+              onClick={() => setSelectedPerson(p.name)}
+              data-testid={`tab-person-${p.key}`}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {activeTab === "wpisy" && (
         <Card>

@@ -153,9 +153,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   "costs-expenses": { id: "costs-expenses", href: "/costs-expenses", label: "Opłaty", iconName: "Receipt" },
   invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
   "apartment-schedule": { id: "apartment-schedule", href: "/apartment-schedule", label: "Harmonogram", iconName: "CalendarCheck" },
-  "saldo-ml": { id: "saldo-ml", href: "/saldo-ml", label: "Saldo - M. Latasiewicz", iconName: "Scale" },
-  "saldo-jg": { id: "saldo-jg", href: "/saldo-jg", label: "Saldo - J. Głodkowska", iconName: "Coins" },
-  "saldo-mc": { id: "saldo-mc", href: "/saldo-mc", label: "Saldo - M. Cieślak", iconName: "BadgeDollarSign" },
+  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
   "contracts-subrent": { id: "contracts-subrent", href: "/contracts-subrent", label: "Umowy podnajem", iconName: "FileSignature" },
   "subrent-settlement": { id: "subrent-settlement", href: "/subrent-settlement", label: "Rozliczenie", iconName: "HandCoins" },
   "subrent-media": { id: "subrent-media", href: "/subrent-media", label: "Rozliczenie mediów", iconName: "Gauge" },
@@ -180,14 +178,14 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
 const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit", "calendar"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals", "import", "export"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "finance-forecast", "costs-apartments", "costs-expenses", "invoices", "apartment-schedule", "saldo-ml", "saldo-jg", "saldo-mc"] },
+  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "finance-forecast", "costs-apartments", "costs-expenses", "invoices", "apartment-schedule", "salda"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "cash-flow-forecast"] },
   { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "employees", "locations", "contracts-services"] },
   { id: "narzedzia", title: "NARZĘDZIA", itemIds: ["reports", "backup", "document-templates", "activity-log", "user-accounts"] },
 ];
 
-const STORAGE_KEY = "sidebar-layout-v2";
+const STORAGE_KEY = "sidebar-layout-v3";
 const COLLAPSED_KEY = "sidebar-collapsed-v1";
 const LABELS_KEY = "sidebar-custom-labels-v1";
 
