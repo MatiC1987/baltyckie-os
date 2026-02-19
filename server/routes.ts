@@ -1086,7 +1086,12 @@ export async function registerRoutes(
 
   app.post('/api/subleases', isAuthenticated, async (req, res) => {
     try {
-      const parsed = insertSubleaseSchema.parse(req.body);
+      const data = { ...req.body };
+      if (data.rentAmount === "" || data.rentAmount === undefined) data.rentAmount = null;
+      if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
+      if (data.depositAmount === "" || data.depositAmount === undefined) data.depositAmount = null;
+      if (data.depositReturnDate === "") data.depositReturnDate = null;
+      const parsed = insertSubleaseSchema.parse(data);
       const created = await storage.createSublease(parsed);
       logActivity(req, "create", "sublease", created.id, parsed.firstName ? `${parsed.firstName} ${parsed.lastName || ""}` : parsed.companyName || undefined);
       res.status(201).json(created);

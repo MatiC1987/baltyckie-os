@@ -1104,7 +1104,12 @@ export default function Subleases() {
   };
 
   const handlePdfImportSave = async () => {
-    const { _apartmentAddress, ...data } = pdfImportForm;
+    const { _apartmentAddress, ...rest } = pdfImportForm;
+    const data = { ...rest };
+    if (data.additionalFees === "" || data.additionalFees === null || data.additionalFees === undefined) data.additionalFees = "0";
+    if (data.depositAmount === "" || data.depositAmount === null || data.depositAmount === undefined) data.depositAmount = null;
+    if (data.rentAmount === "" || data.rentAmount === null || data.rentAmount === undefined) data.rentAmount = "0";
+    if (data.invoiceEmail === undefined) data.invoiceEmail = "";
     createMut.mutate(data, {
       onSuccess: async (result: any) => {
         const subleaseId = result?.id;
