@@ -339,18 +339,17 @@ function SortableNavItem({ item, isActive, onClick, onRename, badgeCount }: { it
         </div>
       ) : (
         <>
-          <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className="flex-1 min-w-0">
+          <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className={cn("flex-1 min-w-0 no-underline", isActive ? "!text-[#5ADBFA]" : "")}>
             <div
               onClick={onClick}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
                 isActive
-                  ? "text-white shadow-lg"
-                  : "text-slate-400 hover:text-white hover:bg-white/10"
+                  ? "!text-[#5ADBFA]"
+                  : "text-slate-400 hover:text-white hover:bg-white/5"
               )}
-              style={isActive ? { backgroundColor: "#5ADBFA", boxShadow: "0 4px 14px rgba(90, 219, 250, 0.3)" } : undefined}
             >
-              <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-white" : "text-slate-400 group-hover/navitem:text-white")} />
+              <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "text-slate-400 group-hover/navitem:text-white")} />
               <span className="font-medium text-xs leading-tight">{item.label}</span>
               {badgeCount && badgeCount > 0 ? (
                 <span className="ml-auto shrink-0 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" data-testid={`badge-overdue-${item.id}`}>
@@ -729,7 +728,7 @@ export function Sidebar() {
                       {section.id === "main" && (
                         <button
                           onClick={() => setShowQuickActions(true)}
-                          className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors text-[#5ADBFA]/80 hover:text-[#5ADBFA] hover:bg-white/5"
+                          className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-[#5ADBFA]/15 text-[#5ADBFA] hover:bg-[#5ADBFA]/25 border border-[#5ADBFA]/20"
                           data-testid="button-quick-actions"
                         >
                           <Plus className="h-3.5 w-3.5" />
@@ -770,13 +769,12 @@ export function Sidebar() {
                 className={cn(
                   "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors mb-1 cursor-pointer",
                   location === "/ustawienia"
-                    ? "text-white shadow-lg"
-                    : "text-slate-400 hover:text-white hover:bg-white/10"
+                    ? "text-[#5ADBFA]"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
                 )}
-                style={location === "/ustawienia" ? { backgroundColor: "#5ADBFA", boxShadow: "0 4px 14px rgba(90, 219, 250, 0.3)" } : undefined}
                 data-testid="link-nav-ustawienia"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className={cn("h-4 w-4", location === "/ustawienia" ? "text-[#5ADBFA]" : "")} />
                 <span className="text-sm font-medium">Ustawienia</span>
               </div>
             </Link>
