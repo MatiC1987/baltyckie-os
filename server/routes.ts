@@ -3556,8 +3556,8 @@ Jesli dane nie wystepuja w dokumencie, wpisz null.
   "apartmentAddress": "pelny adres wynajmowanej nieruchomosci (ulica, numer, kod pocztowy, miasto)",
   "startDate": "YYYY-MM-DD data rozpoczecia",
   "endDate": "YYYY-MM-DD data zakonczenia",
-  "rentAmount": kwota czynszu miesiecznego netto jako liczba,
-  "additionalFees": dodatkowe oplaty jako liczba lub null,
+  "rentAmount": kwota czynszu miesiecznego BRUTTO (z VAT) jako liczba. Jesli na umowie widnieje kwota netto + VAT (np. 15000 + 8% VAT = 16200), ZAWSZE podaj kwote brutto lacznie z podatkiem (czyli 16200),
+  "additionalFees": dodatkowe oplaty BRUTTO (z VAT) jako liczba lub null,
   "mediaByMeters": true jesli media wg licznikow, false jesli ryczalt,
   "hasDeposit": true jesli jest kaucja,
   "depositAmount": kwota kaucji jako liczba lub null,
@@ -3570,7 +3570,8 @@ Jesli dane nie wystepuja w dokumencie, wpisz null.
     }
   ]
 }
-WAZNE: Pole "paymentSchedule" - jesli w umowie jest harmonogram oplat, tabela rat, lub lista platnosci z datami i kwotami, wyciagnij je wszystkie. Jesli nie ma harmonogramu, ale sa podane czynsz miesieczny i daty umowy, wygeneruj harmonogram miesiecznych platnosci od startDate do endDate z kwota rentAmount i tytulami "Czynsz za [miesiac] [rok]". Daty platnosci ustaw na 10. dzien kazdego miesiaca. Jesli jest kaucja, dodaj ja jako pierwsza platnosc z opisem "Kaucja".
+WAZNE: Wszystkie kwoty w paymentSchedule musza byc BRUTTO (z VAT). Jesli kwota na umowie jest podana jako netto + VAT, oblicz kwote brutto i uzyj jej.
+Pole "paymentSchedule" - jesli w umowie jest harmonogram oplat, tabela rat, lub lista platnosci z datami i kwotami, wyciagnij je wszystkie. Jesli nie ma harmonogramu, ale sa podane czynsz miesieczny i daty umowy, wygeneruj harmonogram miesiecznych platnosci od startDate do endDate z kwota rentAmount (brutto!) i tytulami "Czynsz za [miesiac] [rok]". Daty platnosci ustaw na 10. dzien kazdego miesiaca. Jesli jest kaucja, dodaj ja jako pierwsza platnosc z opisem "Kaucja".
 Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       ];

@@ -1038,7 +1038,7 @@ export default function Subleases() {
     setForm({ tenantType: "osoba_fizyczna", startDate: "", endDate: "" });
   };
 
-  const [pdfPaymentSchedule, setPdfPaymentSchedule] = useState<Array<{ date: string; amount: string; description: string }>>([]);
+  const [pdfPaymentSchedule, setPdfPaymentSchedule] = useState<Array<{ date: string; amount: string; description: string; apartmentId: number | null }>>([]);
 
   const handlePdfUpload = async (fileList: FileList) => {
     setPdfImportStep("loading");
@@ -1097,6 +1097,7 @@ export default function Subleases() {
         date: p.date || "",
         amount: p.amount?.toString() || "",
         description: p.description || "",
+        apartmentId: null as number | null,
       }));
       setPdfPaymentSchedule(schedule);
 
@@ -1120,14 +1121,15 @@ export default function Subleases() {
         if (subleaseId && pdfPaymentSchedule.length > 0) {
           try {
             const paymentPromises = pdfPaymentSchedule
-              .filter(p => p.date && p.amount)
+              .filter(p => p.date)
               .map(payment =>
                 apiRequest('POST', `/api/subleases/${subleaseId}/payments`, {
                   title: payment.description || "Czynsz",
                   category: payment.description?.toLowerCase().includes("kaucja") ? "kaucja" : "czynsz",
-                  amount: payment.amount,
+                  amount: payment.amount || "0",
                   dueDate: payment.date,
                   status: "do_oplacenia",
+                  ...(payment.apartmentId ? { apartmentId: payment.apartmentId } : {}),
                 })
               );
             await Promise.all(paymentPromises);
@@ -1569,25 +1571,53 @@ export default function Subleases() {
                       <CalendarDays className="h-4 w-4 text-muted-foreground" />
                       <Label className="text-sm font-medium">Harmonogram oplat ({pdfPaymentSchedule.length})</Label>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPdfPaymentSchedule(prev => [...prev, { date: "", amount: "", description: "" }])}
-                      data-testid="button-add-schedule-row"
-                    >
-                      <Plus className="h-3 w-3 mr-1" /> Dodaj
-                    </Button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {(pdfImportForm.apartmentIds || []).length > 1 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const aptIds: number[] = pdfImportForm.apartmentIds || [];
+                            if (aptIds.length <= 1) return;
+                            const newRows: typeof pdfPaymentSchedule = [];
+                            for (const row of pdfPaymentSchedule) {
+                              for (const aptId of aptIds) {
+                                newRows.push({
+                                  date: row.date,
+                                  amount: "",
+                                  description: row.description + " - " + (apartments.find(a => a.id === aptId)?.name || `Apt ${aptId}`),
+                                  apartmentId: aptId,
+                                });
+                              }
+                            }
+                            setPdfPaymentSchedule(newRows);
+                          }}
+                          data-testid="button-split-per-apartment"
+                        >
+                          <Building2 className="h-3 w-3 mr-1" /> Rozdziel na apartamenty
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPdfPaymentSchedule(prev => [...prev, { date: "", amount: "", description: "", apartmentId: null }])}
+                        data-testid="button-add-schedule-row"
+                      >
+                        <Plus className="h-3 w-3 mr-1" /> Dodaj
+                      </Button>
+                    </div>
                   </div>
                   <div className="border rounded-md overflow-hidden">
-                    <div className="grid grid-cols-[120px_100px_1fr_36px] gap-1 p-2 bg-muted/50 text-xs font-medium text-muted-foreground">
+                    <div className="grid grid-cols-[120px_100px_130px_1fr_36px] gap-1 p-2 bg-muted/50 text-xs font-medium text-muted-foreground">
                       <span>Data</span>
                       <span>Kwota</span>
+                      <span>Apartament</span>
                       <span>Opis</span>
                       <span></span>
                     </div>
-                    <div className="max-h-[200px] overflow-y-auto">
+                    <div className="max-h-[300px] overflow-y-auto">
                       {pdfPaymentSchedule.map((row, idx) => (
-                        <div key={idx} className="grid grid-cols-[120px_100px_1fr_36px] gap-1 p-1 border-t items-center" data-testid={`row-schedule-${idx}`}>
+                        <div key={idx} className="grid grid-cols-[120px_100px_130px_1fr_36px] gap-1 p-1 border-t items-center" data-testid={`row-schedule-${idx}`}>
                           <Input
                             type="date"
                             value={row.date}
@@ -1608,8 +1638,28 @@ export default function Subleases() {
                               setPdfPaymentSchedule(updated);
                             }}
                             className="h-8 text-xs"
+                            placeholder="0.00"
                             data-testid={`input-schedule-amount-${idx}`}
                           />
+                          <Select
+                            value={row.apartmentId?.toString() || "none"}
+                            onValueChange={(val) => {
+                              const updated = [...pdfPaymentSchedule];
+                              updated[idx] = { ...updated[idx], apartmentId: val === "none" ? null : Number(val) };
+                              setPdfPaymentSchedule(updated);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs" data-testid={`select-schedule-apt-${idx}`}>
+                              <SelectValue placeholder="Wszystkie" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Wszystkie</SelectItem>
+                              {(pdfImportForm.apartmentIds || []).map((aptId: number) => {
+                                const apt = apartments.find(a => a.id === aptId);
+                                return apt ? <SelectItem key={aptId} value={aptId.toString()}>{apt.name}</SelectItem> : null;
+                              })}
+                            </SelectContent>
+                          </Select>
                           <Input
                             value={row.description}
                             onChange={(e) => {
