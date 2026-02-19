@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -406,6 +407,44 @@ export default function Revenue() {
           </tbody>
         </table>
       </div>
+
+      {(() => {
+        const chartData = MONTHS.map((mName, mi) => {
+          const t = locationTotals[mi];
+          return {
+            name: mName,
+            prognoza: Math.round(t.prognoza),
+            najem: Math.round(t.najem),
+            podnajem: Math.round(t.podnajem),
+          };
+        });
+        const formatTooltip = (value: number) => value.toLocaleString("pl-PL") + " zł";
+        return (
+          <Card data-testid="card-revenue-chart">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Realizacja prognozy przychodów — {currentLocation}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} className="fill-foreground" />
+                  <YAxis tickFormatter={(v: number) => v >= 1000 ? (v / 1000).toFixed(0) + "k" : String(v)} tick={{ fontSize: 11 }} className="fill-foreground" />
+                  <Tooltip
+                    formatter={formatTooltip}
+                    contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "6px", fontSize: "12px" }}
+                    labelStyle={{ fontWeight: 600, marginBottom: 4 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} />
+                  <Bar dataKey="prognoza" name="Prognoza" fill="hsl(var(--muted-foreground))" opacity={0.35} radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="najem" name="Najem" stackId="actual" fill="hsl(210 80% 55%)" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="podnajem" name="Podnajem" stackId="actual" fill="hsl(160 60% 45%)" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }
