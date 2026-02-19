@@ -10,7 +10,7 @@ import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
-  FileUp, Loader2
+  FileUp, Loader2, CalendarDays, Image
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -996,14 +996,17 @@ export default function Subleases() {
   });
 
   const createMut = useMutation({
-    mutationFn: async (data: any) => apiRequest('POST', '/api/subleases', data),
+    mutationFn: async (data: any) => {
+      const res = await apiRequest('POST', '/api/subleases', data);
+      return await res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
-      toast({ title: "Sukces", description: "Dodano umowę podnajmu" });
+      toast({ title: "Sukces", description: "Dodano umowe podnajmu" });
       closeDialog();
     },
     onError: (err: any) => {
-      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+      toast({ title: "Blad", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1034,11 +1037,15 @@ export default function Subleases() {
     setForm({ tenantType: "osoba_fizyczna", startDate: "", endDate: "" });
   };
 
-  const handlePdfUpload = async (file: File) => {
+  const [pdfPaymentSchedule, setPdfPaymentSchedule] = useState<Array<{ date: string; amount: string; description: string }>>([]);
+
+  const handlePdfUpload = async (fileList: FileList) => {
     setPdfImportStep("loading");
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      for (let i = 0; i < fileList.length; i++) {
+        formData.append("files", fileList[i]);
+      }
       const res = await fetch("/api/parse-sublease-pdf", {
         method: "POST",
         body: formData,
@@ -1046,7 +1053,7 @@ export default function Subleases() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.message || "Błąd parsowania");
+        throw new Error(err.message || "Blad parsowania");
       }
       const { extracted } = await res.json();
       setPdfExtracted(extracted);
@@ -1081,20 +1088,49 @@ export default function Subleases() {
         depositAmount: extracted.depositAmount?.toString() || "",
         _apartmentAddress: extracted.apartmentAddress || "",
       });
+
+      const schedule = (extracted.paymentSchedule || []).map((p: any) => ({
+        date: p.date || "",
+        amount: p.amount?.toString() || "",
+        description: p.description || "",
+      }));
+      setPdfPaymentSchedule(schedule);
+
       setPdfImportStep("review");
     } catch (err: any) {
-      toast({ title: "Błąd importu PDF", description: err.message, variant: "destructive" });
+      toast({ title: "Blad importu", description: err.message, variant: "destructive" });
       setPdfImportStep("upload");
     }
   };
 
-  const handlePdfImportSave = () => {
+  const handlePdfImportSave = async () => {
     const { _apartmentAddress, ...data } = pdfImportForm;
     createMut.mutate(data, {
-      onSuccess: () => {
+      onSuccess: async (result: any) => {
+        const subleaseId = result?.id;
+        if (subleaseId && pdfPaymentSchedule.length > 0) {
+          try {
+            const paymentPromises = pdfPaymentSchedule
+              .filter(p => p.date && p.amount)
+              .map(payment =>
+                apiRequest('POST', `/api/subleases/${subleaseId}/payments`, {
+                  title: payment.description || "Czynsz",
+                  category: payment.description?.toLowerCase().includes("kaucja") ? "kaucja" : "czynsz",
+                  amount: payment.amount,
+                  dueDate: payment.date,
+                  status: "do_oplacenia",
+                })
+              );
+            await Promise.all(paymentPromises);
+            queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'payments'] });
+          } catch (err: any) {
+            toast({ title: "Uwaga", description: "Umowa zapisana, ale nie udalo sie dodac czesci harmonogramu", variant: "destructive" });
+          }
+        }
         setPdfImportOpen(false);
         setPdfImportStep("upload");
         setPdfExtracted(null);
+        setPdfPaymentSchedule([]);
       },
     });
   };
@@ -1434,32 +1470,34 @@ export default function Subleases() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={pdfImportOpen} onOpenChange={(v) => { if (!v) { setPdfImportOpen(false); setPdfImportStep("upload"); setPdfExtracted(null); } }}>
+      <Dialog open={pdfImportOpen} onOpenChange={(v) => { if (!v) { setPdfImportOpen(false); setPdfImportStep("upload"); setPdfExtracted(null); setPdfPaymentSchedule([]); } }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import umowy z PDF</DialogTitle>
+            <DialogTitle>Import umowy z pliku</DialogTitle>
           </DialogHeader>
 
           {pdfImportStep === "upload" && (
             <div className="flex flex-col items-center justify-center py-8 gap-4">
               <div className="border-2 border-dashed rounded-md p-8 w-full flex flex-col items-center gap-3 text-muted-foreground">
                 <FileUp className="h-10 w-10" />
-                <p className="text-sm">Wybierz plik PDF z umową podnajmu</p>
-                <p className="text-xs">Obsługiwane są zarówno umowy z osobami fizycznymi jak i firmami</p>
+                <p className="text-sm">Wybierz pliki z umowa podnajmu</p>
+                <p className="text-xs">PDF lub zdjecia (JPG, PNG) - mozesz wybrac kilka plikow naraz</p>
+                <p className="text-xs">Np. 6 zdjec stron umowy z aparatu lub 1 plik PDF</p>
                 <input
                   type="file"
-                  accept=".pdf"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"
+                  multiple
                   className="hidden"
                   id="pdf-upload-input"
                   data-testid="input-pdf-upload"
                   onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handlePdfUpload(f);
+                    const files = e.target.files;
+                    if (files && files.length > 0) handlePdfUpload(files);
                     e.target.value = "";
                   }}
                 />
                 <Button variant="outline" onClick={() => document.getElementById("pdf-upload-input")?.click()} data-testid="button-select-pdf">
-                  <Upload className="h-4 w-4 mr-1" /> Wybierz plik
+                  <Upload className="h-4 w-4 mr-1" /> Wybierz pliki
                 </Button>
               </div>
             </div>
@@ -1468,8 +1506,8 @@ export default function Subleases() {
           {pdfImportStep === "loading" && (
             <div className="flex flex-col items-center justify-center py-12 gap-4">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Analizuję dokument...</p>
-              <p className="text-xs text-muted-foreground">Trwa rozpoznawanie tekstu i ekstrakcja danych z PDF</p>
+              <p className="text-sm text-muted-foreground">Analizuje dokument...</p>
+              <p className="text-xs text-muted-foreground">Trwa rozpoznawanie tekstu i ekstrakcja danych z pliku</p>
             </div>
           )}
 
@@ -1482,13 +1520,87 @@ export default function Subleases() {
                 </div>
               )}
               <SubleaseFormFields form={pdfImportForm} setForm={setPdfImportForm} apartments={apartments} />
+
+              {pdfPaymentSchedule.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                      <Label className="text-sm font-medium">Harmonogram oplat ({pdfPaymentSchedule.length})</Label>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPdfPaymentSchedule(prev => [...prev, { date: "", amount: "", description: "" }])}
+                      data-testid="button-add-schedule-row"
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> Dodaj
+                    </Button>
+                  </div>
+                  <div className="border rounded-md overflow-hidden">
+                    <div className="grid grid-cols-[120px_100px_1fr_36px] gap-1 p-2 bg-muted/50 text-xs font-medium text-muted-foreground">
+                      <span>Data</span>
+                      <span>Kwota</span>
+                      <span>Opis</span>
+                      <span></span>
+                    </div>
+                    <div className="max-h-[200px] overflow-y-auto">
+                      {pdfPaymentSchedule.map((row, idx) => (
+                        <div key={idx} className="grid grid-cols-[120px_100px_1fr_36px] gap-1 p-1 border-t items-center" data-testid={`row-schedule-${idx}`}>
+                          <Input
+                            type="date"
+                            value={row.date}
+                            onChange={(e) => {
+                              const updated = [...pdfPaymentSchedule];
+                              updated[idx] = { ...updated[idx], date: e.target.value };
+                              setPdfPaymentSchedule(updated);
+                            }}
+                            className="h-8 text-xs"
+                            data-testid={`input-schedule-date-${idx}`}
+                          />
+                          <Input
+                            type="number"
+                            value={row.amount}
+                            onChange={(e) => {
+                              const updated = [...pdfPaymentSchedule];
+                              updated[idx] = { ...updated[idx], amount: e.target.value };
+                              setPdfPaymentSchedule(updated);
+                            }}
+                            className="h-8 text-xs"
+                            data-testid={`input-schedule-amount-${idx}`}
+                          />
+                          <Input
+                            value={row.description}
+                            onChange={(e) => {
+                              const updated = [...pdfPaymentSchedule];
+                              updated[idx] = { ...updated[idx], description: e.target.value };
+                              setPdfPaymentSchedule(updated);
+                            }}
+                            className="h-8 text-xs"
+                            data-testid={`input-schedule-desc-${idx}`}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setPdfPaymentSchedule(prev => prev.filter((_, i) => i !== idx))}
+                            data-testid={`button-remove-schedule-${idx}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => { setPdfImportOpen(false); setPdfImportStep("upload"); setPdfExtracted(null); }}>
+                <Button variant="outline" onClick={() => { setPdfImportOpen(false); setPdfImportStep("upload"); setPdfExtracted(null); setPdfPaymentSchedule([]); }}>
                   Anuluj
                 </Button>
                 <Button onClick={handlePdfImportSave} disabled={createMut.isPending || !pdfImportForm.startDate || !pdfImportForm.endDate} data-testid="button-save-pdf-import">
                   {createMut.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
-                  Zapisz umowę
+                  Zapisz umowe
                 </Button>
               </DialogFooter>
             </>

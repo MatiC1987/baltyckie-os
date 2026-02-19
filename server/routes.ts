@@ -3472,39 +3472,55 @@ export async function registerRoutes(
     }
   });
 
-  const pdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
-  app.post('/api/parse-sublease-pdf', isAuthenticated, pdfUpload.single('file'), async (req, res) => {
+  const contractUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+  app.post('/api/parse-sublease-pdf', isAuthenticated, contractUpload.array('files', 20), async (req, res) => {
     const tmpFiles: string[] = [];
     try {
-      if (!req.file) {
-        return res.status(400).json({ message: "Brak pliku PDF" });
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "Brak plików" });
       }
-      if (req.file.mimetype !== 'application/pdf' && !req.file.originalname.toLowerCase().endsWith('.pdf')) {
-        return res.status(400).json({ message: "Plik musi być w formacie PDF" });
+
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+      for (const file of files) {
+        const ext = file.originalname.toLowerCase();
+        const isAllowed = allowedTypes.includes(file.mimetype) ||
+          ext.endsWith('.pdf') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') ||
+          ext.endsWith('.png') || ext.endsWith('.webp') || ext.endsWith('.heic');
+        if (!isAllowed) {
+          return res.status(400).json({ message: `Nieobsługiwany format pliku: ${file.originalname}. Dozwolone: PDF, JPG, PNG, WEBP` });
+        }
       }
 
       const tmpDir = os.tmpdir();
-      const pdfPath = path.join(tmpDir, `sublease_${Date.now()}.pdf`);
-      fs.writeFileSync(pdfPath, req.file.buffer);
-      tmpFiles.push(pdfPath);
-
       const pageImages: string[] = [];
-      const prefix = path.join(tmpDir, `sublease_pages_${Date.now()}`);
-      execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
 
-      const pageFiles = fs.readdirSync(tmpDir)
-        .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
-        .sort();
+      for (const file of files) {
+        if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+          const pdfPath = path.join(tmpDir, `sublease_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+          fs.writeFileSync(pdfPath, file.buffer);
+          tmpFiles.push(pdfPath);
 
-      for (const pageFile of pageFiles) {
-        const pagePath = path.join(tmpDir, pageFile);
-        tmpFiles.push(pagePath);
-        const imgBuffer = fs.readFileSync(pagePath);
-        pageImages.push(imgBuffer.toString('base64'));
+          const prefix = path.join(tmpDir, `sublease_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+          execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+
+          const pageFiles = fs.readdirSync(tmpDir)
+            .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+            .sort();
+
+          for (const pageFile of pageFiles) {
+            const pagePath = path.join(tmpDir, pageFile);
+            tmpFiles.push(pagePath);
+            const imgBuffer = fs.readFileSync(pagePath);
+            pageImages.push(imgBuffer.toString('base64'));
+          }
+        } else {
+          pageImages.push(file.buffer.toString('base64'));
+        }
       }
 
       if (pageImages.length === 0) {
-        return res.status(400).json({ message: "Nie udało się odczytać stron PDF" });
+        return res.status(400).json({ message: "Nie udało się odczytać plików" });
       }
 
       const openai = new OpenAI({
@@ -3512,17 +3528,17 @@ export async function registerRoutes(
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
-      const maxPages = Math.min(pageImages.length, 4);
+      const maxPages = Math.min(pageImages.length, 8);
       const content: any[] = [
         {
           type: 'text',
-          text: `Przeanalizuj tę umowę podnajmu/najmu mieszkania. Wyciągnij następujące dane w formacie JSON.
-Jeśli dane nie występują w dokumencie, wpisz null.
+          text: `Przeanalizuj te zdjecia/strony umowy podnajmu/najmu mieszkania. Wyciagnij nastepujace dane w formacie JSON.
+Jesli dane nie wystepuja w dokumencie, wpisz null.
 {
   "tenantType": "osoba_fizyczna" lub "firma",
-  "firstName": "imię najemcy",
+  "firstName": "imie najemcy",
   "lastName": "nazwisko najemcy",
-  "companyName": "nazwa firmy (jeśli firma)",
+  "companyName": "nazwa firmy (jesli firma)",
   "nip": "NIP firmy",
   "peselOrPassport": "PESEL lub numer paszportu osoby fizycznej",
   "street": "ulica i numer najemcy",
@@ -3530,17 +3546,25 @@ Jeśli dane nie występują w dokumencie, wpisz null.
   "city": "miasto najemcy",
   "phone": "telefon",
   "email": "email",
-  "apartmentAddress": "pełny adres wynajmowanej nieruchomości (ulica, numer, kod pocztowy, miasto)",
-  "startDate": "YYYY-MM-DD data rozpoczęcia",
-  "endDate": "YYYY-MM-DD data zakończenia",
-  "rentAmount": kwota czynszu miesięcznego netto jako liczba,
-  "additionalFees": dodatkowe opłaty jako liczba lub null,
-  "mediaByMeters": true jeśli media wg liczników, false jeśli ryczałt,
-  "hasDeposit": true jeśli jest kaucja,
+  "apartmentAddress": "pelny adres wynajmowanej nieruchomosci (ulica, numer, kod pocztowy, miasto)",
+  "startDate": "YYYY-MM-DD data rozpoczecia",
+  "endDate": "YYYY-MM-DD data zakonczenia",
+  "rentAmount": kwota czynszu miesiecznego netto jako liczba,
+  "additionalFees": dodatkowe oplaty jako liczba lub null,
+  "mediaByMeters": true jesli media wg licznikow, false jesli ryczalt,
+  "hasDeposit": true jesli jest kaucja,
   "depositAmount": kwota kaucji jako liczba lub null,
-  "vatRate": "stawka VAT np. 23%"
+  "vatRate": "stawka VAT np. 23%",
+  "paymentSchedule": [
+    {
+      "date": "YYYY-MM-DD termin platnosci",
+      "amount": kwota jako liczba,
+      "description": "opis platnosci np. Czynsz za styczeń 2025"
+    }
+  ]
 }
-Odpowiedz TYLKO czystym JSON bez żadnych komentarzy ani markdown.`
+WAZNE: Pole "paymentSchedule" - jesli w umowie jest harmonogram oplat, tabela rat, lub lista platnosci z datami i kwotami, wyciagnij je wszystkie. Jesli nie ma harmonogramu, ale sa podane czynsz miesieczny i daty umowy, wygeneruj harmonogram miesiecznych platnosci od startDate do endDate z kwota rentAmount i tytulami "Czynsz za [miesiac] [rok]". Daty platnosci ustaw na 10. dzien kazdego miesiaca. Jesli jest kaucja, dodaj ja jako pierwsza platnosc z opisem "Kaucja".
+Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       ];
 
@@ -3554,7 +3578,7 @@ Odpowiedz TYLKO czystym JSON bez żadnych komentarzy ani markdown.`
       const response = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content }],
-        max_tokens: 2000,
+        max_tokens: 4000,
       });
 
       const rawText = response.choices[0]?.message?.content || '';
@@ -3564,13 +3588,13 @@ Odpowiedz TYLKO czystym JSON bez żadnych komentarzy ani markdown.`
       try {
         extracted = JSON.parse(jsonMatch);
       } catch {
-        return res.status(422).json({ message: "Nie udało się sparsować odpowiedzi AI", raw: rawText });
+        return res.status(422).json({ message: "Nie udalo sie sparsowac odpowiedzi AI", raw: rawText });
       }
 
       res.json({ extracted, pages: pageImages.length });
     } catch (err: any) {
-      console.error("PDF parse error:", err);
-      res.status(500).json({ message: "Błąd parsowania PDF: " + (err.message || "Nieznany błąd") });
+      console.error("Contract parse error:", err);
+      res.status(500).json({ message: "Blad parsowania: " + (err.message || "Nieznany blad") });
     } finally {
       for (const f of tmpFiles) {
         try { fs.unlinkSync(f); } catch {}
