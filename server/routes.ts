@@ -1297,23 +1297,55 @@ export async function registerRoutes(
       };
 
       const zip = new PizZip(fileBuffer);
+
+      const mergeRunsAndReplace = (xml: string, repls: Record<string, string>): string => {
+        return xml.replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (para) => {
+          const textParts: { match: string; text: string }[] = [];
+          const runRegex = /<w:r[\s>][\s\S]*?<\/w:r>/g;
+          let m;
+          while ((m = runRegex.exec(para)) !== null) {
+            const runXml = m[0];
+            const texts: string[] = [];
+            const tRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+            let tm;
+            while ((tm = tRegex.exec(runXml)) !== null) {
+              texts.push(tm[1]);
+            }
+            textParts.push({ match: runXml, text: texts.join("") });
+          }
+          const fullText = textParts.map(p => p.text).join("");
+          let hasPlaceholder = false;
+          for (const key of Object.keys(repls)) {
+            if (fullText.includes(`[${key}]`)) { hasPlaceholder = true; break; }
+          }
+          if (!hasPlaceholder) return para;
+
+          let replacedText = fullText;
+          for (const [key, val] of Object.entries(repls)) {
+            replacedText = replacedText.split(`[${key}]`).join(val);
+          }
+          if (textParts.length === 0) return para;
+          const firstRun = textParts[0].match;
+          const newRun = firstRun.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, "").replace(/<\/w:r>$/, "") +
+            `<w:t xml:space="preserve">${replacedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</w:t></w:r>`;
+          let result = para;
+          for (let i = textParts.length - 1; i >= 1; i--) {
+            result = result.replace(textParts[i].match, "");
+          }
+          result = result.replace(textParts[0].match, newRun);
+          return result;
+        });
+      };
+
       const xmlFiles = ["word/document.xml", "word/header1.xml", "word/header2.xml", "word/header3.xml", "word/footer1.xml", "word/footer2.xml", "word/footer3.xml"];
       for (const xmlFile of xmlFiles) {
         const entry = zip.files[xmlFile];
         if (!entry) continue;
         let xml = entry.asText();
-
-        for (const [placeholder, value] of Object.entries(replacements)) {
-          const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const pattern = new RegExp(`\\[${escaped}\\]`, 'g');
-          xml = xml.replace(pattern, value);
-
-          const chars = placeholder.split("");
-          const flexPattern = "\\[" + chars.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join("(?:</w:t></w:r><w:r[^>]*><w:t[^>]*>)?") + "\\]";
-          const flexRegex = new RegExp(flexPattern, 'g');
-          xml = xml.replace(flexRegex, value);
-        }
-
+        const beforeCount = (xml.match(/\[[A-ZĘÓĄŚŁŻŹĆŃ_]+\]/g) || []).length;
+        xml = mergeRunsAndReplace(xml, replacements);
+        const afterCount = (xml.match(/\[[A-ZĘÓĄŚŁŻŹĆŃ_]+\]/g) || []).length;
+        console.log(`Contract gen: ${xmlFile} - placeholders before: ${beforeCount}, after: ${afterCount}`);
         zip.file(xmlFile, xml);
       }
 
