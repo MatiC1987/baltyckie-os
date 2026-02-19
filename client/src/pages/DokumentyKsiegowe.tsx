@@ -174,6 +174,14 @@ function CostInvoicesTab() {
     },
   });
 
+  const deleteHistoryMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/zip-download-history/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/zip-download-history"] });
+      toast({ title: "Usunięto wpis z historii" });
+    },
+  });
+
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) =>
       apiRequest("PATCH", `/api/cost-invoices/${id}`, { status }),
@@ -430,6 +438,7 @@ function CostInvoicesTab() {
                     <TableHead>Miesiąc</TableHead>
                     <TableHead>Pobrał</TableHead>
                     <TableHead>Liczba faktur</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -439,6 +448,17 @@ function CostInvoicesTab() {
                       <TableCell>{getMonthName(h.month)} {h.year}</TableCell>
                       <TableCell>{h.downloadedBy}</TableCell>
                       <TableCell>{h.invoiceCount}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteHistoryMutation.mutate(h.id)}
+                          disabled={deleteHistoryMutation.isPending}
+                          data-testid={`button-delete-history-${h.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -2562,6 +2562,13 @@ export async function registerRoutes(
     res.json(history);
   });
 
+  app.delete('/api/zip-download-history/:id', isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Nieprawidłowe ID" });
+    await storage.deleteZipDownloadHistory(id);
+    res.status(204).end();
+  });
+
   app.get('/api/document-templates', isAuthenticated, async (_req, res) => {
     const templates = await storage.getDocumentTemplates();
     res.json(templates);

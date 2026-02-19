@@ -290,6 +290,7 @@ export interface IStorage {
   // ZIP Download History
   getZipDownloadHistory(): Promise<ZipDownloadHistory[]>;
   createZipDownloadHistory(data: InsertZipDownloadHistory): Promise<ZipDownloadHistory>;
+  deleteZipDownloadHistory(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1305,6 +1306,10 @@ export class DatabaseStorage implements IStorage {
   async createZipDownloadHistory(data: InsertZipDownloadHistory): Promise<ZipDownloadHistory> {
     const [created] = await db.insert(zipDownloadHistory).values(data).returning();
     return created;
+  }
+
+  async deleteZipDownloadHistory(id: number): Promise<void> {
+    await db.delete(zipDownloadHistory).where(eq(zipDownloadHistory.id, id));
   }
 }
 
