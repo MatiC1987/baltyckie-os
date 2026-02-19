@@ -32,9 +32,12 @@ import {
   Check,
   CalendarRange,
   CalendarCheck,
-  Landmark
+  Landmark,
+  Moon,
+  Sun
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/components/ThemeProvider";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -400,6 +403,7 @@ function DroppableEmptySection({ sectionId }: { sectionId: string }) {
 export function Sidebar() {
   const [location] = useLocation();
   const { logout, user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [layout, setLayout] = useState<SidebarLayout>(loadLayout);
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
@@ -693,6 +697,15 @@ export function Sidebar() {
                 <span className="text-xs text-slate-400">Admin</span>
               </div>
             </div>
+            <Button
+              variant="ghost"
+              onClick={toggleTheme}
+              className="w-full justify-start gap-3 text-slate-400 mb-2"
+              data-testid="button-toggle-theme"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="text-sm font-medium">{theme === "dark" ? "Jasny motyw" : "Ciemny motyw"}</span>
+            </Button>
             <button
               onClick={() => logout()}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"

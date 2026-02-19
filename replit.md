@@ -38,7 +38,10 @@ The application is built with a modern full-stack architecture.
 -   **CSV Export**: Semicolon-delimited CSV export with BOM for Excel compatibility on Reservations and Subleases pages.
 -   **Reservation Notes**: Text notes field on reservations with FileText indicator in tables.
 -   **Document Templates**: System for managing document categories and uploading/downloading document templates.
--   **UI/UX**: Features a collapsible sidebar with sections for navigation, consistent Polish language UI, and a clean, modern design using Tailwind CSS and shadcn/ui. Accent color `#5ADBFA` for active navigation items.
+-   **Dark Mode**: Full dark mode support with theme toggle in the sidebar footer. CSS variables for both light and dark themes. Theme persists in localStorage.
+-   **Dashboard KPI Cards**: Four summary cards at the top of the dashboard showing monthly revenue (with month-over-month change), reservation count, unpaid reservations, and total company balance.
+-   **Global Search**: Ctrl+K shortcut or search button in top-right corner. Searches across reservations, apartments, and subleases with instant results.
+-   **UI/UX**: Features a collapsible sidebar with sections for navigation, consistent Polish language UI, and a clean, modern design using Tailwind CSS and shadcn/ui. Accent color `#5ADBFA` for active navigation items. Chart colors use CSS variables (chart-1..5) for theme consistency.
 -   **Architectural Patterns**: API endpoints are defined with Zod schemas for validation, and data fetching/caching is managed with TanStack Query. Database interactions are abstracted through an `IStorage` interface.
 
 ## External Dependencies

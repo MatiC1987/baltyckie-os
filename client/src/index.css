@@ -8,31 +8,36 @@
   --font-sans: 'Inter', sans-serif;
   --font-display: 'Plus Jakarta Sans', sans-serif;
 
-  /* Elegant Financial Theme - Light Mode */
   --background: 210 40% 98%;
   --foreground: 222 47% 11%;
 
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
+  --card-border: 214 32% 91%;
 
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
+  --popover-border: 214 32% 91%;
 
-  /* Trustworthy Blue */
   --primary: 221 83% 53%;
   --primary-foreground: 210 40% 98%;
+  --primary-border: hsl(221 83% 45%);
 
   --secondary: 210 40% 96%;
   --secondary-foreground: 222 47% 11%;
+  --secondary-border: hsl(210 30% 88%);
 
   --muted: 214 32% 91%;
   --muted-foreground: 215 16% 47%;
+  --muted-border: hsl(214 25% 85%);
 
   --accent: 210 40% 96%;
   --accent-foreground: 222 47% 11%;
+  --accent-border: hsl(210 30% 88%);
 
   --destructive: 0 84% 60%;
   --destructive-foreground: 210 40% 98%;
+  --destructive-border: hsl(0 70% 50%);
 
   --success: 142 71% 45%;
   --success-foreground: 144 100% 97%;
@@ -41,7 +46,81 @@
   --input: 214 32% 91%;
   --ring: 221 83% 53%;
 
-  --radius: 0.75rem;
+  --radius: 0.5rem;
+
+  --chart-1: 221 83% 53%;
+  --chart-2: 142 71% 45%;
+  --chart-3: 38 92% 50%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 0 84% 60%;
+
+  --sidebar: 222 47% 11%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-border: 220 30% 20%;
+  --sidebar-ring: 221 83% 53%;
+  --sidebar-primary: 221 83% 53%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-primary-border: hsl(221 83% 45%);
+  --sidebar-accent: 220 30% 20%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-accent-border: hsl(220 25% 25%);
+}
+
+.dark {
+  --background: 222 47% 8%;
+  --foreground: 210 40% 92%;
+
+  --card: 222 40% 11%;
+  --card-foreground: 210 40% 92%;
+  --card-border: 220 30% 18%;
+
+  --popover: 222 40% 11%;
+  --popover-foreground: 210 40% 92%;
+  --popover-border: 220 30% 18%;
+
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 47% 8%;
+  --primary-border: hsl(217 80% 50%);
+
+  --secondary: 220 30% 16%;
+  --secondary-foreground: 210 40% 85%;
+  --secondary-border: hsl(220 25% 22%);
+
+  --muted: 220 25% 18%;
+  --muted-foreground: 215 16% 55%;
+  --muted-border: hsl(220 20% 24%);
+
+  --accent: 220 30% 16%;
+  --accent-foreground: 210 40% 85%;
+  --accent-border: hsl(220 25% 22%);
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+  --destructive-border: hsl(0 60% 42%);
+
+  --success: 142 71% 45%;
+  --success-foreground: 144 100% 97%;
+
+  --border: 220 25% 18%;
+  --input: 220 25% 18%;
+  --ring: 217 91% 60%;
+
+  --chart-1: 217 91% 60%;
+  --chart-2: 142 71% 50%;
+  --chart-3: 38 92% 55%;
+  --chart-4: 280 65% 65%;
+  --chart-5: 0 80% 55%;
+
+  --sidebar: 222 50% 6%;
+  --sidebar-foreground: 210 40% 92%;
+  --sidebar-border: 220 30% 14%;
+  --sidebar-ring: 217 91% 60%;
+  --sidebar-primary: 217 91% 60%;
+  --sidebar-primary-foreground: 222 47% 8%;
+  --sidebar-primary-border: hsl(217 80% 50%);
+  --sidebar-accent: 220 30% 14%;
+  --sidebar-accent-foreground: 210 40% 92%;
+  --sidebar-accent-border: hsl(220 25% 18%);
 }
 
 @layer base {
@@ -56,10 +135,44 @@
 
 @layer utilities {
   .glass-panel {
-    @apply bg-white/70 backdrop-blur-lg border border-white/20 shadow-xl;
+    @apply bg-white/70 dark:bg-white/5 backdrop-blur-lg border border-white/20 dark:border-white/10 shadow-xl;
   }
   
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600;
+  }
+
+  .hover-elevate {
+    @apply transition-all duration-150;
+  }
+  .hover-elevate:hover {
+    filter: brightness(1.05);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  .active-elevate-2 {
+    @apply transition-all duration-100;
+  }
+  .active-elevate-2:active {
+    filter: brightness(0.97);
+    transform: scale(0.98);
+  }
+
+  .toggle-elevate {
+    @apply transition-all duration-150;
+  }
+  .toggle-elevated {
+    filter: brightness(1.08);
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.3);
+  }
+
+  .no-default-hover-elevate:hover {
+    filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .no-default-active-elevate:active {
+    filter: none !important;
+    transform: none !important;
   }
 }

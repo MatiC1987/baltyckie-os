@@ -514,8 +514,8 @@ export default function Revenue() {
                   />
                   <Legend wrapperStyle={{ fontSize: "12px" }} />
                   <Bar dataKey="prognoza" name="Prognoza" fill="hsl(var(--muted-foreground))" opacity={0.35} radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="najem" name="Najem" stackId="actual" fill="hsl(210 80% 55%)" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="podnajem" name="Podnajem" stackId="actual" fill="hsl(160 60% 45%)" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="najem" name="Najem" stackId="actual" fill="hsl(var(--chart-1))" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="podnajem" name="Podnajem" stackId="actual" fill="hsl(var(--chart-2))" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>

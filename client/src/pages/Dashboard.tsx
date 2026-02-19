@@ -155,12 +155,110 @@ export default function Dashboard() {
     },
   });
 
+  const kpiStats = useMemo(() => {
+    if (!reservations) return null;
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    const thisMonthRes = reservations.filter(r => {
+      if (!r.startDate) return false;
+      const d = new Date(r.startDate);
+      return d.getMonth() === thisMonth && d.getFullYear() === thisYear && r.status !== "ANULOWANA";
+    });
+
+    const monthRevenue = thisMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
+    const monthCount = thisMonthRes.length;
+
+    const lastMonthRes = reservations.filter(r => {
+      if (!r.startDate) return false;
+      const d = new Date(r.startDate);
+      const prevMonth = thisMonth === 0 ? 11 : thisMonth - 1;
+      const prevYear = thisMonth === 0 ? thisYear - 1 : thisYear;
+      return d.getMonth() === prevMonth && d.getFullYear() === prevYear && r.status !== "ANULOWANA";
+    });
+    const lastMonthRevenue = lastMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
+
+    const revenueChange = lastMonthRevenue > 0 ? ((monthRevenue - lastMonthRevenue) / lastMonthRevenue * 100) : 0;
+
+    const unpaidCount = reservations.filter(r => {
+      if (r.status === "ANULOWANA") return false;
+      return calcRemaining(r) > 0;
+    }).length;
+
+    return { monthRevenue, monthCount, revenueChange, lastMonthRevenue, unpaidCount };
+  }, [reservations]);
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h2>
         <p className="text-muted-foreground">Przegląd wyników finansowych i operacyjnych.</p>
       </div>
+
+      {kpiStats && (
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Card data-testid="card-kpi-revenue">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Przychód (ten miesiąc)</p>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="text-xl font-bold mt-1">
+                {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+              </p>
+              {kpiStats.lastMonthRevenue > 0 && (
+                <p className={`text-xs mt-1 ${kpiStats.revenueChange >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                  {kpiStats.revenueChange >= 0 ? "+" : ""}{kpiStats.revenueChange.toFixed(1)}% vs poprzedni mies.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-kpi-reservations">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Rezerwacje (ten miesiąc)</p>
+                <Plane className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="text-xl font-bold mt-1">{kpiStats.monthCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                aktywnych rezerwacji
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-kpi-unpaid">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Do opłacenia</p>
+                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className={`text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                {kpiStats.unpaidCount}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                nieopłaconych rezerwacji
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-kpi-balance">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Saldo firmowe</p>
+                <Wallet className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className={`text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                łączne saldo kont
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <CompanyBalanceCard
         companyBalance={companyBalance}

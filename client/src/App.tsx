@@ -35,6 +35,7 @@ import Profitability from "@/pages/Profitability";
 import YearComparison from "@/pages/YearComparison";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 function AuthenticatedRoute({ component: Component }: { component: () => JSX.Element }) {
   return (
@@ -117,12 +118,14 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

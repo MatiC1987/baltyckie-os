@@ -35,7 +35,7 @@ export function DataTable<T>({
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         <div className="p-8 space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 w-full bg-slate-100 animate-pulse rounded-lg" />
+            <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
       </div>
@@ -53,10 +53,10 @@ export function DataTable<T>({
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto">
       <Table>
-        <TableHeader className="bg-slate-50 dark:bg-muted/50 sticky top-0 z-20">
+        <TableHeader className="bg-muted/50 sticky top-0 z-20">
           <TableRow>
             {columns.map((col, index) => (
-              <TableHead key={index} className={cn("font-semibold text-slate-700 dark:text-slate-300", col.className)}>
+              <TableHead key={index} className={cn("font-semibold", col.className)}>
                 {col.header}
               </TableHead>
             ))}
@@ -66,7 +66,7 @@ export function DataTable<T>({
           {data.map((item, rowIndex) => (
             <TableRow 
               key={rowIndex} 
-              className={cn(onRowClick && "cursor-pointer hover:bg-slate-50 transition-colors")}
+              className={cn(onRowClick && "cursor-pointer hover:bg-muted/30 transition-colors")}
               onClick={() => onRowClick?.(item)}
             >
               {columns.map((col, colIndex) => (
