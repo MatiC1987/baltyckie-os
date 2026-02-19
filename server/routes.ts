@@ -1260,9 +1260,8 @@ export async function registerRoutes(
     const reservations = await storage.getReservations();
 
     const months: { year: number; month: number; label: string }[] = [];
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(currentYear, currentMonth + i, 1);
-      months.push({ year: d.getFullYear(), month: d.getMonth(), label: "" });
+    for (let i = 0; i < 12; i++) {
+      months.push({ year: currentYear, month: i, label: "" });
     }
 
     const result = months.map(m => {
