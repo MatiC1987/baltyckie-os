@@ -3,9 +3,11 @@
   "short_name": "Bałtyckie",
   "description": "Zarządzanie finansami apartamentów",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1a1a2e",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192.png",

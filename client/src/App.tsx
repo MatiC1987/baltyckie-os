@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { useEffect, useRef } from "react";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -61,6 +62,27 @@ function AuthenticatedPlaceholder({ title, description }: { title: string; descr
   );
 }
 
+const LAST_PATH_KEY = "baltyckie_last_path";
+
+function useRouteRestoration() {
+  const [location, setLocation] = useLocation();
+  const restored = useRef(false);
+
+  useEffect(() => {
+    if (!restored.current) {
+      restored.current = true;
+      const savedPath = sessionStorage.getItem(LAST_PATH_KEY);
+      if (savedPath && savedPath !== location) {
+        setLocation(savedPath);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem(LAST_PATH_KEY, location);
+  }, [location]);
+}
+
 function Router() {
   const { user, isLoading } = useAuth();
 
@@ -80,6 +102,12 @@ function Router() {
       </Switch>
     );
   }
+
+  return <AuthenticatedRouter />;
+}
+
+function AuthenticatedRouter() {
+  useRouteRestoration();
 
   return (
     <Switch>
