@@ -717,14 +717,16 @@ function RevenueForecastSection({ forecastData }: { forecastData: ForecastMonth[
         <Target className="h-5 w-5 text-muted-foreground" />
         <h3 className="text-lg font-semibold" data-testid="text-forecast-title">Realizacja prognozy przychodów</h3>
       </div>
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((c, idx) => {
-          const isCurrentMonth = idx === 0;
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+        {cards.map((c) => {
+          const now = new Date();
+          const isCurrentMonth = c.year === now.getFullYear() && c.month === now.getMonth();
+          const isPastMonth = c.year < now.getFullYear() || (c.year === now.getFullYear() && c.month < now.getMonth());
           return (
-            <Card key={`${c.year}-${c.month}`} className={isCurrentMonth ? "border-primary/30" : ""} data-testid={`card-forecast-${c.year}-${c.month}`}>
+            <Card key={`${c.year}-${c.month}`} className={isCurrentMonth ? "border-primary/30" : isPastMonth ? "opacity-75" : ""} data-testid={`card-forecast-${c.year}-${c.month}`}>
               <CardHeader className="pb-2 pt-3">
                 <CardTitle className="text-sm flex items-center justify-between gap-2 flex-wrap">
-                  <span>{c.monthName} {c.year}</span>
+                  <span>{c.monthName}</span>
                   {isCurrentMonth && <Badge variant="outline" className="text-[10px]">Bieżący</Badge>}
                 </CardTitle>
               </CardHeader>
