@@ -156,6 +156,8 @@ export default function SubrentSettlement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sublease-payments/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/revenue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/all-sublease-payments"] });
       for (const id of subleaseIds) {
         queryClient.invalidateQueries({ queryKey: ["/api/subleases", id, "payments"] });
       }
