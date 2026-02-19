@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -7,11 +7,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Save } from "lucide-react";
+import { Building2, Save, Upload, X, Globe } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function CompanySettings() {
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: settings, isLoading } = useQuery<CompanySettingsType>({
     queryKey: ["/api/company-settings"],
@@ -30,7 +31,10 @@ export default function CompanySettings() {
     representativeRole: "",
     phone: "",
     email: "",
+    websiteUrl: "",
   });
+
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -47,7 +51,11 @@ export default function CompanySettings() {
         representativeRole: settings.representativeRole || "",
         phone: settings.phone || "",
         email: settings.email || "",
+        websiteUrl: settings.websiteUrl || "",
       });
+      if (settings.logoUrl) {
+        setLogoPreview(`/api/company-settings/logo?t=${Date.now()}`);
+      }
     }
   }, [settings]);
 
@@ -58,7 +66,38 @@ export default function CompanySettings() {
       toast({ title: "Zapisano dane firmowe" });
     },
     onError: () => {
-      toast({ title: "Błąd", description: "Nie udało się zapisać danych", variant: "destructive" });
+      toast({ title: "Blad", description: "Nie udalo sie zapisac danych", variant: "destructive" });
+    },
+  });
+
+  const logoUpload = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("logo", file);
+      const res = await fetch("/api/company-settings/logo", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Blad uploadu");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      setLogoPreview(`/api/company-settings/logo?t=${Date.now()}`);
+      toast({ title: "Logo zostalo zapisane" });
+    },
+    onError: () => {
+      toast({ title: "Blad", description: "Nie udalo sie zapisac logo", variant: "destructive" });
+    },
+  });
+
+  const removeLogo = useMutation({
+    mutationFn: async () => apiRequest("PUT", "/api/company-settings", { logoUrl: null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      setLogoPreview(null);
+      toast({ title: "Logo zostalo usuniete" });
     },
   });
 
@@ -69,6 +108,13 @@ export default function CompanySettings() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     mutation.mutate(form);
+  };
+
+  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      logoUpload.mutate(file);
+    }
   };
 
   if (isLoading) {
@@ -89,6 +135,56 @@ export default function CompanySettings() {
 
       <Card>
         <CardContent className="p-6">
+          <div className="mb-6 space-y-3">
+            <Label className="text-sm font-medium">Logo firmy</Label>
+            <p className="text-xs text-muted-foreground">Logo bedzie wyswietlane w naglowku generowanych dokumentow (umowy, noty ksiegowe)</p>
+            <div className="flex items-center gap-4 flex-wrap">
+              {logoPreview ? (
+                <div className="relative">
+                  <img
+                    src={logoPreview}
+                    alt="Logo firmy"
+                    className="h-16 max-w-[200px] object-contain border rounded-md p-1"
+                    data-testid="img-company-logo"
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
+                    onClick={() => removeLogo.mutate()}
+                    disabled={removeLogo.isPending}
+                    data-testid="button-remove-logo"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="h-16 w-[200px] border-2 border-dashed rounded-md flex items-center justify-center text-muted-foreground text-xs">
+                  Brak logo
+                </div>
+              )}
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  onChange={handleLogoSelect}
+                  data-testid="input-logo-file"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={logoUpload.isPending}
+                  data-testid="button-upload-logo"
+                >
+                  <Upload className="w-4 h-4 mr-1" />
+                  {logoUpload.isPending ? "Przesylanie..." : "Wgraj logo"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-6" data-testid="form-company-settings">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-1.5">
@@ -164,7 +260,7 @@ export default function CompanySettings() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="representativeName">Imię i nazwisko reprezentanta</Label>
+                <Label htmlFor="representativeName">Imie i nazwisko reprezentanta</Label>
                 <Input
                   id="representativeName"
                   value={form.representativeName}
@@ -199,6 +295,20 @@ export default function CompanySettings() {
                   onChange={handleChange("email")}
                   data-testid="input-email"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="websiteUrl" className="flex items-center gap-1">
+                  <Globe className="w-3 h-3" />
+                  Strona internetowa
+                </Label>
+                <Input
+                  id="websiteUrl"
+                  value={form.websiteUrl}
+                  onChange={handleChange("websiteUrl")}
+                  placeholder="https://www.przyklad.pl"
+                  data-testid="input-website-url"
+                />
+                <p className="text-xs text-muted-foreground">Link do strony bedzie zakodowany w QR na dole dokumentow</p>
               </div>
             </div>
             <div className="flex justify-end">

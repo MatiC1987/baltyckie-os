@@ -1382,6 +1382,114 @@ export async function registerRoutes(
         zip.file(xmlFile, xml);
       }
 
+      let logoImgBuffer: Buffer | null = null;
+      let logoImgExt = "png";
+      if (companyData?.logoUrl) {
+        try {
+          const { objectStorageClient: osClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const lp = (() => {
+            const p = companyData.logoUrl!.startsWith("/") ? companyData.logoUrl!.slice(1) : companyData.logoUrl!;
+            const parts = p.split("/");
+            return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+          })();
+          const [buf] = await osClient.bucket(lp.bucketName).file(lp.objectName).download();
+          logoImgBuffer = buf;
+          logoImgExt = companyData.logoUrl!.split(".").pop()?.toLowerCase() || "png";
+        } catch (e) { console.error("Contract logo load error:", e); }
+      }
+
+      let qrImgBuffer: Buffer | null = null;
+      if (companyData?.websiteUrl) {
+        try {
+          const QRCode = (await import("qrcode")).default;
+          qrImgBuffer = await QRCode.toBuffer(companyData.websiteUrl, { width: 200, margin: 1 });
+        } catch (e) { console.error("Contract QR generation error:", e); }
+      }
+
+      let contentTypesXml = zip.files["[Content_Types].xml"]?.asText() || "";
+      if (!contentTypesXml.includes('Extension="png"')) {
+        contentTypesXml = contentTypesXml.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>');
+      }
+      if ((logoImgExt === "jpg" || logoImgExt === "jpeg") && !contentTypesXml.includes('Extension="jpeg"') && !contentTypesXml.includes('Extension="jpg"')) {
+        contentTypesXml = contentTypesXml.replace("</Types>", '<Default Extension="jpeg" ContentType="image/jpeg"/></Types>');
+      }
+
+      const makeDrawingXml = (rId: string, cx: number, cy: number, docPrId: number, name: string) =>
+        `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="${name}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
+
+      const getNextRid = (relsContent: string): number => {
+        const ids = (relsContent.match(/rId(\d+)/g) || []).map(s => parseInt(s.replace("rId", "")));
+        return Math.max(0, ...ids) + 1;
+      };
+
+      const docRelsPath = "word/_rels/document.xml.rels";
+      let docRelsXml = zip.files[docRelsPath]?.asText() || '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+
+      const nsAll = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+
+      let docXml = zip.files["word/document.xml"]?.asText() || "";
+
+      if (logoImgBuffer) {
+        const logoMediaName = `image_logo.${logoImgExt}`;
+        zip.file(`word/media/${logoMediaName}`, logoImgBuffer);
+
+        const headerPartName = "word/header_logo.xml";
+        const headerRelsPath = "word/_rels/header_logo.xml.rels";
+        const hdrRid = "rId1";
+        zip.file(headerRelsPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${hdrRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${logoMediaName}"/></Relationships>`);
+        zip.file(headerPartName, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${nsAll}><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r>${makeDrawingXml(hdrRid, 2400000, 900000, 100, "Logo")}</w:r></w:p></w:hdr>`);
+
+        if (!contentTypesXml.includes(`PartName="/${headerPartName}"`)) {
+          contentTypesXml = contentTypesXml.replace("</Types>", `<Override PartName="/${headerPartName}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>`);
+        }
+
+        let nextDocRid = getNextRid(docRelsXml);
+        const hdrRefId = `rId${nextDocRid}`;
+        docRelsXml = docRelsXml.replace("</Relationships>", `<Relationship Id="${hdrRefId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header_logo.xml"/></Relationships>`);
+
+        const sectPrMatch = docXml.match(/<w:sectPr[\s>][\s\S]*?<\/w:sectPr>/);
+        if (sectPrMatch) {
+          let sectPr = sectPrMatch[0];
+          sectPr = sectPr.replace(/<w:headerReference[^/]*w:type="default"[^/]*\/>/g, "");
+          const headerRef = `<w:headerReference w:type="default" r:id="${hdrRefId}"/>`;
+          sectPr = sectPr.replace(/<w:sectPr([\s>])/, `<w:sectPr$1${headerRef}`);
+          docXml = docXml.replace(sectPrMatch[0], sectPr);
+        }
+      }
+
+      if (qrImgBuffer) {
+        zip.file("word/media/image_qr.png", qrImgBuffer);
+
+        const footerPartName = "word/footer_qr.xml";
+        const footerRelsPath = "word/_rels/footer_qr.xml.rels";
+        const ftrRid = "rId1";
+        zip.file(footerRelsPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${ftrRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image_qr.png"/></Relationships>`);
+
+        const websiteText = (companyData?.websiteUrl || "").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        zip.file(footerPartName, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${nsAll}><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${makeDrawingXml(ftrRid, 800000, 800000, 101, "QR")}</w:r></w:p><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">${websiteText}</w:t></w:r></w:p></w:ftr>`);
+
+        if (!contentTypesXml.includes(`PartName="/${footerPartName}"`)) {
+          contentTypesXml = contentTypesXml.replace("</Types>", `<Override PartName="/${footerPartName}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`);
+        }
+
+        let nextDocRid = getNextRid(docRelsXml);
+        const ftrRefId = `rId${nextDocRid}`;
+        docRelsXml = docRelsXml.replace("</Relationships>", `<Relationship Id="${ftrRefId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer_qr.xml"/></Relationships>`);
+
+        const sectPrMatch = docXml.match(/<w:sectPr[\s>][\s\S]*?<\/w:sectPr>/);
+        if (sectPrMatch) {
+          let sectPr = sectPrMatch[0];
+          sectPr = sectPr.replace(/<w:footerReference[^/]*w:type="default"[^/]*\/>/g, "");
+          const footerRef = `<w:footerReference w:type="default" r:id="${ftrRefId}"/>`;
+          sectPr = sectPr.replace(/<w:sectPr([\s>])/, `<w:sectPr$1${footerRef}`);
+          docXml = docXml.replace(sectPrMatch[0], sectPr);
+        }
+      }
+
+      zip.file("word/document.xml", docXml);
+      zip.file(docRelsPath, docRelsXml);
+      if (contentTypesXml) zip.file("[Content_Types].xml", contentTypesXml);
+
       const nullGetter = () => "";
       const Docxtemplater = (await import("docxtemplater")).default;
       const doc = new Docxtemplater(zip, {
@@ -1912,6 +2020,63 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/company-settings/logo', isAuthenticated, upload.single('logo'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const allowedMimes = ["image/png", "image/jpeg", "image/jpg"];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({ message: "Dozwolone formaty: PNG, JPG" });
+      }
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const publicPaths = osService.getPublicSearchPaths();
+      const publicDir = publicPaths[0];
+
+      const ext = req.file.originalname.split(".").pop() || "png";
+      const fileName = `company-logo.${ext}`;
+      const storagePath = `${publicDir}/${fileName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(req.file.buffer, { contentType: req.file.mimetype });
+
+      const logoUrl = storagePath;
+      await storage.upsertCompanySettings({ logoUrl });
+      res.json({ logoUrl });
+    } catch (err: any) {
+      console.error("Logo upload error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/company-settings/logo', async (req, res) => {
+    try {
+      const settings = await storage.getCompanySettings();
+      if (!settings?.logoUrl) return res.status(404).json({ message: "Brak logo" });
+
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const parsedPath = (() => {
+        const p = settings.logoUrl!.startsWith("/") ? settings.logoUrl!.slice(1) : settings.logoUrl!;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      const [fileBuffer] = await storageFile.download();
+
+      const ext = settings.logoUrl!.split(".").pop()?.toLowerCase() || "png";
+      const mimeMap: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", webp: "image/webp" };
+      res.setHeader("Content-Type", mimeMap[ext] || "image/png");
+      res.send(fileBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Accounting Notes
   app.get('/api/accounting-notes', isAuthenticated, async (req, res) => {
     const subleaseId = req.query.subleaseId ? parseInt(req.query.subleaseId as string) : undefined;
@@ -1979,16 +2144,49 @@ export async function registerRoutes(
 
       const jsPDF = (await import("jspdf")).default;
       await import("jspdf-autotable");
+      const QRCode = (await import("qrcode")).default;
       const doc = new jsPDF();
 
+      let logoBuffer: Buffer | null = null;
+      let logoExt = "png";
+      if (companyData?.logoUrl) {
+        try {
+          const { objectStorageClient: osClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const lp = (() => {
+            const p = companyData.logoUrl!.startsWith("/") ? companyData.logoUrl!.slice(1) : companyData.logoUrl!;
+            const parts = p.split("/");
+            return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+          })();
+          const [buf] = await osClient.bucket(lp.bucketName).file(lp.objectName).download();
+          logoBuffer = buf;
+          logoExt = companyData.logoUrl!.split(".").pop()?.toLowerCase() || "png";
+        } catch (e) { console.error("Logo load error:", e); }
+      }
+
+      let qrDataUrl: string | null = null;
+      if (companyData?.websiteUrl) {
+        try {
+          qrDataUrl = await QRCode.toDataURL(companyData.websiteUrl, { width: 80, margin: 1 });
+        } catch (e) { console.error("QR generation error:", e); }
+      }
+
+      let headerY = 14;
+      if (logoBuffer) {
+        const imgFormat = (logoExt === "jpg" || logoExt === "jpeg") ? "JPEG" : "PNG";
+        const base64 = logoBuffer.toString("base64");
+        const dataUri = `data:image/${logoExt};base64,${base64}`;
+        doc.addImage(dataUri, imgFormat, 14, headerY, 40, 16);
+        headerY += 20;
+      }
+
       doc.setFontSize(16);
-      doc.text(rd("NOTA KSIEGOWA"), 105, 20, { align: "center" });
+      doc.text(rd("NOTA KSIEGOWA"), 105, headerY + 4, { align: "center" });
       doc.setFontSize(10);
-      doc.text(rd(`Nr: ${noteNumber}`), 105, 28, { align: "center" });
-      doc.text(rd(`Data wystawienia: ${now.toLocaleDateString("pl-PL")}`), 105, 34, { align: "center" });
+      doc.text(rd(`Nr: ${noteNumber}`), 105, headerY + 12, { align: "center" });
+      doc.text(rd(`Data wystawienia: ${now.toLocaleDateString("pl-PL")}`), 105, headerY + 18, { align: "center" });
 
       doc.setFontSize(9);
-      let y = 46;
+      let y = headerY + 30;
       doc.setFont("helvetica", "bold");
       doc.text(rd("Wystawca:"), 14, y);
       doc.setFont("helvetica", "normal");
@@ -2043,7 +2241,15 @@ export async function registerRoutes(
       doc.setFontSize(8);
       doc.text(rd("Nota ksiegowa nie jest faktura VAT."), 14, finalY + 14);
       doc.text(rd("Termin platnosci: 14 dni od daty wystawienia."), 14, finalY + 20);
-      doc.text(rd(`Wygenerowano: ${now.toLocaleDateString("pl-PL")} | Baltyckie Finanse`), 105, 285, { align: "center" });
+
+      if (qrDataUrl) {
+        doc.addImage(qrDataUrl, "PNG", 88, 268, 16, 16);
+        doc.setFontSize(6);
+        doc.text(rd(companyData?.websiteUrl || ""), 105, 286, { align: "center" });
+      } else {
+        doc.setFontSize(8);
+        doc.text(rd(`Wygenerowano: ${now.toLocaleDateString("pl-PL")} | Baltyckie Finanse`), 105, 285, { align: "center" });
+      }
 
       const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
 

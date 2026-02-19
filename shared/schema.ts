@@ -775,6 +775,8 @@ export const companySettings = pgTable("company_settings", {
   representativeRole: text("representative_role"),
   phone: text("phone"),
   email: text("email"),
+  logoUrl: text("logo_url"),
+  websiteUrl: text("website_url"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

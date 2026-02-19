@@ -43,7 +43,7 @@ The application is built with a modern full-stack architecture.
 -   **CSV Export**: Semicolon-delimited CSV export with BOM for Excel compatibility on Reservations and Subleases pages.
 -   **Reservation Notes**: Text notes field on reservations with FileText indicator in tables.
 -   **Document Templates**: System for managing document categories and uploading/downloading document templates.
--   **Company Settings (Dane firmowe)**: Management page for landlord company data (name, NIP, REGON, address, bank account, representative). Data auto-fills into generated contracts.
+-   **Company Settings (Dane firmowe)**: Management page for landlord company data (name, NIP, REGON, address, bank account, representative, logo upload, website URL). Data auto-fills into generated contracts. Company logo appears in document headers (PDF notes, Word contracts). QR code with website link appears in document footers.
 -   **Media Settlement Accounting Notes**: PDF accounting note (nota księgowa) generator from media settlement reports, including company and tenant data, consumption details, and totals.
 -   **Dark Mode**: Full dark mode support with theme toggle in the sidebar footer. CSS variables for both light and dark themes. Theme persists in localStorage.
 -   **Dashboard KPI Cards**: Four summary cards at the top of the dashboard showing monthly revenue (with month-over-month change), reservation count, unpaid reservations, and total company balance.
