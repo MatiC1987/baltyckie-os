@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -26,6 +29,7 @@ import {
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
+import { ReservationForm } from "@/pages/Reservations";
 import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
 
 type CompanyBalanceAccount = {
@@ -129,29 +133,40 @@ function getForecastForMonth(year: number, month: number): number {
 
 function QuickActions() {
   const [, navigate] = useLocation();
+  const [showReservationDialog, setShowReservationDialog] = useState(false);
   const actions = [
-    { label: "Nowa rezerwacja", shortLabel: "Rezerwacja", icon: Plus, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", href: "/reservations?action=new", testId: "button-quick-reservation" },
-    { label: "Nowy wydatek", shortLabel: "Wydatek", icon: Receipt, color: "text-red-600 dark:text-red-400", bg: "bg-red-500/10", href: "/costs-expenses?action=new", testId: "button-quick-expense" },
-    { label: "Nowy podnajem", shortLabel: "Podnajem", icon: FileSignature, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", href: "/contracts-subrent?action=new", testId: "button-quick-sublease" },
-    { label: "Dodaj fakturę", shortLabel: "Faktura", icon: Receipt, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", href: "/dokumenty-ksiegowe", testId: "button-quick-cost-invoice" },
-    { label: "Backup danych", shortLabel: "Backup", icon: Download, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", href: "/backup", testId: "button-quick-backup" },
+    { label: "Nowa rezerwacja", shortLabel: "Rezerwacja", icon: Plus, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", action: () => setShowReservationDialog(true), testId: "button-quick-reservation" },
+    { label: "Nowy wydatek", shortLabel: "Wydatek", icon: Receipt, color: "text-red-600 dark:text-red-400", bg: "bg-red-500/10", action: () => navigate("/costs-expenses?action=new"), testId: "button-quick-expense" },
+    { label: "Nowy podnajem", shortLabel: "Podnajem", icon: FileSignature, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", action: () => navigate("/contracts-subrent?action=new"), testId: "button-quick-sublease" },
+    { label: "Dodaj fakturę", shortLabel: "Faktura", icon: Receipt, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", action: () => navigate("/dokumenty-ksiegowe"), testId: "button-quick-cost-invoice" },
+    { label: "Backup danych", shortLabel: "Backup", icon: Download, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", action: () => navigate("/backup"), testId: "button-quick-backup" },
   ];
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-      {actions.map(a => (
-        <Card key={a.testId} className="hover-elevate cursor-pointer" onClick={() => navigate(a.href)} data-testid={a.testId}>
-          <CardContent className="py-3 px-4 flex items-center gap-3">
-            <div className={`h-9 w-9 rounded-md ${a.bg} flex items-center justify-center shrink-0`}>
-              <a.icon className={`h-4 w-4 ${a.color}`} />
-            </div>
-            <span className="text-sm font-medium">
-              <span className="hidden sm:inline">{a.label}</span>
-              <span className="sm:hidden">{a.shortLabel}</span>
-            </span>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {actions.map(a => (
+          <Card key={a.testId} className="hover-elevate cursor-pointer" onClick={a.action} data-testid={a.testId}>
+            <CardContent className="py-3 px-4 flex items-center gap-3">
+              <div className={`h-9 w-9 rounded-md ${a.bg} flex items-center justify-center shrink-0`}>
+                <a.icon className={`h-4 w-4 ${a.color}`} />
+              </div>
+              <span className="text-sm font-medium">
+                <span className="hidden sm:inline">{a.label}</span>
+                <span className="sm:hidden">{a.shortLabel}</span>
+              </span>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <Dialog open={showReservationDialog} onOpenChange={setShowReservationDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Nowa rezerwacja</DialogTitle>
+          </DialogHeader>
+          <ReservationForm onSuccess={() => { setShowReservationDialog(false); navigate("/reservations"); }} />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

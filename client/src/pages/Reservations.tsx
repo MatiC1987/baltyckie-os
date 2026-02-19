@@ -770,7 +770,7 @@ function EditReservationForm({ reservation, onSuccess }: { reservation: Reservat
   );
 }
 
-function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
+export function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
   const createReservation = useCreateReservation();
   const { data: apartments } = useApartments();
 
