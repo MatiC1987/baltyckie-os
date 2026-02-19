@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -3123,6 +3123,349 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Generate notifications error:", err);
       res.status(500).json({ message: "Failed to generate notifications" });
+    }
+  });
+
+  // Revenue Forecasts API
+  app.get("/api/revenue-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const year = req.query.year ? Number(req.query.year) : undefined;
+      const forecasts = await storage.getRevenueForecasts(year);
+      res.json(forecasts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/revenue-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertRevenueForecastSchema.parse(req.body);
+      const result = await storage.upsertRevenueForecast(parsed);
+      res.json(result);
+    } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Nieprawidłowe dane prognozy", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Import costs from Excel KOSZTY sheet
+  app.post("/api/import-costs", isAuthenticated, async (req, res) => {
+    try {
+      const filePath = path.resolve("attached_assets/BAŁTYCKIE_1771496530840.xlsx");
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "Plik Excel nie został znaleziony" });
+      }
+
+      const fileBuffer = fs.readFileSync(filePath);
+      const wb = XLSX.read(fileBuffer);
+      const ws = wb.Sheets["KOSZTY"];
+      if (!ws) {
+        return res.status(404).json({ message: "Arkusz KOSZTY nie został znaleziony" });
+      }
+
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const allApartments = await storage.getApartments();
+      const activeApts = allApartments.filter(a => a.active !== false);
+
+      const dateRow = data[4];
+      const monthColumns: { col: number; year: number; month: number }[] = [];
+      for (let c = 0; c < dateRow.length; c++) {
+        if (typeof dateRow[c] === "number" && dateRow[c] > 40000) {
+          const excelEpoch = new Date(1899, 11, 30).getTime();
+          const d = new Date(excelEpoch + dateRow[c] * 86400000);
+          monthColumns.push({ col: c, year: d.getFullYear(), month: d.getMonth() });
+        }
+      }
+
+      const GB_CATEGORIES: Record<string, number[]> = {
+        "GRAND BALTIC": [],
+      };
+      const GB_SUPERIOR = activeApts.filter(a => a.location === "GRAND BALTIC" && a.name.toLowerCase().includes("superior")).map(a => a.id);
+      const GB_STUDIO = activeApts.filter(a => a.location === "GRAND BALTIC" && /^\d+\s*-\s*studio$/i.test(a.name)).map(a => a.id);
+      const GB_STUDIO_MINI = activeApts.filter(a => a.location === "GRAND BALTIC" && a.name.toLowerCase().includes("studio mini")).map(a => a.id);
+      const GB_2OS = activeApts.filter(a => a.location === "GRAND BALTIC" && a.name.toLowerCase().includes("2os")).map(a => a.id);
+      const ALL_GB = [...GB_SUPERIOR, ...GB_STUDIO, ...GB_STUDIO_MINI, ...GB_2OS];
+
+      const aptNameVariants: Record<string, string> = {
+        "BULWAR GRAND": "BULWAR GRAND",
+        "BULWAR RODZINNY": "BULWAR RODZINNY",
+        "BULWAR PRESTIGE": "BULWAR PRESTIGE",
+        "BULWAR VIP": "BULWAR VIP",
+        "BULWAR ZACISZE": "BULWAR ZACISZE",
+        "BULWAR SUN": "BULWAR SUN",
+        "BULWAR AMBER": "BULWAR AMBER",
+        "BULWAR MODERN": "BULWAR MODERN",
+        "BULWAR MARINA": "BULWAR MARINA",
+        "BULWAR GLAMOUR": "BULWAR GLAMOUR",
+        "BULWAR ELEGANCE": "BULWAR ELEGANCE",
+        "BULWAR PANORAMA": "BULWAR PANORAMA",
+        "BULWAR PANORAMA 2": "BULWAR PANORAMA 2",
+        "BULWAR 7 MÓRZ": "BULWAR 7 MÓRZ",
+        "BULWAR COMFORT": "BULWAR COMFORT",
+        "BULWAR DELUXE": "BULWAR DELUXE",
+        "BULWAR ZACISZE 2": "BULWAR ZACISZE 2",
+        "BULWAR EXCLUSIVE": "BULWAR EXCLUSIVE",
+        "BULWAR - SCANIA": "BULWAR SCANIA",
+        "LUXORO PARK": "",
+        "LUXURO 49-1": "49-1",
+        "LUXURO 49-2": "49-2",
+        "LUXURO 51-1": "51-1",
+        "LUXURO 51-2": "51-2",
+        "GARDEN 2": "GARDEN2",
+        "SŁONECZNA OAZA 2": "SŁONECZNA OAZA 2",
+      };
+
+      function resolveApartment(excelName: string): { ids: number[]; divideBy: number } | null {
+        const upper = excelName.toUpperCase().trim();
+
+        if (upper === "GRAND BALTIC") {
+          return { ids: ALL_GB, divideBy: ALL_GB.length || 1 };
+        }
+        if (upper.includes("SUPERIOR") && !upper.includes("BULWAR")) {
+          return { ids: GB_SUPERIOR, divideBy: GB_SUPERIOR.length || 1 };
+        }
+        if (upper === "STUDIO") {
+          return { ids: GB_STUDIO, divideBy: GB_STUDIO.length || 1 };
+        }
+        if (upper === "STUDIO MINI") {
+          return { ids: GB_STUDIO_MINI, divideBy: GB_STUDIO_MINI.length || 1 };
+        }
+        if (upper.includes("2-OSOBOWY") || upper === "2-OS") {
+          return { ids: GB_2OS, divideBy: GB_2OS.length || 1 };
+        }
+
+        const dbName = aptNameVariants[upper] ?? upper;
+        if (dbName === "") return null;
+
+        const matched = activeApts.filter(a => a.name.toUpperCase().trim() === dbName);
+        if (matched.length > 0) return { ids: matched.map(a => a.id), divideBy: 1 };
+
+        const fuzzy = activeApts.filter(a => {
+          const n = a.name.toUpperCase().trim();
+          return n.includes(dbName) || dbName.includes(n);
+        });
+        if (fuzzy.length === 1) return { ids: [fuzzy[0].id], divideBy: 1 };
+
+        return null;
+      }
+
+      const companyCategories = new Set([
+        "OPŁATY", "WYNAGRODZENIA", "ZUS", "PODATKI", "KREDYTY & POŻYCZKI",
+        "NIERUCHOMOŚCI", "OBSŁUGA PRAWNO-KSIĘGOWA", "MARKETING & REKLAMA",
+        "USŁUGI", "POZOSTAŁE"
+      ]);
+
+      const expensesToInsert: any[] = [];
+      let imported = 0;
+      let skipped = 0;
+      const log: string[] = [];
+
+      let currentSection = "COMPANY";
+
+      for (let r = 6; r < data.length; r++) {
+        const rowLabel = String(data[r][0] || "").trim();
+        if (!rowLabel) continue;
+
+        if (rowLabel === "APARTAMENTY") {
+          currentSection = "APARTMENT";
+          continue;
+        }
+
+        if (rowLabel === "PODSUMOWANIE" || rowLabel.includes("RAZEM") || rowLabel === "prognoza" || rowLabel === "koszty" || rowLabel === "saldo") {
+          continue;
+        }
+
+        const isCompanyCost = companyCategories.has(rowLabel.toUpperCase());
+        let aptResolution: { ids: number[]; divideBy: number } | null = null;
+
+        if (!isCompanyCost && currentSection === "APARTMENT") {
+          aptResolution = resolveApartment(rowLabel);
+          if (!aptResolution) {
+            log.push(`Pominięto: ${rowLabel} (nie znaleziono apartamentu)`);
+            skipped++;
+            continue;
+          }
+        }
+
+        for (const mc of monthColumns) {
+          if (mc.year < 2022) continue;
+
+          const realCol = mc.col + 1;
+          const realVal = Number(data[r][realCol]) || 0;
+
+          if (realVal === 0) continue;
+
+          const dateStr = `${mc.year}-${String(mc.month + 1).padStart(2, "0")}-01`;
+
+          if (isCompanyCost || currentSection === "COMPANY") {
+            expensesToInsert.push({
+              date: dateStr,
+              category: rowLabel,
+              amount: String(Math.round(realVal * 100) / 100),
+              apartmentId: null,
+              description: `Import z Excel: ${rowLabel}`,
+              type: "FIXED",
+              isForecast: false,
+            });
+            imported++;
+          } else if (aptResolution) {
+            const perApt = Math.round((realVal / aptResolution.divideBy) * 100) / 100;
+            for (const aptId of aptResolution.ids) {
+              expensesToInsert.push({
+                date: dateStr,
+                category: rowLabel,
+                amount: String(perApt),
+                apartmentId: aptId,
+                description: `Import z Excel: ${rowLabel}`,
+                type: "VARIABLE",
+                isForecast: false,
+              });
+              imported++;
+            }
+          }
+        }
+      }
+
+      if (expensesToInsert.length > 0) {
+        const batchSize = 500;
+        for (let i = 0; i < expensesToInsert.length; i += batchSize) {
+          const batch = expensesToInsert.slice(i, i + batchSize);
+          await db.insert(expenses).values(batch);
+        }
+      }
+
+      log.push(`Zaimportowano ${imported} rekordów kosztów`);
+      if (skipped > 0) log.push(`Pominięto ${skipped} nierozpoznanych wierszy`);
+
+      res.json({ imported, skipped, log, message: `Import kosztów zakończony: ${imported} rekordów` });
+    } catch (err: any) {
+      console.error("Cost import error:", err);
+      res.status(500).json({ message: "Błąd importu kosztów: " + (err.message || "Nieznany błąd") });
+    }
+  });
+
+  // Import revenue forecasts from Excel Przychody sheet
+  app.post("/api/import-revenue-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const filePath = path.resolve("attached_assets/BAŁTYCKIE_1771496530840.xlsx");
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "Plik Excel nie został znaleziony" });
+      }
+
+      const fileBuffer = fs.readFileSync(filePath);
+      const wb = XLSX.read(fileBuffer);
+      const ws = wb.Sheets["Przychody"];
+      if (!ws) {
+        return res.status(404).json({ message: "Arkusz Przychody nie został znaleziony" });
+      }
+
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const excelEpoch = new Date(1899, 11, 30).getTime();
+
+      const headerRow = data[0];
+      const yearBlocks: { startCol: number; year: number; months: { col: number; month: number }[] }[] = [];
+
+      let currentBlockStart = -1;
+      let currentBlockYear = 0;
+      let monthsInBlock: { col: number; month: number }[] = [];
+
+      for (let c = 1; c < headerRow.length; c++) {
+        const val = headerRow[c];
+        if (typeof val === "number" && val >= 2022 && val <= 2030) {
+          if (currentBlockStart > 0 && monthsInBlock.length > 0) {
+            yearBlocks.push({ startCol: currentBlockStart, year: currentBlockYear, months: monthsInBlock });
+          }
+          currentBlockYear = val;
+          currentBlockStart = -1;
+          monthsInBlock = [];
+          continue;
+        }
+        if (typeof val === "number" && val > 40000) {
+          const d = new Date(excelEpoch + val * 86400000);
+          const yr = d.getFullYear();
+          const mo = d.getMonth();
+          if (yr >= 2022) {
+            if (currentBlockStart < 0) currentBlockStart = c;
+            if (currentBlockYear === 0) currentBlockYear = yr;
+            monthsInBlock.push({ col: c, month: mo });
+          }
+        }
+        if (val === "" && currentBlockStart > 0 && monthsInBlock.length >= 12) {
+          yearBlocks.push({ startCol: currentBlockStart, year: currentBlockYear, months: monthsInBlock });
+          currentBlockStart = -1;
+          currentBlockYear = 0;
+          monthsInBlock = [];
+        }
+      }
+      if (currentBlockStart > 0 && monthsInBlock.length > 0) {
+        yearBlocks.push({ startCol: currentBlockStart, year: currentBlockYear, months: monthsInBlock });
+      }
+
+      const locationRows: { name: string; prognozaRow: number; przychodyRow: number }[] = [];
+      for (let r = 1; r < data.length; r++) {
+        const label = String(data[r][0] || "").trim();
+        if (["GRAND BALTIC", "BULWAR PORTOWY", "WCZASOWA", "NA WYDMIE", "PRZEWŁOKA", "LUXURO PARK"].includes(label.toUpperCase())) {
+          const nextLabel1 = String(data[r + 1]?.[0] || "").trim().toLowerCase();
+          const nextLabel2 = String(data[r + 2]?.[0] || "").trim().toLowerCase();
+          if (nextLabel1 === "prognoza" && nextLabel2 === "przychody") {
+            locationRows.push({ name: label.toUpperCase(), prognozaRow: r + 1, przychodyRow: r + 2 });
+          }
+        }
+        if (label === "RAZEM:" || label.toUpperCase() === "RAZEM:") {
+          const nextLabel1 = String(data[r + 1]?.[0] || "").trim().toLowerCase();
+          const nextLabel2 = String(data[r + 2]?.[0] || "").trim().toLowerCase();
+          if (nextLabel1 === "prognoza" && nextLabel2 === "przychody") {
+            locationRows.push({ name: "RAZEM", prognozaRow: r + 1, przychodyRow: r + 2 });
+          }
+        }
+      }
+
+      await storage.deleteLocationLevelForecasts();
+
+      const forecastsToInsert: any[] = [];
+      let imported = 0;
+
+      for (const loc of locationRows) {
+        for (const block of yearBlocks) {
+          for (const mc of block.months) {
+            const forecastVal = Number(data[loc.prognozaRow]?.[mc.col]) || 0;
+            const actualVal = Number(data[loc.przychodyRow]?.[mc.col]) || 0;
+
+            if (forecastVal === 0 && actualVal === 0) continue;
+
+            forecastsToInsert.push({
+              year: block.year,
+              month: mc.month,
+              locationName: loc.name,
+              apartmentId: null,
+              forecast: String(Math.round(forecastVal * 100) / 100),
+              actual: String(Math.round(actualVal * 100) / 100),
+            });
+            imported++;
+          }
+        }
+      }
+
+      if (forecastsToInsert.length > 0) {
+        await storage.createRevenueForecastsBulk(forecastsToInsert);
+      }
+
+      const yearSummary: Record<number, number> = {};
+      for (const f of forecastsToInsert) {
+        yearSummary[f.year] = (yearSummary[f.year] || 0) + 1;
+      }
+
+      res.json({
+        imported,
+        yearSummary,
+        locations: locationRows.map(l => l.name),
+        message: `Import prognoz zakończony: ${imported} rekordów dla ${locationRows.length} lokalizacji`,
+      });
+    } catch (err: any) {
+      console.error("Revenue forecast import error:", err);
+      res.status(500).json({ message: "Błąd importu prognoz: " + (err.message || "Nieznany błąd") });
     }
   });
 

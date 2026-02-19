@@ -37,9 +37,10 @@ import {
   activityLogs, ActivityLog, InsertActivityLog,
   invoices, Invoice, InsertInvoice,
   notifications, Notification, InsertNotification,
+  revenueForecasts, RevenueForecast, InsertRevenueForecast,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, isNotNull } from "drizzle-orm";
 
 export interface IStorage {
   // Users (optional if auth handles it separately, but good to have)
@@ -250,6 +251,13 @@ export interface IStorage {
   createNotification(data: InsertNotification): Promise<Notification>;
   markNotificationRead(id: number): Promise<void>;
   markAllNotificationsRead(): Promise<void>;
+
+  // Revenue Forecasts
+  getRevenueForecasts(year?: number): Promise<RevenueForecast[]>;
+  upsertRevenueForecast(data: InsertRevenueForecast): Promise<RevenueForecast>;
+  createRevenueForecastsBulk(data: InsertRevenueForecast[]): Promise<void>;
+  deleteRevenueForecasts(year?: number): Promise<void>;
+  deleteLocationLevelForecasts(): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1123,6 +1131,53 @@ export class DatabaseStorage implements IStorage {
 
   async markAllNotificationsRead(): Promise<void> {
     await db.update(notifications).set({ isRead: true }).where(eq(notifications.isRead, false));
+  }
+
+  async getRevenueForecasts(year?: number): Promise<RevenueForecast[]> {
+    if (year) {
+      return db.select().from(revenueForecasts).where(eq(revenueForecasts.year, year));
+    }
+    return db.select().from(revenueForecasts);
+  }
+
+  async upsertRevenueForecast(data: InsertRevenueForecast): Promise<RevenueForecast> {
+    const conditions = [
+      eq(revenueForecasts.year, data.year),
+      eq(revenueForecasts.month, data.month),
+    ];
+    if (data.apartmentId) {
+      conditions.push(eq(revenueForecasts.apartmentId, data.apartmentId));
+    } else if (data.locationName) {
+      conditions.push(eq(revenueForecasts.locationName, data.locationName));
+    }
+    const existing = await db.select().from(revenueForecasts).where(and(...conditions)).limit(1);
+    if (existing.length > 0) {
+      const [updated] = await db.update(revenueForecasts).set(data).where(eq(revenueForecasts.id, existing[0].id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(revenueForecasts).values(data).returning();
+    return created;
+  }
+
+  async createRevenueForecastsBulk(data: InsertRevenueForecast[]): Promise<void> {
+    if (data.length === 0) return;
+    const batchSize = 500;
+    for (let i = 0; i < data.length; i += batchSize) {
+      const batch = data.slice(i, i + batchSize);
+      await db.insert(revenueForecasts).values(batch);
+    }
+  }
+
+  async deleteRevenueForecasts(year?: number): Promise<void> {
+    if (year) {
+      await db.delete(revenueForecasts).where(eq(revenueForecasts.year, year));
+    } else {
+      await db.delete(revenueForecasts);
+    }
+  }
+
+  async deleteLocationLevelForecasts(): Promise<void> {
+    await db.delete(revenueForecasts).where(isNotNull(revenueForecasts.locationName));
   }
 }
 

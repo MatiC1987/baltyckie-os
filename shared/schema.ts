@@ -721,3 +721,17 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export const revenueForecasts = pgTable("revenue_forecasts", {
+  id: serial("id").primaryKey(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  locationName: text("location_name"),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
+  actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
+});
+
+export const insertRevenueForecastSchema = createInsertSchema(revenueForecasts).omit({ id: true });
+export type RevenueForecast = typeof revenueForecasts.$inferSelect;
+export type InsertRevenueForecast = z.infer<typeof insertRevenueForecastSchema>;

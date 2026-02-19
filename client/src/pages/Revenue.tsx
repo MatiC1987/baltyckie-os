@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import type { Apartment, Location } from "@shared/schema";
+import type { Apartment, Location, RevenueForecast } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { ChevronDown, ChevronRight, Upload, Loader2, Wallet } from "lucide-react
 import { PageHeader } from "@/components/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
@@ -47,33 +47,66 @@ function pctColor(v: number): string {
   return "text-amber-600 dark:text-amber-400";
 }
 
-function forecastStorageKey(year: number) { return `forecast-data-${year}`; }
-
-function loadForecastData(year: number): Record<string, Record<number, { p: number; r: number }>> {
-  try {
-    const raw = localStorage.getItem(forecastStorageKey(year));
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-}
-
-function saveForecastData(year: number, data: Record<string, Record<number, { p: number; r: number }>>) {
-  localStorage.setItem(forecastStorageKey(year), JSON.stringify(data));
-}
-
 export default function Revenue() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [activeLocation, setActiveLocation] = useState<string>("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-  const [forecastData, setForecastData] = useState(() => loadForecastData(currentYear));
   const { toast } = useToast();
+  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
 
   const { data: apartments = [] } = useQuery<Apartment[]>({ queryKey: ["/api/apartments"] });
   const { data: locations = [] } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
   const { data: revenueData = {}, isLoading } = useQuery<RevenueData>({
-    queryKey: [`/api/revenue?year=${year}`],
+    queryKey: ["/api/revenue", year],
+    queryFn: async () => {
+      const res = await fetch(`/api/revenue?year=${year}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch revenue");
+      return res.json();
+    },
   });
+  const { data: forecasts = [] } = useQuery<RevenueForecast[]>({
+    queryKey: ["/api/revenue-forecasts", year],
+    queryFn: async () => {
+      const res = await fetch(`/api/revenue-forecasts?year=${year}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch forecasts");
+      return res.json();
+    },
+  });
+
+  const forecastLookup = useMemo(() => {
+    const byLocation: Record<string, Record<number, { forecast: number; actual: number }>> = {};
+    const byApartment: Record<number, Record<number, { forecast: number; actual: number }>> = {};
+    for (const f of forecasts) {
+      if (f.locationName && !f.apartmentId) {
+        if (!byLocation[f.locationName]) byLocation[f.locationName] = {};
+        byLocation[f.locationName][f.month] = { forecast: Number(f.forecast) || 0, actual: Number(f.actual) || 0 };
+      }
+      if (f.apartmentId) {
+        if (!byApartment[f.apartmentId]) byApartment[f.apartmentId] = {};
+        byApartment[f.apartmentId][f.month] = { forecast: Number(f.forecast) || 0, actual: Number(f.actual) || 0 };
+      }
+    }
+    return { byLocation, byApartment };
+  }, [forecasts]);
+
+  const getLocationForecast = useCallback((locName: string, month: number): number => {
+    return forecastLookup.byLocation[locName]?.[month]?.forecast || 0;
+  }, [forecastLookup]);
+
+  const getAptForecast = useCallback((aptId: number, month: number): number => {
+    const editKey = `${aptId}-${month}`;
+    if (editKey in localEdits) return parseFloat(localEdits[editKey]) || 0;
+    return forecastLookup.byApartment[aptId]?.[month]?.forecast || 0;
+  }, [forecastLookup, localEdits]);
+
+  const getAptForecastDisplay = useCallback((aptId: number, month: number): string => {
+    const editKey = `${aptId}-${month}`;
+    if (editKey in localEdits) return localEdits[editKey];
+    const dbVal = forecastLookup.byApartment[aptId]?.[month]?.forecast || 0;
+    return dbVal ? String(dbVal) : "";
+  }, [forecastLookup, localEdits]);
 
   const sortedLocations = useMemo(() =>
     [...locations].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
@@ -98,10 +131,6 @@ export default function Revenue() {
     return revenueData[aptId]?.[month] || { najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
   };
 
-  const getForecast = (aptId: number, month: number): number => {
-    return forecastData[String(aptId)]?.[month]?.p || 0;
-  };
-
   const toggleApartment = (aptId: number) => {
     setCollapsed(prev => {
       const next = new Set(prev);
@@ -111,43 +140,40 @@ export default function Revenue() {
     });
   };
 
+  const forecastMutation = useMutation({
+    mutationFn: async (data: { year: number; month: number; apartmentId: number; forecast: string }) => {
+      const res = await apiRequest("PUT", "/api/revenue-forecasts", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/revenue-forecasts", year] });
+    },
+  });
+
   const handleForecastChange = useCallback((aptId: number, month: number, value: string) => {
-    setForecastData(prev => {
-      const next = { ...prev };
-      const key = String(aptId);
-      if (!next[key]) next[key] = {};
-      if (!next[key][month]) next[key][month] = { p: 0, r: 0 };
-      next[key][month] = { ...next[key][month], p: parseFloat(value) || 0 };
-      saveForecastData(year, next);
-      return next;
-    });
-  }, [year]);
+    const editKey = `${aptId}-${month}`;
+    setLocalEdits(prev => ({ ...prev, [editKey]: value }));
+    if (debounceTimers.current[editKey]) clearTimeout(debounceTimers.current[editKey]);
+    debounceTimers.current[editKey] = setTimeout(() => {
+      forecastMutation.mutate({
+        year,
+        month,
+        apartmentId: aptId,
+        forecast: String(parseFloat(value) || 0),
+      });
+    }, 800);
+  }, [year, forecastMutation]);
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/import-forecast");
+      const res = await apiRequest("POST", "/api/import-revenue-forecasts");
       return res.json();
     },
-    onSuccess: (result: { data: Record<number, Record<number, Record<number, { p: number; r: number }>>>; summary: Record<number, number>; message: string }) => {
-      let totalImported = 0;
-      for (const [yr, apts] of Object.entries(result.data)) {
-        const yearNum = Number(yr);
-        const existing = loadForecastData(yearNum);
-        const merged = { ...existing };
-        for (const [aptId, months] of Object.entries(apts as Record<string, Record<number, { p: number; r: number }>>)) {
-          if (!merged[aptId]) merged[aptId] = {};
-          for (const [month, val] of Object.entries(months as Record<number, { p: number; r: number }>)) {
-            merged[aptId][Number(month)] = val;
-            totalImported++;
-          }
-        }
-        saveForecastData(yearNum, merged);
-      }
-      setForecastData(loadForecastData(year));
-      const yearsList = Object.keys(result.summary).sort().join(", ");
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/revenue-forecasts", year] });
       toast({
         title: "Import zakończony",
-        description: `Zaimportowano dane prognozy dla lat: ${yearsList} (${totalImported} rekordów)`,
+        description: result.message || "Dane prognoz zostały zaimportowane",
       });
     },
     onError: (err: Error) => {
@@ -159,10 +185,13 @@ export default function Revenue() {
     },
   });
 
+  useEffect(() => {
+    setLocalEdits({});
+  }, [forecasts]);
+
   const handleYearChange = (y: string) => {
-    const newYear = Number(y);
-    setYear(newYear);
-    setForecastData(loadForecastData(newYear));
+    setYear(Number(y));
+    setLocalEdits({});
   };
 
   const allActiveApartments = useMemo(() => {
@@ -170,22 +199,22 @@ export default function Revenue() {
   }, [apartments]);
 
   const globalTotals = useMemo(() => {
+    const razem = forecastLookup.byLocation["RAZEM"];
     const totals: Record<number, { prognoza: number; przychody: number; najem: number; podnajem: number; doplaty_najem: number; doplaty_podnajem: number }> = {};
     for (let m = 0; m < 12; m++) {
-      totals[m] = { prognoza: 0, przychody: 0, najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
+      let najem = 0, podnajem = 0, dn = 0, dpn = 0;
       for (const apt of allActiveApartments) {
         const md = getMonthData(apt.id, m);
-        const forecast = getForecast(apt.id, m);
-        totals[m].prognoza += forecast;
-        totals[m].najem += md.najem;
-        totals[m].podnajem += md.podnajem;
-        totals[m].przychody += md.najem + md.podnajem;
-        totals[m].doplaty_najem += md.doplaty_najem;
-        totals[m].doplaty_podnajem += md.doplaty_podnajem;
+        najem += md.najem;
+        podnajem += md.podnajem;
+        dn += md.doplaty_najem;
+        dpn += md.doplaty_podnajem;
       }
+      const prognoza = razem?.[m]?.forecast || 0;
+      totals[m] = { prognoza, przychody: najem + podnajem, najem, podnajem, doplaty_najem: dn, doplaty_podnajem: dpn };
     }
     return totals;
-  }, [allActiveApartments, revenueData, forecastData, year]);
+  }, [allActiveApartments, revenueData, forecastLookup]);
 
   const globalYearTotals = useMemo(() => {
     let prognoza = 0, przychody = 0, najem = 0, podnajem = 0, doplaty = 0;
@@ -201,22 +230,22 @@ export default function Revenue() {
   }, [globalTotals]);
 
   const locationTotals = useMemo(() => {
+    const locForecasts = forecastLookup.byLocation[currentLocation];
     const totals: Record<number, { prognoza: number; przychody: number; najem: number; podnajem: number; doplaty_najem: number; doplaty_podnajem: number }> = {};
     for (let m = 0; m < 12; m++) {
-      totals[m] = { prognoza: 0, przychody: 0, najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
+      let najem = 0, podnajem = 0, dn = 0, dpn = 0;
       for (const apt of locationApartments) {
         const md = getMonthData(apt.id, m);
-        const forecast = getForecast(apt.id, m);
-        totals[m].prognoza += forecast;
-        totals[m].najem += md.najem;
-        totals[m].podnajem += md.podnajem;
-        totals[m].przychody += md.najem + md.podnajem;
-        totals[m].doplaty_najem += md.doplaty_najem;
-        totals[m].doplaty_podnajem += md.doplaty_podnajem;
+        najem += md.najem;
+        podnajem += md.podnajem;
+        dn += md.doplaty_najem;
+        dpn += md.doplaty_podnajem;
       }
+      const prognoza = locForecasts?.[m]?.forecast || 0;
+      totals[m] = { prognoza, przychody: najem + podnajem, najem, podnajem, doplaty_najem: dn, doplaty_podnajem: dpn };
     }
     return totals;
-  }, [locationApartments, revenueData, forecastData, year]);
+  }, [locationApartments, revenueData, forecastLookup, currentLocation]);
 
   if (isLoading) {
     return (
@@ -459,7 +488,7 @@ export default function Revenue() {
               const aptTotals = { prognoza: 0, przychody: 0, najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
               for (let m = 0; m < 12; m++) {
                 const md = getMonthData(apt.id, m);
-                const forecast = getForecast(apt.id, m);
+                const forecast = getAptForecast(apt.id, m);
                 aptTotals.prognoza += forecast;
                 aptTotals.najem += md.najem;
                 aptTotals.podnajem += md.podnajem;
@@ -482,7 +511,7 @@ export default function Revenue() {
                     </td>
                     {MONTHS.map((_, mi) => {
                       const md = getMonthData(apt.id, mi);
-                      const forecast = getForecast(apt.id, mi);
+                      const forecast = getAptForecast(apt.id, mi);
                       const przychody = md.najem + md.podnajem;
                       const pct = forecast > 0 ? przychody / forecast : 0;
                       const saldo = przychody - forecast;
@@ -493,7 +522,7 @@ export default function Revenue() {
                             <input
                               type="number"
                               className="w-full h-full px-1 py-0.5 text-right text-[10px] tabular-nums bg-transparent outline-none focus:bg-primary/10 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              value={forecast || ""}
+                              value={getAptForecastDisplay(apt.id, mi)}
                               onChange={(e) => handleForecastChange(apt.id, mi, e.target.value)}
                               data-testid={`input-forecast-${apt.id}-${mi}`}
                             />
