@@ -1,16 +1,24 @@
+import type React from "react";
 import { useState, useMemo, useCallback, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { CostSchedule, CostSchedulePayment } from "@shared/schema";
-import { DEFAULT_OPLATY_CATEGORIES, type OplatyCostCategory, type OplatyCostItem } from "@/lib/oplaty-defaults";
+import { DEFAULT_OPLATY_CATEGORIES, loadOplatyCategories, type OplatyCostCategory, type OplatyCostItem } from "@/lib/oplaty-defaults";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
-} from "@/components/ui/dialog";
+  ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight,
+  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2,
+} from "lucide-react";
+import { format, addMonths, addQuarters, addYears, parseISO, isBefore, isAfter, startOfMonth } from "date-fns";
+import { pl } from "date-fns/locale";
 
 type CostItem = OplatyCostItem;
 type CostCategory = OplatyCostCategory;
@@ -33,6 +41,24 @@ const DEFAULT_CATEGORIES = DEFAULT_OPLATY_CATEGORIES;
 const MONTHS_SHORT = [
   "STY", "LUT", "MAR", "KWI", "MAJ", "CZE",
   "LIP", "SIE", "WRZ", "PAŹ", "LIS", "GRU",
+];
+
+const SCHEDULE_CATEGORIES = [
+  "WYNAGRODZENIA",
+  "ZUS & PODATKI",
+  "KREDYTY & POŻYCZKI",
+  "NIERUCHOMOŚCI",
+  "OBSŁUGA PRAWNO-KSIĘGOWA",
+  "MARKETING & REKLAMA",
+  "USŁUGI",
+  "POZOSTAŁE",
+];
+
+const FREQUENCIES: { value: string; label: string }[] = [
+  { value: "monthly", label: "Miesięcznie" },
+  { value: "quarterly", label: "Kwartalnie" },
+  { value: "yearly", label: "Rocznie" },
+  { value: "one_time", label: "Jednorazowo" },
 ];
 
 type CellKey = string;
@@ -123,8 +149,82 @@ function buildScheduleOverlay(
   return overlay;
 }
 
+function buildPaymentStatusMap(
+  schedules: CostSchedule[],
+  payments: CostSchedulePayment[],
+  year: number
+): Record<string, "paid" | "overdue" | "pending"> {
+  const map: Record<string, "paid" | "overdue" | "pending"> = {};
+  const now = new Date();
+  const paymentsBySchedule: Record<number, CostSchedulePayment[]> = {};
+  for (const p of payments) {
+    if (!paymentsBySchedule[p.scheduleId]) paymentsBySchedule[p.scheduleId] = [];
+    paymentsBySchedule[p.scheduleId].push(p);
+  }
+
+  for (const schedule of schedules) {
+    if (!schedule.active) continue;
+    if (!schedule.linkCategoryId || schedule.linkItemIndex === null || schedule.linkItemIndex === undefined) continue;
+    const catId = schedule.linkCategoryId;
+    const itemIdx = schedule.linkItemIndex;
+    const schPayments = paymentsBySchedule[schedule.id] || [];
+
+    for (let month = 0; month < 12; month++) {
+      const monthPayments = schPayments.filter(p => {
+        const d = parseDateLocal(p.dueDate);
+        return d.year === year && d.month === month;
+      });
+      if (monthPayments.length === 0) continue;
+
+      const key = `${catId}__${itemIdx}__${month}`;
+      const allPaid = monthPayments.every(p => p.status === "OPLACONE");
+      const hasOverdue = monthPayments.some(p => p.status === "NIEOPLACONE" && isBefore(parseISO(p.dueDate), now));
+
+      if (allPaid) {
+        map[key] = "paid";
+      } else if (hasOverdue) {
+        map[key] = "overdue";
+      } else {
+        map[key] = "pending";
+      }
+    }
+  }
+  return map;
+}
+
+function generatePaymentDates(startDate: string, endDate: string | null, frequency: string): string[] {
+  const dates: string[] = [];
+  let current = parseISO(startDate);
+  const end = endDate ? parseISO(endDate) : addYears(new Date(), 2);
+
+  if (frequency === "one_time") {
+    return [startDate];
+  }
+
+  while (!isAfter(current, end) && dates.length < 120) {
+    dates.push(format(current, "yyyy-MM-dd"));
+    if (frequency === "monthly") current = addMonths(current, 1);
+    else if (frequency === "quarterly") current = addQuarters(current, 1);
+    else if (frequency === "yearly") current = addYears(current, 1);
+    else break;
+  }
+  return dates;
+}
+
+function freqLabel(f: string): string {
+  return FREQUENCIES.find(x => x.value === f)?.label || f;
+}
+
+function formatNum2(v: number | string | null | undefined): string {
+  const n = typeof v === "string" ? parseFloat(v) : (v ?? 0);
+  if (isNaN(n) || n === 0) return "0,00";
+  return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function CostsExpenses() {
+  const { toast } = useToast();
   const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(currentYear));
   const [categories, setCategories] = useState<CostCategory[]>(() => loadCategories());
@@ -140,6 +240,12 @@ export default function CostsExpenses() {
     () => buildScheduleOverlay(costSchedules, costSchedulePayments, selectedYear),
     [costSchedules, costSchedulePayments, selectedYear]
   );
+
+  const paymentStatusMap = useMemo(
+    () => buildPaymentStatusMap(costSchedules, costSchedulePayments, selectedYear),
+    [costSchedules, costSchedulePayments, selectedYear]
+  );
+
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -169,6 +275,111 @@ export default function CostsExpenses() {
   const [selectedCell, setSelectedCell] = useState<CellKey | null>(null);
   const [fillRangeEnd, setFillRangeEnd] = useState<number | null>(null);
   const fillDragging = useRef(false);
+
+  const [sheetItem, setSheetItem] = useState<{ catId: string; itemIdx: number } | null>(null);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [editSchedule, setEditSchedule] = useState<CostSchedule | null>(null);
+
+  const createSchedule = useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/cost-schedules", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedules"] });
+      setShowScheduleDialog(false);
+      toast({ title: "Dodano harmonogram kosztów" });
+    },
+  });
+
+  const updateScheduleMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/cost-schedules/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedules"] });
+      setEditSchedule(null);
+      toast({ title: "Zaktualizowano harmonogram" });
+    },
+  });
+
+  const deleteSchedule = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/cost-schedules/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedule-payments"] });
+      toast({ title: "Usunięto harmonogram" });
+    },
+  });
+
+  const createPayment = useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/cost-schedule-payments", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedule-payments"] });
+    },
+  });
+
+  const updatePayment = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/cost-schedule-payments/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedule-payments"] });
+    },
+  });
+
+  const deletePayment = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/cost-schedule-payments/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedule-payments"] });
+    },
+  });
+
+  const paymentsBySchedule = useMemo(() => {
+    const map: Record<number, CostSchedulePayment[]> = {};
+    for (const p of costSchedulePayments) {
+      if (!map[p.scheduleId]) map[p.scheduleId] = [];
+      map[p.scheduleId].push(p);
+    }
+    return map;
+  }, [costSchedulePayments]);
+
+  const overdueSummary = useMemo(() => {
+    const now = new Date();
+    const overduePayments = costSchedulePayments.filter(
+      p => p.status === "NIEOPLACONE" && isBefore(parseISO(p.dueDate), now)
+    );
+    const overdueAmount = overduePayments.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
+    const currentMonthPayments = costSchedulePayments.filter(p => {
+      const d = parseDateLocal(p.dueDate);
+      return d.year === currentYear && d.month === currentMonth;
+    });
+    const currentMonthUnpaid = currentMonthPayments.filter(p => p.status === "NIEOPLACONE");
+    const currentMonthUnpaidAmount = currentMonthUnpaid.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
+    const paidThisMonth = currentMonthPayments.filter(p => p.status === "OPLACONE");
+    const paidThisMonthAmount = paidThisMonth.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
+    const activeSchedules = costSchedules.filter(s => s.active && s.category !== "APARTAMENTY");
+    const monthlyTotal = activeSchedules.reduce((sum, s) => {
+      const amt = parseFloat(s.amount || "0");
+      if (s.frequency === "monthly") return sum + amt;
+      if (s.frequency === "quarterly") return sum + amt / 3;
+      if (s.frequency === "yearly") return sum + amt / 12;
+      return sum;
+    }, 0);
+
+    return {
+      overdueCount: overduePayments.length,
+      overdueAmount,
+      currentMonthUnpaidCount: currentMonthUnpaid.length,
+      currentMonthUnpaidAmount,
+      paidThisMonthCount: paidThisMonth.length,
+      paidThisMonthAmount,
+      monthlyTotal,
+      activeSchedules: activeSchedules.length,
+    };
+  }, [costSchedulePayments, costSchedules, currentYear, currentMonth]);
+
+  const linkedSchedules = useMemo(() => {
+    if (!sheetItem) return [];
+    return costSchedules.filter(
+      s => s.linkCategoryId === sheetItem.catId && s.linkItemIndex === sheetItem.itemIdx
+    );
+  }, [costSchedules, sheetItem]);
 
   const updateCategories = useCallback((newCats: CostCategory[]) => {
     setCategories(newCats);
@@ -354,10 +565,9 @@ export default function CostsExpenses() {
       cat.items.forEach((_, itemIdx) => {
         for (let m = 0; m < 12; m++) {
           const sourceKey = makeCellKey(cat.id, itemIdx, m, "prognoza");
-          const targetKey = makeCellKey(cat.id, itemIdx, m, "prognoza");
           const val = cellData[sourceKey] || 0;
           if (val !== 0) {
-            newNextYearData[targetKey] = val;
+            newNextYearData[sourceKey] = val;
           }
         }
       });
@@ -510,6 +720,65 @@ export default function CostsExpenses() {
 
   const years = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
 
+  const handleGeneratePayments = async (schedule: CostSchedule) => {
+    const existing = paymentsBySchedule[schedule.id] || [];
+    const existingDates = new Set(existing.map(p => p.dueDate));
+    const dates = generatePaymentDates(schedule.startDate, schedule.endDate, schedule.frequency);
+    const newDates = dates.filter(d => !existingDates.has(d));
+
+    if (newDates.length === 0) {
+      toast({ title: "Brak nowych terminów do wygenerowania" });
+      return;
+    }
+
+    for (const dueDate of newDates) {
+      await createPayment.mutateAsync({
+        scheduleId: schedule.id,
+        dueDate,
+        amount: schedule.amount,
+        status: "NIEOPLACONE",
+      });
+    }
+    toast({ title: `Wygenerowano ${newDates.length} płatności` });
+  };
+
+  const handleTogglePaymentStatus = (payment: CostSchedulePayment) => {
+    const newStatus = payment.status === "OPLACONE" ? "NIEOPLACONE" : "OPLACONE";
+    updatePayment.mutate({
+      id: payment.id,
+      data: {
+        status: newStatus,
+        paidDate: newStatus === "OPLACONE" ? format(new Date(), "yyyy-MM-dd") : null,
+      },
+    });
+  };
+
+  const openItemSheet = useCallback((catId: string, itemIdx: number) => {
+    setSheetItem({ catId, itemIdx });
+  }, []);
+
+  const openScheduleDialogForItem = useCallback(() => {
+    setShowScheduleDialog(true);
+    setEditSchedule(null);
+  }, []);
+
+  const getCellStatusColor = (catId: string, itemIdx: number, month: number): string => {
+    const key = `${catId}__${itemIdx}__${month}`;
+    const status = paymentStatusMap[key];
+    if (status === "paid") return "bg-emerald-50/60 dark:bg-emerald-950/20";
+    if (status === "overdue") return "bg-red-50/60 dark:bg-red-950/20";
+    return "";
+  };
+
+  const sheetItemData = useMemo(() => {
+    if (!sheetItem) return null;
+    const cat = categories.find(c => c.id === sheetItem.catId);
+    if (!cat) return null;
+    const item = cat.items[sheetItem.itemIdx];
+    if (!item) return null;
+    return { cat, item };
+  }, [sheetItem, categories]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -537,24 +806,52 @@ export default function CostsExpenses() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-3">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Prognoza roczna</div>
-              <div className="text-xl font-bold mt-1" data-testid="text-total-prognoza">{grandTotal.prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <p className="text-xs text-muted-foreground">Zaległe płatności</p>
             </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Rzeczywiste roczne</div>
-              <div className="text-xl font-bold mt-1" data-testid="text-total-rzeczywiste">{grandTotal.rzeczywiste.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+            <p className="text-xl font-bold mt-1 text-red-600" data-testid="text-overdue-count">{overdueSummary.overdueCount}</p>
+            <p className="text-xs text-muted-foreground">{formatNum2(overdueSummary.overdueAmount)} zł</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-amber-500" />
+              <p className="text-xs text-muted-foreground">Do opłacenia ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-            <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Saldo roczne</div>
-              <div className={`text-xl font-bold mt-1 ${saldoColor(grandTotal.saldo)}`} data-testid="text-total-saldo">{grandTotal.saldo >= 0 ? "+" : ""}{grandTotal.saldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+            <p className="text-xl font-bold mt-1" data-testid="text-current-unpaid">{overdueSummary.currentMonthUnpaidCount}</p>
+            <p className="text-xs text-muted-foreground">{formatNum2(overdueSummary.currentMonthUnpaidAmount)} zł</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <p className="text-xs text-muted-foreground">Opłacone ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            <p className="text-xl font-bold mt-1 text-green-600" data-testid="text-paid-this-month">{overdueSummary.paidThisMonthCount}</p>
+            <p className="text-xs text-muted-foreground">{formatNum2(overdueSummary.paidThisMonthAmount)} zł</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Koszty miesięczne (harmonogram)</p>
+            <p className="text-xl font-bold mt-1" data-testid="text-monthly-total">{formatNum2(overdueSummary.monthlyTotal)} zł</p>
+            <p className="text-xs text-muted-foreground">{overdueSummary.activeSchedules} aktywnych</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Prognoza roczna</p>
+            <p className="text-xl font-bold mt-1" data-testid="text-total-prognoza">{grandTotal.prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+            <p className={`text-xs ${saldoColor(grandTotal.saldo)}`}>Saldo: {grandTotal.saldo >= 0 ? "+" : ""}{grandTotal.saldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+          </CardContent>
+        </Card>
+      </div>
 
       {selectedCell && cellData[selectedCell] !== undefined && cellData[selectedCell] !== 0 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -669,6 +966,9 @@ export default function CostsExpenses() {
                     const nameKey = `${cat.id}__${idx}`;
                     const isEditingThisName = editingName === nameKey;
                     const isDraggingItem = dragItemKey === nameKey;
+                    const hasLinkedSchedule = costSchedules.some(
+                      s => s.linkCategoryId === cat.id && s.linkItemIndex === idx
+                    );
                     return (
                       <tr
                         key={idx}
@@ -718,11 +1018,13 @@ export default function CostsExpenses() {
                               </span>
                               <div
                                 className="flex-1 cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 min-w-0"
+                                onClick={() => openItemSheet(cat.id, idx)}
                                 onDoubleClick={() => startEditingName(cat.id, idx)}
                                 data-testid={`name-${nameKey}`}
                               >
-                                <span className="font-medium truncate">{item.name}</span>
+                                <span className="font-medium truncate hover:underline">{item.name}</span>
                                 {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
+                                {hasLinkedSchedule && <Link2 className="inline h-2.5 w-2.5 ml-1 text-muted-foreground" />}
                               </div>
                               <button
                                 onClick={() => {
@@ -744,6 +1046,7 @@ export default function CostsExpenses() {
                           const pVal = getCellValue(pKey);
                           const rVal = getCellValue(rKey);
                           const saldo = pVal - rVal;
+                          const statusBg = getCellStatusColor(cat.id, idx, m);
                           return (
                             <Fragment key={m}>
                               <EditableCell
@@ -755,7 +1058,7 @@ export default function CostsExpenses() {
                                 startEditing={startEditing}
                                 commitEdit={commitEdit}
                                 cancelEdit={cancelEdit}
-                                className="border-b border-r border-border bg-muted/20 dark:bg-muted/10 text-[10px]"
+                                className={`border-b border-r border-border bg-muted/20 dark:bg-muted/10 text-[10px] ${statusBg}`}
                                 isSelected={selectedCell === pKey}
                                 isInRange={isInFillRange(pKey)}
                                 onCellClick={handleCellClick}
@@ -772,7 +1075,7 @@ export default function CostsExpenses() {
                                 startEditing={startEditing}
                                 commitEdit={commitEdit}
                                 cancelEdit={cancelEdit}
-                                className="border-b border-r border-border font-semibold"
+                                className={`border-b border-r border-border font-semibold ${statusBg}`}
                                 isSelected={selectedCell === rKey}
                                 isInRange={isInFillRange(rKey)}
                                 onCellClick={handleCellClick}
@@ -780,7 +1083,7 @@ export default function CostsExpenses() {
                                 onCellMouseEnter={handleCellMouseEnter}
                                 month={m}
                               />
-                              <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>
+                              <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)} ${statusBg}`}>
                                 {formatNum(saldo)}
                               </td>
                             </Fragment>
@@ -823,6 +1126,188 @@ export default function CostsExpenses() {
           </tbody>
         </table>
       </div>
+
+      <Sheet open={!!sheetItem} onOpenChange={(open) => { if (!open) setSheetItem(null); }}>
+        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-cost-detail">
+          {sheetItemData && sheetItem && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="text-lg">{sheetItemData.item.name}</SheetTitle>
+                {sheetItemData.item.subLabel && (
+                  <p className="text-sm text-muted-foreground">{sheetItemData.item.subLabel}</p>
+                )}
+                <Badge variant="secondary" className="w-fit text-xs">{sheetItemData.cat.title}</Badge>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-6">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Prognoza {selectedYear}</p>
+                    <p className="text-lg font-bold" data-testid="text-sheet-prognoza">
+                      {getItemAnnualSummary(sheetItem.catId, sheetItem.itemIdx).prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Rzeczywiste</p>
+                    <p className="text-lg font-bold" data-testid="text-sheet-rzeczywiste">
+                      {getItemAnnualSummary(sheetItem.catId, sheetItem.itemIdx).rzeczywiste.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Saldo</p>
+                    <p className={`text-lg font-bold ${saldoColor(getItemAnnualSummary(sheetItem.catId, sheetItem.itemIdx).saldo)}`} data-testid="text-sheet-saldo">
+                      {getItemAnnualSummary(sheetItem.catId, sheetItem.itemIdx).saldo >= 0 ? "+" : ""}
+                      {getItemAnnualSummary(sheetItem.catId, sheetItem.itemIdx).saldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-sm">Powiązane harmonogramy</h3>
+                    <Button size="sm" variant="outline" onClick={openScheduleDialogForItem} data-testid="button-add-schedule-from-sheet">
+                      <Plus className="h-3 w-3 mr-1" /> Harmonogram
+                    </Button>
+                  </div>
+
+                  {linkedSchedules.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Brak powiązanych harmonogramów. Dodaj harmonogram, aby automatycznie śledzić płatności.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {linkedSchedules.map(schedule => {
+                        const payments = (paymentsBySchedule[schedule.id] || [])
+                          .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+                        const paidCount = payments.filter(p => p.status === "OPLACONE").length;
+                        const overdueCount = payments.filter(
+                          p => p.status === "NIEOPLACONE" && isBefore(parseISO(p.dueDate), new Date())
+                        ).length;
+
+                        return (
+                          <Card key={schedule.id} data-testid={`card-schedule-${schedule.id}`}>
+                            <CardContent className="p-3 space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="font-medium text-sm">{schedule.name}</p>
+                                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                                    <Badge variant="secondary" className="text-xs">{schedule.category}</Badge>
+                                    <Badge variant="outline" className="text-xs">{freqLabel(schedule.frequency)}</Badge>
+                                    <span className="text-xs text-muted-foreground">{formatNum2(schedule.amount)} zł</span>
+                                    {!schedule.active && <Badge variant="destructive" className="text-xs">Nieaktywny</Badge>}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
+                                    <span>od {schedule.startDate}</span>
+                                    {schedule.endDate && <span>do {schedule.endDate}</span>}
+                                    {payments.length > 0 && <span>{paidCount}/{payments.length} opłaconych</span>}
+                                    {overdueCount > 0 && <span className="text-red-600 font-medium">{overdueCount} zaległych</span>}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <Button size="icon" variant="ghost" onClick={() => handleGeneratePayments(schedule)} title="Generuj płatności" data-testid={`button-generate-${schedule.id}`}>
+                                    <CalendarPlus className="w-4 h-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => setEditSchedule(schedule)} data-testid={`button-edit-schedule-${schedule.id}`}>
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => {
+                                    if (confirm("Usunąć ten harmonogram i wszystkie powiązane płatności?")) {
+                                      deleteSchedule.mutate(schedule.id);
+                                    }
+                                  }} data-testid={`button-delete-schedule-${schedule.id}`}>
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {payments.length > 0 && (
+                                <div className="border-t pt-2 max-h-[300px] overflow-y-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-left text-xs text-muted-foreground">
+                                        <th className="py-1 px-1 font-medium">Termin</th>
+                                        <th className="py-1 px-1 font-medium">Kwota</th>
+                                        <th className="py-1 px-1 font-medium">Status</th>
+                                        <th className="py-1 px-1 w-8"></th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {payments.map(payment => {
+                                        const isOverdue = payment.status === "NIEOPLACONE" && isBefore(parseISO(payment.dueDate), new Date());
+                                        return (
+                                          <tr
+                                            key={payment.id}
+                                            className={`border-t ${isOverdue ? "bg-red-50 dark:bg-red-950/20" : ""}`}
+                                            data-testid={`row-payment-${payment.id}`}
+                                          >
+                                            <td className="py-1.5 px-1 text-xs">
+                                              <span className={isOverdue ? "text-red-600 font-medium" : ""}>
+                                                {format(parseISO(payment.dueDate), "dd.MM.yyyy")}
+                                              </span>
+                                            </td>
+                                            <td className="py-1.5 px-1 text-xs font-medium">{formatNum2(payment.amount)} zł</td>
+                                            <td className="py-1.5 px-1">
+                                              <button onClick={() => handleTogglePaymentStatus(payment)} data-testid={`button-toggle-status-${payment.id}`}>
+                                                {payment.status === "OPLACONE" ? (
+                                                  <Badge className="bg-green-600 text-white text-[10px] no-default-hover-elevate no-default-active-elevate">
+                                                    <CheckCircle2 className="w-3 h-3 mr-0.5" />
+                                                    OPŁACONE
+                                                  </Badge>
+                                                ) : (
+                                                  <Badge variant="destructive" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
+                                                    <XCircle className="w-3 h-3 mr-0.5" />
+                                                    NIEOPŁACONE
+                                                  </Badge>
+                                                )}
+                                              </button>
+                                            </td>
+                                            <td className="py-1.5 px-1">
+                                              <Button size="icon" variant="ghost" onClick={() => {
+                                                if (confirm("Usunąć tę płatność?")) deletePayment.mutate(payment.id);
+                                              }} data-testid={`button-delete-payment-${payment.id}`}>
+                                                <Trash2 className="w-3 h-3" />
+                                              </Button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <ScheduleDialog
+        open={showScheduleDialog}
+        onOpenChange={setShowScheduleDialog}
+        onSave={(data) => createSchedule.mutate(data)}
+        isPending={createSchedule.isPending}
+        title="Dodaj harmonogram kosztów"
+        defaultLinkCategoryId={sheetItem?.catId}
+        defaultLinkItemIndex={sheetItem?.itemIdx}
+      />
+
+      {editSchedule && (
+        <ScheduleDialog
+          open={!!editSchedule}
+          onOpenChange={(open) => { if (!open) setEditSchedule(null); }}
+          onSave={(data) => updateScheduleMut.mutate({ id: editSchedule.id, data })}
+          isPending={updateScheduleMut.isPending}
+          title="Edytuj harmonogram"
+          initial={editSchedule}
+        />
+      )}
 
       <Dialog open={addItemCatId !== null} onOpenChange={(open) => { if (!open) setAddItemCatId(null); }}>
         <DialogContent className="max-w-sm">
@@ -1044,5 +1529,220 @@ function EditableCell({
         />
       )}
     </td>
+  );
+}
+
+function ScheduleDialog({
+  open,
+  onOpenChange,
+  onSave,
+  isPending,
+  title,
+  initial,
+  defaultLinkCategoryId,
+  defaultLinkItemIndex,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Record<string, unknown>) => void;
+  isPending: boolean;
+  title: string;
+  initial?: CostSchedule;
+  defaultLinkCategoryId?: string;
+  defaultLinkItemIndex?: number;
+}) {
+  const [name, setName] = useState(initial?.name || "");
+  const [category, setCategory] = useState(initial?.category || SCHEDULE_CATEGORIES[0]);
+  const [amount, setAmount] = useState(initial?.amount || "");
+  const [frequency, setFrequency] = useState(initial?.frequency || "monthly");
+  const [startDate, setStartDate] = useState(initial?.startDate || format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [endDate, setEndDate] = useState(initial?.endDate || "");
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const [active, setActive] = useState(initial?.active !== false);
+  const [linkCategoryId, setLinkCategoryId] = useState(
+    initial?.linkCategoryId || defaultLinkCategoryId || ""
+  );
+  const [linkItemIndex, setLinkItemIndex] = useState<string>(
+    initial?.linkItemIndex !== null && initial?.linkItemIndex !== undefined
+      ? String(initial.linkItemIndex)
+      : defaultLinkItemIndex !== undefined
+        ? String(defaultLinkItemIndex)
+        : ""
+  );
+
+  const oplatyCategories = useMemo(() => loadOplatyCategories(), []);
+  const selectedOplatyCat = useMemo(
+    () => oplatyCategories.find(c => c.id === linkCategoryId),
+    [oplatyCategories, linkCategoryId]
+  );
+
+  const handleSubmit = () => {
+    if (!name || !amount || !startDate) return;
+    onSave({
+      name,
+      category,
+      amount,
+      frequency,
+      startDate,
+      endDate: endDate || null,
+      notes: notes || null,
+      active,
+      linkCategoryId: linkCategoryId || null,
+      linkItemIndex: linkItemIndex !== "" ? parseInt(linkItemIndex) : null,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <Label>Nazwa</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="np. Czynsz biuro, ZUS..."
+              data-testid="input-schedule-name"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Kategoria</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger data-testid="select-schedule-category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCHEDULE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Częstotliwość</Label>
+              <Select value={frequency} onValueChange={setFrequency}>
+                <SelectTrigger data-testid="select-schedule-frequency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FREQUENCIES.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label>Kwota (zł)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              data-testid="input-schedule-amount"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Data rozpoczęcia</Label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                data-testid="input-schedule-start"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Data zakończenia</Label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                data-testid="input-schedule-end"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label>Notatki</Label>
+            <Input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              data-testid="input-schedule-notes"
+            />
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-2">Powiązanie z arkuszem Opłaty</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Wybierz pozycję w zakładce Koszty (Opłaty), aby automatycznie uzupełniać prognozę i rzeczywiste wydatki.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Kategoria Opłaty</Label>
+                <Select
+                  value={linkCategoryId}
+                  onValueChange={(v) => { setLinkCategoryId(v); setLinkItemIndex(""); }}
+                >
+                  <SelectTrigger data-testid="select-link-category">
+                    <SelectValue placeholder="Brak powiązania" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak powiązania</SelectItem>
+                    {oplatyCategories.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Pozycja</Label>
+                <Select
+                  value={linkItemIndex}
+                  onValueChange={setLinkItemIndex}
+                  disabled={!linkCategoryId || linkCategoryId === "none"}
+                >
+                  <SelectTrigger data-testid="select-link-item">
+                    <SelectValue placeholder="Wybierz pozycję" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedOplatyCat?.items.map((item, idx) => (
+                      <SelectItem key={idx} value={String(idx)}>
+                        {item.name}{item.subLabel ? ` (${item.subLabel})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {initial && (
+            <div className="flex items-center gap-2">
+              <Label>Aktywny</Label>
+              <Button
+                size="sm"
+                variant={active ? "default" : "outline"}
+                onClick={() => setActive(!active)}
+                data-testid="button-toggle-active"
+              >
+                {active ? "Tak" : "Nie"}
+              </Button>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <DialogClose asChild>
+            <Button variant="outline">Anuluj</Button>
+          </DialogClose>
+          <Button
+            onClick={handleSubmit}
+            disabled={isPending || !name || !amount || !startDate}
+            data-testid="button-save-schedule"
+          >
+            {isPending ? "Zapisywanie..." : "Zapisz"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

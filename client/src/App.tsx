@@ -28,7 +28,6 @@ import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
 import Revenue from "@/pages/Revenue";
 import FinanceForecast from "@/pages/FinanceForecast";
-import CostsSchedule from "@/pages/CostsSchedule";
 import ApartmentSchedule from "@/pages/ApartmentSchedule";
 import PlaceholderPage from "@/pages/Placeholder";
 import { Layout } from "@/components/Layout";
@@ -86,7 +85,6 @@ function Router() {
       <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
       <Route path="/costs-apartments" component={() => <AuthenticatedRoute component={CostsApartments} />} />
       <Route path="/costs-expenses" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
-      <Route path="/costs-schedule" component={() => <AuthenticatedRoute component={CostsSchedule} />} />
       <Route path="/saldo-ml" component={() => <Layout><Saldo personName="Małgorzata Latasiewicz" /></Layout>} />
       <Route path="/saldo-jg" component={() => <Layout><Saldo personName="Jolanta Głodkowska" /></Layout>} />
       <Route path="/saldo-mc" component={() => <Layout><Saldo personName="Mateusz Cieślak" /></Layout>} />
