@@ -1258,6 +1258,12 @@ export async function registerRoutes(
     const currentMonth = now.getMonth();
 
     const reservations = await storage.getReservations();
+    const subleases = await storage.getSubleases();
+    const allSubleasePayments: { dueDate: string; amount: string; status: string }[] = [];
+    for (const sub of subleases) {
+      const payments = await storage.getSubleasePayments(sub.id);
+      allSubleasePayments.push(...payments.map(p => ({ dueDate: p.dueDate, amount: p.amount, status: p.status })));
+    }
 
     const months: { year: number; month: number; label: string }[] = [];
     for (let i = 0; i < 12; i++) {
@@ -1270,19 +1276,32 @@ export async function registerRoutes(
       const dayOfMonth = isCurrentMonth ? now.getDate() : (m.month < now.getMonth() && m.year === now.getFullYear() ? daysInMonth : 0);
       const daysRemaining = Math.max(0, daysInMonth - dayOfMonth);
 
-      let actual = 0;
+      let reservationRevenue = 0;
       for (const r of reservations) {
         if (!r.startDate || r.status === "ANULOWANA") continue;
         const sd = new Date(r.startDate);
         if (sd.getFullYear() === m.year && sd.getMonth() === m.month) {
-          actual += Number(r.price) || 0;
+          reservationRevenue += Number(r.price) || 0;
         }
       }
+
+      let subleaseRevenue = 0;
+      for (const p of allSubleasePayments) {
+        if (!p.dueDate) continue;
+        const pd = new Date(p.dueDate);
+        if (pd.getFullYear() === m.year && pd.getMonth() === m.month) {
+          subleaseRevenue += Number(p.amount) || 0;
+        }
+      }
+
+      const actual = reservationRevenue + subleaseRevenue;
 
       return {
         year: m.year,
         month: m.month,
         actual,
+        reservationRevenue,
+        subleaseRevenue,
         daysInMonth,
         dayOfMonth,
         daysRemaining,

@@ -50,6 +50,8 @@ type ForecastMonth = {
   year: number;
   month: number;
   actual: number;
+  reservationRevenue: number;
+  subleaseRevenue: number;
   daysInMonth: number;
   dayOfMonth: number;
   daysRemaining: number;
@@ -743,6 +745,22 @@ function RevenueForecastSection({ forecastData }: { forecastData: ForecastMonth[
                     {c.actual.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
                   </span>
                 </div>
+                {(c.reservationRevenue > 0 || c.subleaseRevenue > 0) && (
+                  <div className="pl-2 border-l-2 border-muted space-y-0.5">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-muted-foreground">Rezerwacje</span>
+                      <span data-testid={`text-reservation-revenue-${c.year}-${c.month}`}>
+                        {c.reservationRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-muted-foreground">Podnajem</span>
+                      <span data-testid={`text-sublease-revenue-${c.year}-${c.month}`}>
+                        {c.subleaseRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Realizacja</span>
                   <span className={`font-bold ${c.forecast > 0 ? (c.pct >= 1 ? "text-emerald-600 dark:text-emerald-400" : c.pct >= 0.7 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400") : "text-muted-foreground"}`}
