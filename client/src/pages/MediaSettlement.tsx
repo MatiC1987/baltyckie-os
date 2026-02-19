@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport, CompanySettings } from "@shared/schema";
+import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport, AccountingNote } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,127 +38,24 @@ function daysBetween(dateA: string, dateB: string): number {
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function removeDiacritics(text: string): string {
-  const map: Record<string, string> = {
-    "ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n", "ó": "o", "ś": "s", "ź": "z", "ż": "z",
-    "Ą": "A", "Ć": "C", "Ę": "E", "Ł": "L", "Ń": "N", "Ó": "O", "Ś": "S", "Ź": "Z", "Ż": "Z",
-  };
-  return text.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, (ch) => map[ch] || ch);
-}
-
-function pln(amount: number | string | null | undefined): string {
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  if (num === null || num === undefined || isNaN(num as number)) return "0,00";
-  return (num as number).toFixed(2).replace(".", ",");
-}
-
-async function generateAccountingNote(
-  report: MediaSettlementReport,
-  sublease: Sublease,
-  apartment: Apartment | undefined,
-  companySettings: CompanySettings | null
-) {
-  const jsPDF = (await import("jspdf")).default;
-  await import("jspdf-autotable");
-  const doc = new jsPDF();
-  const rd = removeDiacritics;
-  const aptName = apartment?.name || "";
-  const tenantName = sublease.tenantType === "firma"
-    ? (sublease.companyName || "")
-    : `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
-  const tenantAddress = [sublease.street, sublease.postalCode, sublease.city].filter(Boolean).join(", ");
-  const companyName = companySettings?.companyName || "Baltyckie Finanse";
-  const companyAddress = companySettings
-    ? [companySettings.street, companySettings.postalCode, companySettings.city].filter(Boolean).join(", ")
-    : "";
-  const noteNumber = `NK/${report.id}/${formatDate(report.periodTo)?.replace(/\./g, "/")}`;
-  const generatedDate = report.generatedAt
-    ? new Date(report.generatedAt).toLocaleDateString("pl-PL")
-    : new Date().toLocaleDateString("pl-PL");
-
-  doc.setFontSize(16);
-  doc.text(rd("NOTA KSIEGOWA"), 105, 20, { align: "center" });
-  doc.setFontSize(10);
-  doc.text(rd(`Nr: ${noteNumber}`), 105, 28, { align: "center" });
-  doc.text(rd(`Data wystawienia: ${generatedDate}`), 105, 34, { align: "center" });
-
-  doc.setFontSize(9);
-  let y = 46;
-  doc.setFont("helvetica", "bold");
-  doc.text(rd("Wystawca:"), 14, y);
-  doc.setFont("helvetica", "normal");
-  y += 6;
-  doc.text(rd(companyName), 14, y);
-  if (companySettings?.nip) { y += 5; doc.text(rd(`NIP: ${companySettings.nip}`), 14, y); }
-  if (companyAddress) { y += 5; doc.text(rd(companyAddress), 14, y); }
-  if (companySettings?.bankAccount) { y += 5; doc.text(rd(`Konto: ${companySettings.bankAccount}`), 14, y); }
-
-  let y2 = 46;
-  doc.setFont("helvetica", "bold");
-  doc.text(rd("Obciazony:"), 110, y2);
-  doc.setFont("helvetica", "normal");
-  y2 += 6;
-  doc.text(rd(tenantName), 110, y2);
-  if (sublease.nip) { y2 += 5; doc.text(rd(`NIP: ${sublease.nip}`), 110, y2); }
-  if (tenantAddress) { y2 += 5; doc.text(rd(tenantAddress), 110, y2); }
-
-  const startY = Math.max(y, y2) + 14;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text(rd(`Rozliczenie mediow - ${aptName}`), 14, startY);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(rd(`Okres: ${formatDate(report.periodFrom)} - ${formatDate(report.periodTo)}`), 14, startY + 7);
-
-  const rows: string[][] = [];
-  if (report.electricityConsumption && Number(report.electricityConsumption) > 0) {
-    rows.push([
-      rd("Energia elektryczna"),
-      `${pln(report.electricityConsumption)} kWh`,
-      `${pln(report.electricityCost)} PLN`,
-    ]);
+async function downloadNoteById(noteId: number) {
+  const response = await fetch(`/api/accounting-notes/${noteId}/download`, { credentials: "include" });
+  if (!response.ok) throw new Error("Nie udało się pobrać noty");
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get("Content-Disposition");
+  let fileName = "nota_ksiegowa.pdf";
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (match) fileName = decodeURIComponent(match[1]);
   }
-  if (report.coldWaterConsumption && Number(report.coldWaterConsumption) > 0) {
-    rows.push([
-      rd("Woda zimna"),
-      rd(`${pln(report.coldWaterConsumption)} m3`),
-      `${pln(report.coldWaterCost)} PLN`,
-    ]);
-  }
-  if (report.hotWaterConsumption && Number(report.hotWaterConsumption) > 0) {
-    rows.push([
-      rd("Woda ciepla"),
-      rd(`${pln(report.hotWaterConsumption)} m3`),
-      `${pln(report.hotWaterCost)} PLN`,
-    ]);
-  }
-
-  (doc as any).autoTable({
-    startY: startY + 12,
-    head: [["Medium", rd("Zuzycie"), "Koszt"]],
-    body: rows,
-    foot: [[rd("RAZEM DO ZAPLATY"), "", `${pln(report.totalCost)} PLN`]],
-    theme: "grid",
-    headStyles: { fillColor: [41, 128, 185], fontSize: 9 },
-    footStyles: { fillColor: [236, 240, 241], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 9 },
-    styles: { fontSize: 9 },
-    columnStyles: {
-      1: { halign: "right" },
-      2: { halign: "right" },
-    },
-    margin: { left: 14, right: 14 },
-  });
-
-  const finalY = (doc as any).lastAutoTable?.finalY || startY + 60;
-  doc.setFontSize(8);
-  doc.text(rd("Nota ksiegowa nie jest faktura VAT."), 14, finalY + 14);
-  doc.text(rd("Termin platnosci: 14 dni od daty wystawienia."), 14, finalY + 20);
-
-  doc.setFontSize(8);
-  doc.text(rd(`Wygenerowano: ${new Date().toLocaleDateString("pl-PL")} | Baltyckie Finanse`), 105, 285, { align: "center" });
-
-  const fileName = rd(`Nota_ksiegowa_${tenantName.replace(/\s+/g, "_")}_${report.periodFrom}_${report.periodTo}.pdf`);
-  doc.save(fileName);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 const METER_TYPES = {
@@ -577,8 +474,10 @@ function SubleaseMediaCard({
     ? sublease.companyName || ""
     : `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
 
-  const { data: companySettings } = useQuery<CompanySettings>({
-    queryKey: ["/api/company-settings"],
+  const notesKey = ["/api/accounting-notes", sublease.id];
+  const { data: accountingNotes = [] } = useQuery<AccountingNote[]>({
+    queryKey: notesKey,
+    queryFn: () => fetch(`/api/accounting-notes?subleaseId=${sublease.id}`, { credentials: "include" }).then(r => r.json()),
   });
 
   const readingsKey = [`/api/subleases/${sublease.id}/meter-readings`];
@@ -805,6 +704,39 @@ function SubleaseMediaCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reportsKey });
       toast({ title: "Usunięto raport" });
+    },
+  });
+
+  const downloadNoteById = async (noteId: number) => {
+    try {
+      const res = await fetch(`/api/accounting-notes/${noteId}/download`, { credentials: "include" });
+      if (!res.ok) throw new Error("Nie udało się pobrać noty");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("content-disposition");
+      const match = disposition?.match(/filename="?(.+)"?/);
+      a.download = match?.[1] || `nota_${noteId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({ title: "Błąd pobierania noty", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const generateNote = useMutation({
+    mutationFn: async (reportId: number) => {
+      const res = await apiRequest("POST", "/api/accounting-notes/generate", { reportId, subleaseId: sublease.id });
+      return res.json();
+    },
+    onSuccess: async (note: AccountingNote) => {
+      queryClient.invalidateQueries({ queryKey: notesKey });
+      toast({ title: `Wygenerowano notę ${note.noteNumber}` });
+      await downloadNoteById(note.id);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd generowania noty", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1173,15 +1105,31 @@ function SubleaseMediaCard({
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                data-testid={`button-accounting-note-${report.id}`}
-                                title="Pobierz notę księgową"
-                                onClick={() => generateAccountingNote(report, sublease, apt, companySettings || null)}
-                              >
-                                <Download className="w-3 h-3" />
-                              </Button>
+                              {(() => {
+                                const existingNote = accountingNotes.find(n => n.reportId === report.id);
+                                return existingNote ? (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    data-testid={`button-download-note-${report.id}`}
+                                    title={`Pobierz notę ${existingNote.noteNumber}`}
+                                    onClick={() => downloadNoteById(existingNote.id)}
+                                  >
+                                    <Download className="w-3 h-3" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    data-testid={`button-generate-note-${report.id}`}
+                                    title="Generuj notę księgową"
+                                    disabled={generateNote.isPending}
+                                    onClick={() => generateNote.mutate(report.id)}
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                  </Button>
+                                );
+                              })()}
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -1199,6 +1147,47 @@ function SubleaseMediaCard({
                                 <Trash2 className="w-3 h-3 text-destructive" />
                               </Button>
                             </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {accountingNotes.length > 0 && (
+                <div className="mt-6 pt-4 border-t space-y-3">
+                  <h3 className="font-medium text-sm flex items-center gap-2">
+                    <Download className="w-4 h-4" />
+                    Noty księgowe
+                  </h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Numer</TableHead>
+                        <TableHead>Plik</TableHead>
+                        <TableHead>Data wygenerowania</TableHead>
+                        <TableHead className="w-16"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {accountingNotes.map((note) => (
+                        <TableRow key={note.id} data-testid={`row-note-${note.id}`}>
+                          <TableCell className="text-sm font-medium">{note.noteNumber}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{note.fileName}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {note.generatedAt ? new Date(note.generatedAt).toLocaleDateString("pl-PL") : ""}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              data-testid={`button-download-saved-note-${note.id}`}
+                              title="Pobierz notę"
+                              onClick={() => downloadNoteById(note.id)}
+                            >
+                              <Download className="w-3 h-3" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}

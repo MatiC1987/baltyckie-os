@@ -781,3 +781,17 @@ export const companySettings = pgTable("company_settings", {
 export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({ id: true, updatedAt: true });
 export type CompanySettings = typeof companySettings.$inferSelect;
 export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
+
+export const accountingNotes = pgTable("accounting_notes", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  reportId: integer("report_id").references(() => mediaSettlementReports.id, { onDelete: "cascade" }).notNull(),
+  noteNumber: text("note_number").notNull(),
+  objectPath: text("object_path").notNull(),
+  fileName: text("file_name").notNull(),
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
+export const insertAccountingNoteSchema = createInsertSchema(accountingNotes).omit({ id: true, generatedAt: true });
+export type AccountingNote = typeof accountingNotes.$inferSelect;
+export type InsertAccountingNote = z.infer<typeof insertAccountingNoteSchema>;

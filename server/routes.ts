@@ -1912,6 +1912,197 @@ export async function registerRoutes(
     }
   });
 
+  // Accounting Notes
+  app.get('/api/accounting-notes', isAuthenticated, async (req, res) => {
+    const subleaseId = req.query.subleaseId ? parseInt(req.query.subleaseId as string) : undefined;
+    const notes = await storage.getAccountingNotes(subleaseId);
+    res.json(notes);
+  });
+
+  app.get('/api/accounting-notes/by-report/:reportId', isAuthenticated, async (req, res) => {
+    const note = await storage.getAccountingNoteByReportId(parseInt(req.params.reportId));
+    res.json(note);
+  });
+
+  app.post('/api/accounting-notes/generate', isAuthenticated, async (req, res) => {
+    try {
+      const { reportId, subleaseId } = req.body;
+      if (!reportId || !subleaseId) return res.status(400).json({ message: "Brak reportId lub subleaseId" });
+
+      const existing = await storage.getAccountingNoteByReportId(reportId);
+      if (existing) {
+        return res.json(existing);
+      }
+
+      const report = (await storage.getSettlementReports(subleaseId)).find(r => r.id === reportId);
+      if (!report) return res.status(404).json({ message: "Raport nie znaleziony" });
+
+      const sublease = await storage.getSublease(subleaseId);
+      if (!sublease) return res.status(404).json({ message: "Podnajem nie znaleziony" });
+
+      const apartments = await storage.getApartments();
+      const apt = apartments.find(a => a.id === sublease.apartmentId);
+      const companyData = await storage.getCompanySettings();
+
+      const now = new Date();
+      const noteNumber = await storage.getNextNoteNumber(now.getFullYear(), now.getMonth() + 1);
+
+      const removeDiacritics = (text: string): string => {
+        const map: Record<string, string> = {
+          "ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n", "ó": "o", "ś": "s", "ź": "z", "ż": "z",
+          "Ą": "A", "Ć": "C", "Ę": "E", "Ł": "L", "Ń": "N", "Ó": "O", "Ś": "S", "Ź": "Z", "Ż": "Z",
+        };
+        return text.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, (ch) => map[ch] || ch);
+      };
+      const rd = removeDiacritics;
+      const plnFmt = (v: number | string | null | undefined): string => {
+        const num = typeof v === "string" ? parseFloat(v) : v;
+        if (num === null || num === undefined || isNaN(num as number)) return "0,00";
+        return (num as number).toFixed(2).replace(".", ",");
+      };
+      const formatDatePL = (d: string | null | undefined): string => {
+        if (!d) return "";
+        const parts = d.split("-");
+        if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+        return d;
+      };
+
+      const aptName = apt?.name || "";
+      const tenantName = sublease.tenantType === "firma"
+        ? (sublease.companyName || "")
+        : `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
+      const tenantAddress = [sublease.street, sublease.postalCode, sublease.city].filter(Boolean).join(", ");
+      const companyName = companyData?.companyName || "Baltyckie Finanse";
+      const companyAddress = companyData
+        ? [companyData.street, companyData.postalCode, companyData.city].filter(Boolean).join(", ")
+        : "";
+
+      const jsPDF = (await import("jspdf")).default;
+      await import("jspdf-autotable");
+      const doc = new jsPDF();
+
+      doc.setFontSize(16);
+      doc.text(rd("NOTA KSIEGOWA"), 105, 20, { align: "center" });
+      doc.setFontSize(10);
+      doc.text(rd(`Nr: ${noteNumber}`), 105, 28, { align: "center" });
+      doc.text(rd(`Data wystawienia: ${now.toLocaleDateString("pl-PL")}`), 105, 34, { align: "center" });
+
+      doc.setFontSize(9);
+      let y = 46;
+      doc.setFont("helvetica", "bold");
+      doc.text(rd("Wystawca:"), 14, y);
+      doc.setFont("helvetica", "normal");
+      y += 6;
+      doc.text(rd(companyName), 14, y);
+      if (companyData?.nip) { y += 5; doc.text(rd(`NIP: ${companyData.nip}`), 14, y); }
+      if (companyAddress) { y += 5; doc.text(rd(companyAddress), 14, y); }
+      if (companyData?.bankAccount) { y += 5; doc.text(rd(`Konto: ${companyData.bankAccount}`), 14, y); }
+
+      let y2 = 46;
+      doc.setFont("helvetica", "bold");
+      doc.text(rd("Obciazony:"), 110, y2);
+      doc.setFont("helvetica", "normal");
+      y2 += 6;
+      doc.text(rd(tenantName), 110, y2);
+      if (sublease.nip) { y2 += 5; doc.text(rd(`NIP: ${sublease.nip}`), 110, y2); }
+      if (tenantAddress) { y2 += 5; doc.text(rd(tenantAddress), 110, y2); }
+
+      const startY = Math.max(y, y2) + 14;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text(rd(`Rozliczenie mediow - ${aptName}`), 14, startY);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(rd(`Okres: ${formatDatePL(report.periodFrom)} - ${formatDatePL(report.periodTo)}`), 14, startY + 7);
+
+      const rows: string[][] = [];
+      if (report.electricityConsumption && Number(report.electricityConsumption) > 0) {
+        rows.push([rd("Energia elektryczna"), `${plnFmt(report.electricityConsumption)} kWh`, `${plnFmt(report.electricityCost)} PLN`]);
+      }
+      if (report.coldWaterConsumption && Number(report.coldWaterConsumption) > 0) {
+        rows.push([rd("Woda zimna"), rd(`${plnFmt(report.coldWaterConsumption)} m3`), `${plnFmt(report.coldWaterCost)} PLN`]);
+      }
+      if (report.hotWaterConsumption && Number(report.hotWaterConsumption) > 0) {
+        rows.push([rd("Woda ciepla"), rd(`${plnFmt(report.hotWaterConsumption)} m3`), `${plnFmt(report.hotWaterCost)} PLN`]);
+      }
+
+      (doc as any).autoTable({
+        startY: startY + 12,
+        head: [["Medium", rd("Zuzycie"), "Koszt"]],
+        body: rows,
+        foot: [[rd("RAZEM DO ZAPLATY"), "", `${plnFmt(report.totalCost)} PLN`]],
+        theme: "grid",
+        headStyles: { fillColor: [41, 128, 185], fontSize: 9 },
+        footStyles: { fillColor: [236, 240, 241], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 9 },
+        styles: { fontSize: 9 },
+        columnStyles: { 1: { halign: "right" as const }, 2: { halign: "right" as const } },
+        margin: { left: 14, right: 14 },
+      });
+
+      const finalY = (doc as any).lastAutoTable?.finalY || startY + 60;
+      doc.setFontSize(8);
+      doc.text(rd("Nota ksiegowa nie jest faktura VAT."), 14, finalY + 14);
+      doc.text(rd("Termin platnosci: 14 dni od daty wystawienia."), 14, finalY + 20);
+      doc.text(rd(`Wygenerowano: ${now.toLocaleDateString("pl-PL")} | Baltyckie Finanse`), 105, 285, { align: "center" });
+
+      const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+
+      const safeTenantName = rd(tenantName.replace(/\s+/g, "_"));
+      const fileName = `Nota_ksiegowa_${safeTenantName}_${report.periodFrom}_${report.periodTo}.pdf`;
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
+      const storagePath = `${privateDir}/accounting-notes/${fileName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(pdfBuffer, { contentType: "application/pdf" });
+
+      const objectPath = `/objects/accounting-notes/${fileName}`;
+
+      const note = await storage.createAccountingNote({
+        subleaseId,
+        reportId,
+        noteNumber,
+        objectPath: storagePath,
+        fileName,
+      });
+
+      res.json(note);
+    } catch (err: any) {
+      console.error("Error generating accounting note:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/accounting-notes/:id/download', isAuthenticated, async (req, res) => {
+    try {
+      const notes = await storage.getAccountingNotes();
+      const note = notes.find(n => n.id === parseInt(req.params.id));
+      if (!note) return res.status(404).json({ message: "Nota nie znaleziona" });
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const parsedPath = (() => {
+        const p = note.objectPath.startsWith("/") ? note.objectPath.slice(1) : note.objectPath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      const [fileBuffer] = await storageFile.download();
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(note.fileName)}"`);
+      res.send(fileBuffer);
+    } catch (err: any) {
+      console.error("Error downloading accounting note:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/document-templates', isAuthenticated, async (_req, res) => {
     const templates = await storage.getDocumentTemplates();
     res.json(templates);

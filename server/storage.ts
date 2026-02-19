@@ -40,6 +40,7 @@ import {
   notifications, Notification, InsertNotification,
   revenueForecasts, RevenueForecast, InsertRevenueForecast,
   companySettings, CompanySettings, InsertCompanySettings,
+  accountingNotes, AccountingNote, InsertAccountingNote,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNotNull } from "drizzle-orm";
@@ -270,6 +271,12 @@ export interface IStorage {
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | null>;
   upsertCompanySettings(data: InsertCompanySettings): Promise<CompanySettings>;
+
+  // Accounting Notes
+  getAccountingNotes(subleaseId?: number): Promise<AccountingNote[]>;
+  getAccountingNoteByReportId(reportId: number): Promise<AccountingNote | null>;
+  createAccountingNote(data: InsertAccountingNote): Promise<AccountingNote>;
+  getNextNoteNumber(year: number, month: number): Promise<string>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1223,6 +1230,36 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(companySettings).values(data).returning();
     return created;
+  }
+
+  async getAccountingNotes(subleaseId?: number): Promise<AccountingNote[]> {
+    if (subleaseId) {
+      return db.select().from(accountingNotes).where(eq(accountingNotes.subleaseId, subleaseId)).orderBy(desc(accountingNotes.generatedAt));
+    }
+    return db.select().from(accountingNotes).orderBy(desc(accountingNotes.generatedAt));
+  }
+
+  async getAccountingNoteByReportId(reportId: number): Promise<AccountingNote | null> {
+    const rows = await db.select().from(accountingNotes).where(eq(accountingNotes.reportId, reportId)).limit(1);
+    return rows[0] || null;
+  }
+
+  async createAccountingNote(data: InsertAccountingNote): Promise<AccountingNote> {
+    const [created] = await db.insert(accountingNotes).values(data).returning();
+    return created;
+  }
+
+  async getNextNoteNumber(year: number, month: number): Promise<string> {
+    const prefix = `NK/${year}/${String(month).padStart(2, "0")}/`;
+    const existing = await db.select().from(accountingNotes)
+      .where(sql`${accountingNotes.noteNumber} LIKE ${prefix + '%'}`)
+      .orderBy(desc(accountingNotes.noteNumber));
+    let next = 1;
+    if (existing.length > 0) {
+      const lastNum = existing[0].noteNumber.split("/").pop();
+      if (lastNum) next = parseInt(lastNum, 10) + 1;
+    }
+    return `${prefix}${String(next).padStart(3, "0")}`;
   }
 }
 
