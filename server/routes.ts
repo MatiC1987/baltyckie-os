@@ -1437,7 +1437,7 @@ export async function registerRoutes(
         const headerRelsPath = "word/_rels/header_logo.xml.rels";
         const hdrRid = "rId1";
         zip.file(headerRelsPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${hdrRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${logoMediaName}"/></Relationships>`);
-        zip.file(headerPartName, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${nsAll}><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r>${makeDrawingXml(hdrRid, 2400000, 900000, 100, "Logo")}</w:r></w:p></w:hdr>`);
+        zip.file(headerPartName, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${nsAll}><w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r>${makeDrawingXml(hdrRid, 1800000, 1080000, 100, "Logo")}</w:r></w:p></w:hdr>`);
 
         if (!contentTypesXml.includes(`PartName="/${headerPartName}"`)) {
           contentTypesXml = contentTypesXml.replace("</Types>", `<Override PartName="/${headerPartName}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>`);
@@ -2175,8 +2175,8 @@ export async function registerRoutes(
         const imgFormat = (logoExt === "jpg" || logoExt === "jpeg") ? "JPEG" : "PNG";
         const base64 = logoBuffer.toString("base64");
         const dataUri = `data:image/${logoExt};base64,${base64}`;
-        doc.addImage(dataUri, imgFormat, 14, headerY, 40, 16);
-        headerY += 20;
+        doc.addImage(dataUri, imgFormat, 14, headerY, 35, 21);
+        headerY += 24;
       }
 
       doc.setFontSize(16);
