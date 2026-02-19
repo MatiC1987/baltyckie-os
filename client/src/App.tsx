@@ -110,8 +110,7 @@ function Router() {
       <Route path="/document-templates" component={() => <AuthenticatedRoute component={DocumentTemplates} />} />
       <Route path="/employees" component={() => <AuthenticatedRoute component={Employees} />} />
 
-      <Route path="/import" component={() => <AuthenticatedRoute component={Import} />} />
-      <Route path="/export" component={() => <AuthenticatedPlaceholder title="Eksport rezerwacji" description="Eksport danych rezerwacji do pliku." />} />
+      <Route path="/import-export" component={() => <AuthenticatedRoute component={Import} />} />
       <Route path="/user-accounts" component={() => <AuthenticatedRoute component={UserAccounts} />} />
       <Route path="/locations" component={() => <AuthenticatedRoute component={Lokalizacje} />} />
       <Route path="/activity-log" component={() => <AuthenticatedRoute component={ActivityLog} />} />

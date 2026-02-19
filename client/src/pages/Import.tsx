@@ -79,7 +79,7 @@ export default function Import() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Import danych" description="Import rezerwacji z pliku Excel lub HotRes CSV." icon={Upload} />
+      <PageHeader title="Import & Eksport" description="Import rezerwacji z pliku Excel lub HotRes CSV. Modul eksportu danych w przygotowaniu." icon={Upload} />
 
       <HotResSection />
 

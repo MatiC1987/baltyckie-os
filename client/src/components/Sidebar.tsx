@@ -146,8 +146,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   calendar: { id: "calendar", href: "/calendar", label: "Terminarz", iconName: "CalendarDays" },
   reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
   arrivals: { id: "arrivals", href: "/arrivals", label: "Przyjazdy", iconName: "Plane" },
-  import: { id: "import", href: "/import", label: "Import rezerwacji", iconName: "Upload" },
-  export: { id: "export", href: "/export", label: "Eksport CSV", iconName: "FileDown" },
+  "import-export": { id: "import-export", href: "/import-export", label: "Import & Eksport", iconName: "ArrowUpDown" },
   "revenue": { id: "revenue", href: "/revenue", label: "Przychody", iconName: "Wallet" },
   "finance-forecast": { id: "finance-forecast", href: "/finance-forecast", label: "Finanse / Prognoza", iconName: "TrendingUp" },
   "costs-apartments": { id: "costs-apartments", href: "/costs-apartments", label: "Koszty apartamentów", iconName: "Calculator" },
@@ -178,7 +177,7 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
 
 const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit", "calendar"] },
-  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals", "import", "export"] },
+  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations", "arrivals", "import-export"] },
   { id: "finanse", title: "FINANSE", itemIds: ["revenue", "finance-forecast", "costs-apartments", "costs-expenses", "invoices", "apartment-schedule", "salda"] },
   { id: "podnajem", title: "PODNAJEM", itemIds: ["contracts-subrent", "subrent-settlement", "subrent-media"] },
   { id: "analizy", title: "ANALIZY", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "cash-flow-forecast"] },
