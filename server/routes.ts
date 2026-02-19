@@ -19,6 +19,33 @@ import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+function generateRecurrenceDates(startDate: string, endDate: string, recurrenceType: string): string[] {
+  const VALID_TYPES = ["MIESIECZNIE", "KWARTALNIE", "ROCZNIE"];
+  if (!VALID_TYPES.includes(recurrenceType)) return [];
+  if (endDate < startDate) return [];
+
+  const dates: string[] = [];
+  const startParts = startDate.split("-").map(Number);
+  const origYear = startParts[0], origMonth = startParts[1], origDay = startParts[2];
+  const end = new Date(endDate + "T12:00:00Z");
+  const monthStep = recurrenceType === "MIESIECZNIE" ? 1 : recurrenceType === "KWARTALNIE" ? 3 : 12;
+
+  let step = 1;
+  while (true) {
+    const totalMonths = (origMonth - 1) + step * monthStep;
+    const targetYear = origYear + Math.floor(totalMonths / 12);
+    const targetMonth = (totalMonths % 12) + 1;
+    const lastDayOfMonth = new Date(targetYear, targetMonth, 0).getDate();
+    const day = Math.min(origDay, lastDayOfMonth);
+    const dateStr = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const d = new Date(dateStr + "T12:00:00Z");
+    if (d > end) break;
+    dates.push(dateStr);
+    step++;
+  }
+  return dates;
+}
+
 async function logActivity(req: any, action: string, entityType: string, entityId?: number, entityName?: string, details?: string) {
   try {
     const user = req.user;
@@ -597,6 +624,21 @@ export async function registerRoutes(
       const input = bodySchema.parse(req.body);
       const expense = await storage.createExpense(input);
       logActivity(req, "create", "expense", expense.id, input.description);
+
+      if (input.recurrenceType && input.recurrenceEndDate) {
+        const recurDates = generateRecurrenceDates(input.date, input.recurrenceEndDate, input.recurrenceType);
+        for (const d of recurDates) {
+          await storage.createExpense({
+            ...input,
+            date: d,
+            parentExpenseId: expense.id,
+            recurrenceType: null,
+            recurrenceEndDate: null,
+            isForecast: true,
+          });
+        }
+      }
+
       res.status(201).json(expense);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });

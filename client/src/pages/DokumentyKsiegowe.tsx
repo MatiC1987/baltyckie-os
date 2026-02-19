@@ -141,6 +141,8 @@ function CostInvoicesTab() {
   const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseRecurrence, setExpenseRecurrence] = useState<string>("");
+  const [expenseRecurrenceEnd, setExpenseRecurrenceEnd] = useState("");
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
 
   const { data: invoices = [], isLoading } = useQuery<CostInvoice[]>({ queryKey: ["/api/cost-invoices"] });
@@ -189,24 +191,34 @@ function CostInvoicesTab() {
   });
 
   const linkExpenseMutation = useMutation({
-    mutationFn: async (data: { invoiceId: number; category: string; description: string; amount: string; date: string }) => {
-      const expense = await apiRequest("POST", "/api/expenses", {
+    mutationFn: async (data: { invoiceId: number; category: string; description: string; amount: string; date: string; recurrenceType?: string | null; recurrenceEndDate?: string | null }) => {
+      const expensePayload: any = {
         date: data.date,
         category: data.category,
         amount: data.amount,
         description: data.description,
         type: "VARIABLE",
-      });
+      };
+      if (data.recurrenceType) {
+        expensePayload.recurrenceType = data.recurrenceType;
+        expensePayload.recurrenceEndDate = data.recurrenceEndDate;
+      }
+      const expense = await apiRequest("POST", "/api/expenses", expensePayload);
       const expenseData = expense as any;
       await apiRequest("PATCH", `/api/cost-invoices/${data.invoiceId}`, { linkedExpenseId: expenseData.id });
       return expenseData;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/cost-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       setShowExpenseDialog(false);
       setLastCreatedInvoice(null);
-      toast({ title: "Koszt dodany i powiązany z fakturą" });
+      setExpenseRecurrence("");
+      setExpenseRecurrenceEnd("");
+      const msg = variables.recurrenceType
+        ? "Koszt cykliczny dodany i powiązany z fakturą"
+        : "Koszt dodany i powiązany z fakturą";
+      toast({ title: msg });
     },
     onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
   });
@@ -567,11 +579,42 @@ function CostInvoicesTab() {
                 data-testid="input-expense-amount"
               />
             </div>
+            <div className="border-t pt-4 mt-2">
+              <Label className="text-sm font-medium">Cykliczność kosztu</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Ustaw jeśli ten koszt powtarza się regularnie (np. czynsz, energia)
+              </p>
+              <Select value={expenseRecurrence || "NONE"} onValueChange={(v) => { if (v === "NONE") { setExpenseRecurrence(""); setExpenseRecurrenceEnd(""); } else { setExpenseRecurrence(v); if (!expenseRecurrenceEnd) { const d = new Date(); d.setFullYear(d.getFullYear() + 1); setExpenseRecurrenceEnd(d.toISOString().slice(0, 10)); } } }}>
+                <SelectTrigger data-testid="select-expense-recurrence">
+                  <SelectValue placeholder="Brak (jednorazowy)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">Brak (jednorazowy)</SelectItem>
+                  <SelectItem value="MIESIECZNIE">Co miesiąc</SelectItem>
+                  <SelectItem value="KWARTALNIE">Co kwartał</SelectItem>
+                  <SelectItem value="ROCZNIE">Co rok</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {expenseRecurrence && expenseRecurrence !== "NONE" && (
+              <div>
+                <Label>Koniec cykliczności</Label>
+                <Input
+                  type="date"
+                  value={expenseRecurrenceEnd}
+                  onChange={e => setExpenseRecurrenceEnd(e.target.value)}
+                  data-testid="input-expense-recurrence-end"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Przyszłe koszty zostaną automatycznie utworzone jako prognozowane
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => { setShowExpenseDialog(false); setLastCreatedInvoice(null); toast({ title: "Faktura dodana bez powiązania z kosztem" }); }}
+              onClick={() => { setShowExpenseDialog(false); setLastCreatedInvoice(null); setExpenseRecurrence(""); setExpenseRecurrenceEnd(""); toast({ title: "Faktura dodana bez powiązania z kosztem" }); }}
               data-testid="button-skip-expense"
             >
               Pomiń
@@ -579,12 +622,19 @@ function CostInvoicesTab() {
             <Button
               onClick={() => {
                 if (!lastCreatedInvoice || !expenseAmount) return;
+                const recType = expenseRecurrence && expenseRecurrence !== "NONE" ? expenseRecurrence : null;
+                if (recType && !expenseRecurrenceEnd) {
+                  toast({ title: "Podaj datę końca cykliczności", variant: "destructive" });
+                  return;
+                }
                 linkExpenseMutation.mutate({
                   invoiceId: lastCreatedInvoice.id,
                   category: expenseCategory,
                   description: expenseDescription || lastCreatedInvoice.originalFileName,
                   amount: expenseAmount,
                   date: lastCreatedInvoice.invoiceDate,
+                  recurrenceType: recType,
+                  recurrenceEndDate: recType ? expenseRecurrenceEnd : null,
                 });
               }}
               disabled={linkExpenseMutation.isPending || !expenseAmount}
