@@ -50,7 +50,8 @@ import {
   Home,
   Gauge,
   Calculator,
-  ScrollText
+  ScrollText,
+  Plus
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
@@ -58,6 +59,14 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
 import {
   DndContext,
@@ -147,27 +156,25 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   kokpit: { id: "kokpit", href: "/", label: "Pulpit", iconName: "LayoutDashboard" },
   calendar: { id: "calendar", href: "/calendar", label: "Terminarz", iconName: "CalendarDays" },
   reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
-  "revenue": { id: "revenue", href: "/revenue", label: "Przychody", iconName: "Wallet" },
-  "finance-forecast": { id: "finance-forecast", href: "/finance-forecast", label: "Prognoza finansowa", iconName: "TrendingUp" },
-  "koszty": { id: "koszty", href: "/koszty", label: "Koszty", iconName: "Calculator" },
-  invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
-  "apartment-schedule": { id: "apartment-schedule", href: "/apartment-schedule", label: "Harmonogram", iconName: "CalendarCheck" },
-  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Umowy serwisowe", iconName: "Briefcase" },
-  "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
-  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
   podnajem: { id: "podnajem", href: "/podnajem", label: "Podnajem", iconName: "FileSignature" },
   analizy: { id: "analizy", href: "/analizy", label: "Analizy", iconName: "BarChart3" },
+  "finance-forecast": { id: "finance-forecast", href: "/finance-forecast", label: "Prognoza finansowa", iconName: "TrendingUp" },
+  "revenue": { id: "revenue", href: "/revenue", label: "Przychody", iconName: "Wallet" },
+  "koszty": { id: "koszty", href: "/koszty", label: "Koszty", iconName: "Calculator" },
+  "apartment-schedule": { id: "apartment-schedule", href: "/apartment-schedule", label: "Harmonogram", iconName: "CalendarCheck" },
+  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
+  invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
+  "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
+  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Usługi", iconName: "Briefcase" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
-  { id: "main", itemIds: ["kokpit", "calendar"] },
-  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["reservations"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["revenue", "finance-forecast", "koszty", "invoices", "apartment-schedule", "contracts-services", "dokumenty-ksiegowe", "salda"] },
-  { id: "podnajem", title: "PODNAJEM", itemIds: ["podnajem"] },
-  { id: "analizy", title: "ANALIZY", itemIds: ["analizy"] },
+  { id: "main", itemIds: ["kokpit"] },
+  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations"] },
+  { id: "finanse", title: "FINANSE", itemIds: ["analizy", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services"] },
 ];
 
-const STORAGE_KEY = "sidebar-layout-v4";
+const STORAGE_KEY = "sidebar-layout-v5";
 const COLLAPSED_KEY = "sidebar-collapsed-v1";
 const LABELS_KEY = "sidebar-custom-labels-v1";
 
@@ -412,7 +419,7 @@ function DroppableEmptySection({ sectionId }: { sectionId: string }) {
 }
 
 export function Sidebar() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { logout, user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
@@ -420,6 +427,7 @@ export function Sidebar() {
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
   const [customLabels, setCustomLabels] = useState<Record<string, string>>(loadCustomLabels);
+  const [showQuickActions, setShowQuickActions] = useState(false);
   const lastAppliedTimestamp = useRef<string | null>(null);
 
   const { data: serverPrefs } = useQuery<any>({
@@ -648,8 +656,19 @@ export function Sidebar() {
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col">
-          <div className="px-5 pt-5 pb-4 flex items-center justify-center">
+          <div className="px-5 pt-5 pb-3 flex items-center justify-center">
             <img src={logoSrc} alt="Bałtyckie Finanse" className="h-7 object-contain" data-testid="img-logo" />
+          </div>
+
+          <div className="px-3 pb-3">
+            <button
+              onClick={() => setShowQuickActions(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-[#5ADBFA]/15 text-[#5ADBFA] hover:bg-[#5ADBFA]/25 border border-[#5ADBFA]/20"
+              data-testid="button-quick-actions"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Nowe...</span>
+            </button>
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-1" data-testid="nav-sidebar">
@@ -771,15 +790,16 @@ export function Sidebar() {
                 <span className="text-sm font-medium">Ustawienia</span>
               </div>
             </Link>
-            <Button
-              variant="ghost"
-              onClick={toggleTheme}
-              className="w-full justify-start gap-3 text-slate-400 mb-1"
-              data-testid="button-toggle-theme"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              <span className="text-sm font-medium">{theme === "dark" ? "Jasny motyw" : "Ciemny motyw"}</span>
-            </Button>
+            <div className="flex items-center gap-3 px-3 py-2 mb-1">
+              <Sun className="h-4 w-4 text-slate-400" />
+              <Switch
+                checked={theme === "dark"}
+                onCheckedChange={toggleTheme}
+                data-testid="switch-toggle-theme"
+                className="data-[state=checked]:bg-slate-600 data-[state=unchecked]:bg-slate-600"
+              />
+              <Moon className="h-4 w-4 text-slate-400" />
+            </div>
             <button
               onClick={() => logout()}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
@@ -798,6 +818,44 @@ export function Sidebar() {
           onClick={() => setIsOpen(false)}
         />
       )}
+
+      <Dialog open={showQuickActions} onOpenChange={setShowQuickActions}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nowe...</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            {[
+              { label: "Nowa rezerwacja", description: "Dodaj rezerwację krótkoterminową", icon: CalendarDays, href: "/reservations?action=new", color: "text-blue-500", bg: "bg-blue-500/10" },
+              { label: "Nowy podnajem", description: "Utwórz umowę podnajmu", icon: FileSignature, href: "/podnajem?action=new", color: "text-violet-500", bg: "bg-violet-500/10" },
+              { label: "Nowy koszt", description: "Dodaj wydatek operacyjny", icon: Receipt, href: "/koszty?tab=operacyjne&action=new", color: "text-red-500", bg: "bg-red-500/10" },
+              { label: "Faktura kosztowa", description: "Dodaj dokument księgowy", icon: FileText, href: "/dokumenty-ksiegowe", color: "text-amber-500", bg: "bg-amber-500/10" },
+              { label: "Importuj rezerwacje", description: "Import z Excel / HotRes", icon: Upload, href: "/import-export", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+            ].map((action) => (
+              <Card
+                key={action.href}
+                className="hover-elevate cursor-pointer"
+                onClick={() => {
+                  setShowQuickActions(false);
+                  setIsOpen(false);
+                  navigate(action.href);
+                }}
+                data-testid={`quick-action-${action.label.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <CardContent className="p-3 flex flex-col items-center text-center gap-2">
+                  <div className={cn("rounded-lg p-2.5", action.bg)}>
+                    <action.icon className={cn("h-5 w-5", action.color)} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium leading-tight">{action.label}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{action.description}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
