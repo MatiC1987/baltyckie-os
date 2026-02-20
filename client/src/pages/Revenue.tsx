@@ -6,12 +6,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Upload, Loader2, Wallet } from "lucide-react";
+import { ChevronDown, ChevronRight, Upload, Loader2, Wallet, LayoutGrid, Table2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -55,6 +56,7 @@ export default function Revenue() {
   const { toast } = useToast();
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
+  const [compactView, setCompactView] = useState(true);
 
   const { data: apartments = [] } = useQuery<Apartment[]>({ queryKey: ["/api/apartments"] });
   const { data: locations = [] } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
@@ -247,6 +249,25 @@ export default function Revenue() {
     return totals;
   }, [locationApartments, revenueData, forecastLookup, currentLocation]);
 
+  const revenueHeatMax = useMemo(() => {
+    let max = 0;
+    for (const apt of locationApartments) {
+      for (let m = 0; m < 12; m++) {
+        const md = getMonthData(apt.id, m);
+        const rev = md.najem + md.podnajem;
+        if (rev > max) max = rev;
+      }
+    }
+    return max;
+  }, [locationApartments, revenueData]);
+
+  const getAptSparklineData = useCallback((aptId: number): number[] => {
+    return Array.from({ length: 12 }, (_, m) => {
+      const md = getMonthData(aptId, m);
+      return md.najem + md.podnajem;
+    });
+  }, [revenueData]);
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -261,6 +282,15 @@ export default function Revenue() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <PageHeader title="Przychody" description="Przegląd przychodów z najmu i podnajmu." icon={Wallet} />
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setCompactView(!compactView)}
+            title={compactView ? "Widok pełny" : "Widok kompaktowy"}
+            data-testid="button-toggle-view"
+          >
+            {compactView ? <Table2 className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -418,69 +448,109 @@ export default function Revenue() {
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-revenue">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="bg-muted/30">
-              <th className="sticky left-0 z-10 bg-muted/30 text-left px-2 py-1 border-r-2 border-b border-border min-w-[180px]" rowSpan={2}>Apartament</th>
-              {MONTHS.map((m, i) => (
-                <th key={i} colSpan={7} className="px-1 py-1 border-r-2 border-b border-border text-center font-bold text-muted-foreground text-[10px]">{m}</th>
-              ))}
-              <th colSpan={7} className="px-1 py-1 border-b border-border text-center font-bold text-muted-foreground text-[10px]">RAZEM</th>
-            </tr>
-            <tr className="bg-muted/50">
-              {[...Array(13)].map((_, gi) => (
-                <Fragment key={gi}>
-                  <th className="px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] text-[9px] bg-blue-50/50 dark:bg-blue-950/20">PROGNOZA</th>
-                  <th className="px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] text-[9px] font-bold">PRZYCHODY</th>
-                  <th className="px-1 py-1 border-r border-b border-border text-center w-[50px] min-w-[50px] text-[9px] text-muted-foreground">NAJEM</th>
-                  <th className="px-1 py-1 border-r border-b border-border text-center w-[50px] min-w-[50px] text-[9px] text-muted-foreground">PODNAJEM</th>
-                  <th className="px-1 py-1 border-r border-b border-border text-center w-[35px] min-w-[35px] text-[9px]">%</th>
-                  <th className="px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] text-[9px]">SALDO</th>
-                  <th className={`px-1 py-1 ${gi < 12 ? "border-r-2" : ""} border-b border-border text-center w-[55px] min-w-[55px] text-[9px] text-amber-700 dark:text-amber-400`}>DOPŁATY</th>
-                </Fragment>
-              ))}
-            </tr>
+            {compactView ? (
+              <tr className="bg-muted/30">
+                <th className="sticky left-0 z-10 bg-muted/30 text-left px-2 py-1 border-r-2 border-b border-border min-w-[180px]">Apartament</th>
+                {MONTHS.map((m, i) => (
+                  <th key={i} className="px-1 py-1 border-r border-b border-border text-center font-bold text-muted-foreground text-[10px] w-[70px] min-w-[70px]">{m}</th>
+                ))}
+                <th className="px-1 py-1 border-b border-border text-center font-bold text-muted-foreground text-[10px] w-[80px] min-w-[80px]">RAZEM</th>
+              </tr>
+            ) : (
+              <>
+                <tr className="bg-muted/30">
+                  <th className="sticky left-0 z-10 bg-muted/30 text-left px-2 py-1 border-r-2 border-b border-border min-w-[180px]" rowSpan={2}>Apartament</th>
+                  {MONTHS.map((m, i) => (
+                    <th key={i} colSpan={7} className="px-1 py-1 border-r-2 border-b border-border text-center font-bold text-muted-foreground text-[10px]">{m}</th>
+                  ))}
+                  <th colSpan={7} className="px-1 py-1 border-b border-border text-center font-bold text-muted-foreground text-[10px]">RAZEM</th>
+                </tr>
+                <tr className="bg-muted/50">
+                  {[...Array(13)].map((_, gi) => (
+                    <Fragment key={gi}>
+                      <th className="px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] text-[9px] bg-blue-50/50 dark:bg-blue-950/20">PROGNOZA</th>
+                      <th className="px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] text-[9px] font-bold">PRZYCHODY</th>
+                      <th className="px-1 py-1 border-r border-b border-border text-center w-[50px] min-w-[50px] text-[9px] text-muted-foreground">NAJEM</th>
+                      <th className="px-1 py-1 border-r border-b border-border text-center w-[50px] min-w-[50px] text-[9px] text-muted-foreground">PODNAJEM</th>
+                      <th className="px-1 py-1 border-r border-b border-border text-center w-[35px] min-w-[35px] text-[9px]">%</th>
+                      <th className="px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] text-[9px]">SALDO</th>
+                      <th className={`px-1 py-1 ${gi < 12 ? "border-r-2" : ""} border-b border-border text-center w-[55px] min-w-[55px] text-[9px] text-amber-700 dark:text-amber-400`}>DOPŁATY</th>
+                    </Fragment>
+                  ))}
+                </tr>
+              </>
+            )}
           </thead>
           <tbody>
             <tr className="bg-muted/40 font-semibold">
               <td className="sticky left-0 z-10 bg-muted/40 px-2 py-1.5 border-r-2 border-b border-border font-bold uppercase tracking-wide">
                 {currentLocation}
               </td>
-              {MONTHS.map((_, mi) => {
-                const t = locationTotals[mi];
-                const pct = t.prognoza > 0 ? t.przychody / t.prognoza : 0;
-                const saldo = t.przychody - t.prognoza;
-                const doplaty = t.doplaty_najem + t.doplaty_podnajem;
-                return (
-                  <Fragment key={mi}>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-blue-50/50 dark:bg-blue-950/20">{formatNum(t.prognoza)}</td>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-bold">{formatNum(t.przychody)}</td>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(t.najem)}</td>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(t.podnajem)}</td>
-                    <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
-                    <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
-                    <td className="border-r-2 border-b border-border px-1 py-1 text-right tabular-nums text-amber-700 dark:text-amber-400">{formatNum(doplaty)}</td>
-                  </Fragment>
-                );
-              })}
-              {(() => {
-                let tp = 0, trev = 0, tn = 0, tpn = 0, tdn = 0, tdpn = 0;
-                for (let m = 0; m < 12; m++) {
-                  const t = locationTotals[m];
-                  tp += t.prognoza; trev += t.przychody; tn += t.najem; tpn += t.podnajem; tdn += t.doplaty_najem; tdpn += t.doplaty_podnajem;
-                }
-                const pct = tp > 0 ? trev / tp : 0;
-                const saldo = trev - tp;
-                return (
-                  <>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-blue-50/50 dark:bg-blue-950/20">{formatNum(tp)}</td>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-bold">{formatNum(trev)}</td>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(tn)}</td>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(tpn)}</td>
-                    <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
-                    <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
-                    <td className="border-b border-border px-1 py-1 text-right tabular-nums text-amber-700 dark:text-amber-400">{formatNum(tdn + tdpn)}</td>
-                  </>
-                );
-              })()}
+              {compactView ? (
+                <>
+                  {MONTHS.map((_, mi) => {
+                    const t = locationTotals[mi];
+                    const pct = t.prognoza > 0 ? t.przychody / t.prognoza : 0;
+                    return (
+                      <td key={mi} className={`border-r border-b border-border px-1 py-1 text-right tabular-nums font-bold ${getHeatMapBg(t.przychody, revenueHeatMax * locationApartments.length, "revenue")}`}>
+                        {formatNum(t.przychody)}
+                        {t.prognoza > 0 && <div className={`text-[9px] font-normal ${pctColor(pct)}`}>{formatPct(pct)}</div>}
+                      </td>
+                    );
+                  })}
+                  {(() => {
+                    let tp = 0, trev = 0;
+                    for (let m = 0; m < 12; m++) { tp += locationTotals[m].prognoza; trev += locationTotals[m].przychody; }
+                    const pct = tp > 0 ? trev / tp : 0;
+                    return (
+                      <td className="border-b border-border px-1 py-1 text-right tabular-nums font-bold bg-muted/20">
+                        {formatNum(trev)}
+                        {tp > 0 && <div className={`text-[9px] font-normal ${pctColor(pct)}`}>{formatPct(pct)}</div>}
+                      </td>
+                    );
+                  })()}
+                </>
+              ) : (
+                <>
+                  {MONTHS.map((_, mi) => {
+                    const t = locationTotals[mi];
+                    const pct = t.prognoza > 0 ? t.przychody / t.prognoza : 0;
+                    const saldo = t.przychody - t.prognoza;
+                    const doplaty = t.doplaty_najem + t.doplaty_podnajem;
+                    return (
+                      <Fragment key={mi}>
+                        <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-blue-50/50 dark:bg-blue-950/20">{formatNum(t.prognoza)}</td>
+                        <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums font-bold ${getHeatMapBg(t.przychody, revenueHeatMax * locationApartments.length, "revenue")}`}>{formatNum(t.przychody)}</td>
+                        <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(t.najem)}</td>
+                        <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(t.podnajem)}</td>
+                        <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
+                        <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                        <td className="border-r-2 border-b border-border px-1 py-1 text-right tabular-nums text-amber-700 dark:text-amber-400">{formatNum(doplaty)}</td>
+                      </Fragment>
+                    );
+                  })}
+                  {(() => {
+                    let tp = 0, trev = 0, tn = 0, tpn = 0, tdn = 0, tdpn = 0;
+                    for (let m = 0; m < 12; m++) {
+                      const t = locationTotals[m];
+                      tp += t.prognoza; trev += t.przychody; tn += t.najem; tpn += t.podnajem; tdn += t.doplaty_najem; tdpn += t.doplaty_podnajem;
+                    }
+                    const pct = tp > 0 ? trev / tp : 0;
+                    const saldo = trev - tp;
+                    return (
+                      <>
+                        <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-blue-50/50 dark:bg-blue-950/20">{formatNum(tp)}</td>
+                        <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-bold">{formatNum(trev)}</td>
+                        <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(tn)}</td>
+                        <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-muted-foreground">{formatNum(tpn)}</td>
+                        <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
+                        <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                        <td className="border-b border-border px-1 py-1 text-right tabular-nums text-amber-700 dark:text-amber-400">{formatNum(tdn + tdpn)}</td>
+                      </>
+                    );
+                  })()}
+                </>
+              )}
             </tr>
 
             {locationApartments.map(apt => {
@@ -506,55 +576,79 @@ export default function Revenue() {
                     >
                       <span className="flex items-center gap-1">
                         {isCollapsed ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                        {apt.name}
+                        <span className="flex-1 min-w-0 truncate">{apt.name}</span>
+                        <Sparkline data={getAptSparklineData(apt.id)} width={60} height={16} showDots />
                       </span>
                     </td>
-                    {MONTHS.map((_, mi) => {
-                      const md = getMonthData(apt.id, mi);
-                      const forecast = getAptForecast(apt.id, mi);
-                      const przychody = md.najem + md.podnajem;
-                      const pct = forecast > 0 ? przychody / forecast : 0;
-                      const saldo = przychody - forecast;
-                      const doplaty = md.doplaty_najem + md.doplaty_podnajem;
-                      return (
-                        <Fragment key={mi}>
-                          <td className="border-r border-b border-border px-0 py-0 bg-blue-50/50 dark:bg-blue-950/20">
-                            <input
-                              type="number"
-                              className="w-full h-full px-1 py-0.5 text-right text-[10px] tabular-nums bg-transparent outline-none focus:bg-primary/10 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              value={getAptForecastDisplay(apt.id, mi)}
-                              onChange={(e) => handleForecastChange(apt.id, mi, e.target.value)}
-                              data-testid={`input-forecast-${apt.id}-${mi}`}
-                            />
-                          </td>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold">{formatNum(przychody)}</td>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(md.najem)}</td>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(md.podnajem)}</td>
-                          <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
-                          <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
-                          <td className="border-r-2 border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] text-amber-700 dark:text-amber-400">{formatNum(doplaty)}</td>
-                        </Fragment>
-                      );
-                    })}
-                    {(() => {
-                      const pct = aptTotals.prognoza > 0 ? aptTotals.przychody / aptTotals.prognoza : 0;
-                      const saldo = aptTotals.przychody - aptTotals.prognoza;
-                      const doplaty = aptTotals.doplaty_najem + aptTotals.doplaty_podnajem;
-                      return (
-                        <>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] bg-blue-50/50 dark:bg-blue-950/20">{formatNum(aptTotals.prognoza)}</td>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold">{formatNum(aptTotals.przychody)}</td>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(aptTotals.najem)}</td>
-                          <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(aptTotals.podnajem)}</td>
-                          <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
-                          <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
-                          <td className="border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] text-amber-700 dark:text-amber-400">{formatNum(doplaty)}</td>
-                        </>
-                      );
-                    })()}
+                    {compactView ? (
+                      <>
+                        {MONTHS.map((_, mi) => {
+                          const md = getMonthData(apt.id, mi);
+                          const forecast = getAptForecast(apt.id, mi);
+                          const przychody = md.najem + md.podnajem;
+                          const pct = forecast > 0 ? przychody / forecast : 0;
+                          return (
+                            <td key={mi} className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold ${getHeatMapBg(przychody, revenueHeatMax, "revenue")}`}>
+                              {formatNum(przychody)}
+                              {forecast > 0 && <div className={`text-[9px] font-normal ${pctColor(pct)}`}>{formatPct(pct)}</div>}
+                            </td>
+                          );
+                        })}
+                        <td className="border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold bg-muted/20">
+                          {formatNum(aptTotals.przychody)}
+                          {aptTotals.prognoza > 0 && <div className={`text-[9px] font-normal ${pctColor(aptTotals.przychody / aptTotals.prognoza)}`}>{formatPct(aptTotals.przychody / aptTotals.prognoza)}</div>}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        {MONTHS.map((_, mi) => {
+                          const md = getMonthData(apt.id, mi);
+                          const forecast = getAptForecast(apt.id, mi);
+                          const przychody = md.najem + md.podnajem;
+                          const pct = forecast > 0 ? przychody / forecast : 0;
+                          const saldo = przychody - forecast;
+                          const doplaty = md.doplaty_najem + md.doplaty_podnajem;
+                          return (
+                            <Fragment key={mi}>
+                              <td className="border-r border-b border-border px-0 py-0 bg-blue-50/50 dark:bg-blue-950/20">
+                                <input
+                                  type="number"
+                                  className="w-full h-full px-1 py-0.5 text-right text-[10px] tabular-nums bg-transparent outline-none focus:bg-primary/10 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  value={getAptForecastDisplay(apt.id, mi)}
+                                  onChange={(e) => handleForecastChange(apt.id, mi, e.target.value)}
+                                  data-testid={`input-forecast-${apt.id}-${mi}`}
+                                />
+                              </td>
+                              <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold ${getHeatMapBg(przychody, revenueHeatMax, "revenue")}`}>{formatNum(przychody)}</td>
+                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(md.najem)}</td>
+                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(md.podnajem)}</td>
+                              <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
+                              <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                              <td className="border-r-2 border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] text-amber-700 dark:text-amber-400">{formatNum(doplaty)}</td>
+                            </Fragment>
+                          );
+                        })}
+                        {(() => {
+                          const pct = aptTotals.prognoza > 0 ? aptTotals.przychody / aptTotals.prognoza : 0;
+                          const saldo = aptTotals.przychody - aptTotals.prognoza;
+                          const doplaty = aptTotals.doplaty_najem + aptTotals.doplaty_podnajem;
+                          return (
+                            <>
+                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] bg-blue-50/50 dark:bg-blue-950/20">{formatNum(aptTotals.prognoza)}</td>
+                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold">{formatNum(aptTotals.przychody)}</td>
+                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(aptTotals.najem)}</td>
+                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-muted-foreground text-[10px]">{formatNum(aptTotals.podnajem)}</td>
+                              <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${pctColor(pct)}`}>{formatPct(pct)}</td>
+                              <td className={`border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                              <td className="border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] text-amber-700 dark:text-amber-400">{formatNum(doplaty)}</td>
+                            </>
+                          );
+                        })()}
+                      </>
+                    )}
                   </tr>
 
-                  {isCollapsed && (
+                  {isCollapsed && !compactView && (
                     <>
                       <tr className="bg-muted/10">
                         <td className="sticky left-0 z-10 bg-muted/10 pl-8 pr-2 py-0.5 border-r-2 border-b border-border text-muted-foreground text-[10px]">Najem</td>

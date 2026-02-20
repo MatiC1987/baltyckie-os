@@ -5,8 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, Calculator } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, Calculator, BarChart3 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
+import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
@@ -250,6 +253,23 @@ export default function CostsApartments() {
     return { p, r };
   };
 
+  const costsHeatMax = useMemo(() => {
+    let max = 0;
+    costEntries.forEach(group => {
+      group.items.forEach(entry => {
+        for (let m = 0; m < 12; m++) {
+          const s = getEntrySums(entry, m);
+          if (s.r > max) max = s.r;
+        }
+      });
+    });
+    return max;
+  }, [costEntries, data]);
+
+  const getEntrySparklineData = useCallback((entry: CostEntry): number[] => {
+    return Array.from({ length: 12 }, (_, m) => getEntrySums(entry, m).r);
+  }, [data]);
+
   const getLocationSums = (items: CostEntry[], month: number): { p: number; r: number } => {
     let p = 0, r = 0;
     items.forEach(entry => {
@@ -269,6 +289,20 @@ export default function CostsApartments() {
     }
     return { p, r };
   };
+
+  const monthlyCostChart = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) => {
+      let p = 0, r = 0;
+      costEntries.forEach(group => {
+        const s = getLocationSums(group.items, m);
+        p += s.p;
+        r += s.r;
+      });
+      return { name: MONTHS[m], Prognoza: Math.round(p), Rzeczywiste: Math.round(r) };
+    });
+  }, [costEntries, data]);
+
+  const [showChart, setShowChart] = useState(false);
 
   return (
     <div className="p-6 space-y-4">
@@ -296,6 +330,33 @@ export default function CostsApartments() {
           </Select>
         </div>
       </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart-costs">
+          <BarChart3 className="mr-1 h-3 w-3" /> {showChart ? "Ukryj wykres" : "Pokaż wykres"}
+        </Button>
+      </div>
+
+      {showChart && (
+        <Card className="mb-4" data-testid="card-monthly-cost-chart">
+          <CardHeader className="py-3 px-4 flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-sm">Prognoza vs Rzeczywiste koszty - podsumowanie miesięczne</CardTitle>
+          </CardHeader>
+          <CardContent className="px-2 pb-3">
+            <ResponsiveContainer width="100%" height={200}>
+              <RechartsBarChart data={monthlyCostChart} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="Prognoza" fill="hsl(var(--chart-1))" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Rzeczywiste" fill="hsl(var(--chart-3))" radius={[2, 2, 0, 0]} />
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">
         <table className="w-full text-xs border-collapse">
@@ -363,7 +424,8 @@ export default function CostsApartments() {
                         <tr className="bg-muted/20">
                           <td className="sticky left-0 z-10 bg-muted/20 px-2 py-1 border-r-2 border-b border-border font-semibold pl-6">
                             <span className="flex items-center gap-1.5">
-                              {entry.name}
+                              <span className="flex-1 min-w-0 truncate">{entry.name}</span>
+                              <Sparkline data={getEntrySparklineData(entry)} width={50} height={14} color="rgb(239, 68, 68)" />
                               <button
                                 onClick={() => openCategoryEditor(entry)}
                                 className="opacity-40 hover:opacity-100 transition-opacity"
@@ -380,7 +442,7 @@ export default function CostsApartments() {
                             return (
                               <Fragment key={mi}>
                                 <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10 ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(s.p)}</td>
-                                <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(s.r)}</td>
+                                <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""} ${getHeatMapBg(s.r, costsHeatMax, "expense")}`}>{formatNum(s.r)}</td>
                                 <td className={`border-r-2 border-b border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)} ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(saldo)}</td>
                               </Fragment>
                             );

@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { CostSchedule, CostSchedulePayment } from "@shared/schema";
 import { DEFAULT_OPLATY_CATEGORIES, loadOplatyCategories, type OplatyCostCategory, type OplatyCostItem } from "@/lib/oplaty-defaults";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,9 +15,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { useToast } from "@/hooks/use-toast";
 import {
   ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight,
-  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt,
+  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { format, addMonths, addQuarters, addYears, parseISO, isBefore, isAfter, startOfMonth } from "date-fns";
 import { pl } from "date-fns/locale";
 
@@ -708,6 +710,39 @@ export default function CostsExpenses() {
     return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
   }, [categories, getCategoryAnnualSummary]);
 
+  const expenseHeatMax = useMemo(() => {
+    let max = 0;
+    categories.forEach(cat => {
+      cat.items.forEach((_, idx) => {
+        for (let m = 0; m < 12; m++) {
+          const rVal = getCellValue(makeCellKey(cat.id, idx, m, "rzeczywiste"));
+          if (rVal > max) max = rVal;
+        }
+      });
+    });
+    return max;
+  }, [categories, getCellValue]);
+
+  const getItemSparklineData = useCallback((catId: string, itemIdx: number): number[] => {
+    return Array.from({ length: 12 }, (_, m) => getCellValue(makeCellKey(catId, itemIdx, m, "rzeczywiste")));
+  }, [getCellValue]);
+
+  const MONTHS_SHORT_CHART = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+  const monthlySummaryChart = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) => {
+      let prognoza = 0;
+      let rzeczywiste = 0;
+      categories.forEach(cat => {
+        const s = getCategorySummary(cat, m);
+        prognoza += s.prognoza;
+        rzeczywiste += s.rzeczywiste;
+      });
+      return { name: MONTHS_SHORT_CHART[m], Prognoza: Math.round(prognoza), Rzeczywiste: Math.round(rzeczywiste) };
+    });
+  }, [categories, getCategorySummary]);
+
+  const [showChart, setShowChart] = useState(false);
+
   const formatNum = (n: number) => {
     if (n === 0) return "";
     return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -854,6 +889,33 @@ export default function CostsExpenses() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart">
+          <BarChart3 className="mr-1 h-3 w-3" /> {showChart ? "Ukryj wykres" : "Pokaż wykres"}
+        </Button>
+      </div>
+
+      {showChart && (
+        <Card className="mb-4" data-testid="card-monthly-chart">
+          <CardHeader className="py-3 px-4 flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-sm">Prognoza vs Rzeczywiste - podsumowanie miesięczne</CardTitle>
+          </CardHeader>
+          <CardContent className="px-2 pb-3">
+            <ResponsiveContainer width="100%" height={200}>
+              <RechartsBarChart data={monthlySummaryChart} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="Prognoza" fill="hsl(var(--chart-1))" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Rzeczywiste" fill="hsl(var(--chart-2))" radius={[2, 2, 0, 0]} />
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {selectedCell && cellData[selectedCell] !== undefined && cellData[selectedCell] !== 0 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1019,7 +1081,7 @@ export default function CostsExpenses() {
                                 <GripVertical className="h-3 w-3" />
                               </span>
                               <div
-                                className="flex-1 cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 min-w-0"
+                                className="flex-1 cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 min-w-0 flex items-center gap-1"
                                 onClick={() => openItemSheet(cat.id, idx)}
                                 onDoubleClick={() => startEditingName(cat.id, idx)}
                                 data-testid={`name-${nameKey}`}
@@ -1027,6 +1089,7 @@ export default function CostsExpenses() {
                                 <span className="font-medium truncate hover:underline">{item.name}</span>
                                 {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
                                 {hasLinkedSchedule && <Link2 className="inline h-2.5 w-2.5 ml-1 text-muted-foreground" />}
+                                <Sparkline data={getItemSparklineData(cat.id, idx)} width={50} height={14} color="rgb(239, 68, 68)" />
                               </div>
                               <button
                                 onClick={() => {
@@ -1077,7 +1140,7 @@ export default function CostsExpenses() {
                                 startEditing={startEditing}
                                 commitEdit={commitEdit}
                                 cancelEdit={cancelEdit}
-                                className={`border-b border-r border-border font-semibold ${statusBg}`}
+                                className={`border-b border-r border-border font-semibold ${statusBg} ${getHeatMapBg(rVal, expenseHeatMax, "expense")}`}
                                 isSelected={selectedCell === rKey}
                                 isInRange={isInFillRange(rKey)}
                                 onCellClick={handleCellClick}
