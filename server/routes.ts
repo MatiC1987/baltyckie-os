@@ -850,6 +850,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/account-balance-history", isAuthenticated, async (_req, res) => {
+    const allSnapshots = await storage.getSnapshots();
+    const grouped: Record<number, { date: string; balance: string }[]> = {};
+    for (const s of allSnapshots) {
+      if (!grouped[s.accountId]) grouped[s.accountId] = [];
+      grouped[s.accountId].push({ date: s.date, balance: s.balance });
+    }
+    for (const key of Object.keys(grouped)) {
+      grouped[Number(key)].sort((a, b) => a.date.localeCompare(b.date));
+    }
+    res.json(grouped);
+  });
+
   // Snapshots
   app.get(api.snapshots.list.path, isAuthenticated, async (req, res) => {
     const snapshots = await storage.getSnapshots();

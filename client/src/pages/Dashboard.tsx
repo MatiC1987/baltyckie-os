@@ -276,6 +276,7 @@ export default function Dashboard() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/account-balance-history"] });
       setEditingAccountId(null);
       setEditingBalance("");
     },
@@ -532,6 +533,42 @@ function WidgetSettingsSheet({ open, onOpenChange, prefs, onPrefsChange }: {
   );
 }
 
+function MiniSparkline({ data, color, accountId }: { data: { value: number }[]; color: string; accountId?: number }) {
+  if (data.length < 2) return null;
+  const values = data.map(d => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const width = 64;
+  const height = 24;
+  const padding = 2;
+  const points = values.map((v, i) => {
+    const x = padding + (i / (values.length - 1)) * (width - 2 * padding);
+    const y = height - padding - ((v - min) / range) * (height - 2 * padding);
+    return `${x},${y}`;
+  });
+  return (
+    <svg width={width} height={height} className="shrink-0" data-testid={accountId ? `sparkline-account-${accountId}` : undefined}>
+      <polyline
+        points={points.join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  KONTA_BANKOWE: "Konta bankowe",
+  GOTOWKA: "Gotówka",
+  INNE: "Inne",
+};
+
+const CATEGORY_ORDER = ["KONTA_BANKOWE", "GOTOWKA", "INNE"];
+
 function CompanyBalanceCard({
   companyBalance, balanceLoading, editingAccountId, editingBalance,
   setEditingAccountId, setEditingBalance, updateBalanceMutation,
@@ -542,110 +579,215 @@ function CompanyBalanceCard({
     "Saldo - J. Głodkowska": "/saldo-jg",
   };
 
+  const { data: balanceHistory } = useQuery<Record<number, { date: string; balance: string }[]>>({
+    queryKey: ["/api/account-balance-history"],
+  });
+
+  const totalBalance = Number(companyBalance?.totalBalance || 0);
+
+  const totalChange = useMemo(() => {
+    if (!balanceHistory || !companyBalance?.accounts) return null;
+    let currentTotal = 0;
+    let previousTotal = 0;
+    let hasPrevious = false;
+    for (const acc of companyBalance.accounts) {
+      const current = Number(acc.latestBalance);
+      currentTotal += current;
+      const history = balanceHistory[acc.id];
+      if (history && history.length >= 2) {
+        previousTotal += Number(history[history.length - 2].balance);
+        hasPrevious = true;
+      } else {
+        previousTotal += current;
+      }
+    }
+    if (!hasPrevious) return null;
+    const diff = currentTotal - previousTotal;
+    const pct = previousTotal !== 0 ? ((diff / Math.abs(previousTotal)) * 100) : 0;
+    return { diff, pct };
+  }, [balanceHistory, companyBalance]);
+
+  const groupedAccounts = useMemo(() => {
+    if (!companyBalance?.accounts) return {};
+    const groups: Record<string, CompanyBalanceAccount[]> = {};
+    for (const acc of companyBalance.accounts) {
+      const cat = acc.category || "INNE";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(acc);
+    }
+    return groups;
+  }, [companyBalance]);
+
+  const getAccountChange = (accId: number, currentBalance: number) => {
+    if (!balanceHistory?.[accId] || balanceHistory[accId].length < 2) return null;
+    const history = balanceHistory[accId];
+    const prev = Number(history[history.length - 2].balance);
+    const diff = currentBalance - prev;
+    const pct = prev !== 0 ? ((diff / Math.abs(prev)) * 100) : 0;
+    return { diff, pct };
+  };
+
+  const getSparklineData = (accId: number) => {
+    if (!balanceHistory?.[accId]) return [];
+    return balanceHistory[accId].map(s => ({ value: Number(s.balance) }));
+  };
+
+  const renderAccountCard = (acc: CompanyBalanceAccount) => {
+    const Icon = getAccountIcon(acc.name);
+    const balance = Number(acc.latestBalance);
+    const isEditing = editingAccountId === acc.id;
+    const isAuto = acc.balanceSource === "auto_saldo";
+    const saldoLink = saldoLinkMap[acc.name];
+    const change = getAccountChange(acc.id, balance);
+    const sparkData = getSparklineData(acc.id);
+    const sparkColor = change && change.diff >= 0 ? "#22c55e" : change && change.diff < 0 ? "#ef4444" : "#94a3b8";
+
+    const content = (
+      <>
+        <div className="flex items-center gap-1.5 mb-1">
+          <div className="h-6 w-6 rounded-md bg-muted flex items-center justify-center shrink-0">
+            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <span className="text-[11px] text-muted-foreground truncate leading-tight">{acc.name}</span>
+          {isAuto && <span className="text-[9px] text-muted-foreground/50 italic ml-auto">auto</span>}
+        </div>
+        <div className="flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            {isEditing ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editingBalance}
+                  onChange={(e: any) => setEditingBalance(e.target.value)}
+                  onKeyDown={(e: any) => {
+                    if (e.key === "Enter" && editingBalance.trim()) {
+                      updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
+                    }
+                    if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
+                  }}
+                  className="h-6 text-xs w-20"
+                  autoFocus
+                  data-testid={`input-balance-${acc.id}`}
+                />
+                <Button size="sm" variant="ghost"
+                  onClick={() => { if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() }); }}
+                  disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
+                  data-testid={`button-save-balance-${acc.id}`}
+                >
+                  <Check className="h-3 w-3" />
+                </Button>
+                <Button size="sm" variant="ghost"
+                  onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
+                  data-testid={`button-cancel-balance-${acc.id}`}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 group/edit">
+                <span className={`text-sm font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`} data-testid={`text-account-balance-${acc.id}`}>
+                  {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                </span>
+                {!isAuto && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingAccountId(acc.id); setEditingBalance(balance.toString()); }}
+                    className="invisible group-hover/edit:visible text-muted-foreground hover:text-foreground"
+                    data-testid={`button-edit-balance-${acc.id}`}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )}
+            {change && (
+              <div className={`flex items-center gap-0.5 mt-0.5 ${change.diff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid={`text-account-change-${acc.id}`}>
+                {change.diff >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                <span className="text-[10px] font-medium">
+                  {change.diff >= 0 ? "+" : ""}{change.diff.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+                </span>
+                <span className="text-[9px] text-muted-foreground">
+                  ({change.pct >= 0 ? "+" : ""}{change.pct.toFixed(1)}%)
+                </span>
+              </div>
+            )}
+          </div>
+          <MiniSparkline data={sparkData} color={sparkColor} accountId={acc.id} />
+        </div>
+      </>
+    );
+
+    if (isAuto && saldoLink) {
+      return (
+        <Link
+          key={acc.id}
+          href={saldoLink}
+          className="rounded-lg border border-border p-2.5 hover-elevate block"
+          data-testid={`card-account-balance-${acc.id}`}
+        >
+          {content}
+        </Link>
+      );
+    }
+
+    return (
+      <div key={acc.id} className="rounded-lg border border-border p-2.5" data-testid={`card-account-balance-${acc.id}`}>
+        {content}
+      </div>
+    );
+  };
+
   return (
     <Card data-testid="card-company-balance">
       <CardHeader className="pb-2 pt-3">
-        <CardTitle className="flex items-center gap-2 flex-wrap text-base">
+        <CardTitle className="flex items-center gap-2 text-base">
           <Wallet className="h-4 w-4" />
           Saldo firmowe
-          {companyBalance && (
-            <span className="text-lg font-bold ml-2" data-testid="text-total-balance">
-              {Number(companyBalance.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
-            </span>
-          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="pb-3">
         {balanceLoading ? (
-          <div className="h-10 bg-muted animate-pulse rounded-lg" />
+          <div className="space-y-3">
+            <div className="h-16 bg-muted animate-pulse rounded-lg" />
+            <div className="h-24 bg-muted animate-pulse rounded-lg" />
+          </div>
         ) : (
-          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-            {companyBalance?.accounts.map((acc: CompanyBalanceAccount) => {
-              const Icon = getAccountIcon(acc.name);
-              const balance = Number(acc.latestBalance);
-              const isEditing = editingAccountId === acc.id;
-              const isAuto = acc.balanceSource === "auto_saldo";
-              const saldoLink = saldoLinkMap[acc.name];
-
-              if (isAuto && saldoLink) {
-                return (
-                  <Link
-                    key={acc.id}
-                    href={saldoLink}
-                    className="rounded-lg border border-border p-2 space-y-0.5 hover-elevate block"
-                    data-testid={`card-account-balance-${acc.id}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="text-[10px] text-muted-foreground truncate">{acc.name}</span>
-                    </div>
-                    <div className={`text-xs font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                      {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                    </div>
-                    <div className="text-[9px] text-muted-foreground/60 italic">auto</div>
-                  </Link>
-                );
-              }
-
-              return (
-                <div
-                  key={acc.id}
-                  className="rounded-lg border border-border p-2 space-y-0.5 group"
-                  data-testid={`card-account-balance-${acc.id}`}
-                >
-                  <div className="flex items-center gap-1">
-                    <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span className="text-[10px] text-muted-foreground truncate">{acc.name}</span>
+          <div className="space-y-4">
+            <div className="rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 p-4">
+              <div className="text-xs text-muted-foreground mb-1">Łączne saldo</div>
+              <div className="flex items-end gap-3 flex-wrap">
+                <span className={`text-3xl font-bold tracking-tight ${totalBalance < 0 ? "text-red-600 dark:text-red-400" : ""}`} data-testid="text-total-balance">
+                  {totalBalance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-lg font-semibold text-muted-foreground">PLN</span>
+                </span>
+                {totalChange && (
+                  <div className={`flex items-center gap-1 pb-1 ${totalChange.diff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                    {totalChange.diff >= 0 ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                    <span className="text-sm font-semibold">
+                      {totalChange.diff >= 0 ? "+" : ""}{totalChange.diff.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({totalChange.pct >= 0 ? "+" : ""}{totalChange.pct.toFixed(1)}%)
+                    </span>
                   </div>
-                  {isEditing ? (
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={editingBalance}
-                        onChange={(e: any) => setEditingBalance(e.target.value)}
-                        onKeyDown={(e: any) => {
-                          if (e.key === "Enter" && editingBalance.trim()) {
-                            updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
-                          }
-                          if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
-                        }}
-                        className="h-6 text-xs w-full"
-                        autoFocus
-                        data-testid={`input-balance-${acc.id}`}
-                      />
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => { if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() }); }}
-                        disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
-                        data-testid={`button-save-balance-${acc.id}`}
-                      >
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
-                        data-testid={`button-cancel-balance-${acc.id}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1">
-                      <span className={`text-xs font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                      </span>
-                      <button
-                        onClick={() => { setEditingAccountId(acc.id); setEditingBalance(balance.toString()); }}
-                        className="invisible group-hover:visible text-muted-foreground hover:text-foreground ml-auto"
-                        data-testid={`button-edit-balance-${acc.id}`}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )}
+                )}
+              </div>
+            </div>
+
+            {CATEGORY_ORDER.map(cat => {
+              const accs = groupedAccounts[cat];
+              if (!accs || accs.length === 0) return null;
+              const categoryTotal = accs.reduce((s, a) => s + Number(a.latestBalance), 0);
+              return (
+                <div key={cat}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider" data-testid={`text-category-label-${cat}`}>{CATEGORY_LABELS[cat] || cat}</span>
+                    <span className={`text-xs font-bold ${categoryTotal < 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`} data-testid={`text-category-total-${cat}`}>
+                      {categoryTotal.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                    </span>
+                  </div>
+                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {accs.map(renderAccountCard)}
+                  </div>
                 </div>
               );
             })}
