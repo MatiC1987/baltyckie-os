@@ -39,6 +39,7 @@ import {
   invoices, Invoice, InsertInvoice,
   notifications, Notification, InsertNotification,
   revenueForecasts, RevenueForecast, InsertRevenueForecast,
+  costForecasts, CostForecast, InsertCostForecast,
   companySettings, CompanySettings, InsertCompanySettings,
   accountingNotes, AccountingNote, InsertAccountingNote,
   costInvoices, CostInvoice, InsertCostInvoice,
@@ -281,6 +282,10 @@ export interface IStorage {
   createRevenueForecastsBulk(data: InsertRevenueForecast[]): Promise<void>;
   deleteRevenueForecasts(year?: number): Promise<void>;
   deleteLocationLevelForecasts(): Promise<void>;
+
+  // Cost Forecasts
+  getCostForecasts(year?: number): Promise<CostForecast[]>;
+  upsertCostForecast(data: InsertCostForecast): Promise<CostForecast>;
 
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | null>;
@@ -1342,6 +1347,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLocationLevelForecasts(): Promise<void> {
     await db.delete(revenueForecasts).where(isNotNull(revenueForecasts.locationName));
+  }
+
+  async getCostForecasts(year?: number): Promise<CostForecast[]> {
+    if (year) {
+      return db.select().from(costForecasts).where(eq(costForecasts.year, year));
+    }
+    return db.select().from(costForecasts);
+  }
+
+  async upsertCostForecast(data: InsertCostForecast): Promise<CostForecast> {
+    const conditions = [
+      eq(costForecasts.year, data.year),
+      eq(costForecasts.month, data.month),
+    ];
+    if (data.apartmentId) {
+      conditions.push(eq(costForecasts.apartmentId, data.apartmentId));
+    }
+    if (data.category) {
+      conditions.push(eq(costForecasts.category, data.category));
+    }
+    const existing = await db.select().from(costForecasts).where(and(...conditions)).limit(1);
+    if (existing.length > 0) {
+      const [updated] = await db.update(costForecasts).set(data).where(eq(costForecasts.id, existing[0].id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(costForecasts).values(data).returning();
+    return created;
   }
 
   async getCompanySettings(): Promise<CompanySettings | null> {

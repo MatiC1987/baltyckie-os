@@ -782,6 +782,20 @@ export const insertRevenueForecastSchema = createInsertSchema(revenueForecasts).
 export type RevenueForecast = typeof revenueForecasts.$inferSelect;
 export type InsertRevenueForecast = z.infer<typeof insertRevenueForecastSchema>;
 
+export const costForecasts = pgTable("cost_forecasts", {
+  id: serial("id").primaryKey(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  category: text("category"),
+  forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
+  actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
+});
+
+export const insertCostForecastSchema = createInsertSchema(costForecasts).omit({ id: true });
+export type CostForecast = typeof costForecasts.$inferSelect;
+export type InsertCostForecast = z.infer<typeof insertCostForecastSchema>;
+
 export const companySettings = pgTable("company_settings", {
   id: serial("id").primaryKey(),
   companyName: text("company_name"),

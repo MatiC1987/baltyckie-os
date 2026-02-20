@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -836,6 +836,27 @@ export async function registerRoutes(
     }
 
     res.json(revenueData);
+  });
+
+  app.get("/api/costs", isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const allExpenses = await storage.getExpenses();
+      const costsData: Record<number, Record<number, number>> = {};
+      for (const exp of allExpenses) {
+        if (!exp.date || !exp.apartmentId) continue;
+        const d = new Date(exp.date);
+        if (d.getFullYear() !== year) continue;
+        const month = d.getMonth();
+        const aptId = exp.apartmentId;
+        if (!costsData[aptId]) costsData[aptId] = {};
+        if (!costsData[aptId][month]) costsData[aptId][month] = 0;
+        costsData[aptId][month] += Number(exp.amount) || 0;
+      }
+      res.json(costsData);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Accounts
@@ -4229,6 +4250,29 @@ export async function registerRoutes(
     } catch (err: any) {
       if (err.name === "ZodError") {
         return res.status(400).json({ message: "Nieprawidłowe dane prognozy", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/cost-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const year = req.query.year ? Number(req.query.year) : undefined;
+      const forecasts = await storage.getCostForecasts(year);
+      res.json(forecasts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/cost-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertCostForecastSchema.parse(req.body);
+      const result = await storage.upsertCostForecast(parsed);
+      res.json(result);
+    } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Nieprawidłowe dane prognozy kosztów", errors: err.errors });
       }
       res.status(500).json({ message: err.message });
     }
