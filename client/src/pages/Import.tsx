@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Download, Users, Briefcase, FileText, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -80,6 +80,8 @@ export default function Import() {
   return (
     <div className="space-y-8">
       <PageHeader title="Import & Eksport" description="Import rezerwacji z pliku Excel lub HotRes CSV. Modul eksportu danych w przygotowaniu." icon={Upload} />
+
+      <UniversalImporter />
 
       <HotResSection />
 
@@ -186,6 +188,204 @@ export default function Import() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+const IMPORT_TYPES = [
+  {
+    key: "owners",
+    label: "Właściciele",
+    icon: Users,
+    description: "Import właścicieli nieruchomości (imię, NIP, kontakt)",
+    invalidateKeys: ["/api/owners"],
+  },
+  {
+    key: "employees",
+    label: "Pracownicy",
+    icon: Briefcase,
+    description: "Import pracowników (dane osobowe, stanowisko, umowa)",
+    invalidateKeys: ["/api/employees"],
+  },
+  {
+    key: "service-contracts",
+    label: "Umowy serwisowe",
+    icon: FileText,
+    description: "Import umów serwisowych (nazwa, kategoria, cena)",
+    invalidateKeys: ["/api/service-contracts"],
+  },
+];
+
+interface UniversalImportResult {
+  message: string;
+  imported: number;
+  skipped: number;
+  log: string[];
+}
+
+function UniversalImporter() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [activeType, setActiveType] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, UniversalImportResult>>({});
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const handleDownloadTemplate = (typeKey: string) => {
+    window.open(`/api/import-template/${typeKey}`, '_blank');
+  };
+
+  const handleFileSelect = async (typeKey: string, file: File) => {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+      toast({ title: "Błąd", description: "Wybierz plik Excel (.xlsx)", variant: "destructive" });
+      return;
+    }
+
+    setUploading(typeKey);
+    setResults(prev => { const next = { ...prev }; delete next[typeKey]; return next; });
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`/api/import-data/${typeKey}`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Błąd importu');
+
+      setResults(prev => ({ ...prev, [typeKey]: data }));
+      toast({ title: "Sukces", description: data.message });
+
+      const config = IMPORT_TYPES.find(t => t.key === typeKey);
+      if (config) {
+        for (const key of config.invalidateKeys) {
+          queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      }
+    } catch (e: any) {
+      toast({ title: "Błąd", description: e.message, variant: "destructive" });
+      setResults(prev => ({
+        ...prev,
+        [typeKey]: { message: e.message, imported: 0, skipped: 0, log: [] },
+      }));
+    } finally {
+      setUploading(null);
+      const ref = fileRefs.current[typeKey];
+      if (ref) ref.value = "";
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FileSpreadsheet className="h-5 w-5" />
+          Importer danych (Excel)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Pobierz szablon Excel, wypełnij danymi i zaimportuj. Każdy typ danych ma własny szablon z przykładowymi wartościami.
+        </p>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {IMPORT_TYPES.map(type => {
+            const Icon = type.icon;
+            const isActive = activeType === type.key;
+            const isUploading = uploading === type.key;
+            const result = results[type.key];
+
+            return (
+              <div
+                key={type.key}
+                className="border rounded-md p-4 space-y-3"
+                data-testid={`card-import-${type.key}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-sm">{type.label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{type.description}</p>
+
+                <div className="flex flex-col gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownloadTemplate(type.key)}
+                    data-testid={`button-template-${type.key}`}
+                  >
+                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                    Pobierz szablon
+                  </Button>
+
+                  <input
+                    ref={el => { fileRefs.current[type.key] = el; }}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    data-testid={`input-import-file-${type.key}`}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileSelect(type.key, f);
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => fileRefs.current[type.key]?.click()}
+                    disabled={isUploading}
+                    data-testid={`button-import-${type.key}`}
+                  >
+                    {isUploading ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5 mr-1.5" />
+                    )}
+                    {isUploading ? "Importowanie..." : "Importuj plik"}
+                  </Button>
+                </div>
+
+                {result && (
+                  <div className={`rounded-md p-3 text-xs space-y-2 ${result.imported > 0 ? "bg-muted" : "bg-destructive/10"}`}>
+                    <div className="flex items-center gap-1.5">
+                      {result.imported > 0 ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+                      )}
+                      <span className="font-medium" data-testid={`text-result-${type.key}`}>
+                        {result.message}
+                      </span>
+                    </div>
+
+                    {result.log.length > 0 && (
+                      <div>
+                        <button
+                          className="text-xs text-muted-foreground underline"
+                          onClick={() => setActiveType(isActive ? null : type.key)}
+                          data-testid={`button-toggle-log-${type.key}`}
+                        >
+                          {isActive ? "Ukryj log" : "Pokaż log"}
+                        </button>
+                        {isActive && (
+                          <div className="mt-2 bg-muted/50 rounded p-2 font-mono text-xs max-h-40 overflow-y-auto space-y-0.5" data-testid={`text-log-${type.key}`}>
+                            {result.log.map((entry, i) => (
+                              <div key={i}>{entry}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

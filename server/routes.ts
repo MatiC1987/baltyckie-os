@@ -4650,5 +4650,230 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // ============ Universal Importer: Templates & Import ============
+
+  const IMPORTER_CONFIGS: Record<string, {
+    sheetName: string;
+    columns: { header: string; key: string; example: string; type?: 'date' | 'decimal' | 'string' }[];
+    requiredKeys: string[];
+    createFn: (row: any) => Promise<any>;
+    invalidateKeys: string[];
+  }> = {
+    owners: {
+      sheetName: "Właściciele",
+      columns: [
+        { header: "Nazwa / Imię i nazwisko", key: "name", example: "Jan Kowalski" },
+        { header: "Typ (osoba_fizyczna / firma)", key: "ownerType", example: "osoba_fizyczna" },
+        { header: "NIP", key: "nip", example: "1234567890" },
+        { header: "Telefon", key: "phone", example: "+48 600 100 200" },
+        { header: "Email", key: "email", example: "jan@example.com" },
+        { header: "Notatki", key: "notes", example: "" },
+      ],
+      requiredKeys: ["name"],
+      createFn: async (row: any) => {
+        return storage.createOwner({
+          name: row.name,
+          ownerType: row.ownerType || "osoba_fizyczna",
+          nip: row.nip || null,
+          phone: row.phone || null,
+          email: row.email || null,
+          notes: row.notes || null,
+        });
+      },
+      invalidateKeys: ["/api/owners"],
+    },
+    employees: {
+      sheetName: "Pracownicy",
+      columns: [
+        { header: "Imię", key: "firstName", example: "Anna" },
+        { header: "Nazwisko", key: "lastName", example: "Nowak" },
+        { header: "Telefon", key: "phone", example: "+48 600 100 200" },
+        { header: "Email", key: "email", example: "anna@example.com" },
+        { header: "PESEL", key: "pesel", example: "90010112345" },
+        { header: "Data urodzenia (RRRR-MM-DD)", key: "birthDate", example: "1990-01-01", type: "date" as const },
+        { header: "Forma współpracy (ETAT / PRACA_NA_H)", key: "cooperationType", example: "ETAT" },
+        { header: "Typ umowy (CZAS_OKRESLONY / CZAS_NIEOKRESLONY)", key: "contractType", example: "CZAS_OKRESLONY" },
+        { header: "Początek umowy (RRRR-MM-DD)", key: "contractStart", example: "2024-01-01", type: "date" as const },
+        { header: "Koniec umowy (RRRR-MM-DD)", key: "contractEnd", example: "2025-12-31", type: "date" as const },
+        { header: "Stanowisko (KIEROWNIK_RECEPCJI / PRACOWNIK_RECEPCJI / KONSERWATOR / OSOBA_SPRZATAJACA / FINANCIAL_MANAGER)", key: "position", example: "PRACOWNIK_RECEPCJI" },
+        { header: "Stawka godzinowa", key: "hourlyRate", example: "35.00", type: "decimal" as const },
+        { header: "Komentarz", key: "comment", example: "" },
+        { header: "Status (AKTYWNY / NIEAKTYWNY)", key: "status", example: "AKTYWNY" },
+      ],
+      requiredKeys: ["firstName", "lastName", "cooperationType", "position"],
+      createFn: async (row: any) => {
+        return storage.createEmployee({
+          firstName: row.firstName,
+          lastName: row.lastName,
+          phone: row.phone || null,
+          email: row.email || null,
+          pesel: row.pesel || null,
+          birthDate: row.birthDate || null,
+          cooperationType: row.cooperationType || "ETAT",
+          contractType: row.contractType || null,
+          contractStart: row.contractStart || null,
+          contractEnd: row.contractEnd || null,
+          position: row.position || "PRACOWNIK_RECEPCJI",
+          hourlyRate: row.hourlyRate || null,
+          comment: row.comment || null,
+          status: row.status || "AKTYWNY",
+          photoUrl: null,
+        });
+      },
+      invalidateKeys: ["/api/employees"],
+    },
+    "service-contracts": {
+      sheetName: "Umowy serwisowe",
+      columns: [
+        { header: "Nazwa umowy", key: "name", example: "Internet - Biuro" },
+        { header: "Kategoria (nazwa)", key: "categoryName", example: "Internet" },
+        { header: "Data podpisania (RRRR-MM-DD)", key: "signDate", example: "2024-01-15", type: "date" as const },
+        { header: "Czas trwania", key: "duration", example: "24 miesiące" },
+        { header: "Data zakończenia (RRRR-MM-DD)", key: "endDate", example: "2026-01-15", type: "date" as const },
+        { header: "Adres usługi", key: "serviceAddress", example: "ul. Morska 15, Gdańsk" },
+        { header: "Cena miesięczna", key: "monthlyPrice", example: "120.00", type: "decimal" as const },
+      ],
+      requiredKeys: ["name"],
+      createFn: async (row: any) => {
+        let categoryId: number | null = null;
+        if (row.categoryName) {
+          const cats = await storage.getServiceContractCategories();
+          const existing = cats.find((c: any) => c.name.toLowerCase() === row.categoryName.toLowerCase());
+          if (existing) {
+            categoryId = existing.id;
+          } else {
+            const newCat = await storage.createServiceContractCategory({ name: row.categoryName, sortOrder: 0 });
+            categoryId = newCat.id;
+          }
+        }
+        return storage.createServiceContract({
+          name: row.name,
+          categoryId,
+          signDate: row.signDate || null,
+          duration: row.duration || null,
+          endDate: row.endDate || null,
+          serviceAddress: row.serviceAddress || null,
+          monthlyPrice: row.monthlyPrice || null,
+        });
+      },
+      invalidateKeys: ["/api/service-contracts"],
+    },
+  };
+
+  app.get('/api/import-template/:type', isAuthenticated, (req, res) => {
+    const config = IMPORTER_CONFIGS[req.params.type];
+    if (!config) {
+      return res.status(400).json({ message: "Nieznany typ importu: " + req.params.type });
+    }
+
+    const wb = XLSX.utils.book_new();
+    const headers = config.columns.map(c => c.header);
+    const examples = config.columns.map(c => c.example);
+    const ws = XLSX.utils.aoa_to_sheet([headers, examples]);
+
+    const colWidths = headers.map(h => ({ wch: Math.max(h.length + 2, 20) }));
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, config.sheetName);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=szablon_${req.params.type}.xlsx`);
+    res.send(buf);
+  });
+
+  app.post('/api/import-data/:type', isAuthenticated, upload.single('file'), async (req, res) => {
+    const config = IMPORTER_CONFIGS[req.params.type];
+    if (!config) {
+      return res.status(400).json({ message: "Nieznany typ importu: " + req.params.type });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Brak pliku" });
+    }
+
+    try {
+      const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      if (!ws) {
+        return res.status(400).json({ message: "Plik nie zawiera arkuszy" });
+      }
+
+      const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      if (rawRows.length === 0) {
+        return res.status(400).json({ message: "Plik nie zawiera danych (puste wiersze)" });
+      }
+
+      const headerMap: Record<string, string> = {};
+      for (const col of config.columns) {
+        headerMap[col.header] = col.key;
+      }
+
+      const log: string[] = [];
+      let imported = 0;
+      let skipped = 0;
+
+      const typeMap: Record<string, string> = {};
+      for (const col of config.columns) {
+        if (col.type) typeMap[col.key] = col.type;
+      }
+
+      for (let i = 0; i < rawRows.length; i++) {
+        const rawRow = rawRows[i];
+        const mapped: Record<string, any> = {};
+
+        for (const [excelHeader, value] of Object.entries(rawRow)) {
+          const key = headerMap[excelHeader];
+          if (!key) continue;
+          const colType = typeMap[key];
+
+          if (colType === 'date') {
+            mapped[key] = excelDateToISO(value);
+          } else if (colType === 'decimal') {
+            if (value === "" || value === null || value === undefined) {
+              mapped[key] = null;
+            } else {
+              const num = parseFloat(String(value).replace(",", "."));
+              mapped[key] = isNaN(num) ? null : String(num);
+            }
+          } else {
+            const str = typeof value === 'string' ? value.trim() : String(value ?? "").trim();
+            mapped[key] = str || null;
+          }
+        }
+
+        const missingRequired = config.requiredKeys.filter(k => !mapped[k]);
+        if (missingRequired.length > 0) {
+          const labels = missingRequired.map(k => {
+            const col = config.columns.find(c => c.key === k);
+            return col ? col.header : k;
+          });
+          log.push(`Wiersz ${i + 2}: pominięty (brak wymaganych pól: ${labels.join(", ")})`);
+          skipped++;
+          continue;
+        }
+
+        try {
+          await config.createFn(mapped);
+          imported++;
+          log.push(`Wiersz ${i + 2}: zaimportowano`);
+        } catch (err: any) {
+          log.push(`Wiersz ${i + 2}: błąd - ${err.message}`);
+          skipped++;
+        }
+      }
+
+      res.json({
+        message: `Zaimportowano ${imported} rekordów, pominięto ${skipped}`,
+        imported,
+        skipped,
+        log,
+      });
+    } catch (err: any) {
+      console.error("Import error:", err);
+      res.status(500).json({ message: "Błąd importu: " + (err.message || "Nieznany błąd") });
+    }
+  });
+
   return httpServer;
 }
