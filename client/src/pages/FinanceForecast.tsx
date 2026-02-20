@@ -165,15 +165,31 @@ export default function FinanceForecast() {
     return forecasts;
   }, [monthlyData, currentBalance, year, currentYear, currentMonth]);
 
-  const rows = [
+  type RowDef = {
+    label: string;
+    key: string;
+    isBold: boolean;
+    isPositive: boolean;
+    isDeviation?: boolean;
+    forecastKey?: string;
+    actualKey?: string;
+  };
+
+  const rows: RowDef[] = [
     { label: "PROGNOZA PRZYCH.", key: "forecastRevenue", isBold: false, isPositive: true },
     { label: "RZECZ. PRZYCHODY", key: "actualRevenue", isBold: true, isPositive: true },
+    { label: "ODCHYLENIE PRZYCH.", key: "dev-revenue", isBold: false, isPositive: true, isDeviation: true, forecastKey: "forecastRevenue", actualKey: "actualRevenue" },
     { label: "DOPŁATY (oczek.)", key: "doplaty", isBold: false, isPositive: true },
     { label: "PROGN. KOSZTY APT.", key: "costsForecast", isBold: false, isPositive: false },
     { label: "RZECZ. KOSZTY APT.", key: "costsActual", isBold: true, isPositive: false },
+    { label: "ODCHYLENIE KOSZTÓW", key: "dev-costs", isBold: false, isPositive: false, isDeviation: true, forecastKey: "costsForecast", actualKey: "costsActual" },
     { label: "PROGN. OPŁATY", key: "oplatyForecast", isBold: false, isPositive: false },
     { label: "RZECZ. OPŁATY", key: "oplatyActual", isBold: true, isPositive: false },
+    { label: "ODCHYLENIE OPŁAT", key: "dev-oplaty", isBold: false, isPositive: false, isDeviation: true, forecastKey: "oplatyForecast", actualKey: "oplatyActual" },
   ];
+
+  const currentMonthBg = "rgba(90, 219, 250, 0.1)";
+  const isCurrentMonth = (i: number) => i === currentMonth && year === currentYear;
 
   return (
     <div className="p-6 space-y-6">
@@ -234,7 +250,7 @@ export default function FinanceForecast() {
                 <tr className="bg-muted/50">
                   <th className="text-left px-3 py-2 border-b border-border font-medium text-muted-foreground min-w-[180px]">Miesiąc</th>
                   {balanceForecast.map(f => (
-                    <th key={f.monthIdx} className={`px-3 py-2 border-b border-border text-center font-medium ${f.monthIdx === currentMonth && year === currentYear ? "bg-primary/10" : ""}`} data-testid={`th-forecast-month-${f.monthIdx}`}>
+                    <th key={f.monthIdx} className="px-3 py-2 border-b border-border text-center font-medium" style={isCurrentMonth(f.monthIdx) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`th-forecast-month-${f.monthIdx}`}>
                       {f.month}
                     </th>
                   ))}
@@ -244,7 +260,7 @@ export default function FinanceForecast() {
                 <tr>
                   <td className="px-3 py-2 border-b border-border font-semibold" data-testid="label-forecast-saldo">Prognozowane saldo</td>
                   {balanceForecast.map(f => (
-                    <td key={f.monthIdx} className={`px-3 py-2 border-b border-border text-center font-bold tabular-nums ${saldoColor(f.balance)} ${f.monthIdx === currentMonth && year === currentYear ? "bg-primary/5" : ""}`} data-testid={`text-forecast-balance-${f.monthIdx}`}>
+                    <td key={f.monthIdx} className={`px-3 py-2 border-b border-border text-center font-bold tabular-nums ${saldoColor(f.balance)}`} style={isCurrentMonth(f.monthIdx) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`text-forecast-balance-${f.monthIdx}`}>
                       {formatNumAlways(f.balance)}
                     </td>
                   ))}
@@ -314,7 +330,7 @@ export default function FinanceForecast() {
                 <tr className="bg-muted/50">
                   <th className="sticky left-0 z-10 bg-muted/50 text-left px-3 py-2 border-r border-b border-border min-w-[180px] font-medium text-muted-foreground">Pozycja</th>
                   {MONTHS.map((m, i) => (
-                    <th key={i} className={`px-2 py-2 border-b border-border text-center font-medium min-w-[90px] ${i === currentMonth && year === currentYear ? "bg-primary/10" : ""}`} data-testid={`th-pnl-month-${i}`}>
+                    <th key={i} className="px-2 py-2 border-b border-border text-center font-medium min-w-[90px]" style={isCurrentMonth(i) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`th-pnl-month-${i}`}>
                       {m}
                     </th>
                   ))}
@@ -323,6 +339,42 @@ export default function FinanceForecast() {
               </thead>
               <tbody>
                 {rows.map(row => {
+                  if (row.isDeviation && row.forecastKey && row.actualKey) {
+                    let totalDev = 0;
+                    return (
+                      <tr key={row.key} className="bg-muted/20" data-testid={`row-pnl-${row.key}`}>
+                        <td className="sticky left-0 z-10 bg-muted/20 px-3 py-1.5 border-r border-b border-border text-muted-foreground whitespace-nowrap text-[11px] italic">
+                          {row.label}
+                        </td>
+                        {monthlyData.map((md, i) => {
+                          const actual = (md as any)[row.actualKey!] as number;
+                          const forecast = (md as any)[row.forecastKey!] as number;
+                          const diff = actual - forecast;
+                          totalDev += diff;
+                          const pct = forecast !== 0 ? ((diff / forecast) * 100) : 0;
+                          const hasData = actual !== 0 || forecast !== 0;
+                          const deviationColor = diff > 0
+                            ? (row.isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")
+                            : diff < 0
+                              ? (row.isPositive ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400")
+                              : "";
+                          return (
+                            <td key={i} className={`px-2 py-1.5 border-b border-border text-right tabular-nums text-[11px] ${deviationColor}`} style={isCurrentMonth(i) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`cell-pnl-${row.key}-${i}`}>
+                              {hasData ? (
+                                <div>
+                                  <div>{diff >= 0 ? "+" : ""}{formatNum(diff)} zł</div>
+                                  <div className="text-[10px] opacity-70">{diff >= 0 ? "+" : ""}{pct.toFixed(1)}%</div>
+                                </div>
+                              ) : ""}
+                            </td>
+                          );
+                        })}
+                        <td className="px-2 py-1.5 border-b border-border text-right tabular-nums text-[11px] font-bold bg-muted/10" data-testid={`cell-pnl-${row.key}-total`}>
+                          {totalDev !== 0 ? `${totalDev >= 0 ? "+" : ""}${formatNum(totalDev)} zł` : ""}
+                        </td>
+                      </tr>
+                    );
+                  }
                   let total = 0;
                   return (
                     <tr key={row.key} data-testid={`row-pnl-${row.key}`}>
@@ -333,7 +385,7 @@ export default function FinanceForecast() {
                         const val = (md as any)[row.key] as number;
                         total += val;
                         return (
-                          <td key={i} className={`px-2 py-2 border-b border-border text-right tabular-nums ${row.isBold ? "font-semibold" : ""} ${i === currentMonth && year === currentYear ? "bg-primary/5" : ""} ${val > 0 ? (row.isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400") : ""}`} data-testid={`cell-pnl-${row.key}-${i}`}>
+                          <td key={i} className={`px-2 py-2 border-b border-border text-right tabular-nums ${row.isBold ? "font-semibold" : ""} ${val > 0 ? (row.isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400") : ""}`} style={isCurrentMonth(i) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`cell-pnl-${row.key}-${i}`}>
                             {formatNum(val)}
                           </td>
                         );
@@ -352,7 +404,7 @@ export default function FinanceForecast() {
                   {monthlyData.map((md, i) => {
                     const saldo = md.forecastRevenue + md.doplaty - md.costsForecast - md.oplatyForecast;
                     return (
-                      <td key={i} className={`px-2 py-2 border-b border-border text-right tabular-nums ${saldoColor(saldo)} ${i === currentMonth && year === currentYear ? "bg-primary/5" : ""}`} data-testid={`cell-saldo-forecast-${i}`}>
+                      <td key={i} className={`px-2 py-2 border-b border-border text-right tabular-nums ${saldoColor(saldo)}`} style={isCurrentMonth(i) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`cell-saldo-forecast-${i}`}>
                         {formatNum(saldo)}
                       </td>
                     );
@@ -363,20 +415,54 @@ export default function FinanceForecast() {
                 </tr>
 
                 <tr className="bg-muted/30 font-bold" data-testid="row-pnl-saldo-actual">
-                  <td className="sticky left-0 z-10 bg-muted/30 px-3 py-2 border-r border-border">
+                  <td className="sticky left-0 z-10 bg-muted/30 px-3 py-2 border-r border-b border-border">
                     SALDO RZECZYWISTE
                   </td>
                   {monthlyData.map((md, i) => {
                     const saldo = md.actualRevenue - md.costsActual - md.oplatyActual;
                     return (
-                      <td key={i} className={`px-2 py-2 text-right tabular-nums ${saldoColor(saldo)} ${i === currentMonth && year === currentYear ? "bg-primary/5" : ""}`} data-testid={`cell-saldo-actual-${i}`}>
+                      <td key={i} className={`px-2 py-2 border-b border-border text-right tabular-nums ${saldoColor(saldo)}`} style={isCurrentMonth(i) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`cell-saldo-actual-${i}`}>
                         {formatNum(saldo)}
                       </td>
                     );
                   })}
-                  <td className={`px-2 py-2 text-right tabular-nums bg-muted/10 ${saldoColor(monthlyData.reduce((s, md) => s + md.actualRevenue - md.costsActual - md.oplatyActual, 0))}`} data-testid="cell-saldo-actual-total">
+                  <td className={`px-2 py-2 border-b border-border text-right tabular-nums bg-muted/10 ${saldoColor(monthlyData.reduce((s, md) => s + md.actualRevenue - md.costsActual - md.oplatyActual, 0))}`} data-testid="cell-saldo-actual-total">
                     {formatNum(monthlyData.reduce((s, md) => s + md.actualRevenue - md.costsActual - md.oplatyActual, 0))}
                   </td>
+                </tr>
+
+                <tr className="bg-muted/20 italic" data-testid="row-pnl-saldo-deviation">
+                  <td className="sticky left-0 z-10 bg-muted/20 px-3 py-1.5 border-r border-border text-muted-foreground whitespace-nowrap text-[11px]">
+                    ODCHYLENIE SALDA
+                  </td>
+                  {monthlyData.map((md, i) => {
+                    const saldoForecast = md.forecastRevenue + md.doplaty - md.costsForecast - md.oplatyForecast;
+                    const saldoActual = md.actualRevenue - md.costsActual - md.oplatyActual;
+                    const diff = saldoActual - saldoForecast;
+                    const pct = saldoForecast !== 0 ? ((diff / Math.abs(saldoForecast)) * 100) : 0;
+                    const hasData = saldoActual !== 0 || saldoForecast !== 0;
+                    const color = diff > 0 ? "text-emerald-600 dark:text-emerald-400" : diff < 0 ? "text-red-600 dark:text-red-400" : "";
+                    return (
+                      <td key={i} className={`px-2 py-1.5 text-right tabular-nums text-[11px] ${color}`} style={isCurrentMonth(i) ? { backgroundColor: currentMonthBg } : undefined} data-testid={`cell-saldo-deviation-${i}`}>
+                        {hasData ? (
+                          <div>
+                            <div>{diff >= 0 ? "+" : ""}{formatNum(diff)} zł</div>
+                            <div className="text-[10px] opacity-70">{diff >= 0 ? "+" : ""}{pct.toFixed(1)}%</div>
+                          </div>
+                        ) : ""}
+                      </td>
+                    );
+                  })}
+                  {(() => {
+                    const totalForecast = monthlyData.reduce((s, md) => s + md.forecastRevenue + md.doplaty - md.costsForecast - md.oplatyForecast, 0);
+                    const totalActual = monthlyData.reduce((s, md) => s + md.actualRevenue - md.costsActual - md.oplatyActual, 0);
+                    const totalDiff = totalActual - totalForecast;
+                    return (
+                      <td className={`px-2 py-1.5 text-right tabular-nums text-[11px] font-bold bg-muted/10 ${totalDiff > 0 ? "text-emerald-600 dark:text-emerald-400" : totalDiff < 0 ? "text-red-600 dark:text-red-400" : ""}`} data-testid="cell-saldo-deviation-total">
+                        {totalDiff !== 0 ? `${totalDiff >= 0 ? "+" : ""}${formatNum(totalDiff)} zł` : ""}
+                      </td>
+                    );
+                  })()}
                 </tr>
               </tbody>
             </table>

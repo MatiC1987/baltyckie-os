@@ -72,7 +72,7 @@ export default function Revenue() {
   const { toast } = useToast();
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
-  const [compactView, setCompactView] = useState(true);
+  const [compactView, setCompactView] = useState(false);
   const [compareYear, setCompareYear] = useState<number | null>(null);
   const fullscreen = useFullscreen();
 

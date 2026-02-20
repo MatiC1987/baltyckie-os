@@ -56,6 +56,7 @@ const WIDGET_REGISTRY: WidgetDef[] = [
   { id: "upcoming-arrivals", label: "Najbliższe przyjazdy", category: "operational", defaultVisible: true, description: "Rezerwacje w ciągu 7 dni" },
   { id: "upcoming-departures", label: "Najbliższe wyjazdy", category: "operational", defaultVisible: true, description: "Wyjazdy w ciągu 7 dni" },
   { id: "expiring-leases", label: "Kończące się umowy", category: "admin", defaultVisible: true, description: "Umowy najmu kończące się w 6 miesięcy" },
+  { id: "today-tasks", label: "Zadania na dziś", category: "operational", defaultVisible: true, description: "Zadania z terminem na dziś" },
 ];
 
 const PREFS_KEY = "dashboard-widget-prefs";
@@ -320,6 +321,33 @@ export default function Dashboard() {
     return { monthRevenue, monthCount, revenueChange, lastMonthRevenue, unpaidCount };
   }, [reservations]);
 
+  const occupancyPct = useMemo(() => {
+    if (!reservations || !apartments || apartments.length === 0) return 0;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const totalAptNights = apartments.length * daysInMonth;
+    if (totalAptNights === 0) return 0;
+
+    let occupiedNights = 0;
+    reservations.forEach(r => {
+      if (r.status === "ANULOWANA" || !r.startDate || !r.endDate) return;
+      const start = new Date(r.startDate);
+      const end = new Date(r.endDate);
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0);
+      const overlapStart = start > monthStart ? start : monthStart;
+      const overlapEnd = end < monthEnd ? end : monthEnd;
+      if (overlapStart <= overlapEnd) {
+        const nights = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24));
+        if (nights > 0) occupiedNights += nights;
+      }
+    });
+
+    return Math.min(100, Math.round((occupiedNights / totalAptNights) * 100));
+  }, [reservations, apartments]);
+
   if (reservationsLoading && !reservations) {
     return <DashboardSkeleton />;
   }
@@ -352,8 +380,8 @@ export default function Dashboard() {
         switch (widgetId) {
           case "kpi":
             return kpiStats ? (
-              <div key="kpi" className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-                <Card data-testid="card-kpi-revenue">
+              <div key="kpi" className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+                <Card className="kpi-card card-gradient card-gradient-green" data-testid="card-kpi-revenue">
                   <CardContent className="pt-4 pb-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground font-medium">Przychód (ten miesiąc)</p>
@@ -361,7 +389,7 @@ export default function Dashboard() {
                         <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
                     </div>
-                    <p className="text-xl font-bold mt-1">
+                    <p className="text-xl font-bold mt-1 animate-count-up">
                       {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
                     </p>
                     {kpiStats.lastMonthRevenue > 0 && (
@@ -372,7 +400,7 @@ export default function Dashboard() {
                     )}
                   </CardContent>
                 </Card>
-                <Card data-testid="card-kpi-reservations">
+                <Card className="kpi-card card-gradient" data-testid="card-kpi-reservations">
                   <CardContent className="pt-4 pb-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground font-medium">Rezerwacje (ten miesiąc)</p>
@@ -384,7 +412,7 @@ export default function Dashboard() {
                     <p className="text-xs text-muted-foreground mt-1">aktywnych rezerwacji</p>
                   </CardContent>
                 </Card>
-                <Card data-testid="card-kpi-unpaid">
+                <Card className="kpi-card card-gradient card-gradient-orange" data-testid="card-kpi-unpaid">
                   <CardContent className="pt-4 pb-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground font-medium">Do opłacenia</p>
@@ -398,7 +426,7 @@ export default function Dashboard() {
                     <p className="text-xs text-muted-foreground mt-1">nieopłaconych rezerwacji</p>
                   </CardContent>
                 </Card>
-                <Card data-testid="card-kpi-balance">
+                <Card className="kpi-card card-gradient card-gradient-purple" data-testid="card-kpi-balance">
                   <CardContent className="pt-4 pb-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground font-medium">Saldo firmowe</p>
@@ -410,6 +438,26 @@ export default function Dashboard() {
                       {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">łączne saldo kont</p>
+                  </CardContent>
+                </Card>
+                <Card className="kpi-card card-gradient" data-testid="card-kpi-occupancy">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground font-medium">Obłożenie (ten miesiąc)</p>
+                      <div className="h-8 w-8 rounded-md bg-cyan-500/10 flex items-center justify-center shrink-0">
+                        <Target className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                      </div>
+                    </div>
+                    <p className="text-xl font-bold mt-1">{occupancyPct}%</p>
+                    <div className="mt-1.5">
+                      <div className="h-2 w-full rounded-full bg-muted">
+                        <div
+                          className={`h-2 rounded-full transition-all ${occupancyPct >= 70 ? "bg-emerald-500" : occupancyPct >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                          style={{ width: `${occupancyPct}%` }}
+                          data-testid="progress-occupancy"
+                        />
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -441,6 +489,8 @@ export default function Dashboard() {
             return <UnpaidSubleasesTab key="unpaid-subleases" payments={allSubleasePayments || []} apartments={apartments || []} />;
           case "expiring-leases":
             return <ExpiringLeasesTab key="expiring-leases" leases={leases || []} apartments={apartments || []} />;
+          case "today-tasks":
+            return <TodayTasksWidget key="today-tasks" />;
           default:
             return null;
         }
@@ -1095,6 +1145,8 @@ function CompanyBalanceCard({
 function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean; reminders?: { expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[]; overdueCosts: number; overdueSubleasePayments: number; upcomingArrivals: number; expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; upcomingInspections?: { id: number; inspectionType: string; nextDate: string; apartmentId: number | null; isOverdue: boolean }[] } }) {
   const [sortField, setSortField] = useState<SortField>("endDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [showAll, setShowAll] = useState(false);
+  const ITEMS_LIMIT = 10;
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -1240,7 +1292,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
             {unpaidCompleted.length === 0 && (
               <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Brak nieopłaconych rezerwacji</TableCell></TableRow>
             )}
-            {unpaidCompleted.map(r => (
+            {(showAll ? unpaidCompleted : unpaidCompleted.slice(0, ITEMS_LIMIT)).map(r => (
               <TableRow key={r.id} data-testid={`row-unpaid-${r.id}`}>
                 <TableCell className="font-medium text-xs whitespace-nowrap">{r.reservationNumber}</TableCell>
                 <TableCell className="text-xs whitespace-nowrap">{getApartmentName(r, apartments)}</TableCell>
@@ -1254,8 +1306,15 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
           </TableBody>
         </Table>
       </div>
-      <div className="text-sm text-muted-foreground" data-testid="text-unpaid-count">
-        {unpaidCompleted.length} nieopłaconych rezerwacji
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-sm text-muted-foreground" data-testid="text-unpaid-count">
+          {unpaidCompleted.length} nieopłaconych rezerwacji
+        </div>
+        {unpaidCompleted.length > ITEMS_LIMIT && (
+          <Button variant="outline" size="sm" onClick={() => setShowAll(!showAll)} data-testid="button-show-more-unpaid">
+            {showAll ? "Pokaż mniej" : `Pokaż więcej (${unpaidCompleted.length - ITEMS_LIMIT})`}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -1452,6 +1511,9 @@ function UpcomingDeparturesTab({ reservations, apartments, isLoading }: { reserv
 }
 
 function UnpaidSubleasesTab({ payments, apartments }: { payments: SubleasePaymentExtended[]; apartments: any[] }) {
+  const [showAllOverdue, setShowAllOverdue] = useState(false);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const ITEMS_LIMIT = 10;
   const today = new Date().toISOString().split("T")[0];
   const in7days = new Date();
   in7days.setDate(in7days.getDate() + 7);
@@ -1509,7 +1571,7 @@ function UnpaidSubleasesTab({ payments, apartments }: { payments: SubleasePaymen
               {todayPayments.length === 0 && (
                 <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Brak zaległych płatności</TableCell></TableRow>
               )}
-              {todayPayments.map(p => (
+              {(showAllOverdue ? todayPayments : todayPayments.slice(0, ITEMS_LIMIT)).map(p => (
                 <TableRow key={p.id} data-testid={`row-overdue-sublease-${p.id}`}>
                   <TableCell className="text-xs whitespace-nowrap">{p.subleaseTenantName}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{getAptNames(p)}</TableCell>
@@ -1521,6 +1583,13 @@ function UnpaidSubleasesTab({ payments, apartments }: { payments: SubleasePaymen
             </TableBody>
           </Table>
         </div>
+        {todayPayments.length > ITEMS_LIMIT && (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setShowAllOverdue(!showAllOverdue)} data-testid="button-show-more-overdue-subleases">
+              {showAllOverdue ? "Pokaż mniej" : `Pokaż więcej (${todayPayments.length - ITEMS_LIMIT})`}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -1547,7 +1616,7 @@ function UnpaidSubleasesTab({ payments, apartments }: { payments: SubleasePaymen
               {upcomingPayments.length === 0 && (
                 <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Brak płatności w najbliższych 7 dniach</TableCell></TableRow>
               )}
-              {upcomingPayments.map(p => (
+              {(showAllUpcoming ? upcomingPayments : upcomingPayments.slice(0, ITEMS_LIMIT)).map(p => (
                 <TableRow key={p.id} data-testid={`row-upcoming-sublease-${p.id}`}>
                   <TableCell className="text-xs whitespace-nowrap">{p.subleaseTenantName}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{getAptNames(p)}</TableCell>
@@ -1559,6 +1628,13 @@ function UnpaidSubleasesTab({ payments, apartments }: { payments: SubleasePaymen
             </TableBody>
           </Table>
         </div>
+        {upcomingPayments.length > ITEMS_LIMIT && (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setShowAllUpcoming(!showAllUpcoming)} data-testid="button-show-more-upcoming-subleases">
+              {showAllUpcoming ? "Pokaż mniej" : `Pokaż więcej (${upcomingPayments.length - ITEMS_LIMIT})`}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1767,5 +1843,92 @@ function SortableHeader({ field, label, sortField, sortDir, onSort }: {
         }
       </button>
     </TableHead>
+  );
+}
+
+function TodayTasksWidget() {
+  const today = format(new Date(), "yyyy-MM-dd");
+  const { data: allTasks } = useQuery<any[]>({ queryKey: ["/api/tasks"] });
+  const [, setLocation] = useLocation();
+
+  const todayTasks = useMemo(() => {
+    if (!allTasks) return [];
+    return allTasks.filter((t: any) => t.dueDate === today && !t.completed);
+  }, [allTasks, today]);
+
+  const overdueTasks = useMemo(() => {
+    if (!allTasks) return [];
+    return allTasks.filter((t: any) => t.dueDate && t.dueDate < today && !t.completed);
+  }, [allTasks, today]);
+
+  const toggleTask = useMutation({
+    mutationFn: async (task: any) => {
+      await apiRequest("PATCH", `/api/tasks/${task.id}`, { completed: !task.completed });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }),
+  });
+
+  const PRIORITY_COLORS: Record<string, string> = {
+    PILNY: "text-red-500",
+    WYSOKI: "text-orange-500",
+    ŚREDNI: "text-yellow-500",
+    NISKI: "text-blue-400",
+  };
+
+  return (
+    <Card data-testid="today-tasks-widget">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Target className="h-4 w-4 text-primary" />
+            Zadania na dziś
+            {todayTasks.length > 0 && (
+              <Badge variant="secondary" className="ml-1">{todayTasks.length}</Badge>
+            )}
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/tasks")} data-testid="link-all-tasks">
+            Wszystkie
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {overdueTasks.length > 0 && (
+          <div className="mb-3 p-2 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-800">
+            <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">
+              Zaległe ({overdueTasks.length})
+            </p>
+            {overdueTasks.slice(0, 3).map((task: any) => (
+              <div key={task.id} className="flex items-center gap-2 py-1">
+                <button
+                  className="h-4 w-4 rounded border border-red-300 flex-shrink-0"
+                  onClick={() => toggleTask.mutate(task)}
+                  data-testid={`toggle-overdue-task-${task.id}`}
+                />
+                <span className="text-sm text-red-700 dark:text-red-300 truncate">{task.title}</span>
+                <span className="text-xs text-red-400 ml-auto whitespace-nowrap">{task.dueDate}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {todayTasks.length === 0 && overdueTasks.length === 0 && (
+          <p className="text-sm text-muted-foreground py-4 text-center">Brak zadań na dziś</p>
+        )}
+        {todayTasks.map((task: any) => (
+          <div key={task.id} className="flex items-center gap-2 py-1.5 border-b last:border-0">
+            <button
+              className="h-4 w-4 rounded border border-muted-foreground/30 flex-shrink-0 hover:border-primary transition-colors"
+              onClick={() => toggleTask.mutate(task)}
+              data-testid={`toggle-today-task-${task.id}`}
+            />
+            <span className={`text-sm flex-1 truncate ${PRIORITY_COLORS[task.priority] || ""}`}>
+              {task.title}
+            </span>
+            {task.dueTime && (
+              <span className="text-xs text-muted-foreground">{task.dueTime}</span>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

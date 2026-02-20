@@ -35,6 +35,9 @@ import CompanySettings from "@/pages/CompanySettings";
 import DokumentyKsiegowe from "@/pages/DokumentyKsiegowe";
 import TechnicalInspections from "@/pages/TechnicalInspections";
 import Ustawienia from "@/pages/Ustawienia";
+import Customers from "@/pages/Customers";
+import Tasks from "@/pages/Tasks";
+import SourceComparison from "@/pages/SourceComparison";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -137,6 +140,9 @@ function AuthenticatedRouter() {
       <Route path="/reports" component={() => <AuthenticatedRoute component={ReportExport} />} />
       <Route path="/import-export" component={() => <AuthenticatedRoute component={ImportBackup} />} />
       <Route path="/activity-log" component={() => <AuthenticatedRoute component={ActivityLog} />} />
+      <Route path="/customers" component={() => <AuthenticatedRoute component={Customers} />} />
+      <Route path="/tasks" component={() => <AuthenticatedRoute component={Tasks} />} />
+      <Route path="/source-comparison" component={() => <AuthenticatedRoute component={SourceComparison} />} />
 
       <Route path="/costs-expenses" component={() => <Redirect to="/koszty" />} />
       <Route path="/costs-apartments" component={() => <Redirect to="/koszty?tab=apartamenty" />} />

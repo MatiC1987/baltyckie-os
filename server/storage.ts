@@ -50,6 +50,11 @@ import {
   technicalInspections, TechnicalInspection, InsertTechnicalInspection,
   loans, Loan, InsertLoan,
   loanPayments, LoanPayment, InsertLoanPayment,
+  customers, Customer, InsertCustomer,
+  taskProjects, TaskProject, InsertTaskProject,
+  taskSections, TaskSection, InsertTaskSection,
+  tasks, Task, InsertTask,
+  taskChecklistItems, TaskChecklistItem, InsertTaskChecklistItem,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNotNull, type SQL } from "drizzle-orm";
@@ -336,6 +341,38 @@ export interface IStorage {
   createLoanPayment(data: InsertLoanPayment): Promise<LoanPayment>;
   deleteLoanPayment(id: number): Promise<void>;
   getLoansBalance(): Promise<number>;
+
+  // Customers (CRM)
+  getCustomers(): Promise<Customer[]>;
+  getCustomer(id: number): Promise<Customer | undefined>;
+  createCustomer(data: InsertCustomer): Promise<Customer>;
+  updateCustomer(id: number, data: Partial<InsertCustomer>): Promise<Customer>;
+  deleteCustomer(id: number): Promise<void>;
+
+  // Task Projects
+  getTaskProjects(): Promise<TaskProject[]>;
+  createTaskProject(data: InsertTaskProject): Promise<TaskProject>;
+  updateTaskProject(id: number, data: Partial<InsertTaskProject>): Promise<TaskProject>;
+  deleteTaskProject(id: number): Promise<void>;
+
+  // Task Sections
+  getTaskSections(projectId?: number): Promise<TaskSection[]>;
+  createTaskSection(data: InsertTaskSection): Promise<TaskSection>;
+  updateTaskSection(id: number, data: Partial<InsertTaskSection>): Promise<TaskSection>;
+  deleteTaskSection(id: number): Promise<void>;
+
+  // Tasks
+  getTasks(filters?: { projectId?: number; sectionId?: number; completed?: boolean; priority?: string; dueBefore?: string }): Promise<Task[]>;
+  getTask(id: number): Promise<Task | undefined>;
+  createTask(data: InsertTask): Promise<Task>;
+  updateTask(id: number, data: Partial<InsertTask>): Promise<Task>;
+  deleteTask(id: number): Promise<void>;
+
+  // Task Checklist Items
+  getTaskChecklistItems(taskId: number): Promise<TaskChecklistItem[]>;
+  createTaskChecklistItem(data: InsertTaskChecklistItem): Promise<TaskChecklistItem>;
+  updateTaskChecklistItem(id: number, data: Partial<InsertTaskChecklistItem>): Promise<TaskChecklistItem>;
+  deleteTaskChecklistItem(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1523,6 +1560,121 @@ export class DatabaseStorage implements IStorage {
       if (remaining > 0) total += remaining;
     }
     return total;
+  }
+
+  // Customers (CRM)
+  async getCustomers(): Promise<Customer[]> {
+    return await db.select().from(customers).orderBy(customers.lastName);
+  }
+
+  async getCustomer(id: number): Promise<Customer | undefined> {
+    const [customer] = await db.select().from(customers).where(eq(customers.id, id));
+    return customer;
+  }
+
+  async createCustomer(data: InsertCustomer): Promise<Customer> {
+    const [created] = await db.insert(customers).values(data).returning();
+    return created;
+  }
+
+  async updateCustomer(id: number, data: Partial<InsertCustomer>): Promise<Customer> {
+    const [updated] = await db.update(customers).set(data).where(eq(customers.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCustomer(id: number): Promise<void> {
+    await db.delete(customers).where(eq(customers.id, id));
+  }
+
+  // Task Projects
+  async getTaskProjects(): Promise<TaskProject[]> {
+    return await db.select().from(taskProjects).orderBy(taskProjects.sortOrder);
+  }
+
+  async createTaskProject(data: InsertTaskProject): Promise<TaskProject> {
+    const [created] = await db.insert(taskProjects).values(data).returning();
+    return created;
+  }
+
+  async updateTaskProject(id: number, data: Partial<InsertTaskProject>): Promise<TaskProject> {
+    const [updated] = await db.update(taskProjects).set(data).where(eq(taskProjects.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTaskProject(id: number): Promise<void> {
+    await db.delete(taskProjects).where(eq(taskProjects.id, id));
+  }
+
+  // Task Sections
+  async getTaskSections(projectId?: number): Promise<TaskSection[]> {
+    if (projectId) {
+      return await db.select().from(taskSections).where(eq(taskSections.projectId, projectId)).orderBy(taskSections.sortOrder);
+    }
+    return await db.select().from(taskSections).orderBy(taskSections.sortOrder);
+  }
+
+  async createTaskSection(data: InsertTaskSection): Promise<TaskSection> {
+    const [created] = await db.insert(taskSections).values(data).returning();
+    return created;
+  }
+
+  async updateTaskSection(id: number, data: Partial<InsertTaskSection>): Promise<TaskSection> {
+    const [updated] = await db.update(taskSections).set(data).where(eq(taskSections.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTaskSection(id: number): Promise<void> {
+    await db.delete(taskSections).where(eq(taskSections.id, id));
+  }
+
+  // Tasks
+  async getTasks(filters?: { projectId?: number; sectionId?: number; completed?: boolean; priority?: string; dueBefore?: string }): Promise<Task[]> {
+    const conditions: SQL[] = [];
+    if (filters?.projectId) conditions.push(eq(tasks.projectId, filters.projectId));
+    if (filters?.sectionId) conditions.push(eq(tasks.sectionId, filters.sectionId));
+    if (filters?.completed !== undefined) conditions.push(eq(tasks.completed, filters.completed));
+    if (filters?.priority) conditions.push(eq(tasks.priority, filters.priority));
+    if (filters?.dueBefore) conditions.push(lte(tasks.dueDate, filters.dueBefore));
+    const query = conditions.length > 0 ? db.select().from(tasks).where(and(...conditions)) : db.select().from(tasks);
+    return query.orderBy(tasks.sortOrder);
+  }
+
+  async getTask(id: number): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
+  }
+
+  async createTask(data: InsertTask): Promise<Task> {
+    const [created] = await db.insert(tasks).values(data).returning();
+    return created;
+  }
+
+  async updateTask(id: number, data: Partial<InsertTask>): Promise<Task> {
+    const [updated] = await db.update(tasks).set(data).where(eq(tasks.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTask(id: number): Promise<void> {
+    await db.delete(tasks).where(eq(tasks.id, id));
+  }
+
+  // Task Checklist Items
+  async getTaskChecklistItems(taskId: number): Promise<TaskChecklistItem[]> {
+    return await db.select().from(taskChecklistItems).where(eq(taskChecklistItems.taskId, taskId)).orderBy(taskChecklistItems.sortOrder);
+  }
+
+  async createTaskChecklistItem(data: InsertTaskChecklistItem): Promise<TaskChecklistItem> {
+    const [created] = await db.insert(taskChecklistItems).values(data).returning();
+    return created;
+  }
+
+  async updateTaskChecklistItem(id: number, data: Partial<InsertTaskChecklistItem>): Promise<TaskChecklistItem> {
+    const [updated] = await db.update(taskChecklistItems).set(data).where(eq(taskChecklistItems.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTaskChecklistItem(id: number): Promise<void> {
+    await db.delete(taskChecklistItems).where(eq(taskChecklistItems.id, id));
   }
 }
 

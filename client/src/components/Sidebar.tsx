@@ -169,15 +169,19 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
   "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Usługi", iconName: "Briefcase" },
   "przeglady": { id: "przeglady", href: "/przeglady", label: "Przeglądy", iconName: "Wrench" },
+  "customers": { id: "customers", href: "/customers", label: "Klienci", iconName: "Users" },
+  "tasks": { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },
+  "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
-  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["analizy", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"] },
+  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"] },
+  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["tasks"] },
+  { id: "finanse", title: "FINANSE", itemIds: ["analizy", "source-comparison", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"] },
 ];
 
-const STORAGE_KEY = "sidebar-layout-v5";
+const STORAGE_KEY = "sidebar-layout-v6";
 const COLLAPSED_KEY = "sidebar-collapsed-v2";
 const LABELS_KEY = "sidebar-custom-labels-v1";
 
@@ -678,7 +682,13 @@ export function Sidebar() {
                           onClick={() => section.id !== "finanse" && toggleSection(section.id)}
                           data-testid={`toggle-section-${section.id}`}
                         >
-                          <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">{section.title}</span>
+                          <span className={cn(
+                            "text-[10px] font-bold tracking-widest uppercase",
+                            section.id === "rezerwacje" ? "text-cyan-400" :
+                            section.id === "finanse" ? "text-emerald-400" :
+                            section.id === "zarzadzanie" ? "text-violet-400" :
+                            "text-slate-500"
+                          )}>{section.title}</span>
                           {section.id !== "finanse" && (
                             <ChevronDown className={cn(
                               "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover/section:text-slate-300",

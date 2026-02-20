@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -5351,6 +5351,223 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     try {
       const balance = await storage.getLoansBalance();
       res.json({ balance: balance.toFixed(2) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== CUSTOMERS (CRM) ====================
+  app.get('/api/customers', isAuthenticated, async (req, res) => {
+    try {
+      const data = await storage.getCustomers();
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/customers/:id', isAuthenticated, async (req, res) => {
+    try {
+      const data = await storage.getCustomer(Number(req.params.id));
+      if (!data) return res.status(404).json({ message: 'Nie znaleziono klienta' });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/customers', isAuthenticated, async (req, res) => {
+    try {
+      const input = insertCustomerSchema.parse(req.body);
+      const created = await storage.createCustomer(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/customers/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateCustomer(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/customers/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteCustomer(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASK PROJECTS ====================
+  app.get('/api/task-projects', isAuthenticated, async (req, res) => {
+    try {
+      const data = await storage.getTaskProjects();
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-projects', isAuthenticated, async (req, res) => {
+    try {
+      const input = insertTaskProjectSchema.parse(req.body);
+      const created = await storage.createTaskProject(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/task-projects/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateTaskProject(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-projects/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTaskProject(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASK SECTIONS ====================
+  app.get('/api/task-sections', isAuthenticated, async (req, res) => {
+    try {
+      const projectId = req.query.projectId ? Number(req.query.projectId) : undefined;
+      const data = await storage.getTaskSections(projectId);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-sections', isAuthenticated, async (req, res) => {
+    try {
+      const input = insertTaskSectionSchema.parse(req.body);
+      const created = await storage.createTaskSection(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/task-sections/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateTaskSection(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-sections/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTaskSection(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASKS ====================
+  app.get('/api/tasks', isAuthenticated, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.projectId) filters.projectId = Number(req.query.projectId);
+      if (req.query.sectionId) filters.sectionId = Number(req.query.sectionId);
+      if (req.query.completed !== undefined) filters.completed = req.query.completed === 'true';
+      if (req.query.priority) filters.priority = req.query.priority as string;
+      if (req.query.dueBefore) filters.dueBefore = req.query.dueBefore as string;
+      const data = await storage.getTasks(Object.keys(filters).length > 0 ? filters : undefined);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/tasks/:id', isAuthenticated, async (req, res) => {
+    try {
+      const data = await storage.getTask(Number(req.params.id));
+      if (!data) return res.status(404).json({ message: 'Nie znaleziono zadania' });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/tasks', isAuthenticated, async (req, res) => {
+    try {
+      const input = insertTaskSchema.parse(req.body);
+      const created = await storage.createTask(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/tasks/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateTask(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/tasks/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTask(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASK CHECKLIST ITEMS ====================
+  app.get('/api/task-checklist/:taskId', isAuthenticated, async (req, res) => {
+    try {
+      const data = await storage.getTaskChecklistItems(Number(req.params.taskId));
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-checklist', isAuthenticated, async (req, res) => {
+    try {
+      const input = insertTaskChecklistItemSchema.parse(req.body);
+      const created = await storage.createTaskChecklistItem(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/task-checklist/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateTaskChecklistItem(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-checklist/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTaskChecklistItem(Number(req.params.id));
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

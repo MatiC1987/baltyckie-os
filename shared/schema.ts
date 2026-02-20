@@ -44,6 +44,7 @@ export const reservations = pgTable("reservations", {
   surcharge: decimal("surcharge", { precision: 10, scale: 2 }).default("0"),
   status: text("status").notNull(), // 'DO_OPLACENIA', 'PRZYJETA', 'ANULOWANA'
   notes: text("notes"),
+  source: text("source"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -710,22 +711,39 @@ export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
   invoiceNumber: text("invoice_number").notNull(),
+  documentType: text("document_type").default("FAKTURA_VAT"),
+  currency: text("currency").default("PLN"),
   issueDate: date("issue_date").notNull(),
+  saleDate: date("sale_date"),
   dueDate: date("due_date").notNull(),
+  issuePlace: text("issue_place"),
   sellerName: text("seller_name").notNull(),
   sellerNip: text("seller_nip"),
   sellerAddress: text("seller_address"),
+  sellerCity: text("seller_city"),
+  sellerPostalCode: text("seller_postal_code"),
+  sellerCountry: text("seller_country"),
+  sellerBankAccount: text("seller_bank_account"),
+  sellerBankAccount2: text("seller_bank_account2"),
   buyerName: text("buyer_name").notNull(),
   buyerNip: text("buyer_nip"),
   buyerAddress: text("buyer_address"),
+  buyerCity: text("buyer_city"),
+  buyerPostalCode: text("buyer_postal_code"),
+  buyerCountry: text("buyer_country"),
+  buyerEmail: text("buyer_email"),
   items: text("items").notNull(),
   netAmount: numeric("net_amount", { precision: 12, scale: 2 }).notNull(),
   vatRate: text("vat_rate").default("23%"),
   vatAmount: numeric("vat_amount", { precision: 12, scale: 2 }),
   grossAmount: numeric("gross_amount", { precision: 12, scale: 2 }).notNull(),
+  paymentStatus: text("payment_status").default("NIEOPLACONA"),
+  paymentMethod: text("payment_method"),
+  paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }).default("0"),
   status: text("status").notNull().default("WYSTAWIONA"),
   sourceType: text("source_type"),
   sourceId: integer("source_id"),
+  correctionOfId: integer("correction_of_id"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -975,3 +993,109 @@ export type InsertLoan = z.infer<typeof insertLoanSchema>;
 export const insertLoanPaymentSchema = createInsertSchema(loanPayments).omit({ id: true, createdAt: true });
 export type LoanPayment = typeof loanPayments.$inferSelect;
 export type InsertLoanPayment = z.infer<typeof insertLoanPaymentSchema>;
+
+// ==================== CUSTOMERS (CRM) ====================
+export const customers = pgTable("customers", {
+  id: serial("id").primaryKey(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  companyName: text("company_name"),
+  nip: text("nip"),
+  street: text("street"),
+  city: text("city"),
+  postalCode: text("postal_code"),
+  country: text("country").default("Polska"),
+  segment: text("segment"),
+  notes: text("notes"),
+  totalStays: integer("total_stays").default(0),
+  totalRevenue: numeric("total_revenue", { precision: 12, scale: 2 }).default("0"),
+  lastStayDate: date("last_stay_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const customersRelations = relations(customers, () => ({}));
+
+export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+
+// ==================== TASK MANAGEMENT ====================
+export const taskProjects = pgTable("task_projects", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  color: text("color").default("#5ADBFA"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const taskSections = pgTable("task_sections", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => taskProjects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const tasks = pgTable("tasks", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  notes: text("notes"),
+  completed: boolean("completed").default(false),
+  priority: text("priority").default("BRAK"),
+  dueDate: date("due_date"),
+  dueTime: text("due_time"),
+  tags: text("tags").array(),
+  projectId: integer("project_id").references(() => taskProjects.id, { onDelete: "set null" }),
+  sectionId: integer("section_id").references(() => taskSections.id, { onDelete: "set null" }),
+  sortOrder: integer("sort_order").default(0),
+  recurring: text("recurring"),
+  reminderDate: date("reminder_date"),
+  reminderTime: text("reminder_time"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const taskChecklistItems = pgTable("task_checklist_items", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  completed: boolean("completed").default(false),
+  sortOrder: integer("sort_order").default(0),
+});
+
+export const taskProjectsRelations = relations(taskProjects, ({ many }) => ({
+  sections: many(taskSections),
+  tasks: many(tasks),
+}));
+
+export const taskSectionsRelations = relations(taskSections, ({ one, many }) => ({
+  project: one(taskProjects, { fields: [taskSections.projectId], references: [taskProjects.id] }),
+  tasks: many(tasks),
+}));
+
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
+  project: one(taskProjects, { fields: [tasks.projectId], references: [taskProjects.id] }),
+  section: one(taskSections, { fields: [tasks.sectionId], references: [taskSections.id] }),
+  checklistItems: many(taskChecklistItems),
+}));
+
+export const taskChecklistItemsRelations = relations(taskChecklistItems, ({ one }) => ({
+  task: one(tasks, { fields: [taskChecklistItems.taskId], references: [tasks.id] }),
+}));
+
+export const insertTaskProjectSchema = createInsertSchema(taskProjects).omit({ id: true, createdAt: true });
+export type TaskProject = typeof taskProjects.$inferSelect;
+export type InsertTaskProject = z.infer<typeof insertTaskProjectSchema>;
+
+export const insertTaskSectionSchema = createInsertSchema(taskSections).omit({ id: true, createdAt: true });
+export type TaskSection = typeof taskSections.$inferSelect;
+export type InsertTaskSection = z.infer<typeof insertTaskSectionSchema>;
+
+export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, createdAt: true });
+export type Task = typeof tasks.$inferSelect;
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+
+export const insertTaskChecklistItemSchema = createInsertSchema(taskChecklistItems).omit({ id: true });
+export type TaskChecklistItem = typeof taskChecklistItems.$inferSelect;
+export type InsertTaskChecklistItem = z.infer<typeof insertTaskChecklistItemSchema>;

@@ -46,7 +46,7 @@
   --input: 214 32% 91%;
   --ring: 221 83% 53%;
 
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 
   --chart-1: 221 83% 53%;
   --chart-2: 142 71% 45%;
@@ -174,5 +174,80 @@
   .no-default-active-elevate:active {
     filter: none !important;
     transform: none !important;
+  }
+
+  table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: hsl(var(--background));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  .dark table thead th {
+    background: hsl(var(--background));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  }
+
+  .card-gradient {
+    @apply relative overflow-hidden;
+  }
+  .card-gradient::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #5ADBFA, #4FC3F7, #81D4FA);
+    border-radius: 999px 999px 0 0;
+  }
+
+  .card-gradient-green::before {
+    background: linear-gradient(90deg, #4CAF50, #66BB6A, #81C784);
+  }
+  .card-gradient-orange::before {
+    background: linear-gradient(90deg, #FF9800, #FFB74D, #FFCC80);
+  }
+  .card-gradient-red::before {
+    background: linear-gradient(90deg, #F44336, #EF5350, #E57373);
+  }
+  .card-gradient-purple::before {
+    background: linear-gradient(90deg, #9C27B0, #AB47BC, #CE93D8);
+  }
+
+  .kpi-card {
+    @apply rounded-xl shadow-sm border transition-all duration-200;
+  }
+  .kpi-card:hover {
+    @apply shadow-md;
+    transform: translateY(-1px);
+  }
+
+  .skeleton-pulse {
+    @apply animate-pulse bg-muted rounded-lg;
+  }
+
+  @keyframes countUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-count-up {
+    animation: countUp 0.4s ease-out forwards;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out forwards;
+  }
+
+  .progress-bar {
+    @apply h-2 rounded-full overflow-hidden bg-muted;
+  }
+  .progress-bar-fill {
+    @apply h-full rounded-full transition-all duration-700 ease-out;
   }
 }

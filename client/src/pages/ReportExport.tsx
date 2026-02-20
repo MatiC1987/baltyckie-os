@@ -39,20 +39,18 @@ const MONTHS_PL = [
   "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień",
 ];
 
-type ReportType = "monthly" | "owner" | "reservations" | "occupancy";
+type ReportType = "monthly" | "reservations" | "occupancy";
 
 export default function ReportExport() {
   const { toast } = useToast();
   const [reportType, setReportType] = useState<ReportType>("monthly");
   const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth()));
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
-  const [selectedOwner, setSelectedOwner] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: reservations = [] } = useQuery<any[]>({ queryKey: ["/api/reservations"] });
   const { data: expenses = [] } = useQuery<any[]>({ queryKey: ["/api/expenses"] });
   const { data: apartments = [] } = useQuery<any[]>({ queryKey: ["/api/apartments"] });
-  const { data: owners = [] } = useQuery<any[]>({ queryKey: ["/api/owners"] });
 
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -66,11 +64,6 @@ export default function ReportExport() {
     });
     return map;
   }, [apartments]);
-
-  const ownerApartments = useMemo(() => {
-    if (!selectedOwner) return [];
-    return apartments.filter((a: any) => String(a.ownerId) === selectedOwner);
-  }, [apartments, selectedOwner]);
 
   function addHeader(doc: jsPDF, title: string) {
     doc.setFont("helvetica", "bold");
@@ -197,71 +190,6 @@ export default function ReportExport() {
     doc.save(removeDiacritics(`raport-miesieczny-${monthName}-${selectedYear}.pdf`));
   }
 
-  function generateOwnerReport() {
-    const doc = new jsPDF();
-    const owner = owners.find((o: any) => String(o.id) === selectedOwner);
-    const ownerName = owner ? (owner.name || `${owner.firstName || ""} ${owner.lastName || ""}`.trim()) : "Nieznany";
-    const monthName = MONTHS[parseInt(selectedMonth)];
-    const title = `Rozliczenie wlasciciela - ${ownerName}`;
-    addHeader(doc, title);
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(removeDiacritics(`Okres: ${MONTHS_PL[parseInt(selectedMonth)]} ${selectedYear}`), 14, 52);
-
-    const aptIds = new Set(ownerApartments.map((a: any) => a.id));
-    const filteredReservations = filterByMonth(reservations, "checkIn").filter((r: any) => aptIds.has(r.apartmentId));
-    const filteredExpenses = filterByMonth(expenses, "date").filter((e: any) => aptIds.has(e.apartmentId));
-
-    const totalRevenue = filteredReservations.reduce((sum: number, r: any) => {
-      const amount = parseFloat(r.totalAmount || r.amount || "0");
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0);
-
-    const totalExpensesAmount = filteredExpenses.reduce((sum: number, e: any) => {
-      const amount = parseFloat(e.amount || "0");
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0);
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text(removeDiacritics("Podsumowanie"), 14, 62);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(removeDiacritics(`Apartamenty: ${ownerApartments.map((a: any) => a.name || a.internalName).join(", ")}`), 14, 70);
-    doc.text(removeDiacritics(`Przychody: ${formatPLN(totalRevenue)}`), 14, 77);
-    doc.text(removeDiacritics(`Koszty: ${formatPLN(totalExpensesAmount)}`), 14, 84);
-    doc.text(removeDiacritics(`Saldo: ${formatPLN(totalRevenue - totalExpensesAmount)}`), 14, 91);
-
-    let startY = 101;
-
-    if (filteredReservations.length > 0) {
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text(removeDiacritics("Rezerwacje"), 14, startY);
-      startY += 4;
-
-      (doc as any).autoTable({
-        startY,
-        head: [["Nr", "Apartament", removeDiacritics("Gosc"), "Od", "Do", "Kwota"].map(removeDiacritics)],
-        body: filteredReservations.map((r: any, i: number) => [
-          i + 1,
-          removeDiacritics(apartmentMap[r.apartmentId] || `#${r.apartmentId}`),
-          removeDiacritics(r.guestName || r.guest || "-"),
-          r.checkIn ? new Date(r.checkIn).toLocaleDateString("pl-PL") : "-",
-          r.checkOut ? new Date(r.checkOut).toLocaleDateString("pl-PL") : "-",
-          formatPLN(r.totalAmount || r.amount),
-        ]),
-        styles: { font: "helvetica", fontSize: 8 },
-        headStyles: { fillColor: [90, 219, 250], textColor: [255, 255, 255] },
-        margin: { left: 14, right: 14 },
-      });
-    }
-
-    addFooter(doc);
-    doc.save(removeDiacritics(`rozliczenie-${ownerName.replace(/\s/g, "-")}-${monthName}-${selectedYear}.pdf`));
-  }
-
   function generateReservationList() {
     const doc = new jsPDF();
     const monthName = MONTHS[parseInt(selectedMonth)];
@@ -354,14 +282,6 @@ export default function ReportExport() {
         case "monthly":
           generateMonthlyReport();
           break;
-        case "owner":
-          if (!selectedOwner) {
-            toast({ title: "Uwaga", description: "Wybierz właściciela", variant: "destructive" });
-            setIsGenerating(false);
-            return;
-          }
-          generateOwnerReport();
-          break;
         case "reservations":
           generateReservationList();
           break;
@@ -400,7 +320,6 @@ export default function ReportExport() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="monthly" data-testid="option-monthly">Raport miesięczny</SelectItem>
-                  <SelectItem value="owner" data-testid="option-owner">Rozliczenie właściciela</SelectItem>
                   <SelectItem value="reservations" data-testid="option-reservations">Lista rezerwacji</SelectItem>
                   <SelectItem value="occupancy" data-testid="option-occupancy">Raport obłożenia</SelectItem>
                 </SelectContent>
@@ -444,35 +363,6 @@ export default function ReportExport() {
             </div>
           </div>
 
-          {reportType === "owner" && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium" data-testid="label-owner">
-                Właściciel
-              </label>
-              <Select value={selectedOwner} onValueChange={setSelectedOwner} data-testid="select-owner">
-                <SelectTrigger data-testid="trigger-owner">
-                  <SelectValue placeholder="Wybierz właściciela" />
-                </SelectTrigger>
-                <SelectContent>
-                  {owners.map((o: any) => (
-                    <SelectItem
-                      key={o.id}
-                      value={String(o.id)}
-                      data-testid={`option-owner-${o.id}`}
-                    >
-                      {o.name || `${o.firstName || ""} ${o.lastName || ""}`.trim() || `Właściciel #${o.id}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedOwner && ownerApartments.length > 0 && (
-                <p className="text-sm text-muted-foreground" data-testid="text-owner-apartments">
-                  Apartamenty: {ownerApartments.map((a: any) => a.name || a.internalName).join(", ")}
-                </p>
-              )}
-            </div>
-          )}
-
           <div className="pt-4 border-t">
             <Button
               onClick={handleGenerate}
@@ -503,12 +393,6 @@ export default function ReportExport() {
               <h4 className="font-semibold text-sm">Raport miesięczny</h4>
               <p className="text-xs text-muted-foreground">
                 Podsumowanie przychodów, kosztów i zysku netto za wybrany miesiąc. Zawiera tabele rezerwacji i kosztów.
-              </p>
-            </div>
-            <div className="p-4 rounded-lg border space-y-1" data-testid="info-owner">
-              <h4 className="font-semibold text-sm">Rozliczenie właściciela</h4>
-              <p className="text-xs text-muted-foreground">
-                Rozliczenie dla wybranego właściciela z podsumowaniem przychodów i kosztów jego apartamentów.
               </p>
             </div>
             <div className="p-4 rounded-lg border space-y-1" data-testid="info-reservations">
