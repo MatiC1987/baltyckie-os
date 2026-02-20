@@ -47,9 +47,10 @@ import {
   handoverProtocolRooms, HandoverProtocolRoom, InsertHandoverProtocolRoom,
   handoverProtocolItems, HandoverProtocolItem, InsertHandoverProtocolItem,
   handoverProtocolMeters, HandoverProtocolMeter, InsertHandoverProtocolMeter,
+  technicalInspections, TechnicalInspection, InsertTechnicalInspection,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, isNotNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, isNotNull, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // Users (optional if auth handles it separately, but good to have)
@@ -314,6 +315,13 @@ export interface IStorage {
   createHandoverProtocolMeter(data: InsertHandoverProtocolMeter): Promise<HandoverProtocolMeter>;
   updateHandoverProtocolMeter(id: number, data: Partial<InsertHandoverProtocolMeter>): Promise<HandoverProtocolMeter>;
   deleteHandoverProtocolMeter(id: number): Promise<void>;
+
+  // Technical Inspections
+  getTechnicalInspections(filters?: { apartmentId?: number; inspectionType?: string; status?: string }): Promise<TechnicalInspection[]>;
+  getTechnicalInspection(id: number): Promise<TechnicalInspection | undefined>;
+  createTechnicalInspection(data: InsertTechnicalInspection): Promise<TechnicalInspection>;
+  updateTechnicalInspection(id: number, data: Partial<InsertTechnicalInspection>): Promise<TechnicalInspection>;
+  deleteTechnicalInspection(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -785,6 +793,37 @@ export class DatabaseStorage implements IStorage {
     } else {
       await db.insert(saldoInitialBalances).values({ personName, initialBalance });
     }
+  }
+
+  // Technical Inspections
+  async getTechnicalInspections(filters?: { apartmentId?: number; inspectionType?: string; status?: string }): Promise<TechnicalInspection[]> {
+    const conditions: SQL[] = [];
+    if (filters?.apartmentId) conditions.push(eq(technicalInspections.apartmentId, filters.apartmentId));
+    if (filters?.inspectionType) conditions.push(eq(technicalInspections.inspectionType, filters.inspectionType));
+    if (filters?.status) conditions.push(eq(technicalInspections.status, filters.status));
+    if (conditions.length > 0) {
+      return db.select().from(technicalInspections).where(and(...conditions)).orderBy(technicalInspections.nextDate);
+    }
+    return db.select().from(technicalInspections).orderBy(technicalInspections.nextDate);
+  }
+
+  async getTechnicalInspection(id: number): Promise<TechnicalInspection | undefined> {
+    const [row] = await db.select().from(technicalInspections).where(eq(technicalInspections.id, id));
+    return row;
+  }
+
+  async createTechnicalInspection(data: InsertTechnicalInspection): Promise<TechnicalInspection> {
+    const [row] = await db.insert(technicalInspections).values(data).returning();
+    return row;
+  }
+
+  async updateTechnicalInspection(id: number, data: Partial<InsertTechnicalInspection>): Promise<TechnicalInspection> {
+    const [row] = await db.update(technicalInspections).set(data).where(eq(technicalInspections.id, id)).returning();
+    return row;
+  }
+
+  async deleteTechnicalInspection(id: number): Promise<void> {
+    await db.delete(technicalInspections).where(eq(technicalInspections.id, id));
   }
 
   // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)

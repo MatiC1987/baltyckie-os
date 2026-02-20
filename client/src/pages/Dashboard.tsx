@@ -25,7 +25,7 @@ import { differenceInDays, format } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
   ArrowUp, ArrowDown, ArrowUpDown, Plane, PlaneTakeoff, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target, Scale,
-  Plus, Receipt, FileSignature, Download, LayoutDashboard,
+  Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
@@ -193,6 +193,7 @@ export default function Dashboard() {
     upcomingArrivals: number;
     expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[];
     expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[];
+    upcomingInspections: { id: number; inspectionType: string; nextDate: string; apartmentId: number | null; isOverdue: boolean }[];
   }>({ queryKey: ["/api/dashboard-reminders"] });
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingBalance, setEditingBalance] = useState("");
@@ -532,7 +533,7 @@ function CompanyBalanceCard({
   );
 }
 
-function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean; reminders?: { expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[]; overdueCosts: number; overdueSubleasePayments: number; upcomingArrivals: number; expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[] } }) {
+function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean; reminders?: { expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[]; overdueCosts: number; overdueSubleasePayments: number; upcomingArrivals: number; expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; upcomingInspections?: { id: number; inspectionType: string; nextDate: string; apartmentId: number | null; isOverdue: boolean }[] } }) {
   const [sortField, setSortField] = useState<SortField>("endDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -577,7 +578,8 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
     reminders.overdueCosts > 0 ||
     reminders.overdueSubleasePayments > 0 ||
     reminders.expiringLeases.length > 0 ||
-    reminders.expiringSubleases.length > 0
+    reminders.expiringSubleases.length > 0 ||
+    (reminders.upcomingInspections && reminders.upcomingInspections.length > 0)
   );
 
   return (
@@ -631,6 +633,22 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
                 </div>
               </Link>
             ))}
+            {reminders!.upcomingInspections?.map(insp => {
+              const typeLabels: Record<string, string> = {
+                GAZOWY: "gazowy", ELEKTRYCZNY: "elektryczny", KOMINIARSKI: "kominiarski",
+                WENTYLACYJNY: "wentylacyjny", BUDOWLANY: "budowlany", PPOZ: "p.poż.", INNE: "inny"
+              };
+              return (
+                <Link key={insp.id} href="/przeglady">
+                  <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-inspection-${insp.id}`}>
+                    <Wrench className={`h-4 w-4 shrink-0 ${insp.isOverdue ? 'text-red-500' : 'text-amber-500'}`} />
+                    <span>
+                      {insp.isOverdue ? "Przeterminowany" : "Zbliżający się"} przegląd {typeLabels[insp.inspectionType] || insp.inspectionType} — {insp.nextDate}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
           </CardContent>
         </Card>
       )}

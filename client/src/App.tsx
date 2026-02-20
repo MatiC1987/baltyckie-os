@@ -33,6 +33,7 @@ import ReportExport from "@/pages/ReportExport";
 import Invoices from "@/pages/Invoices";
 import CompanySettings from "@/pages/CompanySettings";
 import DokumentyKsiegowe from "@/pages/DokumentyKsiegowe";
+import TechnicalInspections from "@/pages/TechnicalInspections";
 import Ustawienia from "@/pages/Ustawienia";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -114,6 +115,7 @@ function AuthenticatedRouter() {
       <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
       <Route path="/apartment-schedule" component={() => <AuthenticatedRoute component={ApartmentSchedule} />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
+      <Route path="/przeglady" component={() => <AuthenticatedRoute component={TechnicalInspections} />} />
       <Route path="/dokumenty-ksiegowe" component={() => <AuthenticatedRoute component={DokumentyKsiegowe} />} />
       <Route path="/salda" component={() => <AuthenticatedRoute component={Saldo} />} />
       <Route path="/saldo-ml" component={() => <Layout><Saldo personName="Małgorzata Latasiewicz" /></Layout>} />

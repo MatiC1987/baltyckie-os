@@ -918,3 +918,25 @@ export type InsertHandoverProtocolItem = z.infer<typeof insertHandoverProtocolIt
 export const insertHandoverProtocolMeterSchema = createInsertSchema(handoverProtocolMeters).omit({ id: true });
 export type HandoverProtocolMeter = typeof handoverProtocolMeters.$inferSelect;
 export type InsertHandoverProtocolMeter = z.infer<typeof insertHandoverProtocolMeterSchema>;
+
+export const technicalInspections = pgTable("technical_inspections", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id, { onDelete: "cascade" }),
+  inspectionType: text("inspection_type").notNull(),
+  lastDate: date("last_date"),
+  nextDate: date("next_date").notNull(),
+  status: text("status").notNull().default("ZAPLANOWANY"),
+  notes: text("notes"),
+  cost: numeric("cost", { precision: 12, scale: 2 }),
+  contractor: text("contractor"),
+  contractorPhone: text("contractor_phone"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const technicalInspectionsRelations = relations(technicalInspections, ({ one }) => ({
+  apartment: one(apartments, { fields: [technicalInspections.apartmentId], references: [apartments.id] }),
+}));
+
+export const insertTechnicalInspectionSchema = createInsertSchema(technicalInspections).omit({ id: true, createdAt: true });
+export type TechnicalInspection = typeof technicalInspections.$inferSelect;
+export type InsertTechnicalInspection = z.infer<typeof insertTechnicalInspectionSchema>;

@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -227,6 +227,7 @@ export async function registerRoutes(
       let upcomingArrivalsResult: any[] = [];
       let expiringLeasesResult: any[] = [];
       let expiringSubleaseResult: any[] = [];
+      let upcomingInspectionsResult: any[] = [];
 
       try {
         const rows = await db.select({
@@ -293,6 +294,20 @@ export async function registerRoutes(
           .where(and(lte(subleases.endDate, in30days), gte(subleases.endDate, today)));
       } catch (e) { /* ignore */ }
 
+      try {
+        const allInspections = await storage.getTechnicalInspections();
+        upcomingInspectionsResult = allInspections.filter(i => {
+          if (i.status === 'WYKONANY') return false;
+          return i.nextDate <= in30days;
+        }).map(i => ({
+          id: i.id,
+          inspectionType: i.inspectionType,
+          nextDate: i.nextDate,
+          apartmentId: i.apartmentId,
+          isOverdue: i.nextDate < today,
+        }));
+      } catch (e) { /* ignore */ }
+
       res.json({
         expiringExams: expiringExamsResult.map(e => ({
           id: e.id,
@@ -305,6 +320,7 @@ export async function registerRoutes(
         upcomingArrivals: upcomingArrivalsResult.length,
         expiringLeases: expiringLeasesResult,
         expiringSubleases: expiringSubleaseResult,
+        upcomingInspections: upcomingInspectionsResult,
       });
     } catch (err) {
       console.error("Dashboard reminders error:", err);
@@ -5167,6 +5183,81 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     } catch (err: any) {
       console.error("Import error:", err);
       res.status(500).json({ message: "Błąd importu: " + (err.message || "Nieznany błąd") });
+    }
+  });
+
+  // Technical Inspections
+  app.get('/api/technical-inspections', isAuthenticated, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.apartmentId) filters.apartmentId = Number(req.query.apartmentId);
+      if (req.query.inspectionType) filters.inspectionType = String(req.query.inspectionType);
+      if (req.query.status) filters.status = String(req.query.status);
+      const inspections = await storage.getTechnicalInspections(filters);
+      res.json(inspections);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/technical-inspections/upcoming', isAuthenticated, async (req, res) => {
+    try {
+      const all = await storage.getTechnicalInspections();
+      const today = new Date();
+      const thirtyDaysLater = new Date();
+      thirtyDaysLater.setDate(today.getDate() + 30);
+      const todayStr = today.toISOString().split('T')[0];
+      const upcoming = all.filter(i => {
+        if (!i.nextDate) return false;
+        return i.nextDate <= thirtyDaysLater.toISOString().split('T')[0] && i.status !== 'WYKONANY';
+      }).map(i => ({
+        ...i,
+        isOverdue: i.nextDate < todayStr,
+      }));
+      res.json(upcoming);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/technical-inspections/:id', isAuthenticated, async (req, res) => {
+    try {
+      const inspection = await storage.getTechnicalInspection(Number(req.params.id));
+      if (!inspection) return res.status(404).json({ message: "Nie znaleziono przeglądu" });
+      res.json(inspection);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/technical-inspections', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertTechnicalInspectionSchema.parse(req.body);
+      const inspection = await storage.createTechnicalInspection(parsed);
+      res.status(201).json(inspection);
+    } catch (err: any) {
+      if (err.name === 'ZodError') return res.status(400).json({ message: "Nieprawidłowe dane", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/technical-inspections/:id', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertTechnicalInspectionSchema.partial().parse(req.body);
+      const inspection = await storage.updateTechnicalInspection(Number(req.params.id), parsed);
+      res.json(inspection);
+    } catch (err: any) {
+      if (err.name === 'ZodError') return res.status(400).json({ message: "Nieprawidłowe dane", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/technical-inspections/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTechnicalInspection(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

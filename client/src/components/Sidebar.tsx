@@ -51,7 +51,8 @@ import {
   Gauge,
   Calculator,
   ScrollText,
-  Plus
+  Plus,
+  Wrench
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
@@ -150,6 +151,7 @@ const ICON_MAP: Record<string, any> = {
   Gauge,
   Calculator,
   ScrollText,
+  Wrench,
 };
 
 const DEFAULT_ITEMS: Record<string, NavItem> = {
@@ -166,12 +168,13 @@ const DEFAULT_ITEMS: Record<string, NavItem> = {
   invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
   "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
   "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Usługi", iconName: "Briefcase" },
+  "przeglady": { id: "przeglady", href: "/przeglady", label: "Przeglądy", iconName: "Wrench" },
 };
 
 const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["analizy", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services"] },
+  { id: "finanse", title: "FINANSE", itemIds: ["analizy", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"] },
 ];
 
 const STORAGE_KEY = "sidebar-layout-v5";
