@@ -5,9 +5,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, Calculator } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, Calculator, BarChart3 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
+import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -37,6 +41,19 @@ function saldoColor(v: number): string {
   if (v > 0) return "text-emerald-600 dark:text-emerald-400 font-semibold";
   if (v < 0) return "text-red-600 dark:text-red-400 font-semibold";
   return "";
+}
+
+function pctChange(current: number, previous: number): string {
+  if (previous === 0) return current > 0 ? "+100%" : "—";
+  const change = ((current - previous) / previous) * 100;
+  return (change >= 0 ? "+" : "") + change.toFixed(0) + "%";
+}
+
+function costChangeColor(current: number, previous: number): string {
+  if (previous === 0) return "text-muted-foreground";
+  if (current < previous) return "text-emerald-600 dark:text-emerald-400";
+  if (current > previous) return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
 }
 
 function storageKey(year: number) { return `costs-apartments-data-${year}`; }
@@ -89,6 +106,7 @@ export default function CostsApartments() {
   const [editCategories, setEditCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [compareYear, setCompareYear] = useState<number | null>(null);
   const { toast } = useToast();
 
   const handleImportFromExcel = async () => {
@@ -176,6 +194,8 @@ export default function CostsApartments() {
     return entries;
   }, [apartments, sortedLocations, categoriesMap]);
 
+  const compareData = useMemo(() => compareYear !== null ? loadData(compareYear) : {}, [compareYear]);
+
   const getCellKey = (entryId: string, category: string) => `${entryId}__${category}`;
 
   const handleCellChange = useCallback((key: string, month: number, field: "p" | "r", value: string) => {
@@ -250,6 +270,23 @@ export default function CostsApartments() {
     return { p, r };
   };
 
+  const costsHeatMax = useMemo(() => {
+    let max = 0;
+    costEntries.forEach(group => {
+      group.items.forEach(entry => {
+        for (let m = 0; m < 12; m++) {
+          const s = getEntrySums(entry, m);
+          if (s.r > max) max = s.r;
+        }
+      });
+    });
+    return max;
+  }, [costEntries, data]);
+
+  const getEntrySparklineData = useCallback((entry: CostEntry): number[] => {
+    return Array.from({ length: 12 }, (_, m) => getEntrySums(entry, m).r);
+  }, [data]);
+
   const getLocationSums = (items: CostEntry[], month: number): { p: number; r: number } => {
     let p = 0, r = 0;
     items.forEach(entry => {
@@ -270,11 +307,27 @@ export default function CostsApartments() {
     return { p, r };
   };
 
+  const monthlyCostChart = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) => {
+      let p = 0, r = 0;
+      costEntries.forEach(group => {
+        const s = getLocationSums(group.items, m);
+        p += s.p;
+        r += s.r;
+      });
+      return { name: MONTHS[m], Prognoza: Math.round(p), Rzeczywiste: Math.round(r) };
+    });
+  }, [costEntries, data]);
+
+  const [showChart, setShowChart] = useState(false);
+  const fullscreen = useFullscreen();
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <PageHeader title="Koszty apartamentów" description="Analiza kosztów w podziale na apartamenty." icon={Calculator} />
         <div className="flex items-center gap-2 flex-wrap">
+          <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
           <Button
             variant="outline"
             onClick={handleImportFromExcel}
@@ -294,10 +347,49 @@ export default function CostsApartments() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={compareYear !== null ? String(compareYear) : "none"} onValueChange={(v) => setCompareYear(v === "none" ? null : Number(v))}>
+            <SelectTrigger className="w-[140px]" data-testid="select-compare-year">
+              <SelectValue placeholder="Porównaj z..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Brak —</SelectItem>
+              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).filter(y => y !== year).map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">
+      <div className="flex items-center gap-2 mb-2">
+        <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart-costs">
+          <BarChart3 className="mr-1 h-3 w-3" /> {showChart ? "Ukryj wykres" : "Pokaż wykres"}
+        </Button>
+      </div>
+
+      {showChart && (
+        <Card className="mb-4" data-testid="card-monthly-cost-chart">
+          <CardHeader className="py-3 px-4 flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-sm">Prognoza vs Rzeczywiste koszty - podsumowanie miesięczne</CardTitle>
+          </CardHeader>
+          <CardContent className="px-2 pb-3">
+            <ResponsiveContainer width="100%" height={200}>
+              <RechartsBarChart data={monthlyCostChart} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="Prognoza" fill="hsl(var(--chart-1))" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Rzeczywiste" fill="hsl(var(--chart-3))" radius={[2, 2, 0, 0]} />
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      <FullscreenWrapper title={`Koszty apartamentów ${year}`} isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
+        <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="bg-muted/30">
@@ -363,7 +455,8 @@ export default function CostsApartments() {
                         <tr className="bg-muted/20">
                           <td className="sticky left-0 z-10 bg-muted/20 px-2 py-1 border-r-2 border-b border-border font-semibold pl-6">
                             <span className="flex items-center gap-1.5">
-                              {entry.name}
+                              <span className="flex-1 min-w-0 truncate">{entry.name}</span>
+                              <Sparkline data={getEntrySparklineData(entry)} width={50} height={14} color="rgb(239, 68, 68)" />
                               <button
                                 onClick={() => openCategoryEditor(entry)}
                                 className="opacity-40 hover:opacity-100 transition-opacity"
@@ -380,7 +473,7 @@ export default function CostsApartments() {
                             return (
                               <Fragment key={mi}>
                                 <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10 ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(s.p)}</td>
-                                <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(s.r)}</td>
+                                <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""} ${getHeatMapBg(s.r, costsHeatMax, "expense")}`}>{formatNum(s.r)}</td>
                                 <td className={`border-r-2 border-b border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)} ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(saldo)}</td>
                               </Fragment>
                             );
@@ -480,7 +573,99 @@ export default function CostsApartments() {
             })()}
           </tbody>
         </table>
-      </div>
+        </div>
+
+        {compareYear !== null && (() => {
+          const getCompareEntrySumsForYear = (entry: CostEntry, sourceData: DataMap): number => {
+            let total = 0;
+            entry.categories.forEach(cat => {
+              const key = getCellKey(entry.id, cat);
+              for (let m = 0; m < 12; m++) {
+                const cell = sourceData[key]?.[m];
+                if (cell) total += cell.r;
+              }
+            });
+            return total;
+          };
+
+          const getCompareLocationTotal = (items: CostEntry[], sourceData: DataMap): number => {
+            return items.reduce((sum, entry) => sum + getCompareEntrySumsForYear(entry, sourceData), 0);
+          };
+
+          const yoyChartData = MONTHS.map((name, m) => {
+            let mainR = 0, compR = 0;
+            costEntries.forEach(group => {
+              group.items.forEach(entry => {
+                entry.categories.forEach(cat => {
+                  const key = getCellKey(entry.id, cat);
+                  const mainCell = data[key]?.[m];
+                  if (mainCell) mainR += mainCell.r;
+                  const compCell = compareData[key]?.[m];
+                  if (compCell) compR += compCell.r;
+                });
+              });
+            });
+            return { name, [String(year)]: Math.round(mainR), [String(compareYear)]: Math.round(compR) };
+          });
+
+          return (
+            <div className="space-y-4 mt-4">
+              <Card data-testid="card-yoy-costs-comparison">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">{`Porównanie rok do roku: ${year} vs ${compareYear}`}</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <div className="rounded-md border border-border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-muted/30">
+                          <th className="text-left px-3 py-2 border-b border-border">Lokalizacja</th>
+                          <th className="text-right px-3 py-2 border-b border-border">R {year} (PLN)</th>
+                          <th className="text-right px-3 py-2 border-b border-border">R {compareYear} (PLN)</th>
+                          <th className="text-right px-3 py-2 border-b border-border">Zmiana</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {costEntries.map(group => {
+                          const mainTotal = getCompareLocationTotal(group.items, data);
+                          const compTotal = getCompareLocationTotal(group.items, compareData);
+                          return (
+                            <tr key={group.location} className="border-b border-border last:border-b-0">
+                              <td className="px-3 py-2 font-semibold">{group.location}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{formatNum(mainTotal)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{formatNum(compTotal)}</td>
+                              <td className={`px-3 py-2 text-right tabular-nums font-semibold ${costChangeColor(mainTotal, compTotal)}`}>{pctChange(mainTotal, compTotal)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="card-yoy-costs-chart">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">{`Koszty rzeczywiste: ${year} vs ${compareYear}`}</CardTitle>
+                </CardHeader>
+                <CardContent className="px-2 pb-3">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <LineChart data={yoyChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                      <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey={String(year)} stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey={String(compareYear)} stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
+      </FullscreenWrapper>
 
       <Dialog open={!!editingEntry} onOpenChange={(open) => { if (!open) setEditingEntry(null); }}>
         <DialogContent className="sm:max-w-[420px]">

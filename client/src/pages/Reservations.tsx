@@ -8,6 +8,7 @@ import { Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Hom
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
+import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
@@ -103,6 +104,7 @@ export default function Reservations() {
 
   const { data: lastCsvImport } = useQuery<{ importedAt: string; recordsImported: number; recordsUpdated: number; recordsSkipped: number } | null>({ queryKey: ["/api/import-metadata/last/hotres_csv"] });
   const { data: lastApiImport } = useQuery<{ importedAt: string; recordsImported: number; recordsUpdated: number; recordsSkipped: number } | null>({ queryKey: ["/api/import-metadata/last/hotres_api"] });
+  const fullscreen = useFullscreen();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>("reservationNumber");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -225,6 +227,7 @@ export default function Reservations() {
               <Filter className="mr-2 h-4 w-4" /> Filtry
               {hasActiveFilters && <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">aktywne</Badge>}
             </Button>
+            <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-reservation">
@@ -310,38 +313,40 @@ export default function Reservations() {
         </Card>
       )}
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="w-10"></TableHead>
-              <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="addDate" label="Data dodania" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="apartmentName" label="Apartament" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="startDate" label="Przyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="endDate" label="Wyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="guestName" label="Imię i nazwisko" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="price" label="Kwota pobytu" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="prepayment" label="Zaliczka" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="paidAmount" label="Wpłacona" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="remaining" label="Pozostało" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="status" label="Status" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredAndSorted.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
-                  Brak rezerwacji
-                </TableCell>
+      <FullscreenWrapper title="Rezerwacje" isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="w-10"></TableHead>
+                <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="addDate" label="Data dodania" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="apartmentName" label="Apartament" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="startDate" label="Przyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="endDate" label="Wyjazd" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="guestName" label="Imię i nazwisko" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="price" label="Kwota pobytu" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="prepayment" label="Zaliczka" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="paidAmount" label="Wpłacona" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="remaining" label="Pozostało" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="status" label="Status" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               </TableRow>
-            )}
-            {filteredAndSorted.map(r => (
-              <ReservationRow key={r.id} reservation={r} apartments={apartments || []} onPreview={setPreviewReservation} onEdit={setEditingReservation} />
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {filteredAndSorted.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                    Brak rezerwacji
+                  </TableCell>
+                </TableRow>
+              )}
+              {filteredAndSorted.map(r => (
+                <ReservationRow key={r.id} reservation={r} apartments={apartments || []} onPreview={setPreviewReservation} onEdit={setEditingReservation} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </FullscreenWrapper>
       <div className="text-sm text-muted-foreground" data-testid="text-reservations-count">
         Wyświetlono {filteredAndSorted.length} z {reservations?.length || 0} rezerwacji
       </div>
