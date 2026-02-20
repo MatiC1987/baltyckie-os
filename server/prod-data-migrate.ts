@@ -18,6 +18,7 @@ const TABLES_IN_ORDER = [
   "saldo_entries", "saldo_initial_balances",
   "service_contracts", "service_contract_attachments",
   "technical_inspections", "user_preferences", "zip_download_history",
+  "loans", "loan_payments",
 ];
 
 const REVERSE_ORDER = [...TABLES_IN_ORDER].reverse();

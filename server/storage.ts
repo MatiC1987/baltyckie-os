@@ -48,6 +48,8 @@ import {
   handoverProtocolItems, HandoverProtocolItem, InsertHandoverProtocolItem,
   handoverProtocolMeters, HandoverProtocolMeter, InsertHandoverProtocolMeter,
   technicalInspections, TechnicalInspection, InsertTechnicalInspection,
+  loans, Loan, InsertLoan,
+  loanPayments, LoanPayment, InsertLoanPayment,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNotNull, type SQL } from "drizzle-orm";
@@ -322,6 +324,18 @@ export interface IStorage {
   createTechnicalInspection(data: InsertTechnicalInspection): Promise<TechnicalInspection>;
   updateTechnicalInspection(id: number, data: Partial<InsertTechnicalInspection>): Promise<TechnicalInspection>;
   deleteTechnicalInspection(id: number): Promise<void>;
+
+  // Loans
+  getLoans(): Promise<Loan[]>;
+  getLoan(id: number): Promise<Loan | undefined>;
+  createLoan(data: InsertLoan): Promise<Loan>;
+  updateLoan(id: number, data: Partial<InsertLoan>): Promise<Loan>;
+  deleteLoan(id: number): Promise<void>;
+  getLoanPayments(loanId: number): Promise<LoanPayment[]>;
+  getAllLoanPayments(): Promise<LoanPayment[]>;
+  createLoanPayment(data: InsertLoanPayment): Promise<LoanPayment>;
+  deleteLoanPayment(id: number): Promise<void>;
+  getLoansBalance(): Promise<number>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1453,6 +1467,62 @@ export class DatabaseStorage implements IStorage {
 
   async deleteHandoverProtocolMeter(id: number): Promise<void> {
     await db.delete(handoverProtocolMeters).where(eq(handoverProtocolMeters.id, id));
+  }
+
+  async getLoans(): Promise<Loan[]> {
+    return db.select().from(loans).orderBy(desc(loans.createdAt));
+  }
+
+  async getLoan(id: number): Promise<Loan | undefined> {
+    const [loan] = await db.select().from(loans).where(eq(loans.id, id));
+    return loan;
+  }
+
+  async createLoan(data: InsertLoan): Promise<Loan> {
+    const [created] = await db.insert(loans).values(data).returning();
+    return created;
+  }
+
+  async updateLoan(id: number, data: Partial<InsertLoan>): Promise<Loan> {
+    const [updated] = await db.update(loans).set(data).where(eq(loans.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLoan(id: number): Promise<void> {
+    await db.delete(loans).where(eq(loans.id, id));
+  }
+
+  async getLoanPayments(loanId: number): Promise<LoanPayment[]> {
+    return db.select().from(loanPayments).where(eq(loanPayments.loanId, loanId)).orderBy(desc(loanPayments.date));
+  }
+
+  async getAllLoanPayments(): Promise<LoanPayment[]> {
+    return db.select().from(loanPayments).orderBy(desc(loanPayments.date));
+  }
+
+  async createLoanPayment(data: InsertLoanPayment): Promise<LoanPayment> {
+    const [created] = await db.insert(loanPayments).values(data).returning();
+    return created;
+  }
+
+  async deleteLoanPayment(id: number): Promise<void> {
+    await db.delete(loanPayments).where(eq(loanPayments.id, id));
+  }
+
+  async getLoansBalance(): Promise<number> {
+    const allLoans = await db.select().from(loans).where(eq(loans.status, "AKTYWNA"));
+    const allPayments = await db.select().from(loanPayments);
+    const paymentsByLoan: Record<number, number> = {};
+    for (const p of allPayments) {
+      paymentsByLoan[p.loanId] = (paymentsByLoan[p.loanId] || 0) + Number(p.amount);
+    }
+    let total = 0;
+    for (const loan of allLoans) {
+      const paid = paymentsByLoan[loan.id] || 0;
+      const remaining = Number(loan.amount) - paid;
+      if (remaining > 0) total += remaining;
+    }
+    return total;
   }
 }
 

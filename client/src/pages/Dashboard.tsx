@@ -32,7 +32,11 @@ import {
 import { useLocation } from "wouter";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
 import { ReservationForm } from "@/pages/Reservations";
-import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
+import type { Reservation, Lease, SubleasePayment, Loan, LoanPayment } from "@shared/schema";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 type WidgetDef = {
   id: string;
@@ -569,10 +573,285 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORY_ORDER = ["KONTA_BANKOWE", "GOTOWKA", "INNE"];
 
+type LoanWithPayments = Loan & { payments: LoanPayment[]; totalPaid: string; remaining: string };
+
+function LoansDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { toast } = useToast();
+  const { data: loansData, isLoading } = useQuery<LoanWithPayments[]>({
+    queryKey: ["/api/loans"],
+    enabled: open,
+  });
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDebtor, setNewDebtor] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+
+  const [payingLoanId, setPayingLoanId] = useState<number | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
+  const [payNotes, setPayNotes] = useState("");
+
+  const [expandedLoanId, setExpandedLoanId] = useState<number | null>(null);
+
+  const createLoanMutation = useMutation({
+    mutationFn: async (data: { title: string; debtor: string; amount: string; notes?: string }) => {
+      return apiRequest("POST", "/api/loans", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+      setShowAddForm(false);
+      setNewTitle(""); setNewDebtor(""); setNewAmount(""); setNewNotes("");
+      toast({ title: "Pożyczka dodana" });
+    },
+  });
+
+  const deleteLoanMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/loans/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+      toast({ title: "Pożyczka usunięta" });
+    },
+  });
+
+  const createPaymentMutation = useMutation({
+    mutationFn: async (data: { loanId: number; amount: string; date: string; notes?: string }) => {
+      return apiRequest("POST", "/api/loan-payments", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+      setPayingLoanId(null);
+      setPayAmount(""); setPayDate(new Date().toISOString().split("T")[0]); setPayNotes("");
+      toast({ title: "Spłata zarejestrowana" });
+    },
+  });
+
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/loan-payments/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+      toast({ title: "Spłata usunięta" });
+    },
+  });
+
+  const totalRemaining = loansData?.reduce((s, l) => s + Number(l.remaining), 0) || 0;
+  const totalLoaned = loansData?.reduce((s, l) => s + Number(l.amount), 0) || 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-loans">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <HandCoins className="h-5 w-5" />
+            Zarządzanie pożyczkami
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="rounded-lg bg-gradient-to-r from-orange-500/10 to-transparent border border-orange-500/20 p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs text-muted-foreground">Łączna kwota pożyczek</div>
+              <div className="text-xl font-bold">{totalLoaned.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">Pozostało do spłaty</div>
+              <div className="text-xl font-bold text-orange-600 dark:text-orange-400">{totalRemaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+            </div>
+          </div>
+        </div>
+
+        {!showAddForm ? (
+          <Button onClick={() => setShowAddForm(true)} size="sm" className="mb-3" data-testid="button-add-loan">
+            <Plus className="h-4 w-4 mr-1" /> Dodaj pożyczkę
+          </Button>
+        ) : (
+          <div className="border rounded-lg p-3 mb-3 space-y-3 bg-muted/30">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Tytuł *</Label>
+                <Input value={newTitle} onChange={(e: any) => setNewTitle(e.target.value)} placeholder="np. Pożyczka na remont" className="h-8 text-sm" data-testid="input-loan-title" />
+              </div>
+              <div>
+                <Label className="text-xs">Dłużnik *</Label>
+                <Input value={newDebtor} onChange={(e: any) => setNewDebtor(e.target.value)} placeholder="np. Jan Kowalski" className="h-8 text-sm" data-testid="input-loan-debtor" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Kwota (PLN) *</Label>
+                <Input type="number" step="0.01" value={newAmount} onChange={(e: any) => setNewAmount(e.target.value)} placeholder="0.00" className="h-8 text-sm" data-testid="input-loan-amount" />
+              </div>
+              <div>
+                <Label className="text-xs">Notatki</Label>
+                <Input value={newNotes} onChange={(e: any) => setNewNotes(e.target.value)} placeholder="Opcjonalne" className="h-8 text-sm" data-testid="input-loan-notes" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!newTitle || !newDebtor || !newAmount || createLoanMutation.isPending}
+                onClick={() => createLoanMutation.mutate({ title: newTitle, debtor: newDebtor, amount: newAmount, notes: newNotes || undefined })}
+                data-testid="button-save-loan"
+              >
+                <Check className="h-3 w-3 mr-1" /> Zapisz
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setShowAddForm(false); setNewTitle(""); setNewDebtor(""); setNewAmount(""); setNewNotes(""); }}
+                data-testid="button-cancel-loan"
+              >
+                Anuluj
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />)}</div>
+        ) : !loansData || loansData.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">Brak pożyczek. Dodaj pierwszą pożyczkę powyżej.</div>
+        ) : (
+          <div className="space-y-2">
+            {loansData.map(loan => {
+              const remaining = Number(loan.remaining);
+              const total = Number(loan.amount);
+              const paid = Number(loan.totalPaid);
+              const paidPct = total > 0 ? (paid / total) * 100 : 0;
+              const isExpanded = expandedLoanId === loan.id;
+              const isPaying = payingLoanId === loan.id;
+
+              return (
+                <div key={loan.id} className="border rounded-lg overflow-hidden" data-testid={`card-loan-${loan.id}`}>
+                  <div
+                    className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setExpandedLoanId(isExpanded ? null : loan.id)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm truncate">{loan.title}</span>
+                          {remaining <= 0 && <Badge variant="outline" className="text-green-600 border-green-600 text-[10px]">SPŁACONA</Badge>}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{loan.debtor}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-bold">{total.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+                        {remaining > 0 && (
+                          <div className="text-xs text-orange-600 dark:text-orange-400">
+                            pozostało: {remaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 w-full bg-muted rounded-full h-1.5">
+                      <div className="bg-green-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(paidPct, 100)}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[10px] text-muted-foreground">Spłacono {paidPct.toFixed(0)}%</span>
+                      {loan.notes && <span className="text-[10px] text-muted-foreground italic truncate max-w-[150px]">{loan.notes}</span>}
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t bg-muted/20 p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase">Historia spłat</span>
+                        <div className="flex gap-1">
+                          {remaining > 0 && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs"
+                              onClick={(e) => { e.stopPropagation(); setPayingLoanId(isPaying ? null : loan.id); setPayAmount(""); }}
+                              data-testid={`button-add-payment-${loan.id}`}
+                            >
+                              <Plus className="h-3 w-3 mr-1" /> Spłata
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive"
+                            onClick={(e) => { e.stopPropagation(); if (confirm("Usunąć tę pożyczkę?")) deleteLoanMutation.mutate(loan.id); }}
+                            data-testid={`button-delete-loan-${loan.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {isPaying && (
+                        <div className="border rounded-md p-2 space-y-2 bg-background">
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-[10px]">Kwota *</Label>
+                              <Input type="number" step="0.01" value={payAmount} onChange={(e: any) => setPayAmount(e.target.value)}
+                                placeholder={remaining.toFixed(2)} className="h-7 text-xs" data-testid={`input-payment-amount-${loan.id}`} />
+                            </div>
+                            <div>
+                              <Label className="text-[10px]">Data *</Label>
+                              <Input type="date" value={payDate} onChange={(e: any) => setPayDate(e.target.value)}
+                                className="h-7 text-xs" data-testid={`input-payment-date-${loan.id}`} />
+                            </div>
+                            <div>
+                              <Label className="text-[10px]">Notatka</Label>
+                              <Input value={payNotes} onChange={(e: any) => setPayNotes(e.target.value)}
+                                placeholder="Opcjonalnie" className="h-7 text-xs" data-testid={`input-payment-notes-${loan.id}`} />
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button size="sm" className="h-7 text-xs"
+                              disabled={!payAmount || !payDate || createPaymentMutation.isPending}
+                              onClick={() => createPaymentMutation.mutate({ loanId: loan.id, amount: payAmount, date: payDate, notes: payNotes || undefined })}
+                              data-testid={`button-save-payment-${loan.id}`}
+                            >
+                              <Check className="h-3 w-3 mr-1" /> Zapisz spłatę
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs"
+                              onClick={() => { setPayingLoanId(null); setPayAmount(""); setPayNotes(""); }}
+                            >
+                              Anuluj
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {loan.payments.length === 0 ? (
+                        <div className="text-xs text-muted-foreground text-center py-2">Brak spłat</div>
+                      ) : (
+                        <div className="space-y-1">
+                          {loan.payments.map(p => (
+                            <div key={p.id} className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-muted/50 group" data-testid={`row-payment-${p.id}`}>
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">{format(new Date(p.date), "dd.MM.yyyy")}</span>
+                                <span className="font-medium text-green-600 dark:text-green-400">
+                                  +{Number(p.amount).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                                </span>
+                                {p.notes && <span className="text-muted-foreground italic">{p.notes}</span>}
+                              </div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); if (confirm("Usunąć tę spłatę?")) deletePaymentMutation.mutate(p.id); }}
+                                className="invisible group-hover:visible text-destructive hover:text-destructive/80"
+                                data-testid={`button-delete-payment-${p.id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CompanyBalanceCard({
   companyBalance, balanceLoading, editingAccountId, editingBalance,
   setEditingAccountId, setEditingBalance, updateBalanceMutation,
 }: any) {
+  const [loansDialogOpen, setLoansDialogOpen] = useState(false);
   const saldoLinkMap: Record<string, string> = {
     "Saldo - M. Cieślak": "/saldo-mc",
     "Saldo - M. Latasiewicz": "/saldo-ml",
@@ -636,8 +915,9 @@ function CompanyBalanceCard({
     const Icon = getAccountIcon(acc.name);
     const balance = Number(acc.latestBalance);
     const isEditing = editingAccountId === acc.id;
-    const isAuto = acc.balanceSource === "auto_saldo";
+    const isAuto = acc.balanceSource === "auto_saldo" || acc.balanceSource === "auto_loans";
     const saldoLink = saldoLinkMap[acc.name];
+    const isLoan = acc.type === "LOAN";
     const change = getAccountChange(acc.id, balance);
     const sparkData = getSparklineData(acc.id);
     const sparkColor = change && change.diff >= 0 ? "#22c55e" : change && change.diff < 0 ? "#ef4444" : "#94a3b8";
@@ -717,6 +997,19 @@ function CompanyBalanceCard({
       </>
     );
 
+    if (isLoan) {
+      return (
+        <button
+          key={acc.id}
+          onClick={() => setLoansDialogOpen(true)}
+          className="rounded-lg border border-border p-2.5 hover-elevate block text-left w-full"
+          data-testid={`card-account-balance-${acc.id}`}
+        >
+          {content}
+        </button>
+      );
+    }
+
     if (isAuto && saldoLink) {
       return (
         <Link
@@ -794,6 +1087,7 @@ function CompanyBalanceCard({
           </div>
         )}
       </CardContent>
+      <LoansDialog open={loansDialogOpen} onOpenChange={setLoansDialogOpen} />
     </Card>
   );
 }

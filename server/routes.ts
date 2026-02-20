@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -124,7 +124,7 @@ async function seedAccounts() {
     { name: "Saldo - M. Latasiewicz", type: "BANK", category: "GOTOWKA", balanceSource: "auto_saldo" },
     { name: "Saldo - J. Głodkowska", type: "BANK", category: "GOTOWKA", balanceSource: "auto_saldo" },
     { name: "Kryptowaluty", type: "BANK", category: "INNE", balanceSource: "manual" },
-    { name: "Pożyczki", type: "LOAN", category: "INNE", balanceSource: "manual" },
+    { name: "Pożyczki", type: "LOAN", category: "INNE", balanceSource: "auto_loans" },
   ];
   const existingNames = existingAccounts.map(a => a.name.toLowerCase());
   for (const acc of requiredAccounts) {
@@ -707,6 +707,11 @@ export async function registerRoutes(
           }
           acc.latestBalance = running.toFixed(2);
         }
+      }
+      if (acc.type === "LOAN") {
+        const loansBalance = await storage.getLoansBalance();
+        acc.latestBalance = loansBalance.toFixed(2);
+        acc.balanceSource = "auto_loans";
       }
     }
 
@@ -5269,6 +5274,83 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     try {
       await storage.deleteTechnicalInspection(Number(req.params.id));
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/loans', isAuthenticated, async (req, res) => {
+    try {
+      const allLoans = await storage.getLoans();
+      const allPayments = await storage.getAllLoanPayments();
+      const paymentsByLoan: Record<number, typeof allPayments> = {};
+      for (const p of allPayments) {
+        if (!paymentsByLoan[p.loanId]) paymentsByLoan[p.loanId] = [];
+        paymentsByLoan[p.loanId].push(p);
+      }
+      const result = allLoans.map(loan => {
+        const payments = paymentsByLoan[loan.id] || [];
+        const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
+        const remaining = Number(loan.amount) - totalPaid;
+        return { ...loan, payments, totalPaid: totalPaid.toFixed(2), remaining: remaining.toFixed(2) };
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/loans', isAuthenticated, async (req, res) => {
+    try {
+      const input = insertLoanSchema.parse(req.body);
+      const created = await storage.createLoan(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/loans/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateLoan(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/loans/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteLoan(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/loan-payments', isAuthenticated, async (req, res) => {
+    try {
+      const input = insertLoanPaymentSchema.parse(req.body);
+      const created = await storage.createLoanPayment(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/loan-payments/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteLoanPayment(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/loans-balance', isAuthenticated, async (req, res) => {
+    try {
+      const balance = await storage.getLoansBalance();
+      res.json({ balance: balance.toFixed(2) });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
