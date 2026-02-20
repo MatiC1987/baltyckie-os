@@ -383,12 +383,12 @@ export default function Revenue() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={compareYear !== null ? String(compareYear) : ""} onValueChange={(v) => setCompareYear(v === "" ? null : Number(v))}>
+          <Select value={compareYear !== null ? String(compareYear) : "none"} onValueChange={(v) => setCompareYear(v === "none" ? null : Number(v))}>
             <SelectTrigger className="w-[150px]" data-testid="select-compare-year">
               <SelectValue placeholder="Porównaj z..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">— Brak —</SelectItem>
+              <SelectItem value="none">— Brak —</SelectItem>
               {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i)
                 .filter(y => y !== year)
                 .map(y => (
