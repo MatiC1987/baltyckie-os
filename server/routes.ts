@@ -5579,6 +5579,78 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.post('/api/tasks/:id/duplicate', isAuthenticated, async (req, res) => {
+    try {
+      const original = await storage.getTask(Number(req.params.id));
+      if (!original) return res.status(404).json({ message: "Task not found" });
+      const duplicated = await storage.createTask({
+        title: original.title + " (kopia)",
+        notes: original.notes,
+        completed: false,
+        priority: original.priority || "BRAK",
+        dueDate: original.dueDate,
+        dueTime: original.dueTime,
+        tags: original.tags || [],
+        projectId: original.projectId,
+        sectionId: original.sectionId,
+        sortOrder: (original.sortOrder ?? 0) + 1,
+        recurring: original.recurring,
+        reminderDate: original.reminderDate,
+        reminderTime: original.reminderTime,
+      });
+      res.json(duplicated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/tasks/bulk-delete', isAuthenticated, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids)) return res.status(400).json({ message: "ids must be array" });
+      for (const id of ids) {
+        await storage.deleteTask(Number(id));
+      }
+      res.json({ success: true, deleted: ids.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/tasks/bulk-move', isAuthenticated, async (req, res) => {
+    try {
+      const { ids, projectId, sectionId } = req.body;
+      if (!Array.isArray(ids)) return res.status(400).json({ message: "ids must be array" });
+      const results = [];
+      for (const id of ids) {
+        const updated = await storage.updateTask(Number(id), {
+          projectId: projectId ?? null,
+          sectionId: sectionId ?? null,
+        });
+        results.push(updated);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/tasks/:id/convert-to-project', isAuthenticated, async (req, res) => {
+    try {
+      const task = await storage.getTask(Number(req.params.id));
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      const project = await storage.createTaskProject({
+        name: task.title,
+        color: "#5ADBFA",
+        sortOrder: 0,
+      });
+      await storage.deleteTask(task.id);
+      res.json(project);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== TASK CHECKLIST ITEMS ====================
   app.get('/api/task-checklist/:taskId', isAuthenticated, async (req, res) => {
     try {

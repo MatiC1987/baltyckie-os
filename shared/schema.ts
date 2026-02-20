@@ -1040,6 +1040,7 @@ export const taskProjects = pgTable("task_projects", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   color: text("color").default("#5ADBFA"),
+  area: text("area"),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });

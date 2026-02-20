@@ -458,7 +458,7 @@ export default function Revenue() {
   useEffect(() => {
     setLocalRevEdits({});
     setLocalCostEdits({});
-  }, [year, forecasts, costForecasts]);
+  }, [year]);
 
   const importMutation = useMutation({
     mutationFn: async () => {
