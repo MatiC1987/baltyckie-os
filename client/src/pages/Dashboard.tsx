@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -24,76 +25,12 @@ import { differenceInDays, format } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
   ArrowUp, ArrowDown, ArrowUpDown, Plane, PlaneTakeoff, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target, Scale,
-  Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench, Settings, Eye, EyeOff, ChevronUp, ChevronDown as ChevronDownIcon,
+  Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench,
 } from "lucide-react";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from "@/components/ui/sheet";
 import { useLocation } from "wouter";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
 import { ReservationForm } from "@/pages/Reservations";
-import type { Reservation, Lease, SubleasePayment, Loan, LoanPayment } from "@shared/schema";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Trash2 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-
-type WidgetDef = {
-  id: string;
-  label: string;
-  category: "financial" | "operational" | "admin";
-  defaultVisible: boolean;
-  description: string;
-};
-
-const WIDGET_REGISTRY: WidgetDef[] = [
-  { id: "kpi", label: "Wskaźniki KPI", category: "financial", defaultVisible: true, description: "Przychód, rezerwacje, nieopłacone, saldo" },
-  { id: "balance", label: "Saldo firmowe", category: "financial", defaultVisible: true, description: "Salda kont bankowych" },
-  { id: "forecast", label: "Prognoza przychodów", category: "financial", defaultVisible: true, description: "Realizacja prognozy miesięcznej" },
-  { id: "unpaid-subleases", label: "Nieopłacone podnajmy", category: "financial", defaultVisible: true, description: "Zaległe płatności podnajmu" },
-  { id: "quick-actions", label: "Szybkie akcje", category: "operational", defaultVisible: true, description: "Skróty do tworzenia rezerwacji, wydatków" },
-  { id: "unpaid-arrivals", label: "Nieopłacone przyjazdy", category: "operational", defaultVisible: true, description: "Zakończone rezerwacje z dopłatą" },
-  { id: "upcoming-arrivals", label: "Najbliższe przyjazdy", category: "operational", defaultVisible: true, description: "Rezerwacje w ciągu 7 dni" },
-  { id: "upcoming-departures", label: "Najbliższe wyjazdy", category: "operational", defaultVisible: true, description: "Wyjazdy w ciągu 7 dni" },
-  { id: "expiring-leases", label: "Kończące się umowy", category: "admin", defaultVisible: true, description: "Umowy najmu kończące się w 6 miesięcy" },
-];
-
-const PREFS_KEY = "dashboard-widget-prefs";
-
-type WidgetPrefs = {
-  visible: Record<string, boolean>;
-  order: string[];
-};
-
-function getDefaultPrefs(): WidgetPrefs {
-  return {
-    visible: Object.fromEntries(WIDGET_REGISTRY.map(w => [w.id, w.defaultVisible])),
-    order: WIDGET_REGISTRY.map(w => w.id),
-  };
-}
-
-function loadWidgetPrefs(): WidgetPrefs {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const defaults = getDefaultPrefs();
-      const order = [...parsed.order || []];
-      for (const w of WIDGET_REGISTRY) {
-        if (!order.includes(w.id)) order.push(w.id);
-      }
-      return {
-        visible: { ...defaults.visible, ...(parsed.visible || {}) },
-        order: order.filter(id => WIDGET_REGISTRY.some(w => w.id === id)),
-      };
-    }
-  } catch {}
-  return getDefaultPrefs();
-}
-
-function saveWidgetPrefs(prefs: WidgetPrefs) {
-  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-}
+import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
 
 type CompanyBalanceAccount = {
   id: number;
@@ -260,15 +197,6 @@ export default function Dashboard() {
   }>({ queryKey: ["/api/dashboard-reminders"] });
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingBalance, setEditingBalance] = useState("");
-  const [widgetPrefs, setWidgetPrefs] = useState(loadWidgetPrefs);
-  const [showWidgetSettings, setShowWidgetSettings] = useState(false);
-
-  const handlePrefsChange = (prefs: WidgetPrefs) => {
-    saveWidgetPrefs(prefs);
-    setWidgetPrefs(prefs);
-  };
-
-  const isVisible = (id: string) => widgetPrefs.visible[id] !== false;
 
   const updateBalanceMutation = useMutation({
     mutationFn: ({ accountId, balance }: { accountId: number; balance: string }) =>
@@ -280,7 +208,6 @@ export default function Dashboard() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/account-balance-history"] });
       setEditingAccountId(null);
       setEditingBalance("");
     },
@@ -330,520 +257,155 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
-            <LayoutDashboard className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
-              {greeting}{userName ? `, ${userName}` : ""}
-            </h1>
-            <p className="text-sm text-muted-foreground capitalize" data-testid="text-dashboard-date">{todayFormatted}</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
+          <LayoutDashboard className="h-5 w-5" />
         </div>
-        <Button variant="outline" size="sm" onClick={() => setShowWidgetSettings(true)} data-testid="button-widget-settings">
-          <Settings className="h-4 w-4 mr-1" /> Widżety
-        </Button>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
+            {greeting}{userName ? `, ${userName}` : ""}
+          </h1>
+          <p className="text-sm text-muted-foreground capitalize" data-testid="text-dashboard-date">{todayFormatted}</p>
+        </div>
       </div>
 
-      {widgetPrefs.order.map(widgetId => {
-        if (!isVisible(widgetId)) return null;
-        switch (widgetId) {
-          case "kpi":
-            return kpiStats ? (
-              <div key="kpi" className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-                <Card data-testid="card-kpi-revenue">
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground font-medium">Przychód (ten miesiąc)</p>
-                      <div className="h-8 w-8 rounded-md bg-emerald-500/10 flex items-center justify-center shrink-0">
-                        <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      </div>
-                    </div>
-                    <p className="text-xl font-bold mt-1">
-                      {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
-                    </p>
-                    {kpiStats.lastMonthRevenue > 0 && (
-                      <p className={`text-xs mt-1 flex items-center gap-1 ${kpiStats.revenueChange >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                        {kpiStats.revenueChange >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                        {Math.abs(kpiStats.revenueChange).toFixed(1)}% vs poprzedni mies.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-                <Card data-testid="card-kpi-reservations">
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground font-medium">Rezerwacje (ten miesiąc)</p>
-                      <div className="h-8 w-8 rounded-md bg-blue-500/10 flex items-center justify-center shrink-0">
-                        <Plane className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                      </div>
-                    </div>
-                    <p className="text-xl font-bold mt-1">{kpiStats.monthCount}</p>
-                    <p className="text-xs text-muted-foreground mt-1">aktywnych rezerwacji</p>
-                  </CardContent>
-                </Card>
-                <Card data-testid="card-kpi-unpaid">
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground font-medium">Do opłacenia</p>
-                      <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${kpiStats.unpaidCount > 0 ? "bg-amber-500/10" : "bg-muted/50"}`}>
-                        <AlertCircle className={`h-4 w-4 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} />
-                      </div>
-                    </div>
-                    <p className={`text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
-                      {kpiStats.unpaidCount}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">nieopłaconych rezerwacji</p>
-                  </CardContent>
-                </Card>
-                <Card data-testid="card-kpi-balance">
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground font-medium">Saldo firmowe</p>
-                      <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                        <Wallet className="h-4 w-4 text-primary" />
-                      </div>
-                    </div>
-                    <p className={`text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                      {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">łączne saldo kont</p>
-                  </CardContent>
-                </Card>
-              </div>
-            ) : null;
-          case "quick-actions":
-            return <QuickActions key="quick-actions" />;
-          case "balance":
-            return (
-              <CompanyBalanceCard
-                key="balance"
-                companyBalance={companyBalance}
-                balanceLoading={balanceLoading}
-                editingAccountId={editingAccountId}
-                editingBalance={editingBalance}
-                setEditingAccountId={setEditingAccountId}
-                setEditingBalance={setEditingBalance}
-                updateBalanceMutation={updateBalanceMutation}
-              />
-            );
-          case "forecast":
-            return <RevenueForecastSection key="forecast" forecastData={forecastData || []} />;
-          case "unpaid-arrivals":
-            return <UnpaidArrivalsTab key="unpaid-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} />;
-          case "upcoming-arrivals":
-            return <UpcomingArrivalsTab key="upcoming-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />;
-          case "upcoming-departures":
-            return <UpcomingDeparturesTab key="upcoming-departures" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />;
-          case "unpaid-subleases":
-            return <UnpaidSubleasesTab key="unpaid-subleases" payments={allSubleasePayments || []} apartments={apartments || []} />;
-          case "expiring-leases":
-            return <ExpiringLeasesTab key="expiring-leases" leases={leases || []} apartments={apartments || []} />;
-          default:
-            return null;
-        }
-      })}
-
-      <WidgetSettingsSheet open={showWidgetSettings} onOpenChange={setShowWidgetSettings} prefs={widgetPrefs} onPrefsChange={handlePrefsChange} />
-    </div>
-  );
-}
-
-function WidgetSettingsSheet({ open, onOpenChange, prefs, onPrefsChange }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  prefs: WidgetPrefs;
-  onPrefsChange: (prefs: WidgetPrefs) => void;
-}) {
-  const categoryLabels: Record<string, string> = { financial: "Finansowe", operational: "Operacyjne", admin: "Administracyjne" };
-
-  const toggleWidget = (id: string) => {
-    const newPrefs = { ...prefs, visible: { ...prefs.visible, [id]: !prefs.visible[id] } };
-    onPrefsChange(newPrefs);
-  };
-
-  const moveWidget = (id: string, direction: "up" | "down") => {
-    const order = [...prefs.order];
-    const idx = order.indexOf(id);
-    if (idx < 0) return;
-    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= order.length) return;
-    [order[idx], order[targetIdx]] = [order[targetIdx], order[idx]];
-    onPrefsChange({ ...prefs, order });
-  };
-
-  const resetDefaults = () => {
-    onPrefsChange(getDefaultPrefs());
-  };
-
-  const orderedWidgets = prefs.order
-    .map(id => WIDGET_REGISTRY.find(w => w.id === id))
-    .filter((w): w is WidgetDef => !!w);
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[350px] sm:w-[400px]" data-testid="sheet-widget-settings">
-        <SheetHeader>
-          <SheetTitle>Konfiguracja widżetów</SheetTitle>
-        </SheetHeader>
-        <div className="py-4 space-y-2">
-          <p className="text-xs text-muted-foreground mb-3">Włącz/wyłącz widżety i zmień ich kolejność strzałkami.</p>
-          {orderedWidgets.map((w, idx) => (
-            <div key={w.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-md border border-border" data-testid={`widget-toggle-${w.id}`}>
-              <div className="flex flex-col shrink-0">
-                <button
-                  onClick={() => moveWidget(w.id, "up")}
-                  disabled={idx === 0}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
-                  data-testid={`widget-move-up-${w.id}`}
-                >
-                  <ChevronUp className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={() => moveWidget(w.id, "down")}
-                  disabled={idx === orderedWidgets.length - 1}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
-                  data-testid={`widget-move-down-${w.id}`}
-                >
-                  <ChevronDownIcon className="h-3 w-3" />
-                </button>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
-                  {w.label}
-                  <Badge variant="outline" className="text-[9px]">{categoryLabels[w.category]}</Badge>
+      {kpiStats && (
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Card data-testid="card-kpi-revenue">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Przychód (ten miesiąc)</p>
+                <div className="h-8 w-8 rounded-md bg-emerald-500/10 flex items-center justify-center shrink-0">
+                  <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <div className="text-xs text-muted-foreground">{w.description}</div>
               </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => toggleWidget(w.id)}
-                className={`shrink-0 toggle-elevate ${prefs.visible[w.id] ? "toggle-elevated" : ""}`}
-                data-testid={`button-toggle-widget-${w.id}`}
-              >
-                {prefs.visible[w.id] ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
-              </Button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" onClick={resetDefaults} className="w-full mt-4" data-testid="button-reset-widget-defaults">
-            Przywróć domyślne
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
+              <p className="text-xl font-bold mt-1">
+                {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+              </p>
+              {kpiStats.lastMonthRevenue > 0 && (
+                <p className={`text-xs mt-1 flex items-center gap-1 ${kpiStats.revenueChange >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {kpiStats.revenueChange >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                  {Math.abs(kpiStats.revenueChange).toFixed(1)}% vs poprzedni mies.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-function MiniSparkline({ data, color, accountId }: { data: { value: number }[]; color: string; accountId?: number }) {
-  if (data.length < 2) return null;
-  const values = data.map(d => d.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const width = 64;
-  const height = 24;
-  const padding = 2;
-  const points = values.map((v, i) => {
-    const x = padding + (i / (values.length - 1)) * (width - 2 * padding);
-    const y = height - padding - ((v - min) / range) * (height - 2 * padding);
-    return `${x},${y}`;
-  });
-  return (
-    <svg width={width} height={height} className="shrink-0" data-testid={accountId ? `sparkline-account-${accountId}` : undefined}>
-      <polyline
-        points={points.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+          <Card data-testid="card-kpi-reservations">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Rezerwacje (ten miesiąc)</p>
+                <div className="h-8 w-8 rounded-md bg-blue-500/10 flex items-center justify-center shrink-0">
+                  <Plane className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+              <p className="text-xl font-bold mt-1">{kpiStats.monthCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                aktywnych rezerwacji
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-kpi-unpaid">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Do opłacenia</p>
+                <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${kpiStats.unpaidCount > 0 ? "bg-amber-500/10" : "bg-muted/50"}`}>
+                  <AlertCircle className={`h-4 w-4 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} />
+                </div>
+              </div>
+              <p className={`text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                {kpiStats.unpaidCount}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                nieopłaconych rezerwacji
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-kpi-balance">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground font-medium">Saldo firmowe</p>
+                <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                  <Wallet className="h-4 w-4 text-primary" />
+                </div>
+              </div>
+              <p className={`text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                łączne saldo kont
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <QuickActions />
+
+      <CompanyBalanceCard
+        companyBalance={companyBalance}
+        balanceLoading={balanceLoading}
+        editingAccountId={editingAccountId}
+        editingBalance={editingBalance}
+        setEditingAccountId={setEditingAccountId}
+        setEditingBalance={setEditingBalance}
+        updateBalanceMutation={updateBalanceMutation}
       />
-    </svg>
-  );
-}
 
-const CATEGORY_LABELS: Record<string, string> = {
-  KONTA_BANKOWE: "Konta bankowe",
-  GOTOWKA: "Gotówka",
-  INNE: "Inne",
-};
+      <RevenueForecastSection forecastData={forecastData || []} />
 
-const CATEGORY_ORDER = ["KONTA_BANKOWE", "GOTOWKA", "INNE"];
+      <Tabs defaultValue="unpaid-arrivals" className="space-y-4">
+        <TabsList className="flex flex-wrap h-auto gap-2 bg-background" data-testid="dashboard-tabs">
+          <TabsTrigger value="unpaid-arrivals" data-testid="tab-unpaid-arrivals" className="text-xs sm:text-sm">
+            <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Nieopłacone przyjazdy</span>
+            <span className="sm:hidden">Nieopłacone</span>
+          </TabsTrigger>
+          <TabsTrigger value="upcoming-arrivals" data-testid="tab-upcoming-arrivals" className="text-xs sm:text-sm">
+            <Plane className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Najbliższe przyjazdy</span>
+            <span className="sm:hidden">Przyjazdy</span>
+          </TabsTrigger>
+          <TabsTrigger value="upcoming-departures" data-testid="tab-upcoming-departures" className="text-xs sm:text-sm">
+            <PlaneTakeoff className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Najbliższe wyjazdy</span>
+            <span className="sm:hidden">Wyjazdy</span>
+          </TabsTrigger>
+          <TabsTrigger value="unpaid-subleases" data-testid="tab-unpaid-subleases" className="text-xs sm:text-sm">
+            <FileWarning className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Nieopłacone podnajmy</span>
+            <span className="sm:hidden">Podnajmy</span>
+          </TabsTrigger>
+          <TabsTrigger value="expiring-leases" data-testid="tab-expiring-leases" className="text-xs sm:text-sm">
+            <CalendarClock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+            <span className="hidden sm:inline">Kończące się umowy</span>
+            <span className="sm:hidden">Umowy</span>
+          </TabsTrigger>
+        </TabsList>
 
-type LoanWithPayments = Loan & { payments: LoanPayment[]; totalPaid: string; remaining: string };
+        <TabsContent value="unpaid-arrivals">
+          <UnpaidArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} />
+        </TabsContent>
 
-function LoansDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { toast } = useToast();
-  const { data: loansData, isLoading } = useQuery<LoanWithPayments[]>({
-    queryKey: ["/api/loans"],
-    enabled: open,
-  });
+        <TabsContent value="upcoming-arrivals">
+          <UpcomingArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
+        </TabsContent>
 
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newDebtor, setNewDebtor] = useState("");
-  const [newAmount, setNewAmount] = useState("");
-  const [newNotes, setNewNotes] = useState("");
+        <TabsContent value="upcoming-departures">
+          <UpcomingDeparturesTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
+        </TabsContent>
 
-  const [payingLoanId, setPayingLoanId] = useState<number | null>(null);
-  const [payAmount, setPayAmount] = useState("");
-  const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
-  const [payNotes, setPayNotes] = useState("");
+        <TabsContent value="unpaid-subleases">
+          <UnpaidSubleasesTab payments={allSubleasePayments || []} apartments={apartments || []} />
+        </TabsContent>
 
-  const [expandedLoanId, setExpandedLoanId] = useState<number | null>(null);
-
-  const createLoanMutation = useMutation({
-    mutationFn: async (data: { title: string; debtor: string; amount: string; notes?: string }) => {
-      return apiRequest("POST", "/api/loans", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
-      setShowAddForm(false);
-      setNewTitle(""); setNewDebtor(""); setNewAmount(""); setNewNotes("");
-      toast({ title: "Pożyczka dodana" });
-    },
-  });
-
-  const deleteLoanMutation = useMutation({
-    mutationFn: async (id: number) => apiRequest("DELETE", `/api/loans/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
-      toast({ title: "Pożyczka usunięta" });
-    },
-  });
-
-  const createPaymentMutation = useMutation({
-    mutationFn: async (data: { loanId: number; amount: string; date: string; notes?: string }) => {
-      return apiRequest("POST", "/api/loan-payments", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
-      setPayingLoanId(null);
-      setPayAmount(""); setPayDate(new Date().toISOString().split("T")[0]); setPayNotes("");
-      toast({ title: "Spłata zarejestrowana" });
-    },
-  });
-
-  const deletePaymentMutation = useMutation({
-    mutationFn: async (id: number) => apiRequest("DELETE", `/api/loan-payments/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/loans"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
-      toast({ title: "Spłata usunięta" });
-    },
-  });
-
-  const totalRemaining = loansData?.reduce((s, l) => s + Number(l.remaining), 0) || 0;
-  const totalLoaned = loansData?.reduce((s, l) => s + Number(l.amount), 0) || 0;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-loans">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <HandCoins className="h-5 w-5" />
-            Zarządzanie pożyczkami
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="rounded-lg bg-gradient-to-r from-orange-500/10 to-transparent border border-orange-500/20 p-3 mb-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-muted-foreground">Łączna kwota pożyczek</div>
-              <div className="text-xl font-bold">{totalLoaned.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground">Pozostało do spłaty</div>
-              <div className="text-xl font-bold text-orange-600 dark:text-orange-400">{totalRemaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
-            </div>
-          </div>
-        </div>
-
-        {!showAddForm ? (
-          <Button onClick={() => setShowAddForm(true)} size="sm" className="mb-3" data-testid="button-add-loan">
-            <Plus className="h-4 w-4 mr-1" /> Dodaj pożyczkę
-          </Button>
-        ) : (
-          <div className="border rounded-lg p-3 mb-3 space-y-3 bg-muted/30">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Tytuł *</Label>
-                <Input value={newTitle} onChange={(e: any) => setNewTitle(e.target.value)} placeholder="np. Pożyczka na remont" className="h-8 text-sm" data-testid="input-loan-title" />
-              </div>
-              <div>
-                <Label className="text-xs">Dłużnik *</Label>
-                <Input value={newDebtor} onChange={(e: any) => setNewDebtor(e.target.value)} placeholder="np. Jan Kowalski" className="h-8 text-sm" data-testid="input-loan-debtor" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Kwota (PLN) *</Label>
-                <Input type="number" step="0.01" value={newAmount} onChange={(e: any) => setNewAmount(e.target.value)} placeholder="0.00" className="h-8 text-sm" data-testid="input-loan-amount" />
-              </div>
-              <div>
-                <Label className="text-xs">Notatki</Label>
-                <Input value={newNotes} onChange={(e: any) => setNewNotes(e.target.value)} placeholder="Opcjonalne" className="h-8 text-sm" data-testid="input-loan-notes" />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" disabled={!newTitle || !newDebtor || !newAmount || createLoanMutation.isPending}
-                onClick={() => createLoanMutation.mutate({ title: newTitle, debtor: newDebtor, amount: newAmount, notes: newNotes || undefined })}
-                data-testid="button-save-loan"
-              >
-                <Check className="h-3 w-3 mr-1" /> Zapisz
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowAddForm(false); setNewTitle(""); setNewDebtor(""); setNewAmount(""); setNewNotes(""); }}
-                data-testid="button-cancel-loan"
-              >
-                Anuluj
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />)}</div>
-        ) : !loansData || loansData.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">Brak pożyczek. Dodaj pierwszą pożyczkę powyżej.</div>
-        ) : (
-          <div className="space-y-2">
-            {loansData.map(loan => {
-              const remaining = Number(loan.remaining);
-              const total = Number(loan.amount);
-              const paid = Number(loan.totalPaid);
-              const paidPct = total > 0 ? (paid / total) * 100 : 0;
-              const isExpanded = expandedLoanId === loan.id;
-              const isPaying = payingLoanId === loan.id;
-
-              return (
-                <div key={loan.id} className="border rounded-lg overflow-hidden" data-testid={`card-loan-${loan.id}`}>
-                  <div
-                    className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => setExpandedLoanId(isExpanded ? null : loan.id)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm truncate">{loan.title}</span>
-                          {remaining <= 0 && <Badge variant="outline" className="text-green-600 border-green-600 text-[10px]">SPŁACONA</Badge>}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{loan.debtor}</div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-sm font-bold">{total.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
-                        {remaining > 0 && (
-                          <div className="text-xs text-orange-600 dark:text-orange-400">
-                            pozostało: {remaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2 w-full bg-muted rounded-full h-1.5">
-                      <div className="bg-green-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(paidPct, 100)}%` }} />
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-[10px] text-muted-foreground">Spłacono {paidPct.toFixed(0)}%</span>
-                      {loan.notes && <span className="text-[10px] text-muted-foreground italic truncate max-w-[150px]">{loan.notes}</span>}
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="border-t bg-muted/20 p-3 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase">Historia spłat</span>
-                        <div className="flex gap-1">
-                          {remaining > 0 && (
-                            <Button size="sm" variant="outline" className="h-7 text-xs"
-                              onClick={(e) => { e.stopPropagation(); setPayingLoanId(isPaying ? null : loan.id); setPayAmount(""); }}
-                              data-testid={`button-add-payment-${loan.id}`}
-                            >
-                              <Plus className="h-3 w-3 mr-1" /> Spłata
-                            </Button>
-                          )}
-                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive"
-                            onClick={(e) => { e.stopPropagation(); if (confirm("Usunąć tę pożyczkę?")) deleteLoanMutation.mutate(loan.id); }}
-                            data-testid={`button-delete-loan-${loan.id}`}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {isPaying && (
-                        <div className="border rounded-md p-2 space-y-2 bg-background">
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <Label className="text-[10px]">Kwota *</Label>
-                              <Input type="number" step="0.01" value={payAmount} onChange={(e: any) => setPayAmount(e.target.value)}
-                                placeholder={remaining.toFixed(2)} className="h-7 text-xs" data-testid={`input-payment-amount-${loan.id}`} />
-                            </div>
-                            <div>
-                              <Label className="text-[10px]">Data *</Label>
-                              <Input type="date" value={payDate} onChange={(e: any) => setPayDate(e.target.value)}
-                                className="h-7 text-xs" data-testid={`input-payment-date-${loan.id}`} />
-                            </div>
-                            <div>
-                              <Label className="text-[10px]">Notatka</Label>
-                              <Input value={payNotes} onChange={(e: any) => setPayNotes(e.target.value)}
-                                placeholder="Opcjonalnie" className="h-7 text-xs" data-testid={`input-payment-notes-${loan.id}`} />
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button size="sm" className="h-7 text-xs"
-                              disabled={!payAmount || !payDate || createPaymentMutation.isPending}
-                              onClick={() => createPaymentMutation.mutate({ loanId: loan.id, amount: payAmount, date: payDate, notes: payNotes || undefined })}
-                              data-testid={`button-save-payment-${loan.id}`}
-                            >
-                              <Check className="h-3 w-3 mr-1" /> Zapisz spłatę
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 text-xs"
-                              onClick={() => { setPayingLoanId(null); setPayAmount(""); setPayNotes(""); }}
-                            >
-                              Anuluj
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {loan.payments.length === 0 ? (
-                        <div className="text-xs text-muted-foreground text-center py-2">Brak spłat</div>
-                      ) : (
-                        <div className="space-y-1">
-                          {loan.payments.map(p => (
-                            <div key={p.id} className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-muted/50 group" data-testid={`row-payment-${p.id}`}>
-                              <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground">{format(new Date(p.date), "dd.MM.yyyy")}</span>
-                                <span className="font-medium text-green-600 dark:text-green-400">
-                                  +{Number(p.amount).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
-                                </span>
-                                {p.notes && <span className="text-muted-foreground italic">{p.notes}</span>}
-                              </div>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); if (confirm("Usunąć tę spłatę?")) deletePaymentMutation.mutate(p.id); }}
-                                className="invisible group-hover:visible text-destructive hover:text-destructive/80"
-                                data-testid={`button-delete-payment-${p.id}`}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        <TabsContent value="expiring-leases">
+          <ExpiringLeasesTab leases={leases || []} apartments={apartments || []} />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
 
@@ -851,243 +413,122 @@ function CompanyBalanceCard({
   companyBalance, balanceLoading, editingAccountId, editingBalance,
   setEditingAccountId, setEditingBalance, updateBalanceMutation,
 }: any) {
-  const [loansDialogOpen, setLoansDialogOpen] = useState(false);
   const saldoLinkMap: Record<string, string> = {
     "Saldo - M. Cieślak": "/saldo-mc",
     "Saldo - M. Latasiewicz": "/saldo-ml",
     "Saldo - J. Głodkowska": "/saldo-jg",
   };
 
-  const { data: balanceHistory } = useQuery<Record<number, { date: string; balance: string }[]>>({
-    queryKey: ["/api/account-balance-history"],
-  });
-
-  const totalBalance = Number(companyBalance?.totalBalance || 0);
-
-  const totalChange = useMemo(() => {
-    if (!balanceHistory || !companyBalance?.accounts) return null;
-    let currentTotal = 0;
-    let previousTotal = 0;
-    let hasPrevious = false;
-    for (const acc of companyBalance.accounts) {
-      const current = Number(acc.latestBalance);
-      currentTotal += current;
-      const history = balanceHistory[acc.id];
-      if (history && history.length >= 2) {
-        previousTotal += Number(history[history.length - 2].balance);
-        hasPrevious = true;
-      } else {
-        previousTotal += current;
-      }
-    }
-    if (!hasPrevious) return null;
-    const diff = currentTotal - previousTotal;
-    const pct = previousTotal !== 0 ? ((diff / Math.abs(previousTotal)) * 100) : 0;
-    return { diff, pct };
-  }, [balanceHistory, companyBalance]);
-
-  const groupedAccounts = useMemo(() => {
-    if (!companyBalance?.accounts) return {};
-    const groups: Record<string, CompanyBalanceAccount[]> = {};
-    for (const acc of companyBalance.accounts) {
-      const cat = acc.category || "INNE";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(acc);
-    }
-    return groups;
-  }, [companyBalance]);
-
-  const getAccountChange = (accId: number, currentBalance: number) => {
-    if (!balanceHistory?.[accId] || balanceHistory[accId].length < 2) return null;
-    const history = balanceHistory[accId];
-    const prev = Number(history[history.length - 2].balance);
-    const diff = currentBalance - prev;
-    const pct = prev !== 0 ? ((diff / Math.abs(prev)) * 100) : 0;
-    return { diff, pct };
-  };
-
-  const getSparklineData = (accId: number) => {
-    if (!balanceHistory?.[accId]) return [];
-    return balanceHistory[accId].map(s => ({ value: Number(s.balance) }));
-  };
-
-  const renderAccountCard = (acc: CompanyBalanceAccount) => {
-    const Icon = getAccountIcon(acc.name);
-    const balance = Number(acc.latestBalance);
-    const isEditing = editingAccountId === acc.id;
-    const isAuto = acc.balanceSource === "auto_saldo" || acc.balanceSource === "auto_loans";
-    const saldoLink = saldoLinkMap[acc.name];
-    const isLoan = acc.type === "LOAN";
-    const change = getAccountChange(acc.id, balance);
-    const sparkData = getSparklineData(acc.id);
-    const sparkColor = change && change.diff >= 0 ? "#22c55e" : change && change.diff < 0 ? "#ef4444" : "#94a3b8";
-
-    const content = (
-      <>
-        <div className="flex items-center gap-1.5 mb-1">
-          <div className="h-6 w-6 rounded-md bg-muted flex items-center justify-center shrink-0">
-            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
-          <span className="text-[11px] text-muted-foreground truncate leading-tight">{acc.name}</span>
-          {isAuto && <span className="text-[9px] text-muted-foreground/50 italic ml-auto">auto</span>}
-        </div>
-        <div className="flex items-end justify-between gap-2">
-          <div className="min-w-0">
-            {isEditing ? (
-              <div className="flex items-center gap-1">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={editingBalance}
-                  onChange={(e: any) => setEditingBalance(e.target.value)}
-                  onKeyDown={(e: any) => {
-                    if (e.key === "Enter" && editingBalance.trim()) {
-                      updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
-                    }
-                    if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
-                  }}
-                  className="h-6 text-xs w-20"
-                  autoFocus
-                  data-testid={`input-balance-${acc.id}`}
-                />
-                <Button size="sm" variant="ghost"
-                  onClick={() => { if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() }); }}
-                  disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
-                  data-testid={`button-save-balance-${acc.id}`}
-                >
-                  <Check className="h-3 w-3" />
-                </Button>
-                <Button size="sm" variant="ghost"
-                  onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
-                  data-testid={`button-cancel-balance-${acc.id}`}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 group/edit">
-                <span className={`text-sm font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`} data-testid={`text-account-balance-${acc.id}`}>
-                  {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                </span>
-                {!isAuto && (
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingAccountId(acc.id); setEditingBalance(balance.toString()); }}
-                    className="invisible group-hover/edit:visible text-muted-foreground hover:text-foreground"
-                    data-testid={`button-edit-balance-${acc.id}`}
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            )}
-            {change && (
-              <div className={`flex items-center gap-0.5 mt-0.5 ${change.diff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid={`text-account-change-${acc.id}`}>
-                {change.diff >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                <span className="text-[10px] font-medium">
-                  {change.diff >= 0 ? "+" : ""}{change.diff.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
-                </span>
-                <span className="text-[9px] text-muted-foreground">
-                  ({change.pct >= 0 ? "+" : ""}{change.pct.toFixed(1)}%)
-                </span>
-              </div>
-            )}
-          </div>
-          <MiniSparkline data={sparkData} color={sparkColor} accountId={acc.id} />
-        </div>
-      </>
-    );
-
-    if (isLoan) {
-      return (
-        <button
-          key={acc.id}
-          onClick={() => setLoansDialogOpen(true)}
-          className="rounded-lg border border-border p-2.5 hover-elevate block text-left w-full"
-          data-testid={`card-account-balance-${acc.id}`}
-        >
-          {content}
-        </button>
-      );
-    }
-
-    if (isAuto && saldoLink) {
-      return (
-        <Link
-          key={acc.id}
-          href={saldoLink}
-          className="rounded-lg border border-border p-2.5 hover-elevate block"
-          data-testid={`card-account-balance-${acc.id}`}
-        >
-          {content}
-        </Link>
-      );
-    }
-
-    return (
-      <div key={acc.id} className="rounded-lg border border-border p-2.5" data-testid={`card-account-balance-${acc.id}`}>
-        {content}
-      </div>
-    );
-  };
-
   return (
     <Card data-testid="card-company-balance">
       <CardHeader className="pb-2 pt-3">
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 flex-wrap text-base">
           <Wallet className="h-4 w-4" />
           Saldo firmowe
+          {companyBalance && (
+            <span className="text-lg font-bold ml-2" data-testid="text-total-balance">
+              {Number(companyBalance.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="pb-3">
         {balanceLoading ? (
-          <div className="space-y-3">
-            <div className="h-16 bg-muted animate-pulse rounded-lg" />
-            <div className="h-24 bg-muted animate-pulse rounded-lg" />
-          </div>
+          <div className="h-10 bg-muted animate-pulse rounded-lg" />
         ) : (
-          <div className="space-y-4">
-            <div className="rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 p-4">
-              <div className="text-xs text-muted-foreground mb-1">Łączne saldo</div>
-              <div className="flex items-end gap-3 flex-wrap">
-                <span className={`text-3xl font-bold tracking-tight ${totalBalance < 0 ? "text-red-600 dark:text-red-400" : ""}`} data-testid="text-total-balance">
-                  {totalBalance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-lg font-semibold text-muted-foreground">PLN</span>
-                </span>
-                {totalChange && (
-                  <div className={`flex items-center gap-1 pb-1 ${totalChange.diff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                    {totalChange.diff >= 0 ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                    <span className="text-sm font-semibold">
-                      {totalChange.diff >= 0 ? "+" : ""}{totalChange.diff.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      ({totalChange.pct >= 0 ? "+" : ""}{totalChange.pct.toFixed(1)}%)
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+            {companyBalance?.accounts.map((acc: CompanyBalanceAccount) => {
+              const Icon = getAccountIcon(acc.name);
+              const balance = Number(acc.latestBalance);
+              const isEditing = editingAccountId === acc.id;
+              const isAuto = acc.balanceSource === "auto_saldo";
+              const saldoLink = saldoLinkMap[acc.name];
 
-            {CATEGORY_ORDER.map(cat => {
-              const accs = groupedAccounts[cat];
-              if (!accs || accs.length === 0) return null;
-              const categoryTotal = accs.reduce((s, a) => s + Number(a.latestBalance), 0);
+              if (isAuto && saldoLink) {
+                return (
+                  <Link
+                    key={acc.id}
+                    href={saldoLink}
+                    className="rounded-lg border border-border p-2 space-y-0.5 hover-elevate block"
+                    data-testid={`card-account-balance-${acc.id}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="text-[10px] text-muted-foreground truncate">{acc.name}</span>
+                    </div>
+                    <div className={`text-xs font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                      {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                    </div>
+                    <div className="text-[9px] text-muted-foreground/60 italic">auto</div>
+                  </Link>
+                );
+              }
+
               return (
-                <div key={cat}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider" data-testid={`text-category-label-${cat}`}>{CATEGORY_LABELS[cat] || cat}</span>
-                    <span className={`text-xs font-bold ${categoryTotal < 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`} data-testid={`text-category-total-${cat}`}>
-                      {categoryTotal.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-                    </span>
+                <div
+                  key={acc.id}
+                  className="rounded-lg border border-border p-2 space-y-0.5 group"
+                  data-testid={`card-account-balance-${acc.id}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <Icon className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="text-[10px] text-muted-foreground truncate">{acc.name}</span>
                   </div>
-                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {accs.map(renderAccountCard)}
-                  </div>
+                  {isEditing ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editingBalance}
+                        onChange={(e: any) => setEditingBalance(e.target.value)}
+                        onKeyDown={(e: any) => {
+                          if (e.key === "Enter" && editingBalance.trim()) {
+                            updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() });
+                          }
+                          if (e.key === "Escape") { setEditingAccountId(null); setEditingBalance(""); }
+                        }}
+                        className="h-6 text-xs w-full"
+                        autoFocus
+                        data-testid={`input-balance-${acc.id}`}
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => { if (editingBalance.trim()) updateBalanceMutation.mutate({ accountId: acc.id, balance: editingBalance.trim() }); }}
+                        disabled={!editingBalance.trim() || updateBalanceMutation.isPending}
+                        data-testid={`button-save-balance-${acc.id}`}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => { setEditingAccountId(null); setEditingBalance(""); }}
+                        data-testid={`button-cancel-balance-${acc.id}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className={`text-xs font-bold ${balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                        {balance.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                      </span>
+                      <button
+                        onClick={() => { setEditingAccountId(acc.id); setEditingBalance(balance.toString()); }}
+                        className="invisible group-hover:visible text-muted-foreground hover:text-foreground ml-auto"
+                        data-testid={`button-edit-balance-${acc.id}`}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
       </CardContent>
-      <LoansDialog open={loansDialogOpen} onOpenChange={setLoansDialogOpen} />
     </Card>
   );
 }

@@ -61,9 +61,7 @@ async function buildAll() {
   });
 }
 
-buildAll().then(async () => {
-  console.log("build complete");
-}).catch((err) => {
+buildAll().catch((err) => {
   console.error(err);
   process.exit(1);
 });

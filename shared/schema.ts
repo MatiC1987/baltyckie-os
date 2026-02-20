@@ -940,38 +940,3 @@ export const technicalInspectionsRelations = relations(technicalInspections, ({ 
 export const insertTechnicalInspectionSchema = createInsertSchema(technicalInspections).omit({ id: true, createdAt: true });
 export type TechnicalInspection = typeof technicalInspections.$inferSelect;
 export type InsertTechnicalInspection = z.infer<typeof insertTechnicalInspectionSchema>;
-
-export const loans = pgTable("loans", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  debtor: text("debtor").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  status: text("status").notNull().default("AKTYWNA"),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const loanPayments = pgTable("loan_payments", {
-  id: serial("id").primaryKey(),
-  loanId: integer("loan_id").references(() => loans.id, { onDelete: "cascade" }).notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  date: date("date").notNull(),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const loanPaymentsRelations = relations(loanPayments, ({ one }) => ({
-  loan: one(loans, { fields: [loanPayments.loanId], references: [loans.id] }),
-}));
-
-export const loansRelations = relations(loans, ({ many }) => ({
-  payments: many(loanPayments),
-}));
-
-export const insertLoanSchema = createInsertSchema(loans).omit({ id: true, createdAt: true });
-export type Loan = typeof loans.$inferSelect;
-export type InsertLoan = z.infer<typeof insertLoanSchema>;
-
-export const insertLoanPaymentSchema = createInsertSchema(loanPayments).omit({ id: true, createdAt: true });
-export type LoanPayment = typeof loanPayments.$inferSelect;
-export type InsertLoanPayment = z.infer<typeof insertLoanPaymentSchema>;

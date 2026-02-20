@@ -2,7 +2,6 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { runProdDataMigration } from "./prod-data-migrate";
 
 const app = express();
 const httpServer = createServer(app);
@@ -97,15 +96,8 @@ app.use((req, res, next) => {
       host: "0.0.0.0",
       reusePort: true,
     },
-    async () => {
+    () => {
       log(`serving on port ${port}`);
-      if (process.env.NODE_ENV === "production") {
-        try {
-          await runProdDataMigration();
-        } catch (e) {
-          console.error("[migrate] Migration error (non-fatal):", e);
-        }
-      }
     },
   );
 })();
