@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -25,12 +24,72 @@ import { differenceInDays, format } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
   ArrowUp, ArrowDown, ArrowUpDown, Plane, PlaneTakeoff, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target, Scale,
-  Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench,
+  Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench, Settings, Eye, EyeOff, ChevronUp, ChevronDown as ChevronDownIcon,
 } from "lucide-react";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import { useLocation } from "wouter";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
 import { ReservationForm } from "@/pages/Reservations";
 import type { Reservation, Lease, SubleasePayment } from "@shared/schema";
+
+type WidgetDef = {
+  id: string;
+  label: string;
+  category: "financial" | "operational" | "admin";
+  defaultVisible: boolean;
+  description: string;
+};
+
+const WIDGET_REGISTRY: WidgetDef[] = [
+  { id: "kpi", label: "Wskaźniki KPI", category: "financial", defaultVisible: true, description: "Przychód, rezerwacje, nieopłacone, saldo" },
+  { id: "balance", label: "Saldo firmowe", category: "financial", defaultVisible: true, description: "Salda kont bankowych" },
+  { id: "forecast", label: "Prognoza przychodów", category: "financial", defaultVisible: true, description: "Realizacja prognozy miesięcznej" },
+  { id: "unpaid-subleases", label: "Nieopłacone podnajmy", category: "financial", defaultVisible: true, description: "Zaległe płatności podnajmu" },
+  { id: "quick-actions", label: "Szybkie akcje", category: "operational", defaultVisible: true, description: "Skróty do tworzenia rezerwacji, wydatków" },
+  { id: "unpaid-arrivals", label: "Nieopłacone przyjazdy", category: "operational", defaultVisible: true, description: "Zakończone rezerwacje z dopłatą" },
+  { id: "upcoming-arrivals", label: "Najbliższe przyjazdy", category: "operational", defaultVisible: true, description: "Rezerwacje w ciągu 7 dni" },
+  { id: "upcoming-departures", label: "Najbliższe wyjazdy", category: "operational", defaultVisible: true, description: "Wyjazdy w ciągu 7 dni" },
+  { id: "expiring-leases", label: "Kończące się umowy", category: "admin", defaultVisible: true, description: "Umowy najmu kończące się w 6 miesięcy" },
+];
+
+const PREFS_KEY = "dashboard-widget-prefs";
+
+type WidgetPrefs = {
+  visible: Record<string, boolean>;
+  order: string[];
+};
+
+function getDefaultPrefs(): WidgetPrefs {
+  return {
+    visible: Object.fromEntries(WIDGET_REGISTRY.map(w => [w.id, w.defaultVisible])),
+    order: WIDGET_REGISTRY.map(w => w.id),
+  };
+}
+
+function loadWidgetPrefs(): WidgetPrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const defaults = getDefaultPrefs();
+      const order = [...parsed.order || []];
+      for (const w of WIDGET_REGISTRY) {
+        if (!order.includes(w.id)) order.push(w.id);
+      }
+      return {
+        visible: { ...defaults.visible, ...(parsed.visible || {}) },
+        order: order.filter(id => WIDGET_REGISTRY.some(w => w.id === id)),
+      };
+    }
+  } catch {}
+  return getDefaultPrefs();
+}
+
+function saveWidgetPrefs(prefs: WidgetPrefs) {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+}
 
 type CompanyBalanceAccount = {
   id: number;
@@ -197,6 +256,15 @@ export default function Dashboard() {
   }>({ queryKey: ["/api/dashboard-reminders"] });
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingBalance, setEditingBalance] = useState("");
+  const [widgetPrefs, setWidgetPrefs] = useState(loadWidgetPrefs);
+  const [showWidgetSettings, setShowWidgetSettings] = useState(false);
+
+  const handlePrefsChange = (prefs: WidgetPrefs) => {
+    saveWidgetPrefs(prefs);
+    setWidgetPrefs(prefs);
+  };
+
+  const isVisible = (id: string) => widgetPrefs.visible[id] !== false;
 
   const updateBalanceMutation = useMutation({
     mutationFn: ({ accountId, balance }: { accountId: number; balance: string }) =>
@@ -257,155 +325,210 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
-          <LayoutDashboard className="h-5 w-5" />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
+            <LayoutDashboard className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
+              {greeting}{userName ? `, ${userName}` : ""}
+            </h1>
+            <p className="text-sm text-muted-foreground capitalize" data-testid="text-dashboard-date">{todayFormatted}</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
-            {greeting}{userName ? `, ${userName}` : ""}
-          </h1>
-          <p className="text-sm text-muted-foreground capitalize" data-testid="text-dashboard-date">{todayFormatted}</p>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => setShowWidgetSettings(true)} data-testid="button-widget-settings">
+          <Settings className="h-4 w-4 mr-1" /> Widżety
+        </Button>
       </div>
 
-      {kpiStats && (
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-          <Card data-testid="card-kpi-revenue">
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground font-medium">Przychód (ten miesiąc)</p>
-                <div className="h-8 w-8 rounded-md bg-emerald-500/10 flex items-center justify-center shrink-0">
-                  <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                </div>
+      {widgetPrefs.order.map(widgetId => {
+        if (!isVisible(widgetId)) return null;
+        switch (widgetId) {
+          case "kpi":
+            return kpiStats ? (
+              <div key="kpi" className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+                <Card data-testid="card-kpi-revenue">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground font-medium">Przychód (ten miesiąc)</p>
+                      <div className="h-8 w-8 rounded-md bg-emerald-500/10 flex items-center justify-center shrink-0">
+                        <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                    </div>
+                    <p className="text-xl font-bold mt-1">
+                      {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+                    </p>
+                    {kpiStats.lastMonthRevenue > 0 && (
+                      <p className={`text-xs mt-1 flex items-center gap-1 ${kpiStats.revenueChange >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                        {kpiStats.revenueChange >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                        {Math.abs(kpiStats.revenueChange).toFixed(1)}% vs poprzedni mies.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card data-testid="card-kpi-reservations">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground font-medium">Rezerwacje (ten miesiąc)</p>
+                      <div className="h-8 w-8 rounded-md bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <Plane className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      </div>
+                    </div>
+                    <p className="text-xl font-bold mt-1">{kpiStats.monthCount}</p>
+                    <p className="text-xs text-muted-foreground mt-1">aktywnych rezerwacji</p>
+                  </CardContent>
+                </Card>
+                <Card data-testid="card-kpi-unpaid">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground font-medium">Do opłacenia</p>
+                      <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${kpiStats.unpaidCount > 0 ? "bg-amber-500/10" : "bg-muted/50"}`}>
+                        <AlertCircle className={`h-4 w-4 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} />
+                      </div>
+                    </div>
+                    <p className={`text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                      {kpiStats.unpaidCount}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">nieopłaconych rezerwacji</p>
+                  </CardContent>
+                </Card>
+                <Card data-testid="card-kpi-balance">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground font-medium">Saldo firmowe</p>
+                      <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                        <Wallet className="h-4 w-4 text-primary" />
+                      </div>
+                    </div>
+                    <p className={`text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                      {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">łączne saldo kont</p>
+                  </CardContent>
+                </Card>
               </div>
-              <p className="text-xl font-bold mt-1">
-                {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
-              </p>
-              {kpiStats.lastMonthRevenue > 0 && (
-                <p className={`text-xs mt-1 flex items-center gap-1 ${kpiStats.revenueChange >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {kpiStats.revenueChange >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                  {Math.abs(kpiStats.revenueChange).toFixed(1)}% vs poprzedni mies.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+            ) : null;
+          case "quick-actions":
+            return <QuickActions key="quick-actions" />;
+          case "balance":
+            return (
+              <CompanyBalanceCard
+                key="balance"
+                companyBalance={companyBalance}
+                balanceLoading={balanceLoading}
+                editingAccountId={editingAccountId}
+                editingBalance={editingBalance}
+                setEditingAccountId={setEditingAccountId}
+                setEditingBalance={setEditingBalance}
+                updateBalanceMutation={updateBalanceMutation}
+              />
+            );
+          case "forecast":
+            return <RevenueForecastSection key="forecast" forecastData={forecastData || []} />;
+          case "unpaid-arrivals":
+            return <UnpaidArrivalsTab key="unpaid-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} />;
+          case "upcoming-arrivals":
+            return <UpcomingArrivalsTab key="upcoming-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />;
+          case "upcoming-departures":
+            return <UpcomingDeparturesTab key="upcoming-departures" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />;
+          case "unpaid-subleases":
+            return <UnpaidSubleasesTab key="unpaid-subleases" payments={allSubleasePayments || []} apartments={apartments || []} />;
+          case "expiring-leases":
+            return <ExpiringLeasesTab key="expiring-leases" leases={leases || []} apartments={apartments || []} />;
+          default:
+            return null;
+        }
+      })}
 
-          <Card data-testid="card-kpi-reservations">
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground font-medium">Rezerwacje (ten miesiąc)</p>
-                <div className="h-8 w-8 rounded-md bg-blue-500/10 flex items-center justify-center shrink-0">
-                  <Plane className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                </div>
-              </div>
-              <p className="text-xl font-bold mt-1">{kpiStats.monthCount}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                aktywnych rezerwacji
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-kpi-unpaid">
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground font-medium">Do opłacenia</p>
-                <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${kpiStats.unpaidCount > 0 ? "bg-amber-500/10" : "bg-muted/50"}`}>
-                  <AlertCircle className={`h-4 w-4 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} />
-                </div>
-              </div>
-              <p className={`text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
-                {kpiStats.unpaidCount}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                nieopłaconych rezerwacji
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card data-testid="card-kpi-balance">
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground font-medium">Saldo firmowe</p>
-                <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                  <Wallet className="h-4 w-4 text-primary" />
-                </div>
-              </div>
-              <p className={`text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                łączne saldo kont
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <QuickActions />
-
-      <CompanyBalanceCard
-        companyBalance={companyBalance}
-        balanceLoading={balanceLoading}
-        editingAccountId={editingAccountId}
-        editingBalance={editingBalance}
-        setEditingAccountId={setEditingAccountId}
-        setEditingBalance={setEditingBalance}
-        updateBalanceMutation={updateBalanceMutation}
-      />
-
-      <RevenueForecastSection forecastData={forecastData || []} />
-
-      <Tabs defaultValue="unpaid-arrivals" className="space-y-4">
-        <TabsList className="flex flex-wrap h-auto gap-2 bg-background" data-testid="dashboard-tabs">
-          <TabsTrigger value="unpaid-arrivals" data-testid="tab-unpaid-arrivals" className="text-xs sm:text-sm">
-            <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Nieopłacone przyjazdy</span>
-            <span className="sm:hidden">Nieopłacone</span>
-          </TabsTrigger>
-          <TabsTrigger value="upcoming-arrivals" data-testid="tab-upcoming-arrivals" className="text-xs sm:text-sm">
-            <Plane className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Najbliższe przyjazdy</span>
-            <span className="sm:hidden">Przyjazdy</span>
-          </TabsTrigger>
-          <TabsTrigger value="upcoming-departures" data-testid="tab-upcoming-departures" className="text-xs sm:text-sm">
-            <PlaneTakeoff className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Najbliższe wyjazdy</span>
-            <span className="sm:hidden">Wyjazdy</span>
-          </TabsTrigger>
-          <TabsTrigger value="unpaid-subleases" data-testid="tab-unpaid-subleases" className="text-xs sm:text-sm">
-            <FileWarning className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Nieopłacone podnajmy</span>
-            <span className="sm:hidden">Podnajmy</span>
-          </TabsTrigger>
-          <TabsTrigger value="expiring-leases" data-testid="tab-expiring-leases" className="text-xs sm:text-sm">
-            <CalendarClock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-            <span className="hidden sm:inline">Kończące się umowy</span>
-            <span className="sm:hidden">Umowy</span>
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="unpaid-arrivals">
-          <UnpaidArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} />
-        </TabsContent>
-
-        <TabsContent value="upcoming-arrivals">
-          <UpcomingArrivalsTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
-        </TabsContent>
-
-        <TabsContent value="upcoming-departures">
-          <UpcomingDeparturesTab reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />
-        </TabsContent>
-
-        <TabsContent value="unpaid-subleases">
-          <UnpaidSubleasesTab payments={allSubleasePayments || []} apartments={apartments || []} />
-        </TabsContent>
-
-        <TabsContent value="expiring-leases">
-          <ExpiringLeasesTab leases={leases || []} apartments={apartments || []} />
-        </TabsContent>
-      </Tabs>
+      <WidgetSettingsSheet open={showWidgetSettings} onOpenChange={setShowWidgetSettings} prefs={widgetPrefs} onPrefsChange={handlePrefsChange} />
     </div>
+  );
+}
+
+function WidgetSettingsSheet({ open, onOpenChange, prefs, onPrefsChange }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  prefs: WidgetPrefs;
+  onPrefsChange: (prefs: WidgetPrefs) => void;
+}) {
+  const categoryLabels: Record<string, string> = { financial: "Finansowe", operational: "Operacyjne", admin: "Administracyjne" };
+
+  const toggleWidget = (id: string) => {
+    const newPrefs = { ...prefs, visible: { ...prefs.visible, [id]: !prefs.visible[id] } };
+    onPrefsChange(newPrefs);
+  };
+
+  const moveWidget = (id: string, direction: "up" | "down") => {
+    const order = [...prefs.order];
+    const idx = order.indexOf(id);
+    if (idx < 0) return;
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= order.length) return;
+    [order[idx], order[targetIdx]] = [order[targetIdx], order[idx]];
+    onPrefsChange({ ...prefs, order });
+  };
+
+  const resetDefaults = () => {
+    onPrefsChange(getDefaultPrefs());
+  };
+
+  const orderedWidgets = prefs.order
+    .map(id => WIDGET_REGISTRY.find(w => w.id === id))
+    .filter((w): w is WidgetDef => !!w);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-[350px] sm:w-[400px]" data-testid="sheet-widget-settings">
+        <SheetHeader>
+          <SheetTitle>Konfiguracja widżetów</SheetTitle>
+        </SheetHeader>
+        <div className="py-4 space-y-2">
+          <p className="text-xs text-muted-foreground mb-3">Włącz/wyłącz widżety i zmień ich kolejność strzałkami.</p>
+          {orderedWidgets.map((w, idx) => (
+            <div key={w.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-md border border-border" data-testid={`widget-toggle-${w.id}`}>
+              <div className="flex flex-col shrink-0">
+                <button
+                  onClick={() => moveWidget(w.id, "up")}
+                  disabled={idx === 0}
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
+                  data-testid={`widget-move-up-${w.id}`}
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => moveWidget(w.id, "down")}
+                  disabled={idx === orderedWidgets.length - 1}
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
+                  data-testid={`widget-move-down-${w.id}`}
+                >
+                  <ChevronDownIcon className="h-3 w-3" />
+                </button>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                  {w.label}
+                  <Badge variant="outline" className="text-[9px]">{categoryLabels[w.category]}</Badge>
+                </div>
+                <div className="text-xs text-muted-foreground">{w.description}</div>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => toggleWidget(w.id)}
+                className={`shrink-0 toggle-elevate ${prefs.visible[w.id] ? "toggle-elevated" : ""}`}
+                data-testid={`button-toggle-widget-${w.id}`}
+              >
+                {prefs.visible[w.id] ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
+              </Button>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" onClick={resetDefaults} className="w-full mt-4" data-testid="button-reset-widget-defaults">
+            Przywróć domyślne
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

@@ -6,12 +6,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Upload, Loader2, Wallet, LayoutGrid, Table2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Upload, Loader2, Wallet, LayoutGrid, Table2, Maximize2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
@@ -48,6 +49,21 @@ function pctColor(v: number): string {
   return "text-amber-600 dark:text-amber-400";
 }
 
+function pctChange(current: number, previous: number): string {
+  if (previous === 0) return "—";
+  const change = ((current - previous) / previous) * 100;
+  const sign = change > 0 ? "+" : "";
+  return `${sign}${change.toFixed(0)}%`;
+}
+
+function changeColor(current: number, previous: number): string {
+  if (previous === 0) return "text-muted-foreground";
+  const diff = current - previous;
+  if (diff > 0) return "text-emerald-600 dark:text-emerald-400";
+  if (diff < 0) return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
+}
+
 export default function Revenue() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
@@ -57,6 +73,8 @@ export default function Revenue() {
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
   const [compactView, setCompactView] = useState(true);
+  const [compareYear, setCompareYear] = useState<number | null>(null);
+  const fullscreen = useFullscreen();
 
   const { data: apartments = [] } = useQuery<Apartment[]>({ queryKey: ["/api/apartments"] });
   const { data: locations = [] } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
@@ -75,6 +93,26 @@ export default function Revenue() {
       if (!res.ok) throw new Error("Failed to fetch forecasts");
       return res.json();
     },
+  });
+
+  const { data: compareRevenueData = {} } = useQuery<RevenueData>({
+    queryKey: ["/api/revenue", compareYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/revenue?year=${compareYear}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch compare revenue");
+      return res.json();
+    },
+    enabled: compareYear !== null,
+  });
+
+  const { data: compareForecastData = [] } = useQuery<RevenueForecast[]>({
+    queryKey: ["/api/revenue-forecasts", compareYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/revenue-forecasts?year=${compareYear}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch compare forecasts");
+      return res.json();
+    },
+    enabled: compareYear !== null,
   });
 
   const forecastLookup = useMemo(() => {
@@ -249,6 +287,39 @@ export default function Revenue() {
     return totals;
   }, [locationApartments, revenueData, forecastLookup, currentLocation]);
 
+  const getCompareMonthData = (aptId: number, month: number): MonthData => {
+    return compareRevenueData[aptId]?.[month] || { najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
+  };
+
+  const compareLocationTotals = useMemo(() => {
+    if (compareYear === null) return null;
+    const totals: Record<number, { przychody: number; najem: number; podnajem: number }> = {};
+    for (let m = 0; m < 12; m++) {
+      let najem = 0, podnajem = 0;
+      for (const apt of locationApartments) {
+        const md = getCompareMonthData(apt.id, m);
+        najem += md.najem;
+        podnajem += md.podnajem;
+      }
+      totals[m] = { przychody: najem + podnajem, najem, podnajem };
+    }
+    return totals;
+  }, [locationApartments, compareRevenueData, compareYear]);
+
+  const compareGlobalTotals = useMemo(() => {
+    if (compareYear === null) return null;
+    let przychody = 0, najem = 0, podnajem = 0;
+    for (const apt of allActiveApartments) {
+      for (let m = 0; m < 12; m++) {
+        const md = getCompareMonthData(apt.id, m);
+        najem += md.najem;
+        podnajem += md.podnajem;
+        przychody += md.najem + md.podnajem;
+      }
+    }
+    return { przychody, najem, podnajem };
+  }, [allActiveApartments, compareRevenueData, compareYear]);
+
   const revenueHeatMax = useMemo(() => {
     let max = 0;
     for (const apt of locationApartments) {
@@ -282,6 +353,7 @@ export default function Revenue() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <PageHeader title="Przychody" description="Przegląd przychodów z najmu i podnajmu." icon={Wallet} />
         <div className="flex items-center gap-2 flex-wrap">
+          <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
           <Button
             variant="outline"
             size="icon"
@@ -309,6 +381,19 @@ export default function Revenue() {
               {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).map(y => (
                 <SelectItem key={y} value={String(y)}>{y}</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select value={compareYear !== null ? String(compareYear) : ""} onValueChange={(v) => setCompareYear(v === "" ? null : Number(v))}>
+            <SelectTrigger className="w-[150px]" data-testid="select-compare-year">
+              <SelectValue placeholder="Porównaj z..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">— Brak —</SelectItem>
+              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i)
+                .filter(y => y !== year)
+                .map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
             </SelectContent>
           </Select>
         </div>
@@ -353,6 +438,33 @@ export default function Revenue() {
               </div>
             )}
           </div>
+          {compareYear !== null && compareGlobalTotals && (
+            <div className="mt-3 pt-3 border-t border-border" data-testid="global-compare-summary">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Porównanie z {compareYear}</span>
+              </div>
+              <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Przychody {compareYear}</div>
+                  <div className="text-sm tabular-nums" data-testid="text-compare-global-revenue">{formatNum(compareGlobalTotals.przychody)} zł</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Zmiana r/r</div>
+                  <div className={`text-sm font-semibold tabular-nums ${changeColor(globalYearTotals.przychody, compareGlobalTotals.przychody)}`} data-testid="text-compare-global-change">
+                    {pctChange(globalYearTotals.przychody, compareGlobalTotals.przychody)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Najem {compareYear}</div>
+                  <div className="text-sm tabular-nums" data-testid="text-compare-global-najem">{formatNum(compareGlobalTotals.najem)} zł</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Podnajem {compareYear}</div>
+                  <div className="text-sm tabular-nums" data-testid="text-compare-global-podnajem">{formatNum(compareGlobalTotals.podnajem)} zł</div>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-12 mt-3 pt-3 border-t border-border">
             {MONTHS.map((mName, mi) => {
               const t = globalTotals[mi];
@@ -445,6 +557,13 @@ export default function Revenue() {
         })}
       </div>
 
+      <FullscreenWrapper title={`Przychody ${year}`} toolbar={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => setCompactView(!compactView)} title={compactView ? "Widok pełny" : "Widok kompaktowy"}>
+            {compactView ? <Table2 className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+          </Button>
+        </div>
+      } isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-revenue">
         <table className="w-full text-xs border-collapse">
           <thead>
@@ -553,6 +672,41 @@ export default function Revenue() {
               )}
             </tr>
 
+            {compareYear !== null && compareLocationTotals && compactView && (
+              <tr className="bg-amber-50/30 dark:bg-amber-950/20" data-testid="row-compare-location">
+                <td className="sticky left-0 z-10 bg-amber-50/30 dark:bg-amber-950/20 px-2 py-1 border-r-2 border-b border-border text-[10px] font-medium text-muted-foreground">
+                  {compareYear} (porównanie)
+                </td>
+                {MONTHS.map((_, mi) => {
+                  const ct = compareLocationTotals[mi];
+                  const mainT = locationTotals[mi];
+                  return (
+                    <td key={mi} className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px]">
+                      {formatNum(ct.przychody)}
+                      <div className={`text-[9px] font-semibold ${changeColor(mainT.przychody, ct.przychody)}`}>
+                        {pctChange(mainT.przychody, ct.przychody)}
+                      </div>
+                    </td>
+                  );
+                })}
+                {(() => {
+                  let compareTotal = 0, mainTotal = 0;
+                  for (let m = 0; m < 12; m++) {
+                    compareTotal += compareLocationTotals[m].przychody;
+                    mainTotal += locationTotals[m].przychody;
+                  }
+                  return (
+                    <td className="border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20">
+                      {formatNum(compareTotal)}
+                      <div className={`text-[9px] font-semibold ${changeColor(mainTotal, compareTotal)}`}>
+                        {pctChange(mainTotal, compareTotal)}
+                      </div>
+                    </td>
+                  );
+                })()}
+              </tr>
+            )}
+
             {locationApartments.map(apt => {
               const isCollapsed = collapsed.has(apt.id);
               const aptTotals = { prognoza: 0, przychody: 0, najem: 0, podnajem: 0, doplaty_najem: 0, doplaty_podnajem: 0 };
@@ -648,6 +802,45 @@ export default function Revenue() {
                     )}
                   </tr>
 
+                  {compareYear !== null && compactView && (
+                    <tr className="bg-amber-50/30 dark:bg-amber-950/20" data-testid={`row-compare-apt-${apt.id}`}>
+                      <td className="sticky left-0 z-10 bg-amber-50/30 dark:bg-amber-950/20 pl-6 pr-2 py-0.5 border-r-2 border-b border-border text-[9px] text-muted-foreground">
+                        {compareYear}
+                      </td>
+                      {MONTHS.map((_, mi) => {
+                        const cmd = getCompareMonthData(apt.id, mi);
+                        const md = getMonthData(apt.id, mi);
+                        const comparePrzychody = cmd.najem + cmd.podnajem;
+                        const mainPrzychody = md.najem + md.podnajem;
+                        return (
+                          <td key={mi} className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[9px]">
+                            {formatNum(comparePrzychody)}
+                            <div className={`text-[8px] font-semibold ${changeColor(mainPrzychody, comparePrzychody)}`}>
+                              {pctChange(mainPrzychody, comparePrzychody)}
+                            </div>
+                          </td>
+                        );
+                      })}
+                      {(() => {
+                        let compareTotal = 0, mainTotal = 0;
+                        for (let m = 0; m < 12; m++) {
+                          const cmd = getCompareMonthData(apt.id, m);
+                          const md = getMonthData(apt.id, m);
+                          compareTotal += cmd.najem + cmd.podnajem;
+                          mainTotal += md.najem + md.podnajem;
+                        }
+                        return (
+                          <td className="border-b border-border px-1 py-0.5 text-right tabular-nums text-[9px] bg-muted/20">
+                            {formatNum(compareTotal)}
+                            <div className={`text-[8px] font-semibold ${changeColor(mainTotal, compareTotal)}`}>
+                              {pctChange(mainTotal, compareTotal)}
+                            </div>
+                          </td>
+                        );
+                      })()}
+                    </tr>
+                  )}
+
                   {isCollapsed && !compactView && (
                     <>
                       <tr className="bg-muted/10">
@@ -699,6 +892,7 @@ export default function Revenue() {
           </tbody>
         </table>
       </div>
+      </FullscreenWrapper>
 
       {(() => {
         const chartData = MONTHS.map((mName, mi) => {
@@ -732,6 +926,43 @@ export default function Revenue() {
                   <Bar dataKey="najem" name="Najem" stackId="actual" fill="hsl(var(--chart-1))" radius={[0, 0, 0, 0]} />
                   <Bar dataKey="podnajem" name="Podnajem" stackId="actual" fill="hsl(var(--chart-2))" radius={[3, 3, 0, 0]} />
                 </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {compareYear !== null && compareLocationTotals && (() => {
+        const lineData = MONTHS.map((mName, mi) => {
+          const mainT = locationTotals[mi];
+          const compareT = compareLocationTotals[mi];
+          return {
+            name: mName,
+            [String(year)]: Math.round(mainT.przychody),
+            [String(compareYear)]: Math.round(compareT.przychody),
+          };
+        });
+        const formatTooltip = (value: number) => value.toLocaleString("pl-PL") + " zł";
+        return (
+          <Card data-testid="card-yoy-chart">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Porównanie rok do roku: {year} vs {compareYear}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={350}>
+                <LineChart data={lineData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} className="fill-foreground" />
+                  <YAxis tickFormatter={(v: number) => v >= 1000 ? (v / 1000).toFixed(0) + "k" : String(v)} tick={{ fontSize: 11 }} className="fill-foreground" />
+                  <Tooltip
+                    formatter={formatTooltip}
+                    contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "6px", fontSize: "12px" }}
+                    labelStyle={{ fontWeight: 600, marginBottom: 4 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} />
+                  <Line type="monotone" dataKey={String(year)} name={`${year} — przychody`} stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey={String(compareYear)} name={`${compareYear} — przychody`} stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+                </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>

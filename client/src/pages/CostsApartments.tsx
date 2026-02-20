@@ -9,8 +9,9 @@ import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, Calculator, 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
-import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -40,6 +41,19 @@ function saldoColor(v: number): string {
   if (v > 0) return "text-emerald-600 dark:text-emerald-400 font-semibold";
   if (v < 0) return "text-red-600 dark:text-red-400 font-semibold";
   return "";
+}
+
+function pctChange(current: number, previous: number): string {
+  if (previous === 0) return current > 0 ? "+100%" : "—";
+  const change = ((current - previous) / previous) * 100;
+  return (change >= 0 ? "+" : "") + change.toFixed(0) + "%";
+}
+
+function costChangeColor(current: number, previous: number): string {
+  if (previous === 0) return "text-muted-foreground";
+  if (current < previous) return "text-emerald-600 dark:text-emerald-400";
+  if (current > previous) return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
 }
 
 function storageKey(year: number) { return `costs-apartments-data-${year}`; }
@@ -92,6 +106,7 @@ export default function CostsApartments() {
   const [editCategories, setEditCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [compareYear, setCompareYear] = useState<number | null>(null);
   const { toast } = useToast();
 
   const handleImportFromExcel = async () => {
@@ -178,6 +193,8 @@ export default function CostsApartments() {
 
     return entries;
   }, [apartments, sortedLocations, categoriesMap]);
+
+  const compareData = useMemo(() => compareYear !== null ? loadData(compareYear) : {}, [compareYear]);
 
   const getCellKey = (entryId: string, category: string) => `${entryId}__${category}`;
 
@@ -303,12 +320,14 @@ export default function CostsApartments() {
   }, [costEntries, data]);
 
   const [showChart, setShowChart] = useState(false);
+  const fullscreen = useFullscreen();
 
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <PageHeader title="Koszty apartamentów" description="Analiza kosztów w podziale na apartamenty." icon={Calculator} />
         <div className="flex items-center gap-2 flex-wrap">
+          <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
           <Button
             variant="outline"
             onClick={handleImportFromExcel}
@@ -324,6 +343,17 @@ export default function CostsApartments() {
             </SelectTrigger>
             <SelectContent>
               {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={compareYear !== null ? String(compareYear) : "none"} onValueChange={(v) => setCompareYear(v === "none" ? null : Number(v))}>
+            <SelectTrigger className="w-[140px]" data-testid="select-compare-year">
+              <SelectValue placeholder="Porównaj z..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Brak —</SelectItem>
+              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).filter(y => y !== year).map(y => (
                 <SelectItem key={y} value={String(y)}>{y}</SelectItem>
               ))}
             </SelectContent>
@@ -358,7 +388,8 @@ export default function CostsApartments() {
         </Card>
       )}
 
-      <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">
+      <FullscreenWrapper title={`Koszty apartamentów ${year}`} isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
+        <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="bg-muted/30">
@@ -542,7 +573,99 @@ export default function CostsApartments() {
             })()}
           </tbody>
         </table>
-      </div>
+        </div>
+
+        {compareYear !== null && (() => {
+          const getCompareEntrySumsForYear = (entry: CostEntry, sourceData: DataMap): number => {
+            let total = 0;
+            entry.categories.forEach(cat => {
+              const key = getCellKey(entry.id, cat);
+              for (let m = 0; m < 12; m++) {
+                const cell = sourceData[key]?.[m];
+                if (cell) total += cell.r;
+              }
+            });
+            return total;
+          };
+
+          const getCompareLocationTotal = (items: CostEntry[], sourceData: DataMap): number => {
+            return items.reduce((sum, entry) => sum + getCompareEntrySumsForYear(entry, sourceData), 0);
+          };
+
+          const yoyChartData = MONTHS.map((name, m) => {
+            let mainR = 0, compR = 0;
+            costEntries.forEach(group => {
+              group.items.forEach(entry => {
+                entry.categories.forEach(cat => {
+                  const key = getCellKey(entry.id, cat);
+                  const mainCell = data[key]?.[m];
+                  if (mainCell) mainR += mainCell.r;
+                  const compCell = compareData[key]?.[m];
+                  if (compCell) compR += compCell.r;
+                });
+              });
+            });
+            return { name, [String(year)]: Math.round(mainR), [String(compareYear)]: Math.round(compR) };
+          });
+
+          return (
+            <div className="space-y-4 mt-4">
+              <Card data-testid="card-yoy-costs-comparison">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">{`Porównanie rok do roku: ${year} vs ${compareYear}`}</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <div className="rounded-md border border-border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-muted/30">
+                          <th className="text-left px-3 py-2 border-b border-border">Lokalizacja</th>
+                          <th className="text-right px-3 py-2 border-b border-border">R {year} (PLN)</th>
+                          <th className="text-right px-3 py-2 border-b border-border">R {compareYear} (PLN)</th>
+                          <th className="text-right px-3 py-2 border-b border-border">Zmiana</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {costEntries.map(group => {
+                          const mainTotal = getCompareLocationTotal(group.items, data);
+                          const compTotal = getCompareLocationTotal(group.items, compareData);
+                          return (
+                            <tr key={group.location} className="border-b border-border last:border-b-0">
+                              <td className="px-3 py-2 font-semibold">{group.location}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{formatNum(mainTotal)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{formatNum(compTotal)}</td>
+                              <td className={`px-3 py-2 text-right tabular-nums font-semibold ${costChangeColor(mainTotal, compTotal)}`}>{pctChange(mainTotal, compTotal)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="card-yoy-costs-chart">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">{`Koszty rzeczywiste: ${year} vs ${compareYear}`}</CardTitle>
+                </CardHeader>
+                <CardContent className="px-2 pb-3">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <LineChart data={yoyChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                      <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey={String(year)} stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey={String(compareYear)} stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
+      </FullscreenWrapper>
 
       <Dialog open={!!editingEntry} onOpenChange={(open) => { if (!open) setEditingEntry(null); }}>
         <DialogContent className="sm:max-w-[420px]">

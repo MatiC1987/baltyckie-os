@@ -13,13 +13,14 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 import {
   ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight,
   Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
-import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { format, addMonths, addQuarters, addYears, parseISO, isBefore, isAfter, startOfMonth } from "date-fns";
 import { pl } from "date-fns/locale";
 
@@ -224,11 +225,25 @@ function formatNum2(v: number | string | null | undefined): string {
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function pctChange(current: number, previous: number): string {
+  if (previous === 0) return current > 0 ? "+100%" : "\u2014";
+  const change = ((current - previous) / previous) * 100;
+  return (change >= 0 ? "+" : "") + change.toFixed(0) + "%";
+}
+
+function costChangeColor(current: number, previous: number): string {
+  if (previous === 0) return "text-muted-foreground";
+  if (current < previous) return "text-emerald-600 dark:text-emerald-400";
+  if (current > previous) return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
+}
+
 export default function CostsExpenses() {
   const { toast } = useToast();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [compareYear, setCompareYear] = useState<number | null>(null);
   const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(currentYear));
   const [categories, setCategories] = useState<CostCategory[]>(() => loadCategories());
 
@@ -742,6 +757,7 @@ export default function CostsExpenses() {
   }, [categories, getCategorySummary]);
 
   const [showChart, setShowChart] = useState(false);
+  const fullscreen = useFullscreen();
 
   const formatNum = (n: number) => {
     if (n === 0) return "";
@@ -755,6 +771,54 @@ export default function CostsExpenses() {
   };
 
   const years = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
+
+  const compareCellData = useMemo(() => {
+    if (compareYear === null) return {};
+    return loadData(compareYear);
+  }, [compareYear]);
+
+  const compareScheduleOverlay = useMemo(() => {
+    if (compareYear === null) return {};
+    return buildScheduleOverlay(costSchedules, costSchedulePayments, compareYear);
+  }, [compareYear, costSchedules, costSchedulePayments]);
+
+  const compareMonthlyTotals = useMemo(() => {
+    if (compareYear === null) return Array(12).fill(0) as number[];
+    return Array.from({ length: 12 }, (_, m) => {
+      let total = 0;
+      categories.forEach(cat => {
+        cat.items.forEach((_, idx) => {
+          const key = makeCellKey(cat.id, idx, m, "rzeczywiste");
+          if (key in compareScheduleOverlay) {
+            total += compareScheduleOverlay[key];
+          } else {
+            total += compareCellData[key] || 0;
+          }
+        });
+      });
+      return total;
+    });
+  }, [compareYear, categories, compareCellData, compareScheduleOverlay]);
+
+  const currentMonthlyTotals = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) => {
+      let total = 0;
+      categories.forEach(cat => {
+        const s = getCategorySummary(cat, m);
+        total += s.rzeczywiste;
+      });
+      return total;
+    });
+  }, [categories, getCategorySummary]);
+
+  const yoyChartData = useMemo(() => {
+    if (compareYear === null) return [];
+    return MONTHS_SHORT_CHART.map((name, i) => ({
+      name,
+      [selectedYear]: Math.round(currentMonthlyTotals[i]),
+      [compareYear]: Math.round(compareMonthlyTotals[i]),
+    }));
+  }, [compareYear, selectedYear, currentMonthlyTotals, compareMonthlyTotals]);
 
   const handleGeneratePayments = async (schedule: CostSchedule) => {
     const existing = paymentsBySchedule[schedule.id] || [];
@@ -823,6 +887,7 @@ export default function CostsExpenses() {
         icon={Receipt}
         actions={
           <>
+            <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
             <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
               <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
             </Button>
@@ -835,6 +900,20 @@ export default function CostsExpenses() {
               </SelectTrigger>
               <SelectContent>
                 {years.map(y => (
+                  <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={compareYear !== null ? compareYear.toString() : "none"}
+              onValueChange={(v) => setCompareYear(v === "none" ? null : parseInt(v))}
+            >
+              <SelectTrigger className="w-[160px]" data-testid="select-compare-year">
+                <SelectValue placeholder="Porównaj z..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Brak —</SelectItem>
+                {years.filter(y => y !== selectedYear).map(y => (
                   <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
                 ))}
               </SelectContent>
@@ -917,6 +996,71 @@ export default function CostsExpenses() {
         </Card>
       )}
 
+      {compareYear !== null && (
+        <>
+          <Card data-testid="card-yoy-expenses-chart" className="mb-4">
+            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-sm">Koszty rzeczywiste: {selectedYear} vs {compareYear}</CardTitle>
+            </CardHeader>
+            <CardContent className="px-2 pb-3">
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={yoyChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                  <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line type="monotone" dataKey={selectedYear.toString()} stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} name={`${selectedYear}`} />
+                  <Line type="monotone" dataKey={compareYear.toString()} stroke="hsl(var(--chart-2))" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} name={`${compareYear}`} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-yoy-expenses-comparison" className="mb-4">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm">Porównanie rok do roku: {selectedYear} vs {compareYear}</CardTitle>
+            </CardHeader>
+            <CardContent className="px-2 pb-3">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-muted/60 dark:bg-muted/40">
+                      <th className="border-b border-border px-3 py-1.5 text-left font-medium">Miesiąc</th>
+                      <th className="border-b border-border px-3 py-1.5 text-right font-medium">{selectedYear} (koszty)</th>
+                      <th className="border-b border-border px-3 py-1.5 text-right font-medium">{compareYear} (koszty)</th>
+                      <th className="border-b border-border px-3 py-1.5 text-right font-medium">Zmiana</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {MONTHS_SHORT_CHART.map((monthName, i) => {
+                      const curr = currentMonthlyTotals[i];
+                      const prev = compareMonthlyTotals[i];
+                      return (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="px-3 py-1.5 font-medium">{monthName}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{formatNum(curr)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{formatNum(prev)}</td>
+                          <td className={`px-3 py-1.5 text-right tabular-nums font-medium ${costChangeColor(curr, prev)}`}>{pctChange(curr, prev)}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="bg-muted/60 dark:bg-muted/40 font-bold">
+                      <td className="px-3 py-1.5">RAZEM</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{formatNum(currentMonthlyTotals.reduce((a, b) => a + b, 0))}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{formatNum(compareMonthlyTotals.reduce((a, b) => a + b, 0))}</td>
+                      <td className={`px-3 py-1.5 text-right tabular-nums ${costChangeColor(currentMonthlyTotals.reduce((a, b) => a + b, 0), compareMonthlyTotals.reduce((a, b) => a + b, 0))}`}>
+                        {pctChange(currentMonthlyTotals.reduce((a, b) => a + b, 0), compareMonthlyTotals.reduce((a, b) => a + b, 0))}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
       {selectedCell && cellData[selectedCell] !== undefined && cellData[selectedCell] !== 0 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>Zaznaczona komórka: <strong>{cellData[selectedCell]?.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</strong> zł</span>
@@ -927,6 +1071,7 @@ export default function CostsExpenses() {
         </div>
       )}
 
+      <FullscreenWrapper title={`Opłaty i koszty ${selectedYear}`} toolbar={<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)}><BarChart3 className="mr-1 h-3 w-3" />{showChart ? "Ukryj wykres" : "Pokaż wykres"}</Button></div>} isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
       <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-oplaty" onMouseUp={handleMouseUp}>
         <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
           <thead className="sticky top-0 z-20">
@@ -1191,6 +1336,7 @@ export default function CostsExpenses() {
           </tbody>
         </table>
       </div>
+      </FullscreenWrapper>
 
       <Sheet open={!!sheetItem} onOpenChange={(open) => { if (!open) setSheetItem(null); }}>
         <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-cost-detail">
