@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, copyFile } from "fs/promises";
+import { existsSync } from "fs";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -61,7 +62,12 @@ async function buildAll() {
   });
 }
 
-buildAll().catch((err) => {
+buildAll().then(async () => {
+  if (existsSync("server/dev-data-export.json")) {
+    await copyFile("server/dev-data-export.json", "dist/dev-data-export.json");
+    console.log("copied dev-data-export.json to dist/");
+  }
+}).catch((err) => {
   console.error(err);
   process.exit(1);
 });
