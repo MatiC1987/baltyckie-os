@@ -1,6 +1,5 @@
 import { pool } from "./db";
-import * as fs from "fs";
-import * as path from "path";
+import { Storage } from "@google-cloud/storage";
 
 const TABLES_IN_ORDER = [
   "locations", "owners", "apartments", "accounts", "saldo_categories",
@@ -23,26 +22,63 @@ const TABLES_IN_ORDER = [
 
 const REVERSE_ORDER = [...TABLES_IN_ORDER].reverse();
 
-export async function runProdDataMigration() {
-  const candidates = [
-    path.resolve(process.cwd(), "dist", "dev-data-export.json"),
-    path.resolve(process.cwd(), "server", "dev-data-export.json"),
-    path.resolve(process.cwd(), "dev-data-export.json"),
-    path.join(__dirname, "..", "server", "dev-data-export.json"),
-    path.join(__dirname, "dev-data-export.json"),
-    path.join(__dirname, "..", "dist", "dev-data-export.json"),
-  ];
-  
-  let filePath: string | null = null;
-  for (const p of candidates) {
-    if (fs.existsSync(p)) { filePath = p; break; }
-  }
-  
-  if (!filePath) {
-    console.log("[migrate] No dev-data-export.json found, skipping migration");
-    return;
-  }
+const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
+function getStorageClient() {
+  return new Storage({
+    credentials: {
+      audience: "replit",
+      subject_token_type: "access_token",
+      token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
+      type: "external_account",
+      credential_source: {
+        url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
+        format: { type: "json", subject_token_field_name: "access_token" },
+      },
+      universe_domain: "googleapis.com",
+    },
+    projectId: "",
+  });
+}
+
+async function loadDataFromObjectStorage(): Promise<Record<string, any[]> | null> {
+  try {
+    const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+    const privateDir = process.env.PRIVATE_OBJECT_DIR;
+    if (!bucketId || !privateDir) {
+      console.log("[migrate] Object Storage env vars not set, skipping");
+      return null;
+    }
+
+    let objectName = privateDir;
+    if (objectName.startsWith('/')) objectName = objectName.slice(1);
+    if (objectName.startsWith(bucketId + '/')) objectName = objectName.slice(bucketId.length + 1);
+    if (objectName.startsWith('/')) objectName = objectName.slice(1);
+    objectName = objectName + '/dev-data-export.json';
+
+    console.log(`[migrate] Looking for data in bucket=${bucketId}, object=${objectName}`);
+    const storage = getStorageClient();
+    const bucket = storage.bucket(bucketId);
+    const file = bucket.file(objectName);
+
+    const [exists] = await file.exists();
+    if (!exists) {
+      console.log("[migrate] dev-data-export.json not found in Object Storage, skipping");
+      return null;
+    }
+
+    console.log("[migrate] Loading data from Object Storage...");
+    const [buffer] = await file.download();
+    const data = JSON.parse(buffer.toString("utf-8"));
+    console.log("[migrate] Data loaded from Object Storage successfully");
+    return data;
+  } catch (err) {
+    console.error("[migrate] Failed to load from Object Storage:", err);
+    return null;
+  }
+}
+
+export async function runProdDataMigration() {
   const checkResult = await pool.query("SELECT count(*) as cnt FROM apartments");
   const existingCount = parseInt(checkResult.rows[0].cnt);
   if (existingCount > 10) {
@@ -50,9 +86,13 @@ export async function runProdDataMigration() {
     return;
   }
 
+  const data = await loadDataFromObjectStorage();
+  if (!data) {
+    console.log("[migrate] No migration data available, skipping");
+    return;
+  }
+
   console.log("[migrate] Starting production data migration...");
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const data: Record<string, any[]> = JSON.parse(raw);
 
   const client = await pool.connect();
   try {
@@ -60,7 +100,11 @@ export async function runProdDataMigration() {
     await client.query("SET session_replication_role = 'replica'");
 
     for (const table of REVERSE_ORDER) {
-      await client.query(`DELETE FROM "${table}"`);
+      try {
+        await client.query(`DELETE FROM "${table}"`);
+      } catch (e: any) {
+        console.log(`[migrate] Warning: Could not clear ${table}: ${e.message}`);
+      }
     }
     console.log("[migrate] Cleared existing production data");
 
@@ -79,15 +123,12 @@ export async function runProdDataMigration() {
         const values: any[] = [];
         const valueSets: string[] = [];
 
-        batch.forEach((row, batchIdx) => {
+        batch.forEach((row: any, batchIdx: number) => {
           const placeholders: string[] = [];
           columns.forEach((col, colIdx) => {
             const paramIdx = batchIdx * columns.length + colIdx + 1;
             placeholders.push(`$${paramIdx}`);
-            let val = row[col];
-            if (Array.isArray(val)) {
-              val = val;
-            }
+            const val = row[col];
             values.push(val);
           });
           valueSets.push(`(${placeholders.join(", ")})`);
