@@ -97,13 +97,12 @@ export async function runProdDataMigration() {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SET session_replication_role = 'replica'");
 
     for (const table of REVERSE_ORDER) {
       try {
-        await client.query(`DELETE FROM "${table}"`);
+        await client.query(`TRUNCATE TABLE "${table}" CASCADE`);
       } catch (e: any) {
-        console.log(`[migrate] Warning: Could not clear ${table}: ${e.message}`);
+        console.log(`[migrate] Warning: Could not truncate ${table}: ${e.message}`);
       }
     }
     console.log("[migrate] Cleared existing production data");
@@ -115,7 +114,7 @@ export async function runProdDataMigration() {
       const columns = Object.keys(rows[0]);
       const colList = columns.map(c => `"${c}"`).join(", ");
 
-      const batchSize = 200;
+      const batchSize = 100;
       let inserted = 0;
 
       for (let i = 0; i < rows.length; i += batchSize) {
@@ -142,13 +141,16 @@ export async function runProdDataMigration() {
       if (inserted > 0) {
         const hasId = columns.includes("id");
         if (hasId) {
-          await client.query(`SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), COALESCE((SELECT MAX(id) FROM "${table}"), 1))`);
+          try {
+            await client.query(`SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), COALESCE((SELECT MAX(id) FROM "${table}"), 1))`);
+          } catch (e: any) {
+            console.log(`[migrate] Warning: Could not reset sequence for ${table}: ${e.message}`);
+          }
         }
         console.log(`[migrate] ${table}: ${inserted} rows`);
       }
     }
 
-    await client.query("SET session_replication_role = 'origin'");
     await client.query("COMMIT");
     console.log("[migrate] Production data migration complete!");
   } catch (err) {
