@@ -8,10 +8,11 @@ import { pl } from "date-fns/locale";
 import { useMemo } from "react";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
-  Building2, User, Briefcase, CreditCard, Paperclip,
+  Building2, User, Briefcase, CreditCard, Paperclip, ClipboardCheck,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
   FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle, Zap, Droplets
 } from "lucide-react";
+import { HandoverProtocolsTab } from "./HandoverProtocols";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2074,6 +2075,9 @@ export default function Subleases() {
                   <TabsTrigger value="zalaczniki" className="gap-1" data-testid="tab-zalaczniki">
                     <Paperclip className="h-4 w-4" /> Załączniki
                   </TabsTrigger>
+                  <TabsTrigger value="protokoly" className="gap-1" data-testid="tab-protokoly">
+                    <ClipboardCheck className="h-4 w-4" /> Protokoły
+                  </TabsTrigger>
                 </>
               )}
             </TabsList>
@@ -2101,6 +2105,13 @@ export default function Subleases() {
                 </TabsContent>
                 <TabsContent value="zalaczniki" className="flex-1 overflow-y-auto mt-0">
                   <AttachmentsTab subleaseId={editId} />
+                </TabsContent>
+                <TabsContent value="protokoly" className="flex-1 overflow-y-auto mt-0">
+                  <HandoverProtocolsTab
+                    subleaseId={editId}
+                    sublease={subleases.find((s: Sublease) => s.id === editId)}
+                    apartments={apartments}
+                  />
                 </TabsContent>
               </>
             )}

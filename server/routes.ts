@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -4647,6 +4647,301 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       for (const f of tmpFiles) {
         try { fs.unlinkSync(f); } catch {}
       }
+    }
+  });
+
+  // ============ Handover Protocols (Protokoły zdawczo-odbiorcze) ============
+
+  app.get('/api/handover-protocols', isAuthenticated, async (req, res) => {
+    try {
+      const subleaseId = req.query.subleaseId ? Number(req.query.subleaseId) : undefined;
+      const protocols = await storage.getHandoverProtocols(subleaseId);
+      res.json(protocols);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/handover-protocols/:id', isAuthenticated, async (req, res) => {
+    try {
+      const protocol = await storage.getHandoverProtocol(Number(req.params.id));
+      if (!protocol) return res.status(404).json({ message: "Nie znaleziono protokołu" });
+      const rooms = await storage.getHandoverProtocolRooms(protocol.id);
+      const items = await storage.getHandoverProtocolItems(protocol.id);
+      const meters = await storage.getHandoverProtocolMeters(protocol.id);
+      res.json({ ...protocol, rooms, items, meters });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/handover-protocols', isAuthenticated, async (req, res) => {
+    try {
+      const { rooms, items, meters, ...protocolData } = req.body;
+      const parsed = insertHandoverProtocolSchema.parse(protocolData);
+      const protocol = await storage.createHandoverProtocol(parsed);
+
+      if (rooms && Array.isArray(rooms)) {
+        for (const room of rooms) {
+          await storage.createHandoverProtocolRoom({ ...room, protocolId: protocol.id });
+        }
+      }
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          await storage.createHandoverProtocolItem({ ...item, protocolId: protocol.id });
+        }
+      }
+      if (meters && Array.isArray(meters)) {
+        for (const meter of meters) {
+          await storage.createHandoverProtocolMeter({ ...meter, protocolId: protocol.id });
+        }
+      }
+
+      const full = await storage.getHandoverProtocol(protocol.id);
+      const fullRooms = await storage.getHandoverProtocolRooms(protocol.id);
+      const fullItems = await storage.getHandoverProtocolItems(protocol.id);
+      const fullMeters = await storage.getHandoverProtocolMeters(protocol.id);
+      res.json({ ...full, rooms: fullRooms, items: fullItems, meters: fullMeters });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/handover-protocols/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { rooms, items, meters, ...protocolData } = req.body;
+      const protocol = await storage.updateHandoverProtocol(id, protocolData);
+
+      if (rooms && Array.isArray(rooms)) {
+        const existing = await storage.getHandoverProtocolRooms(id);
+        for (const r of existing) await storage.deleteHandoverProtocolRoom(r.id);
+        for (const room of rooms) {
+          await storage.createHandoverProtocolRoom({ ...room, protocolId: id });
+        }
+      }
+      if (items && Array.isArray(items)) {
+        const existing = await storage.getHandoverProtocolItems(id);
+        for (const i of existing) await storage.deleteHandoverProtocolItem(i.id);
+        for (const item of items) {
+          await storage.createHandoverProtocolItem({ ...item, protocolId: id });
+        }
+      }
+      if (meters && Array.isArray(meters)) {
+        const existing = await storage.getHandoverProtocolMeters(id);
+        for (const m of existing) await storage.deleteHandoverProtocolMeter(m.id);
+        for (const meter of meters) {
+          await storage.createHandoverProtocolMeter({ ...meter, protocolId: id });
+        }
+      }
+
+      const fullRooms = await storage.getHandoverProtocolRooms(id);
+      const fullItems = await storage.getHandoverProtocolItems(id);
+      const fullMeters = await storage.getHandoverProtocolMeters(id);
+      res.json({ ...protocol, rooms: fullRooms, items: fullItems, meters: fullMeters });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/handover-protocols/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteHandoverProtocol(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PDF generation for handover protocol
+  app.get('/api/handover-protocols/:id/pdf', isAuthenticated, async (req, res) => {
+    try {
+      const protocol = await storage.getHandoverProtocol(Number(req.params.id));
+      if (!protocol) return res.status(404).json({ message: "Nie znaleziono protokołu" });
+      const rooms = await storage.getHandoverProtocolRooms(protocol.id);
+      const items = await storage.getHandoverProtocolItems(protocol.id);
+      const meters = await storage.getHandoverProtocolMeters(protocol.id);
+      const settings = await storage.getCompanySettings();
+
+      const { jsPDF } = require("jspdf");
+      require("jspdf-autotable");
+
+      function stripPl(s: string): string {
+        const map: Record<string, string> = {
+          'ą':'a','ć':'c','ę':'e','ł':'l','ń':'n','ó':'o','ś':'s','ź':'z','ż':'z',
+          'Ą':'A','Ć':'C','Ę':'E','Ł':'L','Ń':'N','Ó':'O','Ś':'S','Ź':'Z','Ż':'Z'
+        };
+        return s.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, c => map[c] || c);
+      }
+
+      const doc = new jsPDF();
+      let y = 15;
+
+      // Company logo
+      if (settings?.logoUrl) {
+        try {
+          const logoResp = await fetch(settings.logoUrl);
+          if (logoResp.ok) {
+            const logoBuffer = Buffer.from(await logoResp.arrayBuffer());
+            const ext = settings.logoUrl.toLowerCase().includes('.png') ? 'PNG' : 'JPEG';
+            doc.addImage(logoBuffer, ext, 14, y, 30, 15);
+          }
+        } catch {}
+      }
+
+      // Header
+      if (settings?.companyName) {
+        doc.setFontSize(8);
+        doc.text(stripPl(settings.companyName), 50, y + 4);
+        if (settings.address) doc.text(stripPl(settings.address), 50, y + 8);
+        if (settings.nip) doc.text(stripPl(`NIP: ${settings.nip}`), 50, y + 12);
+      }
+
+      y = 40;
+      doc.setFontSize(14);
+      const typeLabel = protocol.protocolType === 'WYDANIE' ? 'WYDANIA' : 'ZWROTU';
+      doc.text(stripPl(`PROTOKOL ZDAWCZO-ODBIORCZY ${typeLabel}`), 105, y, { align: 'center' });
+
+      y += 10;
+      doc.setFontSize(10);
+      doc.text(stripPl(`Data: ${protocol.protocolDate}${protocol.protocolTime ? ' godz. ' + protocol.protocolTime : ''}`), 14, y);
+      y += 6;
+      doc.text(stripPl(`Lokal: ${protocol.apartmentName}${protocol.apartmentAddress ? ', ' + protocol.apartmentAddress : ''}`), 14, y);
+      y += 6;
+      doc.text(stripPl(`Najemca: ${protocol.tenantName}`), 14, y);
+      if (protocol.tenantPesel) {
+        y += 6;
+        doc.text(stripPl(`PESEL: ${protocol.tenantPesel}`), 14, y);
+      }
+      if (protocol.tenantIdNumber) {
+        y += 6;
+        doc.text(stripPl(`Nr dowodu: ${protocol.tenantIdNumber}`), 14, y);
+      }
+
+      // Meters table
+      if (meters.length > 0) {
+        y += 10;
+        doc.setFontSize(11);
+        doc.text(stripPl("STANY LICZNIKOW"), 14, y);
+        y += 2;
+
+        const meterLabels: Record<string, string> = {
+          'PRAD': 'Prad', 'WODA_ZIMNA': 'Woda zimna', 'WODA_CIEPLA': 'Woda ciepla',
+          'GAZ': 'Gaz', 'OGRZEWANIE': 'Ogrzewanie'
+        };
+
+        (doc as any).autoTable({
+          startY: y,
+          head: [['Typ', 'Nr licznika', 'Odczyt', 'Jednostka']],
+          body: meters.map(m => [
+            stripPl(meterLabels[m.meterType] || m.meterType),
+            m.meterNumber || '-',
+            m.reading || '-',
+            m.unit || '-',
+          ]),
+          styles: { fontSize: 9 },
+          headStyles: { fillColor: [60, 60, 60] },
+          margin: { left: 14 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 6;
+      }
+
+      // Rooms table
+      if (rooms.length > 0) {
+        doc.setFontSize(11);
+        doc.text(stripPl("STAN POMIESZCZEN"), 14, y);
+        y += 2;
+
+        const condLabels: Record<string, string> = {
+          'DOBRY': 'Dobry', 'USZKODZONY': 'Uszkodzony', 'DO_NAPRAWY': 'Do naprawy'
+        };
+        const condLabel = (v: string | null) => v ? (condLabels[v] || v) : '-';
+
+        (doc as any).autoTable({
+          startY: y,
+          head: [['Pomieszczenie', 'Sciany', 'Podloga', 'Okna', 'Drzwi', 'Uwagi']],
+          body: rooms.map(r => [
+            stripPl(r.roomName),
+            stripPl(condLabel(r.wallsCondition)),
+            stripPl(condLabel(r.floorCondition)),
+            stripPl(condLabel(r.windowsCondition)),
+            stripPl(condLabel(r.doorsCondition)),
+            stripPl(r.comments || '-'),
+          ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [60, 60, 60] },
+          margin: { left: 14 },
+          columnStyles: { 5: { cellWidth: 40 } },
+        });
+        y = (doc as any).lastAutoTable.finalY + 6;
+      }
+
+      // Items table
+      if (items.length > 0) {
+        if (y > 240) { doc.addPage(); y = 15; }
+        doc.setFontSize(11);
+        doc.text(stripPl("WYPOSAZENIE"), 14, y);
+        y += 2;
+
+        const itemCondLabels: Record<string, string> = {
+          'NOWY': 'Nowy', 'DOBRY': 'Dobry', 'ZUZYTY': 'Zuzyty', 'USZKODZONY': 'Uszkodzony'
+        };
+
+        (doc as any).autoTable({
+          startY: y,
+          head: [['Lp.', 'Nazwa', 'Ilosc', 'Stan', 'Uwagi']],
+          body: items.map((it, idx) => [
+            idx + 1,
+            stripPl(it.itemName),
+            it.quantity || 1,
+            stripPl(it.condition ? (itemCondLabels[it.condition] || it.condition) : '-'),
+            stripPl(it.comments || '-'),
+          ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [60, 60, 60] },
+          margin: { left: 14 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 6;
+      }
+
+      // Notes
+      if (protocol.notes) {
+        if (y > 250) { doc.addPage(); y = 15; }
+        doc.setFontSize(11);
+        doc.text(stripPl("UWAGI"), 14, y);
+        y += 6;
+        doc.setFontSize(9);
+        const lines = doc.splitTextToSize(stripPl(protocol.notes), 180);
+        doc.text(lines, 14, y);
+        y += lines.length * 5 + 6;
+      }
+
+      // Signatures
+      if (y > 240) { doc.addPage(); y = 15; }
+      y += 15;
+      doc.setFontSize(9);
+      doc.text(".....................................", 30, y, { align: 'center' });
+      doc.text(".....................................", 170, y, { align: 'center' });
+      y += 5;
+      doc.text(stripPl("Przekazujacy"), 30, y, { align: 'center' });
+      doc.text(stripPl("Przejmujacy"), 170, y, { align: 'center' });
+
+      // QR code footer
+      if (settings?.websiteUrl) {
+        const pageHeight = doc.internal.pageSize.getHeight();
+        doc.setFontSize(7);
+        doc.text(stripPl(settings.websiteUrl), 105, pageHeight - 10, { align: 'center' });
+      }
+
+      const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+      const fileName = `protokol_${protocol.protocolType.toLowerCase()}_${protocol.id}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("Protocol PDF error:", err);
+      res.status(500).json({ message: "Blad generowania PDF: " + err.message });
     }
   });
 

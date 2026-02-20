@@ -43,6 +43,10 @@ import {
   accountingNotes, AccountingNote, InsertAccountingNote,
   costInvoices, CostInvoice, InsertCostInvoice,
   zipDownloadHistory, ZipDownloadHistory, InsertZipDownloadHistory,
+  handoverProtocols, HandoverProtocol, InsertHandoverProtocol,
+  handoverProtocolRooms, HandoverProtocolRoom, InsertHandoverProtocolRoom,
+  handoverProtocolItems, HandoverProtocolItem, InsertHandoverProtocolItem,
+  handoverProtocolMeters, HandoverProtocolMeter, InsertHandoverProtocolMeter,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNotNull } from "drizzle-orm";
@@ -291,6 +295,25 @@ export interface IStorage {
   getZipDownloadHistory(): Promise<ZipDownloadHistory[]>;
   createZipDownloadHistory(data: InsertZipDownloadHistory): Promise<ZipDownloadHistory>;
   deleteZipDownloadHistory(id: number): Promise<void>;
+
+  // Handover Protocols
+  getHandoverProtocols(subleaseId?: number): Promise<HandoverProtocol[]>;
+  getHandoverProtocol(id: number): Promise<HandoverProtocol | undefined>;
+  createHandoverProtocol(data: InsertHandoverProtocol): Promise<HandoverProtocol>;
+  updateHandoverProtocol(id: number, data: Partial<InsertHandoverProtocol>): Promise<HandoverProtocol>;
+  deleteHandoverProtocol(id: number): Promise<void>;
+  getHandoverProtocolRooms(protocolId: number): Promise<HandoverProtocolRoom[]>;
+  createHandoverProtocolRoom(data: InsertHandoverProtocolRoom): Promise<HandoverProtocolRoom>;
+  updateHandoverProtocolRoom(id: number, data: Partial<InsertHandoverProtocolRoom>): Promise<HandoverProtocolRoom>;
+  deleteHandoverProtocolRoom(id: number): Promise<void>;
+  getHandoverProtocolItems(protocolId: number): Promise<HandoverProtocolItem[]>;
+  createHandoverProtocolItem(data: InsertHandoverProtocolItem): Promise<HandoverProtocolItem>;
+  updateHandoverProtocolItem(id: number, data: Partial<InsertHandoverProtocolItem>): Promise<HandoverProtocolItem>;
+  deleteHandoverProtocolItem(id: number): Promise<void>;
+  getHandoverProtocolMeters(protocolId: number): Promise<HandoverProtocolMeter[]>;
+  createHandoverProtocolMeter(data: InsertHandoverProtocolMeter): Promise<HandoverProtocolMeter>;
+  updateHandoverProtocolMeter(id: number, data: Partial<InsertHandoverProtocolMeter>): Promise<HandoverProtocolMeter>;
+  deleteHandoverProtocolMeter(id: number): Promise<void>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -1310,6 +1333,87 @@ export class DatabaseStorage implements IStorage {
 
   async deleteZipDownloadHistory(id: number): Promise<void> {
     await db.delete(zipDownloadHistory).where(eq(zipDownloadHistory.id, id));
+  }
+
+  // Handover Protocols
+  async getHandoverProtocols(subleaseId?: number): Promise<HandoverProtocol[]> {
+    if (subleaseId) {
+      return db.select().from(handoverProtocols).where(eq(handoverProtocols.subleaseId, subleaseId)).orderBy(desc(handoverProtocols.protocolDate));
+    }
+    return db.select().from(handoverProtocols).orderBy(desc(handoverProtocols.protocolDate));
+  }
+
+  async getHandoverProtocol(id: number): Promise<HandoverProtocol | undefined> {
+    const [protocol] = await db.select().from(handoverProtocols).where(eq(handoverProtocols.id, id));
+    return protocol;
+  }
+
+  async createHandoverProtocol(data: InsertHandoverProtocol): Promise<HandoverProtocol> {
+    const [created] = await db.insert(handoverProtocols).values(data).returning();
+    return created;
+  }
+
+  async updateHandoverProtocol(id: number, data: Partial<InsertHandoverProtocol>): Promise<HandoverProtocol> {
+    const [updated] = await db.update(handoverProtocols).set(data).where(eq(handoverProtocols.id, id)).returning();
+    return updated;
+  }
+
+  async deleteHandoverProtocol(id: number): Promise<void> {
+    await db.delete(handoverProtocols).where(eq(handoverProtocols.id, id));
+  }
+
+  async getHandoverProtocolRooms(protocolId: number): Promise<HandoverProtocolRoom[]> {
+    return db.select().from(handoverProtocolRooms).where(eq(handoverProtocolRooms.protocolId, protocolId)).orderBy(handoverProtocolRooms.sortOrder);
+  }
+
+  async createHandoverProtocolRoom(data: InsertHandoverProtocolRoom): Promise<HandoverProtocolRoom> {
+    const [created] = await db.insert(handoverProtocolRooms).values(data).returning();
+    return created;
+  }
+
+  async updateHandoverProtocolRoom(id: number, data: Partial<InsertHandoverProtocolRoom>): Promise<HandoverProtocolRoom> {
+    const [updated] = await db.update(handoverProtocolRooms).set(data).where(eq(handoverProtocolRooms.id, id)).returning();
+    return updated;
+  }
+
+  async deleteHandoverProtocolRoom(id: number): Promise<void> {
+    await db.delete(handoverProtocolRooms).where(eq(handoverProtocolRooms.id, id));
+  }
+
+  async getHandoverProtocolItems(protocolId: number): Promise<HandoverProtocolItem[]> {
+    return db.select().from(handoverProtocolItems).where(eq(handoverProtocolItems.protocolId, protocolId)).orderBy(handoverProtocolItems.sortOrder);
+  }
+
+  async createHandoverProtocolItem(data: InsertHandoverProtocolItem): Promise<HandoverProtocolItem> {
+    const [created] = await db.insert(handoverProtocolItems).values(data).returning();
+    return created;
+  }
+
+  async updateHandoverProtocolItem(id: number, data: Partial<InsertHandoverProtocolItem>): Promise<HandoverProtocolItem> {
+    const [updated] = await db.update(handoverProtocolItems).set(data).where(eq(handoverProtocolItems.id, id)).returning();
+    return updated;
+  }
+
+  async deleteHandoverProtocolItem(id: number): Promise<void> {
+    await db.delete(handoverProtocolItems).where(eq(handoverProtocolItems.id, id));
+  }
+
+  async getHandoverProtocolMeters(protocolId: number): Promise<HandoverProtocolMeter[]> {
+    return db.select().from(handoverProtocolMeters).where(eq(handoverProtocolMeters.protocolId, protocolId));
+  }
+
+  async createHandoverProtocolMeter(data: InsertHandoverProtocolMeter): Promise<HandoverProtocolMeter> {
+    const [created] = await db.insert(handoverProtocolMeters).values(data).returning();
+    return created;
+  }
+
+  async updateHandoverProtocolMeter(id: number, data: Partial<InsertHandoverProtocolMeter>): Promise<HandoverProtocolMeter> {
+    const [updated] = await db.update(handoverProtocolMeters).set(data).where(eq(handoverProtocolMeters.id, id)).returning();
+    return updated;
+  }
+
+  async deleteHandoverProtocolMeter(id: number): Promise<void> {
+    await db.delete(handoverProtocolMeters).where(eq(handoverProtocolMeters.id, id));
   }
 }
 

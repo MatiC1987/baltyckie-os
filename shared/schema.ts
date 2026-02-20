@@ -833,3 +833,88 @@ export const zipDownloadHistory = pgTable("zip_download_history", {
 export const insertZipDownloadHistorySchema = createInsertSchema(zipDownloadHistory).omit({ id: true, downloadedAt: true });
 export type ZipDownloadHistory = typeof zipDownloadHistory.$inferSelect;
 export type InsertZipDownloadHistory = z.infer<typeof insertZipDownloadHistorySchema>;
+
+// ============ Handover Protocols (Protokoły zdawczo-odbiorcze) ============
+
+export const handoverProtocols = pgTable("handover_protocols", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  protocolType: text("protocol_type").notNull(), // 'WYDANIE' | 'ZWROT'
+  protocolDate: date("protocol_date").notNull(),
+  protocolTime: text("protocol_time"), // HH:MM
+  tenantName: text("tenant_name").notNull(),
+  tenantPesel: text("tenant_pesel"),
+  tenantIdNumber: text("tenant_id_number"),
+  apartmentName: text("apartment_name").notNull(),
+  apartmentAddress: text("apartment_address"),
+  notes: text("notes"),
+  status: text("status").notNull().default("SZKIC"), // 'SZKIC' | 'ZATWIERDZONY'
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const handoverProtocolRooms = pgTable("handover_protocol_rooms", {
+  id: serial("id").primaryKey(),
+  protocolId: integer("protocol_id").references(() => handoverProtocols.id, { onDelete: "cascade" }).notNull(),
+  roomName: text("room_name").notNull(),
+  wallsCondition: text("walls_condition"), // 'DOBRY' | 'USZKODZONY' | 'DO_NAPRAWY'
+  floorCondition: text("floor_condition"),
+  windowsCondition: text("windows_condition"),
+  doorsCondition: text("doors_condition"),
+  comments: text("comments"),
+  sortOrder: integer("sort_order").default(0),
+});
+
+export const handoverProtocolItems = pgTable("handover_protocol_items", {
+  id: serial("id").primaryKey(),
+  protocolId: integer("protocol_id").references(() => handoverProtocols.id, { onDelete: "cascade" }).notNull(),
+  itemName: text("item_name").notNull(),
+  quantity: integer("quantity").default(1),
+  condition: text("condition"), // 'NOWY' | 'DOBRY' | 'ZUZYTY' | 'USZKODZONY'
+  comments: text("comments"),
+  sortOrder: integer("sort_order").default(0),
+});
+
+export const handoverProtocolMeters = pgTable("handover_protocol_meters", {
+  id: serial("id").primaryKey(),
+  protocolId: integer("protocol_id").references(() => handoverProtocols.id, { onDelete: "cascade" }).notNull(),
+  meterType: text("meter_type").notNull(), // 'PRAD' | 'WODA_ZIMNA' | 'WODA_CIEPLA' | 'GAZ' | 'OGRZEWANIE'
+  meterNumber: text("meter_number"),
+  reading: decimal("reading", { precision: 12, scale: 3 }),
+  unit: text("unit"), // 'kWh' | 'm³' | 'GJ'
+});
+
+export const handoverProtocolsRelations = relations(handoverProtocols, ({ one, many }) => ({
+  sublease: one(subleases, { fields: [handoverProtocols.subleaseId], references: [subleases.id] }),
+  rooms: many(handoverProtocolRooms),
+  items: many(handoverProtocolItems),
+  meters: many(handoverProtocolMeters),
+}));
+
+export const handoverProtocolRoomsRelations = relations(handoverProtocolRooms, ({ one }) => ({
+  protocol: one(handoverProtocols, { fields: [handoverProtocolRooms.protocolId], references: [handoverProtocols.id] }),
+}));
+
+export const handoverProtocolItemsRelations = relations(handoverProtocolItems, ({ one }) => ({
+  protocol: one(handoverProtocols, { fields: [handoverProtocolItems.protocolId], references: [handoverProtocols.id] }),
+}));
+
+export const handoverProtocolMetersRelations = relations(handoverProtocolMeters, ({ one }) => ({
+  protocol: one(handoverProtocols, { fields: [handoverProtocolMeters.protocolId], references: [handoverProtocols.id] }),
+}));
+
+export const insertHandoverProtocolSchema = createInsertSchema(handoverProtocols).omit({ id: true, createdAt: true });
+export type HandoverProtocol = typeof handoverProtocols.$inferSelect;
+export type InsertHandoverProtocol = z.infer<typeof insertHandoverProtocolSchema>;
+
+export const insertHandoverProtocolRoomSchema = createInsertSchema(handoverProtocolRooms).omit({ id: true });
+export type HandoverProtocolRoom = typeof handoverProtocolRooms.$inferSelect;
+export type InsertHandoverProtocolRoom = z.infer<typeof insertHandoverProtocolRoomSchema>;
+
+export const insertHandoverProtocolItemSchema = createInsertSchema(handoverProtocolItems).omit({ id: true });
+export type HandoverProtocolItem = typeof handoverProtocolItems.$inferSelect;
+export type InsertHandoverProtocolItem = z.infer<typeof insertHandoverProtocolItemSchema>;
+
+export const insertHandoverProtocolMeterSchema = createInsertSchema(handoverProtocolMeters).omit({ id: true });
+export type HandoverProtocolMeter = typeof handoverProtocolMeters.$inferSelect;
+export type InsertHandoverProtocolMeter = z.infer<typeof insertHandoverProtocolMeterSchema>;
