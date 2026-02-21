@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -30,6 +29,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Inbox, CalendarDays, Star, Plus, Trash2,
   Calendar, Tag, ChevronDown, ChevronRight, Circle,
@@ -37,10 +37,10 @@ import {
   Copy, RefreshCw, FolderPlus, Settings, X,
   SlidersHorizontal, GripVertical, Sun, Moon, Monitor,
   ListPlus, FolderOpen, Clock, AlertCircle, Flag,
-  BookOpen, Archive, Check, ChevronUp,
+  BookOpen, Archive, Check, ChevronUp, Users, Menu,
 } from "lucide-react";
 
-type ViewType = "inbox" | "today" | "week" | "priority" | "logbook" | { projectId: number };
+type ViewType = "inbox" | "today" | "tomorrow" | "week" | "priority" | "shared" | "logbook" | { projectId: number };
 
 type SettingsPage = "main" | "appearance" | "general" | "counter" | "today_settings" | "week_settings" | "plus_settings";
 
@@ -77,17 +77,6 @@ const TAG_COLORS: Record<string, string> = {
 
 const DEFAULT_TAG_COLOR = "bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-300";
 
-const FONT_SIZES: { label: string; value: number }[] = [
-  { label: "Mała", value: 12 },
-  { label: "Średnia", value: 14 },
-  { label: "Duża", value: 16 },
-  { label: "Bardzo duża", value: 18 },
-];
-
-function getStoredFontSize(): number {
-  try { return Number(localStorage.getItem("tasksFontSize")) || 14; } catch { return 14; }
-}
-
 function getStoredShowCounts(): boolean {
   try { return localStorage.getItem("tasksShowCounts") !== "false"; } catch { return true; }
 }
@@ -120,7 +109,7 @@ function getTagColor(tag: string): string {
   return TAG_COLORS[tag.toLowerCase()] || DEFAULT_TAG_COLOR;
 }
 
-function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, showOverdueInToday: boolean): Task[] {
+function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, showOverdueInToday: boolean, currentUserId?: string): Task[] {
   if (view === "inbox") return tasks.filter((t) => !t.projectId && !t.completed && t.parentTaskId === null);
   if (view === "today") {
     return tasks.filter((t) => {
@@ -133,6 +122,14 @@ function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, showOverdu
       return false;
     });
   }
+  if (view === "tomorrow") {
+    return tasks.filter((t) => {
+      if (t.completed) return false;
+      if (t.parentTaskId !== null) return false;
+      if (!t.dueDate) return false;
+      return isTomorrow(parseISO(t.dueDate));
+    });
+  }
   if (view === "week") {
     return tasks.filter((t) => {
       if (t.completed) return false;
@@ -142,6 +139,9 @@ function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, showOverdu
     });
   }
   if (view === "priority") return tasks.filter((t) => !t.completed && t.priority && t.priority !== "BRAK" && t.parentTaskId === null);
+  if (view === "shared") {
+    return tasks.filter((t) => !t.completed && t.parentTaskId === null && currentUserId && (t.sharedWith || []).includes(currentUserId) && t.userId !== currentUserId);
+  }
   if (view === "logbook") return tasks.filter((t) => t.completed).sort((a, b) => {
     const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
     const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
@@ -150,11 +150,31 @@ function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, showOverdu
   return tasks.filter((t) => t.projectId === view.projectId && !t.completed && t.parentTaskId === null);
 }
 
+function sortTasks(tasks: Task[], sortBy: string): Task[] {
+  if (sortBy === "manual") return [...tasks].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  if (sortBy === "dueDate") return [...tasks].sort((a, b) => {
+    if (!a.dueDate && !b.dueDate) return 0;
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
+  });
+  if (sortBy === "priority") return [...tasks].sort((a, b) => (PRIORITY_ORDER[a.priority || "BRAK"] ?? 4) - (PRIORITY_ORDER[b.priority || "BRAK"] ?? 4));
+  if (sortBy === "createdAt") return [...tasks].sort((a, b) => {
+    const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bT - aT;
+  });
+  if (sortBy === "alpha") return [...tasks].sort((a, b) => a.title.localeCompare(b.title, "pl"));
+  return tasks;
+}
+
 function viewLabel(view: ViewType, projects: TaskProject[]): string {
   if (view === "inbox") return "Odebrane";
-  if (view === "today") return "Dzi\u015B";
+  if (view === "today") return "Dziś";
+  if (view === "tomorrow") return "Jutro";
   if (view === "week") return "W tym tygodniu";
   if (view === "priority") return "Priorytetowe";
+  if (view === "shared") return "Udostępnione mi";
   if (view === "logbook") return "Logbook";
   const p = projects.find((pr) => pr.id === view.projectId);
   return p?.name || "Projekt";
@@ -163,14 +183,17 @@ function viewLabel(view: ViewType, projects: TaskProject[]): string {
 function viewIcon(view: ViewType) {
   if (view === "inbox") return Inbox;
   if (view === "today") return Star;
+  if (view === "tomorrow") return Sun;
   if (view === "week") return Calendar;
   if (view === "priority") return AlertCircle;
+  if (view === "shared") return Users;
   if (view === "logbook") return BookOpen;
   return FolderOpen;
 }
 
 export default function Tasks() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [view, setView] = useState<ViewType>("inbox");
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
@@ -179,7 +202,7 @@ export default function Tasks() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set());
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768);
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
   const [inlineAddVisible, setInlineAddVisible] = useState(false);
   const [inlineTitle, setInlineTitle] = useState("");
@@ -190,15 +213,23 @@ export default function Tasks() {
   const [fabDragging, setFabDragging] = useState(false);
   const [dragOverProject, setDragOverProject] = useState<number | null>(null);
   const [taskDragId, setTaskDragId] = useState<number | null>(null);
-  const [fontSize, setFontSize] = useState(getStoredFontSize);
   const [showCounts, setShowCounts] = useState(getStoredShowCounts);
   const [showOverdueInToday, setShowOverdueInToday] = useState(getStoredShowOverdueInToday);
   const [weekStart, setWeekStart] = useState<0 | 1>(getStoredWeekStart);
   const [projectDragId, setProjectDragId] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<string>("manual");
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
 
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
   const { data: projects = [] } = useQuery<TaskProject[]>({ queryKey: ["/api/task-projects"] });
   const { data: sections = [] } = useQuery<TaskSection[]>({ queryKey: ["/api/task-sections"] });
+  const { data: allUsers = [] } = useQuery<{ id: string; firstName: string | null; lastName: string | null; email: string | null; profileImageUrl: string | null }[]>({ queryKey: ["/api/all-users"] });
 
   const toggleComplete = useMutation({
     mutationFn: (task: Task) =>
@@ -219,7 +250,7 @@ export default function Tasks() {
     mutationFn: (id: number) => apiRequest("DELETE", `/api/tasks/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      toast({ title: "Zadanie usuni\u0119te" });
+      toast({ title: "Zadanie usunięte" });
     },
   });
 
@@ -244,7 +275,7 @@ export default function Tasks() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       setSelectedTasks(new Set());
-      toast({ title: "Zadania usuni\u0119te" });
+      toast({ title: "Zadania usunięte" });
     },
   });
 
@@ -279,7 +310,7 @@ export default function Tasks() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/task-projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      toast({ title: "Projekt usuni\u0119ty" });
+      toast({ title: "Projekt usunięty" });
     },
   });
 
@@ -293,8 +324,8 @@ export default function Tasks() {
   });
 
   const filtered = useMemo(
-    () => filterTasks(tasks, view, weekStart, showOverdueInToday),
-    [tasks, view, weekStart, showOverdueInToday]
+    () => filterTasks(tasks, view, weekStart, showOverdueInToday, user?.id),
+    [tasks, view, weekStart, showOverdueInToday, user?.id]
   );
 
   const isProjectView = typeof view === "object";
@@ -350,9 +381,11 @@ export default function Tasks() {
   const smartViews = useMemo(
     () => [
       { key: "inbox", view: "inbox" as ViewType, icon: Inbox, label: "Odebrane", color: "#5ADBFA" },
-      { key: "today", view: "today" as ViewType, icon: Star, label: "Dzi\u015B", color: "#FFD43B" },
+      { key: "today", view: "today" as ViewType, icon: Star, label: "Dziś", color: "#FFD43B" },
+      { key: "tomorrow", view: "tomorrow" as ViewType, icon: Sun, label: "Jutro", color: "#FF922B" },
       { key: "week", view: "week" as ViewType, icon: Calendar, label: "W tym tygodniu", color: "#51CF66" },
       { key: "priority", view: "priority" as ViewType, icon: AlertCircle, label: "Priorytetowe", color: "#FF6B6B" },
+      { key: "shared", view: "shared" as ViewType, icon: Users, label: "Udostępnione mi", color: "#9775FA" },
       { key: "logbook", view: "logbook" as ViewType, icon: BookOpen, label: "Logbook", color: "#868E96" },
     ],
     []
@@ -374,6 +407,13 @@ export default function Tasks() {
   const clearSelection = useCallback(() => {
     setSelectedTasks(new Set());
   }, []);
+
+  const handleViewChange = useCallback((newView: ViewType) => {
+    setView(newView);
+    setSelectedTasks(new Set());
+    setDetailTask(null);
+    if (isMobile) setSidebarCollapsed(true);
+  }, [isMobile]);
 
   const handleInlineSubmit = useCallback(() => {
     if (!inlineTitle.trim()) return;
@@ -421,7 +461,7 @@ export default function Tasks() {
         if (selectedTasks.size === 1) {
           const taskId = Array.from(selectedTasks)[0];
           updateTask.mutate({ id: taskId, data: { dueDate: format(new Date(), "yyyy-MM-dd") } });
-          toast({ title: "Termin ustawiony na dzi\u015B" });
+          toast({ title: "Termin ustawiony na dziś" });
         }
       }
       if (e.key === "Delete" || e.key === "Backspace") {
@@ -558,7 +598,7 @@ export default function Tasks() {
 
   const priorityGrouped = useMemo(() => {
     if (view !== "priority") return null;
-    const groups: Record<string, Task[]> = { PILNY: [], WYSOKI: [], "\u015AREDNI": [], NISKI: [] };
+    const groups: Record<string, Task[]> = { PILNY: [], WYSOKI: [], "ŚREDNI": [], NISKI: [] };
     filtered.forEach((t) => {
       if (t.priority && groups[t.priority]) groups[t.priority].push(t);
     });
@@ -594,6 +634,8 @@ export default function Tasks() {
       const isExpanded = expandedTasks.has(t.id);
       const overdue = isOverdue(t);
       const isLogbook = view === "logbook";
+      const isDueToday = t.dueDate && !t.completed && isToday(parseISO(t.dueDate));
+      const isDueTomorrow = t.dueDate && !t.completed && isTomorrow(parseISO(t.dueDate));
 
       return (
         <div key={t.id}>
@@ -604,7 +646,7 @@ export default function Tasks() {
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
             className={`flex items-center gap-3 px-4 py-3 group transition-colors cursor-pointer ${
-              selectedTasks.has(t.id) ? "bg-primary/5" : overdue ? "bg-red-50/50 dark:bg-red-950/20" : "hover-elevate"
+              selectedTasks.has(t.id) ? "bg-primary/5" : overdue ? "bg-red-50/50 dark:bg-red-950/20" : isDueToday ? "bg-orange-50/30 dark:bg-orange-950/10" : isDueTomorrow ? "bg-yellow-50/30 dark:bg-yellow-950/10" : "hover-elevate"
             }`}
             style={{ paddingLeft: `${16 + indent * 24}px` }}
             onClick={() => handleTaskClick(t)}
@@ -648,7 +690,9 @@ export default function Tasks() {
               </div>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 {t.dueDate && !isLogbook && (
-                  <span className={`text-[11px] ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                  <span className={`text-[11px] flex items-center gap-1 ${overdue ? "text-red-500 font-medium" : isDueToday ? "text-orange-500 font-medium" : isDueTomorrow ? "text-yellow-600 font-medium" : "text-muted-foreground"}`}>
+                    {isDueToday && <Clock className="h-3 w-3 text-orange-500" />}
+                    {isDueTomorrow && <Clock className="h-3 w-3 text-yellow-500" />}
                     {format(parseISO(t.dueDate), "d MMM", { locale: pl })}
                     {t.dueTime ? ` ${t.dueTime}` : ""}
                   </span>
@@ -700,16 +744,24 @@ export default function Tasks() {
   );
 
   const renderGroupedView = () => {
+    if (view === "tomorrow") {
+      return (
+        <AnimatePresence>
+          {sortTasks(filtered, sortBy).map((t) => renderTaskRow(t))}
+        </AnimatePresence>
+      );
+    }
+
     if (view === "today" && todayGrouped) {
       return (
         <>
           {todayGrouped.overdue.length > 0 && (
             <div>
               <div className="px-4 py-2 text-xs font-semibold text-red-500 uppercase tracking-wider bg-red-50/30 dark:bg-red-950/10">
-                Zaleg\u0142e
+                Zaległe
               </div>
               <AnimatePresence>
-                {todayGrouped.overdue.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+                {sortTasks(todayGrouped.overdue, sortBy).map((t) => renderTaskRow(t))}
               </AnimatePresence>
             </div>
           )}
@@ -717,7 +769,7 @@ export default function Tasks() {
             <div>
               <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dzisiaj</div>
               <AnimatePresence>
-                {todayGrouped.today.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+                {sortTasks(todayGrouped.today, sortBy).map((t) => renderTaskRow(t))}
               </AnimatePresence>
             </div>
           )}
@@ -732,7 +784,7 @@ export default function Tasks() {
             {label}
           </div>
           <AnimatePresence>
-            {dayTasks.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+            {sortTasks(dayTasks, sortBy).map((t) => renderTaskRow(t))}
           </AnimatePresence>
         </div>
       ));
@@ -746,7 +798,7 @@ export default function Tasks() {
             {PRIORITY_LABELS[priority]}
           </div>
           <AnimatePresence>
-            {priorityTasks.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+            {sortTasks(priorityTasks, sortBy).map((t) => renderTaskRow(t))}
           </AnimatePresence>
         </div>
       ));
@@ -766,10 +818,17 @@ export default function Tasks() {
     return null;
   };
 
-  const hasGroupedView = view === "today" || view === "week" || view === "priority" || view === "logbook";
+  const hasGroupedView = view === "today" || view === "tomorrow" || view === "week" || view === "priority" || view === "logbook";
 
   return (
-    <div className="flex h-full" style={{ fontSize: `${fontSize}px` }} data-testid="page-tasks">
+    <div className="flex h-full" data-testid="page-tasks">
+      {isMobile && !sidebarCollapsed && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40"
+          onClick={() => setSidebarCollapsed(true)}
+          data-testid="sidebar-backdrop"
+        />
+      )}
       <AnimatePresence>
         {!sidebarCollapsed && (
           <motion.aside
@@ -777,21 +836,19 @@ export default function Tasks() {
             animate={{ width: 260, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="shrink-0 border-r flex flex-col overflow-hidden bg-muted/20"
+            className={`shrink-0 border-r flex flex-col overflow-hidden bg-muted/20 ${
+              isMobile ? "fixed inset-y-0 left-0 z-50 bg-background" : ""
+            }`}
             data-testid="tasks-sidebar"
           >
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
               <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">Widoki</div>
               {smartViews.map((sv) => {
-                const count = filterTasks(tasks, sv.view, weekStart, showOverdueInToday).length;
+                const count = filterTasks(tasks, sv.view, weekStart, showOverdueInToday, user?.id).length;
                 return (
                   <button
                     key={sv.key}
-                    onClick={() => {
-                      setView(sv.view);
-                      clearSelection();
-                      setDetailTask(null);
-                    }}
+                    onClick={() => handleViewChange(sv.view)}
                     className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm w-full text-left transition-all ${
                       isActive(sv.view) ? "bg-primary/10 text-primary font-medium" : "hover-elevate text-foreground"
                     }`}
@@ -822,11 +879,7 @@ export default function Tasks() {
                       project={p}
                       tasks={tasks}
                       isActive={isActive({ projectId: p.id })}
-                      onClick={() => {
-                        setView({ projectId: p.id });
-                        clearSelection();
-                        setDetailTask(null);
-                      }}
+                      onClick={() => handleViewChange({ projectId: p.id })}
                       fabDragging={fabDragging}
                       dragOverProject={dragOverProject}
                       setDragOverProject={setDragOverProject}
@@ -866,11 +919,7 @@ export default function Tasks() {
                           project={p}
                           tasks={tasks}
                           isActive={isActive({ projectId: p.id })}
-                          onClick={() => {
-                            setView({ projectId: p.id });
-                            clearSelection();
-                            setDetailTask(null);
-                          }}
+                          onClick={() => handleViewChange({ projectId: p.id })}
                           fabDragging={fabDragging}
                           dragOverProject={dragOverProject}
                           setDragOverProject={setDragOverProject}
@@ -897,11 +946,7 @@ export default function Tasks() {
                       project={p}
                       tasks={tasks}
                       isActive={isActive({ projectId: p.id })}
-                      onClick={() => {
-                        setView({ projectId: p.id });
-                        clearSelection();
-                        setDetailTask(null);
-                      }}
+                      onClick={() => handleViewChange({ projectId: p.id })}
                       fabDragging={fabDragging}
                       dragOverProject={dragOverProject}
                       setDragOverProject={setDragOverProject}
@@ -964,9 +1009,18 @@ export default function Tasks() {
 
       <main className="flex-1 flex flex-col overflow-hidden relative" data-testid="tasks-main">
         <div className="flex items-center gap-2 px-4 py-3 border-b">
+          {isMobile && (
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-1.5 rounded-md hover-elevate text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-mobile-menu"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1.5 rounded-md hover-elevate text-muted-foreground hover:text-foreground transition-colors"
+            className={`p-1.5 rounded-md hover-elevate text-muted-foreground hover:text-foreground transition-colors ${isMobile ? "hidden" : ""}`}
             data-testid="button-toggle-sidebar"
           >
             {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -974,9 +1028,29 @@ export default function Tasks() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <VIcon className="h-5 w-5 text-muted-foreground shrink-0" />
             <h2 className="text-lg font-semibold truncate" data-testid="text-view-title">
-              {viewLabel(view, projects)}
+              {isProjectView ? (
+                <span className="flex items-center gap-1">
+                  <span className="text-muted-foreground text-sm font-normal">Projekt</span>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  {viewLabel(view, projects)}
+                </span>
+              ) : (
+                viewLabel(view, projects)
+              )}
             </h2>
           </div>
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-[130px] h-8 text-xs" data-testid="select-sort">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">Ręcznie</SelectItem>
+              <SelectItem value="dueDate">Termin</SelectItem>
+              <SelectItem value="priority">Priorytet</SelectItem>
+              <SelectItem value="createdAt">Data utworzenia</SelectItem>
+              <SelectItem value="alpha">Alfabetycznie</SelectItem>
+            </SelectContent>
+          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="p-1.5 rounded-md hover-elevate text-muted-foreground hover:text-foreground transition-colors" data-testid="button-context-menu">
@@ -991,6 +1065,26 @@ export default function Tasks() {
           </DropdownMenu>
         </div>
 
+        {isProjectView && (() => {
+          const currentProject = projects.find((p) => p.id === (view as { projectId: number }).projectId);
+          const projectTasks = tasks.filter((t) => t.projectId === (view as { projectId: number }).projectId && t.parentTaskId === null);
+          const completedCount = projectTasks.filter((t) => t.completed).length;
+          const totalCount = projectTasks.length;
+          const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+          const color = currentProject?.color || "#5ADBFA";
+          return (
+            <div className="px-4 py-3" style={{ background: `linear-gradient(135deg, ${color}15, ${color}05)` }} data-testid="project-header">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-muted-foreground">{completedCount}/{totalCount} ukończonych</span>
+                <span className="text-xs font-medium" style={{ color }}>{Math.round(progress)}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, backgroundColor: color }} />
+              </div>
+            </div>
+          );
+        })()}
+
         <motion.div
           key={typeof view === "object" ? `project-${view.projectId}` : view}
           initial={{ opacity: 0, x: 10 }}
@@ -1003,7 +1097,7 @@ export default function Tasks() {
           ) : isProjectView ? (
             <>
               {projectSections.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((sec) => {
-                const sectionTasks = filtered.filter((t) => t.sectionId === sec.id).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                const sectionTasks = sortTasks(filtered.filter((t) => t.sectionId === sec.id), sortBy);
                 const collapsed = collapsedSections.has(sec.id);
                 return (
                   <div key={sec.id} data-testid={`section-${sec.id}`}>
@@ -1023,22 +1117,20 @@ export default function Tasks() {
                 );
               })}
               <AnimatePresence>
-                {filtered
-                  .filter((t) => !t.sectionId)
-                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                {sortTasks(filtered.filter((t) => !t.sectionId), sortBy)
                   .map((t) => renderTaskRow(t))}
               </AnimatePresence>
             </>
           ) : (
             <AnimatePresence>
-              {filtered.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+              {sortTasks(filtered, sortBy).map((t) => renderTaskRow(t))}
             </AnimatePresence>
           )}
 
           {filtered.length === 0 && !inlineAddVisible && (
             <div className="text-center text-muted-foreground py-16" data-testid="text-empty-tasks">
               <VIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Brak zada\u0144 w tym widoku</p>
+              <p className="text-sm">Brak zadań w tym widoku</p>
             </div>
           )}
 
@@ -1082,7 +1174,7 @@ export default function Tasks() {
             <div className="w-px h-5 bg-border mx-1" />
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
               <ArrowRight className="h-3.5 w-3.5" />
-              Przenie\u015B
+              Przenieś
             </Button>
             {selectedTasks.size === 1 && (
               <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => duplicateTask.mutate(selectedTasksArray[0])} data-testid="button-action-duplicate">
@@ -1104,20 +1196,47 @@ export default function Tasks() {
           </div>
         )}
 
-        <div
-          className="absolute bottom-6 right-6 z-40"
-          draggable
-          onDragStart={handleFabDragStart}
-          onDragEnd={handleFabDragEnd}
-        >
-          <Button
-            size="icon"
-            className="h-12 w-12 rounded-full shadow-lg"
-            onClick={() => setAddTaskOpen(true)}
-            data-testid="button-fab-add"
-          >
-            <Plus className="h-6 w-6" />
-          </Button>
+        <div className="absolute bottom-6 right-6 z-40">
+          {isMobile ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  className="h-12 w-12 rounded-full shadow-lg"
+                  data-testid="button-fab-add"
+                >
+                  <Plus className="h-6 w-6" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="w-48">
+                <DropdownMenuItem onClick={() => setAddTaskOpen(true)} data-testid="fab-menu-new-task">
+                  <Plus className="h-3.5 w-3.5 mr-2" /> Nowe zadanie
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {activeProjects.map((p) => (
+                  <DropdownMenuItem key={p.id} onClick={() => { setView({ projectId: p.id }); setInlineAddVisible(true); }} data-testid={`fab-menu-project-${p.id}`}>
+                    <Circle className="h-3 w-3 mr-2" style={{ color: p.color || "#5ADBFA", fill: p.color || "#5ADBFA" }} />
+                    {p.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <div
+              draggable
+              onDragStart={handleFabDragStart}
+              onDragEnd={handleFabDragEnd}
+            >
+              <Button
+                size="icon"
+                className="h-12 w-12 rounded-full shadow-lg"
+                onClick={() => setAddTaskOpen(true)}
+                data-testid="button-fab-add"
+              >
+                <Plus className="h-6 w-6" />
+              </Button>
+            </div>
+          )}
         </div>
       </main>
 
@@ -1129,6 +1248,9 @@ export default function Tasks() {
             projects={projects}
             sections={sections}
             childTasks={childTasksMap.get(detailTask.id) || []}
+            allUsers={allUsers}
+            currentUserId={user?.id}
+            isMobile={isMobile}
             onClose={() => {
               setDetailTask(null);
               clearSelection();
@@ -1185,11 +1307,6 @@ export default function Tasks() {
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
-        fontSize={fontSize}
-        setFontSize={(v) => {
-          setFontSize(v);
-          localStorage.setItem("tasksFontSize", String(v));
-        }}
         showCounts={showCounts}
         setShowCounts={(v) => {
           setShowCounts(v);
@@ -1220,9 +1337,9 @@ export default function Tasks() {
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent data-testid="dialog-delete-confirm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Usun\u0105\u0107 zadania?</AlertDialogTitle>
+            <AlertDialogTitle>Usunąć zadania?</AlertDialogTitle>
             <AlertDialogDescription>
-              Czy na pewno chcesz usun\u0105\u0107 {selectedTasks.size} {selectedTasks.size === 1 ? "zadanie" : "zada\u0144"}? Tej operacji nie mo\u017Cna cofn\u0105\u0107.
+              Czy na pewno chcesz usunąć {selectedTasks.size} {selectedTasks.size === 1 ? "zadanie" : "zadań"}? Tej operacji nie można cofnąć.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1234,7 +1351,7 @@ export default function Tasks() {
               }}
               data-testid="button-confirm-delete"
             >
-              Usu\u0144
+              Usuń
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1274,50 +1391,57 @@ function ProjectSidebarItem({
   const isDragOver = dragOverProject === project.id;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <div
-          className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm w-full text-left transition-all cursor-pointer ${
-            isActive ? "bg-primary/10 text-primary font-medium" : "hover-elevate text-foreground"
-          } ${isDragOver && fabDragging ? "ring-2 ring-blue-400 bg-blue-50/30 dark:bg-blue-950/20" : ""}`}
-          onClick={onClick}
-          draggable
-          onDragStart={(e) => onDragStart(e, project.id)}
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (fabDragging) setDragOverProject(project.id);
-          }}
-          onDragLeave={() => setDragOverProject(null)}
-          onDrop={(e) => {
-            if (e.dataTransfer.getData("text/fab-drag")) {
-              onFabDrop(e, project.id);
-            } else if (e.dataTransfer.getData("text/project-id")) {
-              onDrop(e, project.id);
-            }
-          }}
-          data-testid={`sidebar-project-${project.id}`}
-        >
-          <Circle className="h-3 w-3 shrink-0" style={{ color: project.color || "#5ADBFA", fill: project.color || "#5ADBFA" }} />
-          <span className="flex-1 truncate">{project.name}</span>
-          {count > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground tabular-nums" data-testid={`badge-project-count-${project.id}`}>
-              {count}
-            </span>
-          )}
-        </div>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="right">
-        <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
-          <Archive className="h-3.5 w-3.5 mr-2" />
-          {project.archived ? "Przywr\u00F3\u0107 z archiwum" : "Archiwizuj"}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
-          <Trash2 className="h-3.5 w-3.5 mr-2" />
-          Usu\u0144
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div
+      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm w-full text-left transition-all cursor-pointer group ${
+        isActive ? "bg-primary/10 text-primary font-medium" : "hover-elevate text-foreground"
+      } ${isDragOver && fabDragging ? "ring-2 ring-blue-400 bg-blue-50/30 dark:bg-blue-950/20" : ""}`}
+      onClick={onClick}
+      draggable
+      onDragStart={(e) => onDragStart(e, project.id)}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (fabDragging) setDragOverProject(project.id);
+      }}
+      onDragLeave={() => setDragOverProject(null)}
+      onDrop={(e) => {
+        if (e.dataTransfer.getData("text/fab-drag")) {
+          onFabDrop(e, project.id);
+        } else if (e.dataTransfer.getData("text/project-id")) {
+          onDrop(e, project.id);
+        }
+      }}
+      data-testid={`sidebar-project-${project.id}`}
+    >
+      <Circle className="h-3 w-3 shrink-0" style={{ color: project.color || "#5ADBFA", fill: project.color || "#5ADBFA" }} />
+      <span className="flex-1 truncate">{project.name}</span>
+      {count > 0 && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground tabular-nums" data-testid={`badge-project-count-${project.id}`}>
+          {count}
+        </span>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="invisible group-hover:visible p-0.5 rounded hover-elevate text-muted-foreground"
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`button-project-menu-${project.id}`}
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="right">
+          <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
+            <Archive className="h-3.5 w-3.5 mr-2" />
+            {project.archived ? "Przywróć z archiwum" : "Archiwizuj"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
+            <Trash2 className="h-3.5 w-3.5 mr-2" />
+            Usuń
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -1327,6 +1451,9 @@ function DetailPanel({
   projects,
   sections,
   childTasks,
+  allUsers,
+  currentUserId,
+  isMobile,
   onClose,
   onUpdate,
   onDelete,
@@ -1338,6 +1465,9 @@ function DetailPanel({
   projects: TaskProject[];
   sections: TaskSection[];
   childTasks: Task[];
+  allUsers: { id: string; firstName: string | null; lastName: string | null; email: string | null; profileImageUrl: string | null }[];
+  currentUserId?: string;
+  isMobile: boolean;
   onClose: () => void;
   onUpdate: (data: Record<string, unknown>) => void;
   onDelete: () => void;
@@ -1387,7 +1517,7 @@ function DetailPanel({
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: 400, opacity: 0 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="w-[380px] shrink-0 border-l bg-background flex flex-col overflow-hidden"
+      className={`${isMobile ? "fixed inset-0 z-50 w-full" : "w-[380px]"} shrink-0 border-l bg-background flex flex-col overflow-hidden`}
       data-testid="detail-panel"
     >
       <div className="flex items-center gap-2 px-4 py-3 border-b">
@@ -1556,8 +1686,8 @@ function DetailPanel({
             <SelectContent>
               <SelectItem value="none">Brak</SelectItem>
               <SelectItem value="codziennie">Codziennie</SelectItem>
-              <SelectItem value="co tydzie\u0144">Co tydzie\u0144</SelectItem>
-              <SelectItem value="co miesi\u0105c">Co miesi\u0105c</SelectItem>
+              <SelectItem value="co tydzień">Co tydzień</SelectItem>
+              <SelectItem value="co miesiąc">Co miesiąc</SelectItem>
               <SelectItem value="co rok">Co rok</SelectItem>
             </SelectContent>
           </Select>
@@ -1661,18 +1791,69 @@ function DetailPanel({
             />
           </div>
         </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <Users className="h-3.5 w-3.5" />
+              Udostępnij
+            </Label>
+          </div>
+          {(task.sharedWith || []).map((uid: string) => {
+            const u = allUsers.find((au) => au.id === uid);
+            return (
+              <div key={uid} className="flex items-center gap-2 py-1 group">
+                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-medium text-primary shrink-0">
+                  {u ? (u.firstName?.[0] || u.email?.[0] || "?").toUpperCase() : "?"}
+                </div>
+                <span className="text-sm flex-1 truncate">{u ? `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || uid : uid}</span>
+                <button
+                  onClick={() => {
+                    const newShared = (task.sharedWith || []).filter((id: string) => id !== uid);
+                    onUpdate({ sharedWith: newShared });
+                  }}
+                  className="invisible group-hover:visible p-0.5 rounded hover-elevate text-muted-foreground"
+                  data-testid={`button-remove-share-${uid}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
+          <Select
+            value=""
+            onValueChange={(uid) => {
+              if (uid && !(task.sharedWith || []).includes(uid)) {
+                onUpdate({ sharedWith: [...(task.sharedWith || []), uid] });
+              }
+            }}
+          >
+            <SelectTrigger className="mt-1 h-8 text-xs" data-testid="select-share-user">
+              <SelectValue placeholder="Dodaj osobę..." />
+            </SelectTrigger>
+            <SelectContent>
+              {allUsers
+                .filter((u) => u.id !== currentUserId && !(task.sharedWith || []).includes(u.id))
+                .map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {`${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || u.id}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <AlertDialog open={deleteConfirm} onOpenChange={setDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Usun\u0105\u0107 zadanie?</AlertDialogTitle>
-            <AlertDialogDescription>Tej operacji nie mo\u017Cna cofn\u0105\u0107.</AlertDialogDescription>
+            <AlertDialogTitle>Usunąć zadanie?</AlertDialogTitle>
+            <AlertDialogDescription>Tej operacji nie można cofnąć.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-detail-delete">Anuluj</AlertDialogCancel>
             <AlertDialogAction onClick={onDelete} data-testid="button-confirm-detail-delete">
-              Usu\u0144
+              Usuń
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1751,8 +1932,8 @@ function TaskDialog({
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
-            <Label className="text-xs text-muted-foreground">Tytu\u0142</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Tytu\u0142 zadania" className="mt-1" data-testid="input-task-title" autoFocus />
+            <Label className="text-xs text-muted-foreground">Tytuł</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Tytuł zadania" className="mt-1" data-testid="input-task-title" autoFocus />
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Notatki</Label>
@@ -1832,7 +2013,7 @@ function TaskDialog({
             Anuluj
           </Button>
           <Button onClick={handleSubmit} disabled={!title.trim() || createTask.isPending} data-testid="button-save-task">
-            Utw\u00F3rz
+            Utwórz
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1885,7 +2066,7 @@ function ProjectDialog({ open, onOpenChange, onSubmit }: { open: boolean; onOpen
             disabled={!name.trim()}
             data-testid="button-save-project"
           >
-            Utw\u00F3rz
+            Utwórz
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1955,7 +2136,7 @@ function SectionDialog({
             disabled={!name.trim() || !projectId}
             data-testid="button-save-section"
           >
-            Utw\u00F3rz
+            Utwórz
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1966,8 +2147,6 @@ function SectionDialog({
 function SettingsDialog({
   open,
   onOpenChange,
-  fontSize,
-  setFontSize,
   showCounts,
   setShowCounts,
   showOverdueInToday,
@@ -1978,8 +2157,6 @@ function SettingsDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  fontSize: number;
-  setFontSize: (v: number) => void;
   showCounts: boolean;
   setShowCounts: (v: boolean) => void;
   showOverdueInToday: boolean;
@@ -2019,11 +2196,11 @@ function SettingsDialog({
 
   const pageTitle: Record<SettingsPage, string> = {
     main: "Ustawienia",
-    appearance: "Wygl\u0105d",
-    general: "Og\u00F3lne",
-    counter: "Licznik zada\u0144",
-    today_settings: "Dzi\u015B",
-    week_settings: "Tydzie\u0144",
+    appearance: "Wygląd",
+    general: "Ogólne",
+    counter: "Licznik zadań",
+    today_settings: "Dziś",
+    week_settings: "Tydzień",
     plus_settings: "Przycisk Plus",
   };
 
@@ -2044,10 +2221,10 @@ function SettingsDialog({
         {page === "main" && (
           <div className="space-y-1 py-2">
             {[
-              { key: "appearance" as SettingsPage, label: "Wygl\u0105d", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white text-xs font-bold">Aa</div> },
-              { key: "counter" as SettingsPage, label: "Licznik zada\u0144", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center"><Tag className="h-4 w-4 text-white" /></div> },
-              { key: "today_settings" as SettingsPage, label: "Dzi\u015B", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center"><Star className="h-4 w-4 text-white" /></div> },
-              { key: "week_settings" as SettingsPage, label: "Tydzie\u0144", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center"><Calendar className="h-4 w-4 text-white" /></div> },
+              { key: "appearance" as SettingsPage, label: "Wygląd", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white text-xs font-bold">Aa</div> },
+              { key: "counter" as SettingsPage, label: "Licznik zadań", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center"><Tag className="h-4 w-4 text-white" /></div> },
+              { key: "today_settings" as SettingsPage, label: "Dziś", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center"><Star className="h-4 w-4 text-white" /></div> },
+              { key: "week_settings" as SettingsPage, label: "Tydzień", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center"><Calendar className="h-4 w-4 text-white" /></div> },
               { key: "plus_settings" as SettingsPage, label: "Przycisk Plus", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center"><Plus className="h-4 w-4 text-white" /></div> },
             ].map(({ key, label, icon }) => (
               <button
@@ -2087,36 +2264,14 @@ function SettingsDialog({
                 ))}
               </div>
             </div>
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Rozmiar czcionki</div>
-              <div className="px-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">{FONT_SIZES.find((f) => f.value === fontSize)?.label || "Średnia"}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">{fontSize}px</span>
-                </div>
-                <Slider
-                  min={12}
-                  max={18}
-                  step={2}
-                  value={[fontSize]}
-                  onValueChange={([v]) => setFontSize(v)}
-                  data-testid="slider-font-size"
-                />
-                <div className="flex justify-between text-[10px] text-muted-foreground">
-                  {FONT_SIZES.map((f) => (
-                    <span key={f.value}>{f.label}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
         {page === "counter" && (
           <div className="py-2 space-y-4">
-            <p className="text-sm text-muted-foreground">Poka\u017C liczniki zada\u0144 przy widokach inteligentnych na pasku bocznym.</p>
+            <p className="text-sm text-muted-foreground">Pokaż liczniki zadań przy widokach inteligentnych na pasku bocznym.</p>
             <div className="flex items-center justify-between">
-              <span className="text-sm">Poka\u017C liczniki</span>
+              <span className="text-sm">Pokaż liczniki</span>
               <Switch checked={showCounts} onCheckedChange={setShowCounts} data-testid="switch-show-counts" />
             </div>
           </div>
@@ -2126,8 +2281,8 @@ function SettingsDialog({
           <div className="py-2 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-medium">Poka\u017C zaleg\u0142e</div>
-                <div className="text-xs text-muted-foreground">Wy\u015Bwietlaj przeterminowane zadania w widoku Dzi\u015B</div>
+                <div className="text-sm font-medium">Pokaż zaległe</div>
+                <div className="text-xs text-muted-foreground">Wyświetlaj przeterminowane zadania w widoku Dziś</div>
               </div>
               <Switch checked={showOverdueInToday} onCheckedChange={setShowOverdueInToday} data-testid="switch-show-overdue" />
             </div>
@@ -2137,13 +2292,13 @@ function SettingsDialog({
         {page === "week_settings" && (
           <div className="py-2 space-y-4">
             <div>
-              <div className="text-sm font-medium mb-2">Pocz\u0105tek tygodnia</div>
+              <div className="text-sm font-medium mb-2">Początek tygodnia</div>
               <Select value={String(weekStart)} onValueChange={(v) => setWeekStart(Number(v) as 0 | 1)}>
                 <SelectTrigger data-testid="select-week-start">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">Poniedzia\u0142ek</SelectItem>
+                  <SelectItem value="1">Poniedziałek</SelectItem>
                   <SelectItem value="0">Niedziela</SelectItem>
                 </SelectContent>
               </Select>
@@ -2154,7 +2309,7 @@ function SettingsDialog({
         {page === "plus_settings" && (
           <div className="py-2 space-y-4">
             <div>
-              <div className="text-sm font-medium mb-2">Domy\u015Blny projekt</div>
+              <div className="text-sm font-medium mb-2">Domyślny projekt</div>
               <Select
                 value={defaultProject || "none"}
                 onValueChange={(v) => {
@@ -2177,7 +2332,7 @@ function SettingsDialog({
               </Select>
             </div>
             <div>
-              <div className="text-sm font-medium mb-2">Domy\u015Blny priorytet</div>
+              <div className="text-sm font-medium mb-2">Domyślny priorytet</div>
               <Select
                 value={defaultPriority}
                 onValueChange={(v) => {
@@ -2223,7 +2378,7 @@ function MoveDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xs" data-testid="dialog-move">
         <DialogHeader>
-          <DialogTitle>Przenie\u015B zadania</DialogTitle>
+          <DialogTitle>Przenieś zadania</DialogTitle>
         </DialogHeader>
         <div className="space-y-1 py-2 max-h-[60vh] overflow-y-auto">
           <button

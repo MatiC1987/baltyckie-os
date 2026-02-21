@@ -58,7 +58,7 @@ import {
   taskChecklistItems, TaskChecklistItem, InsertTaskChecklistItem,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, isNotNull, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // Users (optional if auth handles it separately, but good to have)
@@ -355,19 +355,19 @@ export interface IStorage {
   deleteCustomer(id: number): Promise<void>;
 
   // Task Projects
-  getTaskProjects(): Promise<TaskProject[]>;
+  getTaskProjects(userId?: string): Promise<TaskProject[]>;
   createTaskProject(data: InsertTaskProject): Promise<TaskProject>;
   updateTaskProject(id: number, data: Partial<InsertTaskProject>): Promise<TaskProject>;
   deleteTaskProject(id: number): Promise<void>;
 
   // Task Sections
-  getTaskSections(projectId?: number): Promise<TaskSection[]>;
+  getTaskSections(projectId?: number, userId?: string): Promise<TaskSection[]>;
   createTaskSection(data: InsertTaskSection): Promise<TaskSection>;
   updateTaskSection(id: number, data: Partial<InsertTaskSection>): Promise<TaskSection>;
   deleteTaskSection(id: number): Promise<void>;
 
   // Tasks
-  getTasks(filters?: { projectId?: number; sectionId?: number; completed?: boolean; priority?: string; dueBefore?: string }): Promise<Task[]>;
+  getTasks(filters?: { projectId?: number; sectionId?: number; completed?: boolean; priority?: string; dueBefore?: string; userId?: string }): Promise<Task[]>;
   getTask(id: number): Promise<Task | undefined>;
   createTask(data: InsertTask): Promise<Task>;
   updateTask(id: number, data: Partial<InsertTask>): Promise<Task>;
@@ -1619,7 +1619,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Task Projects
-  async getTaskProjects(): Promise<TaskProject[]> {
+  async getTaskProjects(userId?: string): Promise<TaskProject[]> {
+    if (userId) {
+      return await db.select().from(taskProjects).where(eq(taskProjects.userId, userId)).orderBy(taskProjects.sortOrder);
+    }
     return await db.select().from(taskProjects).orderBy(taskProjects.sortOrder);
   }
 
@@ -1638,9 +1641,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Task Sections
-  async getTaskSections(projectId?: number): Promise<TaskSection[]> {
-    if (projectId) {
-      return await db.select().from(taskSections).where(eq(taskSections.projectId, projectId)).orderBy(taskSections.sortOrder);
+  async getTaskSections(projectId?: number, userId?: string): Promise<TaskSection[]> {
+    const conditions: SQL[] = [];
+    if (projectId) conditions.push(eq(taskSections.projectId, projectId));
+    if (userId) conditions.push(eq(taskSections.userId, userId));
+    if (conditions.length > 0) {
+      return await db.select().from(taskSections).where(and(...conditions)).orderBy(taskSections.sortOrder);
     }
     return await db.select().from(taskSections).orderBy(taskSections.sortOrder);
   }
@@ -1660,13 +1666,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Tasks
-  async getTasks(filters?: { projectId?: number; sectionId?: number; completed?: boolean; priority?: string; dueBefore?: string }): Promise<Task[]> {
+  async getTasks(filters?: { projectId?: number; sectionId?: number; completed?: boolean; priority?: string; dueBefore?: string; userId?: string }): Promise<Task[]> {
     const conditions: SQL[] = [];
     if (filters?.projectId) conditions.push(eq(tasks.projectId, filters.projectId));
     if (filters?.sectionId) conditions.push(eq(tasks.sectionId, filters.sectionId));
     if (filters?.completed !== undefined) conditions.push(eq(tasks.completed, filters.completed));
     if (filters?.priority) conditions.push(eq(tasks.priority, filters.priority));
     if (filters?.dueBefore) conditions.push(lte(tasks.dueDate, filters.dueBefore));
+    if (filters?.userId) {
+      conditions.push(or(
+        eq(tasks.userId, filters.userId),
+        sql`${filters.userId} = ANY(${tasks.sharedWith})`
+      )!);
+    }
     const query = conditions.length > 0 ? db.select().from(tasks).where(and(...conditions)) : db.select().from(tasks);
     return query.orderBy(tasks.sortOrder);
   }

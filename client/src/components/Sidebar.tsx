@@ -433,6 +433,14 @@ export function Sidebar() {
     refetchOnWindowFocus: true,
   });
 
+  const { data: companySettings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const companyLogoUrl = companySettings?.logoUrl ? `/api/company-settings/logo?t=${encodeURIComponent(companySettings.logoUrl)}` : null;
+  const companyName = companySettings?.companyName || null;
+
   const { data: overdueCounts } = useQuery<{ costs: number; subleases: number }>({
     queryKey: ["/api/overdue-counts"],
     staleTime: 1000 * 60 * 5,
@@ -642,7 +650,11 @@ export function Sidebar() {
   return (
     <>
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 border-b border-white/10 z-50 flex items-center px-4 justify-between">
-        <img src={logoSrc} alt="Bałtyckie Finanse" className="h-6" />
+        {companyLogoUrl ? (
+          <img src={companyLogoUrl} alt={companyName || "Logo"} className="h-6 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = logoSrc; }} />
+        ) : (
+          <img src={logoSrc} alt="Bałtyckie Finanse" className="h-6" />
+        )}
         <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)} className="text-white">
           {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </Button>
@@ -654,7 +666,11 @@ export function Sidebar() {
       )}>
         <div className="h-full flex flex-col">
           <div className="px-5 pt-5 pb-5 flex items-center justify-center">
-            <img src={logoSrc} alt="Bałtyckie Finanse" className="h-7 object-contain" data-testid="img-logo" />
+            {companyLogoUrl ? (
+              <img src={companyLogoUrl} alt={companyName || "Logo"} className="h-7 object-contain" data-testid="img-logo" onError={(e) => { (e.target as HTMLImageElement).src = logoSrc; }} />
+            ) : (
+              <img src={logoSrc} alt="Bałtyckie Finanse" className="h-7 object-contain" data-testid="img-logo" />
+            )}
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-1" data-testid="nav-sidebar">

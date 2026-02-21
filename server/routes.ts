@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -5462,19 +5462,37 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
-  // ==================== TASK PROJECTS ====================
-  app.get('/api/task-projects', isAuthenticated, async (req, res) => {
+  // ==================== ALL USERS (for sharing) ====================
+  app.get('/api/all-users', isAuthenticated, async (_req, res) => {
     try {
-      const data = await storage.getTaskProjects();
+      const allUsers = await db.select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+        profileImageUrl: users.profileImageUrl,
+      }).from(users);
+      res.json(allUsers);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASK PROJECTS ====================
+  app.get('/api/task-projects', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const data = await storage.getTaskProjects(userId);
       res.json(data);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
 
-  app.post('/api/task-projects', isAuthenticated, async (req, res) => {
+  app.post('/api/task-projects', isAuthenticated, async (req: any, res) => {
     try {
-      const input = insertTaskProjectSchema.parse(req.body);
+      const userId = req.user?.claims?.sub;
+      const input = insertTaskProjectSchema.parse({ ...req.body, userId });
       const created = await storage.createTaskProject(input);
       res.json(created);
     } catch (err: any) {
@@ -5501,19 +5519,21 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
   });
 
   // ==================== TASK SECTIONS ====================
-  app.get('/api/task-sections', isAuthenticated, async (req, res) => {
+  app.get('/api/task-sections', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
       const projectId = req.query.projectId ? Number(req.query.projectId) : undefined;
-      const data = await storage.getTaskSections(projectId);
+      const data = await storage.getTaskSections(projectId, userId);
       res.json(data);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
 
-  app.post('/api/task-sections', isAuthenticated, async (req, res) => {
+  app.post('/api/task-sections', isAuthenticated, async (req: any, res) => {
     try {
-      const input = insertTaskSectionSchema.parse(req.body);
+      const userId = req.user?.claims?.sub;
+      const input = insertTaskSectionSchema.parse({ ...req.body, userId });
       const created = await storage.createTaskSection(input);
       res.json(created);
     } catch (err: any) {
@@ -5540,15 +5560,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
   });
 
   // ==================== TASKS ====================
-  app.get('/api/tasks', isAuthenticated, async (req, res) => {
+  app.get('/api/tasks', isAuthenticated, async (req: any, res) => {
     try {
-      const filters: any = {};
+      const userId = req.user?.claims?.sub;
+      const filters: any = { userId };
       if (req.query.projectId) filters.projectId = Number(req.query.projectId);
       if (req.query.sectionId) filters.sectionId = Number(req.query.sectionId);
       if (req.query.completed !== undefined) filters.completed = req.query.completed === 'true';
       if (req.query.priority) filters.priority = req.query.priority as string;
       if (req.query.dueBefore) filters.dueBefore = req.query.dueBefore as string;
-      const data = await storage.getTasks(Object.keys(filters).length > 0 ? filters : undefined);
+      const data = await storage.getTasks(filters);
       res.json(data);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -5565,9 +5586,10 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
-  app.post('/api/tasks', isAuthenticated, async (req, res) => {
+  app.post('/api/tasks', isAuthenticated, async (req: any, res) => {
     try {
-      const input = insertTaskSchema.parse(req.body);
+      const userId = req.user?.claims?.sub;
+      const input = insertTaskSchema.parse({ ...req.body, userId });
       const created = await storage.createTask(input);
       res.json(created);
     } catch (err: any) {
@@ -5602,6 +5624,8 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           recurring: task.recurring,
           reminderDate: null,
           reminderTime: task.reminderTime,
+          userId: task.userId,
+          sharedWith: task.sharedWith || [],
         });
       }
       res.json(updated);
@@ -5619,8 +5643,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
-  app.post('/api/tasks/:id/duplicate', isAuthenticated, async (req, res) => {
+  app.post('/api/tasks/:id/duplicate', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
       const original = await storage.getTask(Number(req.params.id));
       if (!original) return res.status(404).json({ message: "Task not found" });
       const duplicated = await storage.createTask({
@@ -5637,6 +5662,8 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         recurring: original.recurring,
         reminderDate: original.reminderDate,
         reminderTime: original.reminderTime,
+        userId,
+        sharedWith: original.sharedWith || [],
       });
       res.json(duplicated);
     } catch (err: any) {
@@ -5675,14 +5702,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
-  app.post('/api/tasks/:id/convert-to-project', isAuthenticated, async (req, res) => {
+  app.post('/api/tasks/:id/convert-to-project', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
       const task = await storage.getTask(Number(req.params.id));
       if (!task) return res.status(404).json({ message: "Task not found" });
       const project = await storage.createTaskProject({
         name: task.title,
         color: "#5ADBFA",
         sortOrder: 0,
+        userId,
       });
       await storage.deleteTask(task.id);
       res.json(project);

@@ -1043,6 +1043,7 @@ export const taskProjects = pgTable("task_projects", {
   area: text("area"),
   archived: boolean("archived").default(false),
   sortOrder: integer("sort_order").default(0),
+  userId: text("user_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1051,6 +1052,7 @@ export const taskSections = pgTable("task_sections", {
   projectId: integer("project_id").references(() => taskProjects.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").default(0),
+  userId: text("user_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1071,6 +1073,8 @@ export const tasks = pgTable("tasks", {
   recurring: text("recurring"),
   reminderDate: date("reminder_date"),
   reminderTime: text("reminder_time"),
+  userId: text("user_id"),
+  sharedWith: text("shared_with").array().default([]),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

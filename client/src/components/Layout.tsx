@@ -3,12 +3,42 @@ import { GlobalSearch } from "./GlobalSearch";
 import { NotificationBell } from "./NotificationBell";
 import { PageTransition } from "./PageTransition";
 import { Breadcrumbs } from "./Breadcrumbs";
+import { useState, useEffect } from "react";
+
+const FONT_SIZE_KEY = "globalFontSize";
+
+function loadGlobalFontSize(): number {
+  try {
+    const stored = localStorage.getItem(FONT_SIZE_KEY);
+    if (stored) return Number(stored);
+  } catch {}
+  return 14;
+}
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
+  const [fontSize, setGlobalFontSize] = useState(loadGlobalFontSize);
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${fontSize}px`;
+    return () => {
+      document.documentElement.style.fontSize = "";
+    };
+  }, [fontSize]);
+
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === FONT_SIZE_KEY && e.newValue) {
+        setGlobalFontSize(Number(e.newValue));
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />

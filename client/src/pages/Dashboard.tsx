@@ -902,6 +902,15 @@ function CompanyBalanceCard({
   setEditingAccountId, setEditingBalance, updateBalanceMutation,
 }: any) {
   const [loansDialogOpen, setLoansDialogOpen] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
   const saldoLinkMap: Record<string, string> = {
     "Saldo - M. Cieślak": "/saldo-mc",
     "Saldo - M. Latasiewicz": "/saldo-ml",
@@ -1120,17 +1129,28 @@ function CompanyBalanceCard({
               const accs = groupedAccounts[cat];
               if (!accs || accs.length === 0) return null;
               const categoryTotal = accs.reduce((s, a) => s + Number(a.latestBalance), 0);
+              const isExpanded = expandedCategories.has(cat);
               return (
                 <div key={cat}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider" data-testid={`text-category-label-${cat}`}>{CATEGORY_LABELS[cat] || cat}</span>
-                    <span className={`text-xs font-bold ${categoryTotal < 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`} data-testid={`text-category-total-${cat}`}>
+                  <button
+                    onClick={() => toggleCategory(cat)}
+                    className="flex items-center justify-between gap-2 w-full py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors mb-1"
+                    data-testid={`button-toggle-category-${cat}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ChevronDownIcon className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`} />
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider" data-testid={`text-category-label-${cat}`}>{CATEGORY_LABELS[cat] || cat}</span>
+                      <span className="text-[10px] text-muted-foreground/60">({accs.length})</span>
+                    </div>
+                    <span className={`text-sm font-bold tabular-nums ${categoryTotal < 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`} data-testid={`text-category-total-${cat}`}>
                       {categoryTotal.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
                     </span>
-                  </div>
-                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {accs.map(renderAccountCard)}
-                  </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 pl-2">
+                      {accs.map(renderAccountCard)}
+                    </div>
+                  )}
                 </div>
               );
             })}
