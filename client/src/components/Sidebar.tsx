@@ -80,6 +80,7 @@ import {
   syncToServer,
   findSectionOfItem,
   getSectionColorClass,
+  LAYOUT_CHANGED_EVENT,
 } from "@/lib/sidebar-config";
 
 function SortableNavItem({ item, isActive, onClick, onRename, badgeCount }: { item: NavItem; isActive: boolean; onClick: () => void; onRename: (id: string, newLabel: string) => void; badgeCount?: number }) {
@@ -316,8 +317,17 @@ export function Sidebar() {
         setCustomLabels(loadCustomLabels());
       }
     };
+    const layoutChangedHandler = () => {
+      setLayout(loadLayout());
+      setHiddenItems(loadHiddenItems());
+      setCustomLabels(loadCustomLabels());
+    };
     window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    window.addEventListener(LAYOUT_CHANGED_EVENT, layoutChangedHandler);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener(LAYOUT_CHANGED_EVENT, layoutChangedHandler);
+    };
   }, []);
 
   const allItems = useMemo(() => {

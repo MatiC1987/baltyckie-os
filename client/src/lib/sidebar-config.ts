@@ -175,38 +175,53 @@ export function saveCollapsed(collapsed: Set<string>) {
 
 export function reconcileLayout(stored: { sections: NavSection[] }): SidebarLayout {
   const allDefaultIds = new Set(Object.keys(DEFAULT_ITEMS));
-  const validDefaultSectionIds = new Set(DEFAULT_SECTIONS.map(s => s.id));
-
-  const customSections = stored.sections.filter(s => s.isCustom);
-  const defaultSections = stored.sections.filter(s => !s.isCustom);
+  const defaultSectionMap = new Map(DEFAULT_SECTIONS.map(s => [s.id, s]));
 
   const seen = new Set<string>();
-  const sections: NavSection[] = DEFAULT_SECTIONS.map(ds => {
-    const match = defaultSections.find(s => s.id === ds.id);
-    const itemIds = (match ? match.itemIds : ds.itemIds).filter(id => {
+  const reconciledSections: NavSection[] = [];
+
+  for (const storedSection of stored.sections) {
+    if (storedSection.isCustom) {
+      reconciledSections.push(storedSection);
+      for (const id of storedSection.itemIds) {
+        seen.add(id);
+      }
+      continue;
+    }
+
+    const ds = defaultSectionMap.get(storedSection.id);
+    if (!ds) continue;
+    defaultSectionMap.delete(storedSection.id);
+
+    const itemIds = storedSection.itemIds.filter(id => {
       if (seen.has(id)) return false;
       if (!allDefaultIds.has(id) && !id.startsWith("sep-") && !id.startsWith("label-")) return false;
       seen.add(id);
       return true;
     });
-    return { ...ds, title: ds.title, itemIds, color: match?.color || ds.color };
-  });
+    reconciledSections.push({ ...ds, title: ds.title, itemIds, color: storedSection.color || ds.color });
+  }
 
-  const itemsInCustomSections = new Set<string>();
-  for (const cs of customSections) {
-    for (const id of cs.itemIds) {
-      itemsInCustomSections.add(id);
+  for (const [, ds] of defaultSectionMap) {
+    const itemIds = ds.itemIds.filter(id => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    reconciledSections.push({ ...ds, itemIds });
+  }
+
+  const orphaned = [...allDefaultIds].filter(id => !seen.has(id));
+  if (orphaned.length > 0 && reconciledSections.length > 0) {
+    const lastDefault = [...reconciledSections].reverse().find(s => !s.isCustom);
+    if (lastDefault) {
+      lastDefault.itemIds.push(...orphaned);
+    } else {
+      reconciledSections[reconciledSections.length - 1].itemIds.push(...orphaned);
     }
   }
 
-  const orphaned = [...allDefaultIds].filter(id => !seen.has(id) && !itemsInCustomSections.has(id));
-  if (orphaned.length > 0 && sections.length > 0) {
-    sections[sections.length - 1].itemIds.push(...orphaned);
-  }
-
-  const finalSections = [...sections, ...customSections];
-
-  return { sections: finalSections, items: { ...DEFAULT_ITEMS } };
+  return { sections: reconciledSections, items: { ...DEFAULT_ITEMS } };
 }
 
 export function loadLayout(): SidebarLayout {
@@ -220,9 +235,12 @@ export function loadLayout(): SidebarLayout {
   return { sections: DEFAULT_SECTIONS.map(s => ({ ...s })), items: { ...DEFAULT_ITEMS } };
 }
 
+export const LAYOUT_CHANGED_EVENT = "sidebar-layout-changed";
+
 export function saveLayout(sections: NavSection[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections, items: {} }));
+    window.dispatchEvent(new CustomEvent(LAYOUT_CHANGED_EVENT));
   } catch {}
 }
 
