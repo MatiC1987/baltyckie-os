@@ -38,6 +38,7 @@ import Ustawienia from "@/pages/Ustawienia";
 import Customers from "@/pages/Customers";
 import Tasks from "@/pages/Tasks";
 import SourceComparison from "@/pages/SourceComparison";
+import UstawieniaMenu from "@/pages/UstawieniaMenu";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -143,6 +144,7 @@ function AuthenticatedRouter() {
       <Route path="/customers" component={() => <AuthenticatedRoute component={Customers} />} />
       <Route path="/tasks" component={() => <AuthenticatedRoute component={Tasks} />} />
       <Route path="/source-comparison" component={() => <AuthenticatedRoute component={SourceComparison} />} />
+      <Route path="/ustawienia-menu" component={() => <AuthenticatedRoute component={UstawieniaMenu} />} />
 
       <Route path="/costs-expenses" component={() => <Redirect to="/koszty" />} />
       <Route path="/costs-apartments" component={() => <Redirect to="/koszty?tab=apartamenty" />} />

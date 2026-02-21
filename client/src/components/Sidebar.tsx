@@ -1,30 +1,15 @@
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { 
-  LayoutDashboard, 
-  TrendingUp,
-  CalendarDays, 
+import {
+  LayoutDashboard,
+  CalendarDays,
   ClipboardList,
-  Plane,
-  Wallet,
   Receipt,
-  HandCoins,
-  BarChart3,
-  Building,
-  Building2,
-  Coins,
-  Scale,
   FileText,
   FileSignature,
-  Briefcase,
-  Files,
   Upload,
-  GitCompareArrows, 
-  Download,
-  Users,
   Settings,
-  MapPin,
   LogOut,
   Menu,
   X,
@@ -32,28 +17,9 @@ import {
   ChevronDown,
   ChevronUp,
   Pencil,
-  Check,
-  CalendarRange,
-  CalendarCheck,
-  Landmark,
   Moon,
   Sun,
-  FileSpreadsheet,
-  FileDown,
-  DatabaseBackup,
-  History,
-  UserCog,
-  PieChart,
-  ArrowUpDown,
-  Thermometer,
-  LineChart,
-  BadgeDollarSign,
-  Home,
-  Gauge,
-  Calculator,
-  ScrollText,
   Plus,
-  Wrench
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
@@ -93,187 +59,28 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-
-interface NavItem {
-  id: string;
-  href: string;
-  label: string;
-  iconName: string;
-}
-
-interface NavSection {
-  id: string;
-  title?: string;
-  itemIds: string[];
-}
-
-interface SidebarLayout {
-  sections: NavSection[];
-  items: Record<string, NavItem>;
-}
-
-const ICON_MAP: Record<string, any> = {
-  LayoutDashboard,
-  TrendingUp,
-  CalendarDays,
-  ClipboardList,
-  Plane,
-  Wallet,
-  Receipt,
-  HandCoins,
-  BarChart3,
-  Building,
-  Building2,
-  Coins,
-  Scale,
-  FileText,
-  FileSignature,
-  Briefcase,
-  Files,
-  Upload,
-  Download,
-  Users,
-  Settings,
-  MapPin,
-  CalendarRange,
-  CalendarCheck,
-  Landmark,
-  GitCompareArrows,
-  FileSpreadsheet,
-  FileDown,
-  DatabaseBackup,
-  History,
-  UserCog,
-  PieChart,
-  ArrowUpDown,
-  Thermometer,
-  LineChart,
-  BadgeDollarSign,
-  Home,
-  Gauge,
-  Calculator,
-  ScrollText,
-  Wrench,
-};
-
-const DEFAULT_ITEMS: Record<string, NavItem> = {
-  kokpit: { id: "kokpit", href: "/", label: "Pulpit", iconName: "LayoutDashboard" },
-  calendar: { id: "calendar", href: "/calendar", label: "Terminarz", iconName: "CalendarDays" },
-  reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
-  podnajem: { id: "podnajem", href: "/podnajem", label: "Podnajem", iconName: "FileSignature" },
-  analizy: { id: "analizy", href: "/analizy", label: "Analizy", iconName: "BarChart3" },
-  "finance-forecast": { id: "finance-forecast", href: "/finance-forecast", label: "Prognoza finansowa", iconName: "TrendingUp" },
-  "revenue": { id: "revenue", href: "/revenue", label: "Przychody", iconName: "Wallet" },
-  "koszty": { id: "koszty", href: "/koszty", label: "Koszty", iconName: "Calculator" },
-  "apartment-schedule": { id: "apartment-schedule", href: "/apartment-schedule", label: "Harmonogram", iconName: "CalendarCheck" },
-  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
-  invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
-  "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
-  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Usługi", iconName: "Briefcase" },
-  "przeglady": { id: "przeglady", href: "/przeglady", label: "Przeglądy", iconName: "Wrench" },
-  "customers": { id: "customers", href: "/customers", label: "Klienci", iconName: "Users" },
-  "tasks": { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },
-  "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
-};
-
-const DEFAULT_SECTIONS: NavSection[] = [
-  { id: "main", itemIds: ["kokpit"] },
-  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"] },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["tasks"] },
-  { id: "finanse", title: "FINANSE", itemIds: ["analizy", "source-comparison", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"] },
-];
-
-const STORAGE_KEY = "sidebar-layout-v6";
-const COLLAPSED_KEY = "sidebar-collapsed-v2";
-const LABELS_KEY = "sidebar-custom-labels-v1";
-
-function loadCustomLabels(): Record<string, string> {
-  try {
-    const stored = localStorage.getItem(LABELS_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch {}
-  return {};
-}
-
-function saveCustomLabels(labels: Record<string, string>) {
-  try { localStorage.setItem(LABELS_KEY, JSON.stringify(labels)); } catch {}
-}
-
-function loadCollapsed(): Set<string> {
-  try {
-    const stored = localStorage.getItem(COLLAPSED_KEY);
-    if (stored) return new Set(JSON.parse(stored));
-  } catch {}
-  return new Set();
-}
-
-function saveCollapsed(collapsed: Set<string>) {
-  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed])); } catch {}
-}
-
-function reconcileLayout(stored: { sections: NavSection[] }): SidebarLayout {
-  const allDefaultIds = new Set(Object.keys(DEFAULT_ITEMS));
-  const validSectionIds = new Set(DEFAULT_SECTIONS.map(s => s.id));
-
-  const validStoredSections = stored.sections.filter(s => validSectionIds.has(s.id));
-
-  const seen = new Set<string>();
-  let sections: NavSection[] = DEFAULT_SECTIONS.map(ds => {
-    const match = validStoredSections.find(s => s.id === ds.id);
-    const itemIds = (match ? match.itemIds : ds.itemIds).filter(id => {
-      if (!allDefaultIds.has(id) || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-    return { id: ds.id, title: ds.title, itemIds };
-  });
-
-  const orphaned = [...allDefaultIds].filter(id => !seen.has(id));
-  if (orphaned.length > 0 && sections.length > 0) {
-    sections[sections.length - 1].itemIds.push(...orphaned);
-  }
-
-  sections = sections.filter(s => s.itemIds.length > 0);
-  return { sections, items: { ...DEFAULT_ITEMS } };
-}
-
-function loadLayout(): SidebarLayout {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as { sections: NavSection[] };
-      return reconcileLayout(parsed);
-    }
-  } catch {}
-  return { sections: DEFAULT_SECTIONS, items: DEFAULT_ITEMS };
-}
-
-function saveLayout(sections: NavSection[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections, items: {} }));
-  } catch {}
-}
-
-let syncTimer: ReturnType<typeof setTimeout> | null = null;
-function syncToServer(layout: NavSection[], collapsed: Set<string>, labels: Record<string, string>) {
-  if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(async () => {
-    try {
-      await apiRequest("PUT", "/api/user-preferences", {
-        sidebarLayout: JSON.stringify({ sections: layout }),
-        sidebarCollapsed: JSON.stringify([...collapsed]),
-        sidebarLabels: JSON.stringify(labels),
-      });
-    } catch {}
-  }, 1000);
-}
-
-function findSectionOfItem(sections: NavSection[], itemId: string): string | null {
-  for (const section of sections) {
-    if (section.itemIds.includes(itemId)) return section.id;
-  }
-  return null;
-}
+import {
+  type NavItem,
+  type NavSection,
+  type SidebarLayout,
+  ICON_MAP,
+  DEFAULT_ITEMS,
+  DEFAULT_SECTIONS,
+  STORAGE_KEY,
+  loadCustomLabels,
+  saveCustomLabels,
+  loadCollapsed,
+  saveCollapsed,
+  loadHiddenItems,
+  saveHiddenItems,
+  loadCustomItems,
+  reconcileLayout,
+  loadLayout,
+  saveLayout,
+  syncToServer,
+  findSectionOfItem,
+  getSectionColorClass,
+} from "@/lib/sidebar-config";
 
 function SortableNavItem({ item, isActive, onClick, onRename, badgeCount }: { item: NavItem; isActive: boolean; onClick: () => void; onRename: (id: string, newLabel: string) => void; badgeCount?: number }) {
   const {
@@ -427,6 +234,8 @@ export function Sidebar() {
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
   const [customLabels, setCustomLabels] = useState<Record<string, string>>(loadCustomLabels);
+  const [hiddenItems, setHiddenItems] = useState<Set<string>>(loadHiddenItems);
+  const [customItems, setCustomItems] = useState<Record<string, NavItem>>(loadCustomItems);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const lastAppliedTimestamp = useRef<string | null>(null);
 
@@ -492,13 +301,36 @@ export function Sidebar() {
     syncToServer(layoutRef.current, collapsedRef.current, labelsRef.current);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) {
+        setLayout(loadLayout());
+      }
+      if (e.key === "sidebar-hidden-items-v1") {
+        setHiddenItems(loadHiddenItems());
+      }
+      if (e.key === "sidebar-custom-items-v1") {
+        setCustomItems(loadCustomItems());
+      }
+      if (e.key === "sidebar-custom-labels-v1") {
+        setCustomLabels(loadCustomLabels());
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
+
+  const allItems = useMemo(() => {
+    return { ...layout.items, ...customItems };
+  }, [layout.items, customItems]);
+
   const itemsWithLabels = useMemo(() => {
     const merged: Record<string, NavItem> = {};
-    for (const [key, item] of Object.entries(layout.items)) {
+    for (const [key, item] of Object.entries(allItems)) {
       merged[key] = customLabels[key] ? { ...item, label: customLabels[key] } : item;
     }
     return merged;
-  }, [layout.items, customLabels]);
+  }, [allItems, customLabels]);
 
   const badgeMap = useMemo<Record<string, number>>(() => {
     if (!overdueCounts) return {};
@@ -703,10 +535,7 @@ export function Sidebar() {
                         >
                           <span className={cn(
                             "text-[10px] font-bold tracking-widest uppercase",
-                            section.id === "rezerwacje" ? "text-cyan-400" :
-                            section.id === "finanse" ? "text-emerald-400" :
-                            section.id === "zarzadzanie" ? "text-violet-400" :
-                            "text-slate-500"
+                            getSectionColorClass(section.color)
                           )}>{section.title}</span>
                           {section.id !== "finanse" && (
                             <ChevronDown className={cn(
@@ -745,6 +574,18 @@ export function Sidebar() {
                     )}>
                       <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy} id={section.id}>
                         {section.itemIds.map((itemId) => {
+                          if (hiddenItems.has(itemId)) return null;
+                          if (itemId.startsWith("sep-")) {
+                            return <div key={itemId} className="my-2 mx-3 border-t border-white/10" />;
+                          }
+                          if (itemId.startsWith("label-")) {
+                            const labelItem = customItems[itemId];
+                            return (
+                              <div key={itemId} className="px-3 pt-2 pb-1">
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{labelItem?.label || ""}</span>
+                              </div>
+                            );
+                          }
                           const item = itemsWithLabels[itemId];
                           if (!item) return null;
                           return (
@@ -835,6 +676,21 @@ export function Sidebar() {
               >
                 <Settings className={cn("h-3.5 w-3.5", location === "/ustawienia" ? "text-[#5ADBFA]" : "")} />
                 <span className="text-xs font-medium">Ustawienia</span>
+              </div>
+            </Link>
+            <Link href="/ustawienia-menu">
+              <div
+                onClick={() => setIsOpen(false)}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors mb-0.5 cursor-pointer",
+                  location === "/ustawienia-menu"
+                    ? "text-[#5ADBFA]"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                )}
+                data-testid="link-nav-ustawienia-menu"
+              >
+                <Menu className={cn("h-3.5 w-3.5", location === "/ustawienia-menu" ? "text-[#5ADBFA]" : "")} />
+                <span className="text-xs font-medium">Personalizacja menu</span>
               </div>
             </Link>
             <div className="flex items-center gap-2.5 px-3 py-1.5 mb-0.5">
