@@ -57,6 +57,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { UserAvatar } from "@/components/UserAvatar";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -783,11 +784,34 @@ export function Sidebar() {
 
           <div className="px-3 pb-3 pt-2 border-t border-white/10">
             <div className="flex items-center gap-2.5 px-3 mb-2">
-              {user?.profileImageUrl ? (
-                <img src={user.profileImageUrl} alt="Profile" className="h-6 w-6 rounded-full border border-white/10" />
-              ) : (
-                <div className="h-6 w-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                  {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
+              {user?.id && (
+                <div className="relative group/avatar">
+                  <UserAvatar userId={user.id} firstName={user.firstName} lastName={user.lastName} size="sm" className="border border-white/10" />
+                  <label className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                    <Pencil className="h-3 w-3 text-white" />
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !user?.id) return;
+                        const formData = new FormData();
+                        formData.append("photo", file);
+                        try {
+                          const resp = await fetch(`/api/users/${user.id}/profile-photo`, { method: "POST", body: formData, credentials: "include" });
+                          if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({ message: "Błąd przesyłania" }));
+                            console.error("Photo upload failed:", err.message);
+                            return;
+                          }
+                          window.location.reload();
+                        } catch (err) {
+                          console.error("Photo upload error:", err);
+                        }
+                      }}
+                    />
+                  </label>
                 </div>
               )}
               <div className="flex flex-col min-w-0">

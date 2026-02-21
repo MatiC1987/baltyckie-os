@@ -5,6 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useReservations } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
 import { useAuth } from "@/hooks/use-auth";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -360,9 +361,13 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
-            <LayoutDashboard className="h-5 w-5" />
-          </div>
+          {user?.id ? (
+            <UserAvatar userId={user.id} firstName={user.firstName} lastName={user.lastName} size="lg" className="hidden sm:flex" />
+          ) : (
+            <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
+              <LayoutDashboard className="h-5 w-5" />
+            </div>
+          )}
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
               {greeting}{userName ? `, ${userName}` : ""}

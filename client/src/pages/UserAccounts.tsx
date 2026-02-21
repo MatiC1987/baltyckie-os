@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Shield, ScrollText } from "lucide-react";
+import { Plus, Pencil, Trash2, Shield, ScrollText, Camera, X } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { UserAvatar } from "@/components/UserAvatar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
@@ -29,6 +30,7 @@ interface AppUser {
   lastName: string;
   permissions: string[];
   active: boolean;
+  profileImageUrl: string | null;
   createdAt: string | null;
 }
 
@@ -97,6 +99,43 @@ export default function UserAccounts() {
       toast({ title: "Użytkownik został usunięty" });
     },
   });
+
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  async function handlePhotoUpload(file: File) {
+    if (!editingUser) return;
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await fetch(`/api/users/${editingUser.id}/profile-photo`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Błąd uploadu");
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/app-users"] });
+      toast({ title: "Zdjęcie zostało zapisane" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handlePhotoDelete() {
+    if (!editingUser) return;
+    try {
+      await fetch(`/api/users/${editingUser.id}/profile-photo`, { method: "DELETE" });
+      queryClient.invalidateQueries({ queryKey: ["/api/app-users"] });
+      toast({ title: "Zdjęcie zostało usunięte" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    }
+  }
 
   function openAdd() {
     setEditingUser(null);
@@ -177,7 +216,10 @@ export default function UserAccounts() {
                   users.map((user, idx) => (
                     <TableRow key={user.id} className={idx % 2 === 1 ? "bg-muted/30" : ""} data-testid={`row-user-${user.id}`}>
                       <TableCell className="font-medium" data-testid={`cell-user-name-${user.id}`}>
-                        {user.firstName} {user.lastName}
+                        <div className="flex items-center gap-2.5">
+                          <UserAvatar userId={user.id} firstName={user.firstName} lastName={user.lastName} size="sm" />
+                          <span>{user.firstName} {user.lastName}</span>
+                        </div>
                       </TableCell>
                       <TableCell data-testid={`cell-user-email-${user.id}`}>{user.email}</TableCell>
                       <TableCell>
@@ -240,6 +282,56 @@ export default function UserAccounts() {
             <DialogTitle>{editingUser ? "Edytuj użytkownika" : "Dodaj użytkownika"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {editingUser && (
+              <div className="flex items-center gap-4">
+                <div className="relative group">
+                  <UserAvatar userId={editingUser.id} firstName={editingUser.firstName} lastName={editingUser.lastName} size="lg" />
+                  <button
+                    onClick={() => photoInputRef.current?.click()}
+                    className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                    disabled={uploadingPhoto}
+                    data-testid="button-change-photo"
+                  >
+                    <Camera className="h-5 w-5 text-white" />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    data-testid="button-upload-photo"
+                  >
+                    <Camera className="h-3.5 w-3.5 mr-1.5" />
+                    {uploadingPhoto ? "Wgrywanie..." : "Zmień zdjęcie"}
+                  </Button>
+                  {editingUser.profileImageUrl && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handlePhotoDelete}
+                      className="text-red-500 hover:text-red-600 h-7"
+                      data-testid="button-delete-photo"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      Usuń zdjęcie
+                    </Button>
+                  )}
+                </div>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Imię</Label>

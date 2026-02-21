@@ -5462,6 +5462,134 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // ==================== PROFILE PHOTO ====================
+  app.post('/api/users/:id/profile-photo', isAuthenticated, upload.single('photo'), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({ message: "Dozwolone formaty: PNG, JPG, WebP" });
+      }
+      if (req.file.size > 5 * 1024 * 1024) {
+        return res.status(400).json({ message: "Maksymalny rozmiar pliku: 5MB" });
+      }
+
+      const targetUserId = req.params.id;
+      const currentUserId = req.user?.claims?.sub;
+
+      const isOwnProfile = targetUserId === currentUserId;
+      const isAppUser = /^\d+$/.test(targetUserId);
+
+      if (!isOwnProfile) {
+        if (!isAppUser) {
+          return res.status(403).json({ message: "Brak uprawnień" });
+        }
+        const [targetUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
+        if (!targetUser) {
+          return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+        }
+      }
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const publicPaths = osService.getPublicObjectSearchPaths();
+      const publicDir = publicPaths[0];
+
+      const ext = req.file.originalname.split(".").pop()?.toLowerCase() || "png";
+      const fileName = `profile-photos/${targetUserId}.${ext}`;
+      const storagePath = `${publicDir}/${fileName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(req.file.buffer, { contentType: req.file.mimetype });
+
+      const photoUrl = `/api/users/${targetUserId}/profile-photo`;
+
+      if (isOwnProfile) {
+        await db.update(users).set({ profileImageUrl: storagePath, updatedAt: new Date() }).where(eq(users.id, targetUserId));
+      } else if (isAppUser) {
+        await db.update(appUsers).set({ profileImageUrl: storagePath }).where(eq(appUsers.id, parseInt(targetUserId)));
+      }
+
+      res.json({ photoUrl });
+    } catch (err: any) {
+      console.error("Profile photo upload error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/users/:id/profile-photo', async (req, res) => {
+    try {
+      const targetUserId = req.params.id;
+      const isAppUser = /^\d+$/.test(targetUserId);
+
+      let storagePath: string | null = null;
+      if (isAppUser) {
+        const [appUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
+        storagePath = appUser?.profileImageUrl || null;
+      } else {
+        const [user] = await db.select().from(users).where(eq(users.id, targetUserId));
+        storagePath = user?.profileImageUrl || null;
+      }
+
+      if (!storagePath) return res.status(404).json({ message: "Brak zdjęcia" });
+
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const parsedPath = (() => {
+        const p = storagePath!.startsWith("/") ? storagePath!.slice(1) : storagePath!;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      const [exists] = await storageFile.exists();
+      if (!exists) return res.status(404).json({ message: "Brak zdjęcia" });
+
+      const [fileBuffer] = await storageFile.download();
+      const extMatch = storagePath!.match(/\.(\w+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : "png";
+      const mimeMap: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
+      res.setHeader("Content-Type", mimeMap[ext] || "image/png");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(fileBuffer);
+    } catch (err: any) {
+      console.error("Profile photo fetch error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/users/:id/profile-photo', isAuthenticated, async (req: any, res) => {
+    try {
+      const targetUserId = req.params.id;
+      const currentUserId = req.user?.claims?.sub;
+      const isOwnProfile = targetUserId === currentUserId;
+      const isAppUser = /^\d+$/.test(targetUserId);
+
+      if (!isOwnProfile) {
+        if (!isAppUser) {
+          return res.status(403).json({ message: "Brak uprawnień" });
+        }
+        const [targetUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
+        if (!targetUser) {
+          return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+        }
+      }
+
+      if (isOwnProfile) {
+        await db.update(users).set({ profileImageUrl: null, updatedAt: new Date() }).where(eq(users.id, targetUserId));
+      } else if (isAppUser) {
+        await db.update(appUsers).set({ profileImageUrl: null }).where(eq(appUsers.id, parseInt(targetUserId)));
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== ALL USERS (for sharing) ====================
   app.get('/api/all-users', isAuthenticated, async (_req, res) => {
     try {

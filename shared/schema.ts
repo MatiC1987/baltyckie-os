@@ -550,6 +550,7 @@ export const appUsers = pgTable("app_users", {
   passwordHash: text("password_hash").notNull(),
   permissions: text("permissions").array().default([]),
   active: boolean("active").default(true),
+  profileImageUrl: text("profile_image_url"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
