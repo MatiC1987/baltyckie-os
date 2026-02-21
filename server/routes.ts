@@ -5478,15 +5478,19 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       const currentUserId = req.user?.claims?.sub;
 
       const isOwnProfile = targetUserId === currentUserId;
-      const isAppUser = /^\d+$/.test(targetUserId);
+
+      const [authUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+      const isAuthUser = !!authUser;
+      const isNumericId = /^\d+$/.test(targetUserId);
 
       if (!isOwnProfile) {
-        if (!isAppUser) {
+        if (isNumericId && !isAuthUser) {
+          const [targetUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
+          if (!targetUser) {
+            return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+          }
+        } else if (!isAuthUser) {
           return res.status(403).json({ message: "Brak uprawnień" });
-        }
-        const [targetUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
-        if (!targetUser) {
-          return res.status(404).json({ message: "Nie znaleziono użytkownika" });
         }
       }
 
@@ -5509,9 +5513,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
 
       const photoUrl = `/api/users/${targetUserId}/profile-photo`;
 
-      if (isOwnProfile) {
+      if (isAuthUser) {
         await db.update(users).set({ profileImageUrl: storagePath, updatedAt: new Date() }).where(eq(users.id, targetUserId));
-      } else if (isAppUser) {
+      } else if (isNumericId) {
         await db.update(appUsers).set({ profileImageUrl: storagePath }).where(eq(appUsers.id, parseInt(targetUserId)));
       }
 
@@ -5525,15 +5529,14 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
   app.get('/api/users/:id/profile-photo', async (req, res) => {
     try {
       const targetUserId = req.params.id;
-      const isAppUser = /^\d+$/.test(targetUserId);
 
       let storagePath: string | null = null;
-      if (isAppUser) {
+      const [authUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+      if (authUser) {
+        storagePath = authUser.profileImageUrl || null;
+      } else if (/^\d+$/.test(targetUserId)) {
         const [appUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
         storagePath = appUser?.profileImageUrl || null;
-      } else {
-        const [user] = await db.select().from(users).where(eq(users.id, targetUserId));
-        storagePath = user?.profileImageUrl || null;
       }
 
       if (!storagePath) return res.status(404).json({ message: "Brak zdjęcia" });
@@ -5566,21 +5569,25 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       const targetUserId = req.params.id;
       const currentUserId = req.user?.claims?.sub;
       const isOwnProfile = targetUserId === currentUserId;
-      const isAppUser = /^\d+$/.test(targetUserId);
+
+      const [authUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+      const isAuthUser = !!authUser;
+      const isNumericId = /^\d+$/.test(targetUserId);
 
       if (!isOwnProfile) {
-        if (!isAppUser) {
+        if (isNumericId && !isAuthUser) {
+          const [targetUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
+          if (!targetUser) {
+            return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+          }
+        } else if (!isAuthUser) {
           return res.status(403).json({ message: "Brak uprawnień" });
-        }
-        const [targetUser] = await db.select().from(appUsers).where(eq(appUsers.id, parseInt(targetUserId)));
-        if (!targetUser) {
-          return res.status(404).json({ message: "Nie znaleziono użytkownika" });
         }
       }
 
-      if (isOwnProfile) {
+      if (isAuthUser) {
         await db.update(users).set({ profileImageUrl: null, updatedAt: new Date() }).where(eq(users.id, targetUserId));
-      } else if (isAppUser) {
+      } else if (isNumericId) {
         await db.update(appUsers).set({ profileImageUrl: null }).where(eq(appUsers.id, parseInt(targetUserId)));
       }
 
