@@ -1251,28 +1251,46 @@ export async function registerRoutes(
   app.post('/api/subleases', isAuthenticated, async (req, res) => {
     try {
       const data = { ...req.body };
-      if (data.rentAmount === "" || data.rentAmount === undefined) data.rentAmount = null;
-      if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
-      if (data.depositAmount === "" || data.depositAmount === undefined) data.depositAmount = null;
-      if (data.depositReturnDate === "") data.depositReturnDate = null;
-      if (data.paymentDay === "" || data.paymentDay === undefined) data.paymentDay = null;
+      const emptyToNull = (key: string) => { if (data[key] === "" || data[key] === undefined) data[key] = null; };
+      emptyToNull("rentAmount");
+      emptyToNull("additionalFees");
+      emptyToNull("depositAmount");
+      emptyToNull("depositReturnDate");
+      emptyToNull("paymentDay");
+      emptyToNull("idNumber");
+      emptyToNull("peselOrPassport");
+      emptyToNull("comment");
+      emptyToNull("phone");
+      emptyToNull("email");
+      emptyToNull("invoiceEmail");
+      emptyToNull("street");
+      emptyToNull("postalCode");
+      emptyToNull("city");
+      emptyToNull("nip");
+      emptyToNull("firstName");
+      emptyToNull("lastName");
+      emptyToNull("companyName");
+      emptyToNull("vatRate");
       if (typeof data.paymentDay === "string" && data.paymentDay !== null) data.paymentDay = parseInt(data.paymentDay, 10) || null;
       if (data.apartmentId === null || data.apartmentId === "" || data.apartmentId === undefined) data.apartmentId = null;
       if (typeof data.apartmentId === "string") data.apartmentId = parseInt(data.apartmentId, 10) || null;
       if (data.apartmentIds && Array.isArray(data.apartmentIds) && data.apartmentIds.length === 0) delete data.apartmentIds;
-      if (data.idNumber === undefined) data.idNumber = null;
-      if (data.peselOrPassport === undefined) data.peselOrPassport = null;
       if (data.status === "W_TRAKCIE_PODPISYWANIA" && !data.preparedAt) {
         data.preparedAt = new Date();
       }
-      if (typeof data.preparedAt === "string") {
+      if (typeof data.preparedAt === "string" && data.preparedAt) {
         data.preparedAt = new Date(data.preparedAt);
       }
+      if (data.preparedAt === "" || data.preparedAt === undefined) data.preparedAt = null;
+      if (data.mediaByMeters === "" || data.mediaByMeters === undefined) data.mediaByMeters = false;
+      if (data.hasDeposit === "" || data.hasDeposit === undefined) data.hasDeposit = false;
+      delete data._apartmentAddress;
       const parsed = insertSubleaseSchema.parse(data);
       const created = await storage.createSublease(parsed);
       logActivity(req, "create", "sublease", created.id, parsed.firstName ? `${parsed.firstName} ${parsed.lastName || ""}` : parsed.companyName || undefined);
       res.status(201).json(created);
     } catch (err: any) {
+      console.error("POST /api/subleases error:", JSON.stringify(err?.issues || err?.message || err));
       res.status(400).json({ message: err.message || "Błąd zapisu" });
     }
   });
@@ -1280,17 +1298,42 @@ export async function registerRoutes(
   app.put('/api/subleases/:id', isAuthenticated, async (req, res) => {
     try {
       const data = { ...req.body };
-      if (data.rentAmount === "" || data.rentAmount === undefined) data.rentAmount = null;
-      if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
-      if (data.depositAmount === "" || data.depositAmount === undefined) data.depositAmount = null;
-      if (data.depositReturnDate === "") data.depositReturnDate = null;
-      if (typeof data.preparedAt === "string") {
+      const emptyToNull = (key: string) => { if (data[key] === "" || data[key] === undefined) data[key] = null; };
+      emptyToNull("rentAmount");
+      emptyToNull("additionalFees");
+      emptyToNull("depositAmount");
+      emptyToNull("depositReturnDate");
+      emptyToNull("paymentDay");
+      emptyToNull("idNumber");
+      emptyToNull("peselOrPassport");
+      emptyToNull("comment");
+      emptyToNull("phone");
+      emptyToNull("email");
+      emptyToNull("invoiceEmail");
+      emptyToNull("street");
+      emptyToNull("postalCode");
+      emptyToNull("city");
+      emptyToNull("nip");
+      emptyToNull("firstName");
+      emptyToNull("lastName");
+      emptyToNull("companyName");
+      emptyToNull("vatRate");
+      if (typeof data.paymentDay === "string" && data.paymentDay !== null) data.paymentDay = parseInt(data.paymentDay, 10) || null;
+      if (data.apartmentId === null || data.apartmentId === "" || data.apartmentId === undefined) data.apartmentId = null;
+      if (typeof data.apartmentId === "string") data.apartmentId = parseInt(data.apartmentId, 10) || null;
+      if (data.apartmentIds && Array.isArray(data.apartmentIds) && data.apartmentIds.length === 0) delete data.apartmentIds;
+      if (typeof data.preparedAt === "string" && data.preparedAt) {
         data.preparedAt = new Date(data.preparedAt);
       }
+      if (data.preparedAt === "" || data.preparedAt === undefined) data.preparedAt = null;
+      if (data.mediaByMeters === "") data.mediaByMeters = false;
+      if (data.hasDeposit === "") data.hasDeposit = false;
+      delete data._apartmentAddress;
       const updated = await storage.updateSublease(Number(req.params.id), data);
       logActivity(req, "update", "sublease", updated.id);
       res.status(200).json(updated);
     } catch (err: any) {
+      console.error("PUT /api/subleases error:", JSON.stringify(err?.issues || err?.message || err));
       res.status(400).json({ message: err.message || "Błąd aktualizacji" });
     }
   });
