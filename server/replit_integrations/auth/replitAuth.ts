@@ -269,22 +269,28 @@ export async function setupAuth(app: Express) {
   });
 }
 
+async function tryTokenAuth(req: any): Promise<boolean> {
+  const authToken = req.headers['x-auth-token'] as string;
+  if (authToken) {
+    const userData = await loadAuthToken(authToken);
+    if (userData) {
+      req.user = userData;
+      return true;
+    }
+  }
+  return false;
+}
+
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
   if (!user) {
-    const authToken = req.headers['x-auth-token'] as string;
-    if (authToken) {
-      const userData = await loadAuthToken(authToken);
-      if (userData) {
-        (req as any).user = userData;
-        return next();
-      }
-    }
+    if (await tryTokenAuth(req)) return next();
     return res.status(401).json({ message: "Unauthorized" });
   }
 
   if (!req.isAuthenticated() || !user.expires_at) {
+    if (await tryTokenAuth(req)) return next();
     return res.status(401).json({ message: "Unauthorized" });
   }
 
@@ -295,8 +301,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   const refreshToken = user.refresh_token;
   if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+    if (await tryTokenAuth(req)) return next();
+    return res.status(401).json({ message: "Unauthorized" });
   }
 
   try {
@@ -305,7 +311,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     updateUserSession(user, tokenResponse);
     return next();
   } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+    if (await tryTokenAuth(req)) return next();
+    return res.status(401).json({ message: "Unauthorized" });
   }
 };
