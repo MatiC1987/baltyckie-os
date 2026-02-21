@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -83,6 +83,7 @@ import {
   findSectionOfItem,
   generateId,
   notifyLayoutChanged,
+  onLayoutChange,
   STORAGE_KEY,
   PRESET_LAYOUTS,
   loadCompactMode,
@@ -305,6 +306,27 @@ export default function MenuCustomizationPanel() {
   const [customItems, setCustomItemsState] = useState(() => loadCustomItems());
   const [collapsed, setCollapsedState] = useState(() => loadCollapsed());
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+  const selfTriggered = useRef(false);
+
+  const notifySidebar = useCallback(() => {
+    selfTriggered.current = true;
+    notifyLayoutChanged();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onLayoutChange(() => {
+      if (selfTriggered.current) {
+        selfTriggered.current = false;
+        return;
+      }
+      setLayoutState(loadLayout());
+      setCustomLabelsState(loadCustomLabels());
+      setHiddenItemsState(loadHiddenItems());
+      setCustomItemsState(loadCustomItems());
+      setCollapsedState(loadCollapsed());
+    });
+    return unsubscribe;
+  }, []);
 
   const [showNewSection, setShowNewSection] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
@@ -336,7 +358,7 @@ export default function MenuCustomizationPanel() {
     saveCustomLabels(labels);
     saveCustomItems(items);
     syncToServer(sections, collapsed, labels, hidden);
-    notifyLayoutChanged();
+    notifySidebar();
   }, [collapsed]);
 
   const toggleVisibility = useCallback((itemId: string) => {
@@ -348,7 +370,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(layout.sections, collapsed, customLabels, next);
       return next;
     });
-    notifyLayoutChanged();
+    notifySidebar();
   }, [layout.sections, collapsed, customLabels]);
 
   const addSeparator = useCallback((sectionId: string) => {
@@ -362,7 +384,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
-    notifyLayoutChanged();
+    notifySidebar();
     toast({ title: "Dodano separator" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -383,7 +405,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
-    notifyLayoutChanged();
+    notifySidebar();
     toast({ title: "Dodano etykietę" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -404,7 +426,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
-    notifyLayoutChanged();
+    notifySidebar();
     setShowNewSection(false);
     setNewSectionTitle("");
     setNewSectionIcon("Star");
@@ -437,7 +459,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
-    notifyLayoutChanged();
+    notifySidebar();
     toast({ title: "Usunięto sekcję" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -451,7 +473,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
-    notifyLayoutChanged();
+    notifySidebar();
     if (itemId.startsWith("label-") || itemId.startsWith("sep-")) {
       setCustomItemsState(prev => {
         const next = { ...prev };
@@ -474,7 +496,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
-    notifyLayoutChanged();
+    notifySidebar();
   }, [collapsed, customLabels, hiddenItems]);
 
   const moveItemToSection = useCallback((itemId: string, targetSectionId: string) => {
@@ -490,7 +512,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
-    notifyLayoutChanged();
+    notifySidebar();
     toast({ title: "Przeniesiono element" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -507,7 +529,7 @@ export default function MenuCustomizationPanel() {
     saveCustomItems({});
     saveCollapsed(new Set());
     syncToServer(defaultSections, new Set(), {}, new Set());
-    notifyLayoutChanged();
+    notifySidebar();
     toast({ title: "Przywrócono domyślne ustawienia menu" });
   }, []);
 
@@ -526,7 +548,7 @@ export default function MenuCustomizationPanel() {
     saveCustomItems({});
     saveCollapsed(new Set());
     syncToServer(sections, new Set(), {}, new Set(preset.hiddenItems || []));
-    notifyLayoutChanged();
+    notifySidebar();
     setShowPresets(false);
     toast({ title: `Zastosowano szablon: ${preset.label}` });
   }, []);
@@ -588,7 +610,7 @@ export default function MenuCustomizationPanel() {
           saveBadgeConfigFn(config.badgeConfig);
         }
 
-        notifyLayoutChanged();
+        notifySidebar();
         toast({ title: "Zaimportowano konfigurację menu" });
       } catch {
         toast({ title: "Błąd", description: "Nie udało się odczytać pliku", variant: "destructive" });
@@ -721,7 +743,7 @@ export default function MenuCustomizationPanel() {
       syncToServer(prev.sections, collapsed, customLabels, hiddenItems);
       return prev;
     });
-    notifyLayoutChanged();
+    notifySidebar();
   }, [collapsed, customLabels, hiddenItems]);
 
   const customCollisionDetection: CollisionDetection = useCallback((args) => {
@@ -954,7 +976,7 @@ export default function MenuCustomizationPanel() {
               onCheckedChange={(checked) => {
                 setCompactMode(checked);
                 saveCompactModeFn(checked);
-                notifyLayoutChanged();
+                notifySidebar();
               }}
               data-testid="switch-compact-mode"
             />
@@ -984,7 +1006,7 @@ export default function MenuCustomizationPanel() {
                   const next = { ...badgeConf, [badge.id]: checked };
                   setBadgeConf(next);
                   saveBadgeConfigFn(next);
-                  notifyLayoutChanged();
+                  notifySidebar();
                 }}
                 data-testid={`switch-badge-${badge.id}`}
               />

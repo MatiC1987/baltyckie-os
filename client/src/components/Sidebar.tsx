@@ -54,12 +54,15 @@ import {
   loadCollapsed,
   saveCollapsed,
   loadHiddenItems,
+  saveHiddenItems,
   loadCustomItems,
   reconcileLayout,
   loadLayout,
+  saveLayout,
   syncToServer,
   getSectionColorClass,
   onLayoutChange,
+  notifyLayoutChanged,
   loadCompactMode,
   saveCompactMode,
   loadBadgeConfig,
@@ -166,19 +169,14 @@ export function Sidebar() {
     if (lastAppliedTimestamp.current === serverTimestamp) return;
     lastAppliedTimestamp.current = serverTimestamp;
 
-    const localData = localStorage.getItem(STORAGE_KEY);
-    const hasLocalChanges = !!localData;
-
     try {
       if (serverPrefs.sidebarLayout) {
         const parsed = JSON.parse(serverPrefs.sidebarLayout);
         if (parsed?.sections) {
-          if (hasLocalChanges) {
-            setLayout(loadLayout());
-          } else {
-            const reconciled = reconcileLayout(parsed);
-            setLayout(reconciled);
-          }
+          const reconciled = reconcileLayout(parsed);
+          saveLayout(reconciled.sections);
+          setLayout(reconciled);
+          notifyLayoutChanged();
         }
       }
       if (serverPrefs.sidebarCollapsed) {
@@ -194,6 +192,14 @@ export function Sidebar() {
         if (parsed && typeof parsed === "object") {
           setCustomLabels(parsed);
           saveCustomLabels(parsed);
+        }
+      }
+      if (serverPrefs.sidebarHidden) {
+        const parsed = JSON.parse(serverPrefs.sidebarHidden);
+        if (Array.isArray(parsed)) {
+          const set = new Set<string>(parsed);
+          setHiddenItems(set);
+          saveHiddenItems(set);
         }
       }
     } catch {}
