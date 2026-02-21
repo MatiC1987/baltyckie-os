@@ -6,13 +6,15 @@ import { Slider } from "@/components/ui/slider";
 import {
   Building2, Users, UserCog, MapPin, Briefcase, Files,
   FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
-  Type, Menu, ChevronDown, ChevronRight,
+  Type, Menu, ChevronDown, ChevronRight, PanelLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MenuCustomizationPanel = lazy(() => import("@/components/MenuCustomizationPanel"));
 
-const FONT_SIZE_KEY = "globalFontSize";
+const SIDEBAR_FONT_SIZE_KEY = "sidebarFontSize";
+const PAGE_FONT_SIZE_KEY = "pageFontSize";
+const LEGACY_FONT_SIZE_KEY = "globalFontSize";
 
 const FONT_SIZES = [
   { value: 12, label: "Mała" },
@@ -22,6 +24,16 @@ const FONT_SIZES = [
   { value: 16, label: "Duża" },
   { value: 18, label: "Bardzo duża" },
 ];
+
+function loadFontSize(key: string): number {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) return Number(stored);
+    const legacy = localStorage.getItem(LEGACY_FONT_SIZE_KEY);
+    if (legacy) return Number(legacy);
+  } catch {}
+  return 14;
+}
 
 interface SettingsItem {
   href: string;
@@ -76,35 +88,28 @@ function SettingsGrid({ title, items }: { title: string; items: SettingsItem[] }
   );
 }
 
-function GlobalFontSizeCard() {
-  const [fontSize, setFontSize] = useState(() => {
-    try {
-      const stored = localStorage.getItem(FONT_SIZE_KEY);
-      return stored ? Number(stored) : 14;
-    } catch {
-      return 14;
-    }
-  });
+function FontSizeCard({ storageKey, title, description, icon: Icon, testId }: { storageKey: string; title: string; description: string; icon: any; testId: string }) {
+  const [fontSize, setFontSize] = useState(() => loadFontSize(storageKey));
 
   const handleChange = (value: number[]) => {
     const v = value[0];
     setFontSize(v);
-    localStorage.setItem(FONT_SIZE_KEY, String(v));
-    document.documentElement.style.fontSize = `${v}px`;
+    localStorage.setItem(storageKey, String(v));
+    window.dispatchEvent(new Event("fontSizeChanged"));
   };
 
   const currentLabel = FONT_SIZES.find(f => f.value === fontSize)?.label || "Średnia";
 
   return (
-    <Card data-testid="card-global-font-size">
+    <Card data-testid={testId}>
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
-            <Type className="h-5 w-5 text-primary" />
+            <Icon className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm">Rozmiar czcionki</p>
-            <p className="text-xs text-muted-foreground mt-0.5 mb-3">Zmiana rozmiaru tekstu w całej aplikacji</p>
+            <p className="font-medium text-sm">{title}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-3">{description}</p>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm">{currentLabel}</span>
@@ -116,7 +121,7 @@ function GlobalFontSizeCard() {
                 step={1}
                 value={[fontSize]}
                 onValueChange={handleChange}
-                data-testid="slider-global-font-size"
+                data-testid={`slider-${testId}`}
               />
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>Mała</span>
@@ -157,7 +162,20 @@ export default function Ustawienia() {
       <div className="space-y-3">
         <h2 className="text-sm font-bold tracking-wide text-muted-foreground uppercase" data-testid="section-Wygląd">Wygląd</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <GlobalFontSizeCard />
+          <FontSizeCard
+            storageKey={PAGE_FONT_SIZE_KEY}
+            title="Czcionka strony"
+            description="Rozmiar tekstu na stronach aplikacji"
+            icon={Type}
+            testId="card-page-font-size"
+          />
+          <FontSizeCard
+            storageKey={SIDEBAR_FONT_SIZE_KEY}
+            title="Czcionka menu"
+            description="Rozmiar tekstu w menu bocznym"
+            icon={PanelLeft}
+            testId="card-sidebar-font-size"
+          />
         </div>
       </div>
 
