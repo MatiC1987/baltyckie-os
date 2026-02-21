@@ -150,6 +150,20 @@ async function seedData() {
   }
 }
 
+function computeNextRecurringDate(currentDate: string | null, recurring: string): string | null {
+  if (!currentDate) return null;
+  const d = new Date(currentDate);
+  const r = recurring.toLowerCase().trim();
+  if (r === "codziennie" || r === "co dzień" || r === "daily") d.setDate(d.getDate() + 1);
+  else if (r === "co tydzień" || r === "weekly") d.setDate(d.getDate() + 7);
+  else if (r === "co 2 tygodnie" || r === "biweekly") d.setDate(d.getDate() + 14);
+  else if (r === "co miesiąc" || r === "monthly") d.setMonth(d.getMonth() + 1);
+  else if (r === "co kwartał" || r === "quarterly") d.setMonth(d.getMonth() + 3);
+  else if (r === "co rok" || r === "yearly") d.setFullYear(d.getFullYear() + 1);
+  else d.setDate(d.getDate() + 7);
+  return d.toISOString().split("T")[0];
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -5563,7 +5577,33 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
 
   app.patch('/api/tasks/:id', isAuthenticated, async (req, res) => {
     try {
-      const updated = await storage.updateTask(Number(req.params.id), req.body);
+      const body = { ...req.body };
+      if (body.completed === true) {
+        body.completedAt = new Date();
+      } else if (body.completed === false) {
+        body.completedAt = null;
+      }
+      const task = await storage.getTask(Number(req.params.id));
+      const updated = await storage.updateTask(Number(req.params.id), body);
+      if (body.completed === true && task && !task.completed && task.recurring) {
+        const nextDate = computeNextRecurringDate(task.dueDate, task.recurring);
+        await storage.createTask({
+          title: task.title,
+          notes: task.notes,
+          completed: false,
+          priority: task.priority || "BRAK",
+          dueDate: nextDate,
+          dueTime: task.dueTime,
+          tags: task.tags || [],
+          projectId: task.projectId,
+          sectionId: task.sectionId,
+          parentTaskId: task.parentTaskId,
+          sortOrder: task.sortOrder ?? 0,
+          recurring: task.recurring,
+          reminderDate: null,
+          reminderTime: task.reminderTime,
+        });
+      }
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

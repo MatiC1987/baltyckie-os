@@ -1,13 +1,20 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { motion, AnimatePresence } from "framer-motion";
+import { format, parseISO, isToday, isThisWeek, isBefore, isTomorrow, isYesterday, startOfWeek, addDays, getDay } from "date-fns";
+import { pl } from "date-fns/locale";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import type { Task, TaskProject, TaskSection, TaskChecklistItem } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -18,67 +25,154 @@ import {
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useRef, useEffect, useCallback } from "react";
-import type { Task, TaskProject, TaskSection, TaskChecklistItem } from "@shared/schema";
-import { format, parseISO, isToday, isThisWeek, isBefore } from "date-fns";
-import { pl } from "date-fns/locale";
 import {
   Inbox, CalendarDays, Star, Plus, Trash2,
   Calendar, Tag, ChevronDown, ChevronRight, Circle,
   PanelLeftClose, PanelLeft, MoreHorizontal, ArrowRight,
   Copy, RefreshCw, FolderPlus, Settings, X,
   SlidersHorizontal, GripVertical, Sun, Moon, Monitor,
-  ListPlus, FolderOpen, Clock, AlertCircle,
+  ListPlus, FolderOpen, Clock, AlertCircle, Flag,
+  BookOpen, Archive, Check, ChevronUp,
 } from "lucide-react";
 
-type ViewType = "inbox" | "today" | "week" | "priority" | { projectId: number };
+type ViewType = "inbox" | "today" | "week" | "priority" | "logbook" | { projectId: number };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  PILNY: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800",
-  WYSOKI: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800",
-  ŚREDNI: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800",
-  NISKI: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800",
-  BRAK: "bg-muted text-muted-foreground",
+type SettingsPage = "main" | "appearance" | "general" | "counter" | "today_settings" | "week_settings" | "plus_settings";
+
+const PRIORITY_FLAG_COLORS: Record<string, string> = {
+  PILNY: "text-red-500",
+  WYSOKI: "text-orange-500",
+  ŚREDNI: "text-yellow-500",
+  NISKI: "text-blue-400",
+  BRAK: "text-muted-foreground/30",
 };
 
-const PRIORITY_DOT: Record<string, string> = {
-  PILNY: "bg-red-500",
-  WYSOKI: "bg-orange-500",
-  ŚREDNI: "bg-yellow-500",
-  NISKI: "bg-blue-400",
-  BRAK: "",
+const PRIORITY_LABELS: Record<string, string> = {
+  PILNY: "Pilny",
+  WYSOKI: "Wysoki",
+  ŚREDNI: "Średni",
+  NISKI: "Niski",
+  BRAK: "Brak",
 };
 
-function filterTasks(tasks: Task[], view: ViewType): Task[] {
-  if (view === "inbox") return tasks.filter((t) => !t.projectId);
-  if (view === "today") return tasks.filter((t) => t.dueDate && isToday(parseISO(t.dueDate)));
-  if (view === "week") return tasks.filter((t) => t.dueDate && isThisWeek(parseISO(t.dueDate), { weekStartsOn: 1 }));
-  if (view === "priority") return tasks.filter((t) => t.priority && t.priority !== "BRAK");
-  return tasks.filter((t) => t.projectId === view.projectId);
+const PRIORITY_ORDER: Record<string, number> = {
+  PILNY: 0, WYSOKI: 1, ŚREDNI: 2, NISKI: 3, BRAK: 4,
+};
+
+const TAG_COLORS: Record<string, string> = {
+  pilne: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  praca: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  dom: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  finanse: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+  osobiste: "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
+  zdrowie: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  nauka: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+  zakupy: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+};
+
+const DEFAULT_TAG_COLOR = "bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-300";
+
+const FONT_SIZES: { label: string; value: number }[] = [
+  { label: "Mała", value: 12 },
+  { label: "Średnia", value: 14 },
+  { label: "Duża", value: 16 },
+  { label: "Bardzo duża", value: 18 },
+];
+
+function getStoredFontSize(): number {
+  try { return Number(localStorage.getItem("tasksFontSize")) || 14; } catch { return 14; }
+}
+
+function getStoredShowCounts(): boolean {
+  try { return localStorage.getItem("tasksShowCounts") !== "false"; } catch { return true; }
+}
+
+function getStoredShowOverdueInToday(): boolean {
+  try { return localStorage.getItem("tasksShowOverdueToday") !== "false"; } catch { return true; }
+}
+
+function getStoredWeekStart(): 0 | 1 {
+  try { return localStorage.getItem("tasksWeekStart") === "0" ? 0 : 1; } catch { return 1; }
+}
+
+function getStoredDefaultProject(): string {
+  try { return localStorage.getItem("tasksDefaultProject") || ""; } catch { return ""; }
+}
+
+function getStoredDefaultPriority(): string {
+  try { return localStorage.getItem("tasksDefaultPriority") || "BRAK"; } catch { return "BRAK"; }
+}
+
+function isOverdue(task: Task): boolean {
+  if (task.completed || !task.dueDate) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = parseISO(task.dueDate);
+  return isBefore(due, today);
+}
+
+function getTagColor(tag: string): string {
+  return TAG_COLORS[tag.toLowerCase()] || DEFAULT_TAG_COLOR;
+}
+
+function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, showOverdueInToday: boolean): Task[] {
+  if (view === "inbox") return tasks.filter((t) => !t.projectId && !t.completed && t.parentTaskId === null);
+  if (view === "today") {
+    return tasks.filter((t) => {
+      if (t.completed) return false;
+      if (t.parentTaskId !== null) return false;
+      if (!t.dueDate) return false;
+      const d = parseISO(t.dueDate);
+      if (isToday(d)) return true;
+      if (showOverdueInToday && isOverdue(t)) return true;
+      return false;
+    });
+  }
+  if (view === "week") {
+    return tasks.filter((t) => {
+      if (t.completed) return false;
+      if (t.parentTaskId !== null) return false;
+      if (!t.dueDate) return false;
+      return isThisWeek(parseISO(t.dueDate), { weekStartsOn: weekStart });
+    });
+  }
+  if (view === "priority") return tasks.filter((t) => !t.completed && t.priority && t.priority !== "BRAK" && t.parentTaskId === null);
+  if (view === "logbook") return tasks.filter((t) => t.completed).sort((a, b) => {
+    const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+    const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+    return bTime - aTime;
+  });
+  return tasks.filter((t) => t.projectId === view.projectId && !t.completed && t.parentTaskId === null);
 }
 
 function viewLabel(view: ViewType, projects: TaskProject[]): string {
   if (view === "inbox") return "Odebrane";
-  if (view === "today") return "Dziś";
+  if (view === "today") return "Dzi\u015B";
   if (view === "week") return "W tym tygodniu";
   if (view === "priority") return "Priorytetowe";
+  if (view === "logbook") return "Logbook";
   const p = projects.find((pr) => pr.id === view.projectId);
   return p?.name || "Projekt";
 }
 
-function viewIcon(view: ViewType): typeof Inbox {
+function viewIcon(view: ViewType) {
   if (view === "inbox") return Inbox;
   if (view === "today") return Star;
   if (view === "week") return Calendar;
   if (view === "priority") return AlertCircle;
+  if (view === "logbook") return BookOpen;
   return FolderOpen;
 }
 
 export default function Tasks() {
   const { toast } = useToast();
   const [view, setView] = useState<ViewType>("inbox");
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
@@ -87,22 +181,49 @@ export default function Tasks() {
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
-  const [selectMode, setSelectMode] = useState(false);
   const [inlineAddVisible, setInlineAddVisible] = useState(false);
   const [inlineTitle, setInlineTitle] = useState("");
   const inlineInputRef = useRef<HTMLInputElement>(null);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
+  const [fabDragging, setFabDragging] = useState(false);
+  const [dragOverProject, setDragOverProject] = useState<number | null>(null);
+  const [taskDragId, setTaskDragId] = useState<number | null>(null);
+  const [fontSize, setFontSize] = useState(getStoredFontSize);
+  const [showCounts, setShowCounts] = useState(getStoredShowCounts);
+  const [showOverdueInToday, setShowOverdueInToday] = useState(getStoredShowOverdueInToday);
+  const [weekStart, setWeekStart] = useState<0 | 1>(getStoredWeekStart);
+  const [projectDragId, setProjectDragId] = useState<number | null>(null);
 
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
   const { data: projects = [] } = useQuery<TaskProject[]>({ queryKey: ["/api/task-projects"] });
   const { data: sections = [] } = useQuery<TaskSection[]>({ queryKey: ["/api/task-sections"] });
 
   const toggleComplete = useMutation({
-    mutationFn: (task: Task) => apiRequest("PATCH", `/api/tasks/${task.id}`, { completed: !task.completed }),
+    mutationFn: (task: Task) =>
+      apiRequest("PATCH", `/api/tasks/${task.id}`, {
+        completed: !task.completed,
+        completedAt: !task.completed ? new Date().toISOString() : null,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }),
   });
 
-  const createTaskInline = useMutation({
+  const updateTask = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/tasks/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }),
+  });
+
+  const deleteTask = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/tasks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: "Zadanie usuni\u0119te" });
+    },
+  });
+
+  const createTask = useMutation({
     mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/tasks", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
@@ -123,8 +244,7 @@ export default function Tasks() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       setSelectedTasks(new Set());
-      setSelectMode(false);
-      toast({ title: "Zadania usunięte" });
+      toast({ title: "Zadania usuni\u0119te" });
     },
   });
 
@@ -134,26 +254,63 @@ export default function Tasks() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       setSelectedTasks(new Set());
-      setSelectMode(false);
       setMoveDialogOpen(false);
       toast({ title: "Zadania przeniesione" });
     },
   });
 
-  const convertToProject = useMutation({
-    mutationFn: (taskId: number) => apiRequest("POST", `/api/tasks/${taskId}/convert-to-project`),
+  const createProject = useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/task-projects", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/task-projects"] });
-      setSelectedTasks(new Set());
-      setSelectMode(false);
-      toast({ title: "Zadanie przekształcone w projekt" });
+      setAddProjectOpen(false);
+      toast({ title: "Projekt utworzony" });
     },
   });
 
-  const filtered = filterTasks(tasks, view);
+  const updateProject = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/task-projects/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/task-projects"] }),
+  });
+
+  const deleteProject = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/task-projects/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/task-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: "Projekt usuni\u0119ty" });
+    },
+  });
+
+  const createSection = useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/task-sections", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/task-sections"] });
+      setAddSectionOpen(false);
+      toast({ title: "Sekcja utworzona" });
+    },
+  });
+
+  const filtered = useMemo(
+    () => filterTasks(tasks, view, weekStart, showOverdueInToday),
+    [tasks, view, weekStart, showOverdueInToday]
+  );
+
   const isProjectView = typeof view === "object";
   const projectSections = isProjectView ? sections.filter((s) => s.projectId === view.projectId) : [];
+
+  const childTasksMap = useMemo(() => {
+    const map = new Map<number, Task[]>();
+    tasks.forEach((t) => {
+      if (t.parentTaskId !== null) {
+        const arr = map.get(t.parentTaskId) || [];
+        arr.push(t);
+        map.set(t.parentTaskId, arr);
+      }
+    });
+    return map;
+  }, [tasks]);
 
   const toggleSection = (id: number) => {
     setCollapsedSections((prev) => {
@@ -171,59 +328,78 @@ export default function Tasks() {
     });
   };
 
-  const smartViews: { key: string; view: ViewType; icon: typeof Inbox; label: string; color: string }[] = [
-    { key: "inbox", view: "inbox", icon: Inbox, label: "Odebrane", color: "#5ADBFA" },
-    { key: "today", view: "today", icon: Star, label: "Dziś", color: "#FFD43B" },
-    { key: "week", view: "week", icon: Calendar, label: "W tym tygodniu", color: "#51CF66" },
-    { key: "priority", view: "priority", icon: AlertCircle, label: "Priorytetowe", color: "#FF6B6B" },
-  ];
-
-  const isActive = (v: ViewType) => {
-    if (typeof view === "object" && typeof v === "object") return view.projectId === v.projectId;
-    return view === v;
-  };
-
-  const areas = Array.from(new Set(projects.map(p => p.area || "").filter(Boolean)));
-  const ungroupedProjects = projects.filter(p => !p.area);
-
-  const toggleTaskSelection = (taskId: number) => {
-    setSelectedTasks(prev => {
+  const toggleExpand = (taskId: number) => {
+    setExpandedTasks((prev) => {
       const next = new Set(prev);
       next.has(taskId) ? next.delete(taskId) : next.add(taskId);
       return next;
     });
   };
 
-  const handleTaskClick = (task: Task) => {
-    if (selectMode) {
-      toggleTaskSelection(task.id);
-    } else {
-      setSelectedTasks(new Set([task.id]));
-    }
-  };
+  const activeProjects = useMemo(() => projects.filter((p) => !p.archived), [projects]);
+  const archivedProjects = useMemo(() => projects.filter((p) => p.archived), [projects]);
+  const areas = useMemo(
+    () => Array.from(new Set(activeProjects.map((p) => p.area || "").filter(Boolean))),
+    [activeProjects]
+  );
+  const ungroupedProjects = useMemo(
+    () => activeProjects.filter((p) => !p.area).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    [activeProjects]
+  );
 
-  const handleInlineSubmit = () => {
+  const smartViews = useMemo(
+    () => [
+      { key: "inbox", view: "inbox" as ViewType, icon: Inbox, label: "Odebrane", color: "#5ADBFA" },
+      { key: "today", view: "today" as ViewType, icon: Star, label: "Dzi\u015B", color: "#FFD43B" },
+      { key: "week", view: "week" as ViewType, icon: Calendar, label: "W tym tygodniu", color: "#51CF66" },
+      { key: "priority", view: "priority" as ViewType, icon: AlertCircle, label: "Priorytetowe", color: "#FF6B6B" },
+      { key: "logbook", view: "logbook" as ViewType, icon: BookOpen, label: "Logbook", color: "#868E96" },
+    ],
+    []
+  );
+
+  const isActive = useCallback(
+    (v: ViewType) => {
+      if (typeof view === "object" && typeof v === "object") return view.projectId === v.projectId;
+      return view === v;
+    },
+    [view]
+  );
+
+  const overdueCount = useMemo(
+    () => tasks.filter((t) => isOverdue(t)).length,
+    [tasks]
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedTasks(new Set());
+  }, []);
+
+  const handleInlineSubmit = useCallback(() => {
     if (!inlineTitle.trim()) return;
     const data: Record<string, unknown> = {
       title: inlineTitle.trim(),
-      priority: "BRAK",
+      priority: getStoredDefaultPriority(),
       tags: [],
-      projectId: isProjectView ? view.projectId : null,
+      projectId: isProjectView ? (view as { projectId: number }).projectId : (getStoredDefaultProject() ? Number(getStoredDefaultProject()) : null),
       sectionId: null,
     };
-    createTaskInline.mutate(data);
-  };
+    createTask.mutate(data);
+  }, [inlineTitle, isProjectView, view, createTask]);
 
-  const handleInlineKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleInlineSubmit();
-    }
-    if (e.key === "Escape") {
-      setInlineAddVisible(false);
-      setInlineTitle("");
-    }
-  };
+  const handleInlineKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleInlineSubmit();
+      }
+      if (e.key === "Escape") {
+        setInlineAddVisible(false);
+        setInlineTitle("");
+      }
+    },
+    [handleInlineSubmit]
+  );
 
   useEffect(() => {
     if (inlineAddVisible && inlineInputRef.current) {
@@ -231,132 +407,583 @@ export default function Tasks() {
     }
   }, [inlineAddVisible]);
 
-  const clearSelection = () => {
-    setSelectedTasks(new Set());
-    setSelectMode(false);
-  };
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (isInput) return;
 
-  const selectedTasksArray = Array.from(selectedTasks);
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        setAddTaskOpen(true);
+      }
+      if (e.key === "t" || e.key === "T") {
+        if (selectedTasks.size === 1) {
+          const taskId = Array.from(selectedTasks)[0];
+          updateTask.mutate({ id: taskId, data: { dueDate: format(new Date(), "yyyy-MM-dd") } });
+          toast({ title: "Termin ustawiony na dzi\u015B" });
+        }
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedTasks.size > 0) {
+          e.preventDefault();
+          setDeleteConfirmOpen(true);
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
+        if (selectedTasks.size === 1) {
+          e.preventDefault();
+          duplicateTask.mutate(Array.from(selectedTasks)[0]);
+        }
+      }
+      if (e.key === "Escape") {
+        if (detailTask) {
+          setDetailTask(null);
+        } else {
+          clearSelection();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedTasks, detailTask, updateTask, duplicateTask, toast, clearSelection]);
+
+  const handleTaskClick = useCallback(
+    (task: Task) => {
+      setSelectedTasks(new Set([task.id]));
+      setDetailTask(task);
+    },
+    []
+  );
+
+  const handleTaskDragStart = useCallback((e: React.DragEvent, taskId: number) => {
+    e.dataTransfer.setData("text/task-id", String(taskId));
+    setTaskDragId(taskId);
+  }, []);
+
+  const handleTaskDrop = useCallback(
+    (e: React.DragEvent, targetTaskId: number) => {
+      e.preventDefault();
+      const sourceId = Number(e.dataTransfer.getData("text/task-id"));
+      if (!sourceId || sourceId === targetTaskId) return;
+      const targetTask = tasks.find((t) => t.id === targetTaskId);
+      if (targetTask) {
+        updateTask.mutate({ id: sourceId, data: { sortOrder: (targetTask.sortOrder ?? 0) + 1 } });
+      }
+      setTaskDragId(null);
+    },
+    [tasks, updateTask]
+  );
+
+  const handleProjectDragStart = useCallback((e: React.DragEvent, projectId: number) => {
+    e.dataTransfer.setData("text/project-id", String(projectId));
+    setProjectDragId(projectId);
+  }, []);
+
+  const handleProjectDrop = useCallback(
+    (e: React.DragEvent, targetProjectId: number) => {
+      e.preventDefault();
+      const sourceId = Number(e.dataTransfer.getData("text/project-id"));
+      if (!sourceId || sourceId === targetProjectId) return;
+      const targetProject = projects.find((p) => p.id === targetProjectId);
+      if (targetProject) {
+        updateProject.mutate({ id: sourceId, data: { sortOrder: (targetProject.sortOrder ?? 0) + 1 } });
+      }
+      setProjectDragId(null);
+    },
+    [projects, updateProject]
+  );
+
+  const handleFabDragStart = useCallback((e: React.DragEvent) => {
+    e.dataTransfer.setData("text/fab-drag", "true");
+    setFabDragging(true);
+  }, []);
+
+  const handleFabDragEnd = useCallback(() => {
+    setFabDragging(false);
+    setDragOverProject(null);
+  }, []);
+
+  const handleProjectFabDrop = useCallback(
+    (e: React.DragEvent, projectId: number) => {
+      e.preventDefault();
+      if (e.dataTransfer.getData("text/fab-drag")) {
+        setView({ projectId });
+        setInlineAddVisible(true);
+        setFabDragging(false);
+        setDragOverProject(null);
+      }
+    },
+    []
+  );
+
   const VIcon = viewIcon(view);
+  const selectedTasksArray = Array.from(selectedTasks);
 
-  return (
-    <div className="flex h-full" data-testid="page-tasks">
-      {!sidebarCollapsed && (
-        <aside className="w-[250px] shrink-0 border-r flex flex-col overflow-hidden bg-muted/20" data-testid="tasks-sidebar">
-          <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">Widoki</div>
-            {smartViews.map((sv) => (
+  const todayGrouped = useMemo(() => {
+    if (view !== "today") return null;
+    const overdue: Task[] = [];
+    const today: Task[] = [];
+    filtered.forEach((t) => {
+      if (t.dueDate && isOverdue(t)) overdue.push(t);
+      else today.push(t);
+    });
+    return { overdue, today };
+  }, [view, filtered]);
+
+  const weekGrouped = useMemo(() => {
+    if (view !== "week") return null;
+    const days: Record<string, Task[]> = {};
+    const ws = startOfWeek(new Date(), { weekStartsOn: weekStart });
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      const key = format(d, "yyyy-MM-dd");
+      days[key] = [];
+    }
+    filtered.forEach((t) => {
+      if (t.dueDate) {
+        const key = t.dueDate;
+        if (!days[key]) days[key] = [];
+        days[key].push(t);
+      }
+    });
+    return Object.entries(days)
+      .filter(([, arr]) => arr.length > 0)
+      .map(([dateStr, arr]) => ({
+        date: dateStr,
+        label: format(parseISO(dateStr), "EEEE, d MMMM", { locale: pl }),
+        tasks: arr,
+      }));
+  }, [view, filtered, weekStart]);
+
+  const priorityGrouped = useMemo(() => {
+    if (view !== "priority") return null;
+    const groups: Record<string, Task[]> = { PILNY: [], WYSOKI: [], "\u015AREDNI": [], NISKI: [] };
+    filtered.forEach((t) => {
+      if (t.priority && groups[t.priority]) groups[t.priority].push(t);
+    });
+    return Object.entries(groups).filter(([, arr]) => arr.length > 0);
+  }, [view, filtered]);
+
+  const logbookGrouped = useMemo(() => {
+    if (view !== "logbook") return null;
+    const today: Task[] = [];
+    const yesterday: Task[] = [];
+    const older: Task[] = [];
+    filtered.forEach((t) => {
+      if (t.completedAt) {
+        const d = new Date(t.completedAt);
+        if (isToday(d)) today.push(t);
+        else if (isYesterday(d)) yesterday.push(t);
+        else older.push(t);
+      } else {
+        older.push(t);
+      }
+    });
+    const groups: { label: string; tasks: Task[] }[] = [];
+    if (today.length) groups.push({ label: "Dzisiaj", tasks: today });
+    if (yesterday.length) groups.push({ label: "Wczoraj", tasks: yesterday });
+    if (older.length) groups.push({ label: "Starsze", tasks: older });
+    return groups;
+  }, [view, filtered]);
+
+  const renderTaskRow = useCallback(
+    (t: Task, indent = 0) => {
+      const children = childTasksMap.get(t.id) || [];
+      const hasChildren = children.length > 0;
+      const isExpanded = expandedTasks.has(t.id);
+      const overdue = isOverdue(t);
+      const isLogbook = view === "logbook";
+
+      return (
+        <div key={t.id}>
+          <motion.div
+            layout
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className={`flex items-center gap-3 px-4 py-3 group transition-colors cursor-pointer ${
+              selectedTasks.has(t.id) ? "bg-primary/5" : overdue ? "bg-red-50/50 dark:bg-red-950/20" : "hover-elevate"
+            }`}
+            style={{ paddingLeft: `${16 + indent * 24}px` }}
+            onClick={() => handleTaskClick(t)}
+            draggable
+            onDragStart={(e) => handleTaskDragStart(e as unknown as React.DragEvent, t.id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => handleTaskDrop(e as unknown as React.DragEvent, t.id)}
+            data-testid={`task-row-${t.id}`}
+          >
+            <div className="invisible group-hover:visible cursor-grab" data-testid={`drag-handle-${t.id}`}>
+              <GripVertical className="h-4 w-4 text-muted-foreground/50" />
+            </div>
+
+            {hasChildren && (
               <button
-                key={sv.key}
-                onClick={() => { setView(sv.view); clearSelection(); }}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm w-full text-left transition-all ${isActive(sv.view) ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted/60 text-foreground"}`}
-                data-testid={`button-view-${sv.key}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleExpand(t.id);
+                }}
+                className="p-0.5 rounded hover-elevate"
+                data-testid={`button-expand-${t.id}`}
               >
-                <sv.icon className="h-4 w-4 shrink-0" style={{ color: isActive(sv.view) ? sv.color : undefined }} />
-                <span className="flex-1">{sv.label}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">{filterTasks(tasks, sv.view).length || ""}</span>
+                {isExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
               </button>
-            ))}
-
-            {ungroupedProjects.length > 0 && (
-              <>
-                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-1 px-2">Projekty</div>
-                {ungroupedProjects.map((p) => (
-                  <ProjectSidebarItem key={p.id} project={p} tasks={tasks} isActive={isActive({ projectId: p.id })} onClick={() => { setView({ projectId: p.id }); clearSelection(); }} />
-                ))}
-              </>
             )}
 
-            {areas.map((area) => {
-              const areaProjects = projects.filter(p => p.area === area);
-              const isCollapsed = collapsedAreas.has(area);
-              return (
-                <div key={area}>
-                  <button
-                    onClick={() => toggleArea(area)}
-                    className="flex items-center gap-1.5 w-full text-left px-2 py-1.5 mt-3 mb-0.5 hover:bg-muted/40 rounded-md transition-colors"
-                    data-testid={`button-area-${area}`}
-                  >
-                    {isCollapsed ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{area}</span>
-                  </button>
-                  {!isCollapsed && areaProjects.map((p) => (
-                    <ProjectSidebarItem key={p.id} project={p} tasks={tasks} isActive={isActive({ projectId: p.id })} onClick={() => { setView({ projectId: p.id }); clearSelection(); }} />
-                  ))}
-                </div>
-              );
-            })}
-          </div>
+            <Checkbox
+              checked={!!t.completed}
+              onCheckedChange={() => toggleComplete.mutate(t)}
+              className="shrink-0"
+              data-testid={`checkbox-task-${t.id}`}
+            />
 
-          <div className="border-t px-3 py-2 flex items-center gap-1">
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-1" data-testid="button-new-list">
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Nowa Lista</span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-56 p-1" align="start" side="top">
-                <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm rounded-md hover:bg-muted transition-colors"
-                  onClick={() => { setAddProjectOpen(true); }}
-                  data-testid="button-new-project-popover"
-                >
-                  <FolderPlus className="h-4 w-4 text-primary" />
-                  <div className="text-left">
-                    <div className="font-medium">Nowy Projekt</div>
-                    <div className="text-[10px] text-muted-foreground">Zdefiniuj cel i pracuj nad zadaniami</div>
-                  </div>
-                </button>
-                <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm rounded-md hover:bg-muted transition-colors"
-                  onClick={() => { setAddSectionOpen(true); }}
-                  data-testid="button-new-section-popover"
-                >
-                  <ListPlus className="h-4 w-4 text-emerald-500" />
-                  <div className="text-left">
-                    <div className="font-medium">Nowa Sekcja</div>
-                    <div className="text-[10px] text-muted-foreground">Grupuj zadania w ramach projektu</div>
-                  </div>
-                </button>
-              </PopoverContent>
-            </Popover>
-            <div className="flex-1" />
-            <button
-              className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setSettingsOpen(true)}
-              data-testid="button-settings"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </button>
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm truncate ${t.completed || isLogbook ? "line-through text-muted-foreground" : ""}`}>
+                {t.title}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                {t.dueDate && !isLogbook && (
+                  <span className={`text-[11px] ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                    {format(parseISO(t.dueDate), "d MMM", { locale: pl })}
+                    {t.dueTime ? ` ${t.dueTime}` : ""}
+                  </span>
+                )}
+                {t.tags &&
+                  t.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getTagColor(tag)}`}
+                      data-testid={`tag-badge-${tag}`}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                {hasChildren && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {children.filter((c) => c.completed).length}/{children.length}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {t.priority && t.priority !== "BRAK" && (
+              <Flag className={`h-4 w-4 shrink-0 ${PRIORITY_FLAG_COLORS[t.priority]}`} data-testid={`flag-${t.id}`} />
+            )}
+          </motion.div>
+
+          {hasChildren && isExpanded && (
+            <AnimatePresence>
+              {children
+                .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                .map((child) => renderTaskRow(child, indent + 1))}
+            </AnimatePresence>
+          )}
+        </div>
+      );
+    },
+    [
+      childTasksMap,
+      expandedTasks,
+      selectedTasks,
+      view,
+      toggleComplete,
+      handleTaskClick,
+      handleTaskDragStart,
+      handleTaskDrop,
+      toggleExpand,
+    ]
+  );
+
+  const renderGroupedView = () => {
+    if (view === "today" && todayGrouped) {
+      return (
+        <>
+          {todayGrouped.overdue.length > 0 && (
+            <div>
+              <div className="px-4 py-2 text-xs font-semibold text-red-500 uppercase tracking-wider bg-red-50/30 dark:bg-red-950/10">
+                Zaleg\u0142e
+              </div>
+              <AnimatePresence>
+                {todayGrouped.overdue.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+              </AnimatePresence>
+            </div>
+          )}
+          {todayGrouped.today.length > 0 && (
+            <div>
+              <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dzisiaj</div>
+              <AnimatePresence>
+                {todayGrouped.today.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+              </AnimatePresence>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    if (view === "week" && weekGrouped) {
+      return weekGrouped.map(({ date, label, tasks: dayTasks }) => (
+        <div key={date}>
+          <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider capitalize">
+            {label}
           </div>
-        </aside>
-      )}
+          <AnimatePresence>
+            {dayTasks.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+          </AnimatePresence>
+        </div>
+      ));
+    }
+
+    if (view === "priority" && priorityGrouped) {
+      return priorityGrouped.map(([priority, priorityTasks]) => (
+        <div key={priority}>
+          <div className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 ${PRIORITY_FLAG_COLORS[priority]}`}>
+            <Flag className="h-3.5 w-3.5" />
+            {PRIORITY_LABELS[priority]}
+          </div>
+          <AnimatePresence>
+            {priorityTasks.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+          </AnimatePresence>
+        </div>
+      ));
+    }
+
+    if (view === "logbook" && logbookGrouped) {
+      return logbookGrouped.map(({ label, tasks: groupTasks }) => (
+        <div key={label}>
+          <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</div>
+          <AnimatePresence>
+            {groupTasks.map((t) => renderTaskRow(t))}
+          </AnimatePresence>
+        </div>
+      ));
+    }
+
+    return null;
+  };
+
+  const hasGroupedView = view === "today" || view === "week" || view === "priority" || view === "logbook";
+
+  return (
+    <div className="flex h-full" style={{ fontSize: `${fontSize}px` }} data-testid="page-tasks">
+      <AnimatePresence>
+        {!sidebarCollapsed && (
+          <motion.aside
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 260, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="shrink-0 border-r flex flex-col overflow-hidden bg-muted/20"
+            data-testid="tasks-sidebar"
+          >
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">Widoki</div>
+              {smartViews.map((sv) => {
+                const count = filterTasks(tasks, sv.view, weekStart, showOverdueInToday).length;
+                return (
+                  <button
+                    key={sv.key}
+                    onClick={() => {
+                      setView(sv.view);
+                      clearSelection();
+                      setDetailTask(null);
+                    }}
+                    className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm w-full text-left transition-all ${
+                      isActive(sv.view) ? "bg-primary/10 text-primary font-medium" : "hover-elevate text-foreground"
+                    }`}
+                    data-testid={`button-view-${sv.key}`}
+                  >
+                    <sv.icon className="h-4 w-4 shrink-0" style={{ color: isActive(sv.view) ? sv.color : undefined }} />
+                    <span className="flex-1">{sv.label}</span>
+                    {showCounts && count > 0 && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium tabular-nums ${
+                          sv.key === "inbox" && overdueCount > 0 ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" : "bg-muted text-muted-foreground"
+                        }`}
+                        data-testid={`badge-count-${sv.key}`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {ungroupedProjects.length > 0 && (
+                <>
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-1 px-2">Projekty</div>
+                  {ungroupedProjects.map((p) => (
+                    <ProjectSidebarItem
+                      key={p.id}
+                      project={p}
+                      tasks={tasks}
+                      isActive={isActive({ projectId: p.id })}
+                      onClick={() => {
+                        setView({ projectId: p.id });
+                        clearSelection();
+                        setDetailTask(null);
+                      }}
+                      fabDragging={fabDragging}
+                      dragOverProject={dragOverProject}
+                      setDragOverProject={setDragOverProject}
+                      onFabDrop={handleProjectFabDrop}
+                      onDragStart={handleProjectDragStart}
+                      onDrop={handleProjectDrop}
+                      onArchive={() => updateProject.mutate({ id: p.id, data: { archived: !p.archived } })}
+                      onDelete={() => deleteProject.mutate(p.id)}
+                    />
+                  ))}
+                </>
+              )}
+
+              {areas.map((area) => {
+                const areaProjects = activeProjects
+                  .filter((p) => p.area === area)
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                const isCollapsed = collapsedAreas.has(area);
+                return (
+                  <div key={area}>
+                    <button
+                      onClick={() => toggleArea(area)}
+                      className="flex items-center gap-1.5 w-full text-left px-2 py-1.5 mt-3 mb-0.5 hover-elevate rounded-md transition-colors"
+                      data-testid={`button-area-${area}`}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      )}
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{area}</span>
+                    </button>
+                    {!isCollapsed &&
+                      areaProjects.map((p) => (
+                        <ProjectSidebarItem
+                          key={p.id}
+                          project={p}
+                          tasks={tasks}
+                          isActive={isActive({ projectId: p.id })}
+                          onClick={() => {
+                            setView({ projectId: p.id });
+                            clearSelection();
+                            setDetailTask(null);
+                          }}
+                          fabDragging={fabDragging}
+                          dragOverProject={dragOverProject}
+                          setDragOverProject={setDragOverProject}
+                          onFabDrop={handleProjectFabDrop}
+                          onDragStart={handleProjectDragStart}
+                          onDrop={handleProjectDrop}
+                          onArchive={() => updateProject.mutate({ id: p.id, data: { archived: !p.archived } })}
+                          onDelete={() => deleteProject.mutate(p.id)}
+                        />
+                      ))}
+                  </div>
+                );
+              })}
+
+              {archivedProjects.length > 0 && (
+                <>
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-1 px-2 flex items-center gap-1">
+                    <Archive className="h-3 w-3" />
+                    Archiwum
+                  </div>
+                  {archivedProjects.map((p) => (
+                    <ProjectSidebarItem
+                      key={p.id}
+                      project={p}
+                      tasks={tasks}
+                      isActive={isActive({ projectId: p.id })}
+                      onClick={() => {
+                        setView({ projectId: p.id });
+                        clearSelection();
+                        setDetailTask(null);
+                      }}
+                      fabDragging={fabDragging}
+                      dragOverProject={dragOverProject}
+                      setDragOverProject={setDragOverProject}
+                      onFabDrop={handleProjectFabDrop}
+                      onDragStart={handleProjectDragStart}
+                      onDrop={handleProjectDrop}
+                      onArchive={() => updateProject.mutate({ id: p.id, data: { archived: !p.archived } })}
+                      onDelete={() => deleteProject.mutate(p.id)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div className="border-t px-3 py-2 flex items-center gap-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-1" data-testid="button-new-list">
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Nowa Lista</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-1" align="start" side="top">
+                  <button
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm rounded-md hover-elevate transition-colors"
+                    onClick={() => setAddProjectOpen(true)}
+                    data-testid="button-new-project-popover"
+                  >
+                    <FolderPlus className="h-4 w-4 text-primary" />
+                    <div className="text-left">
+                      <div className="font-medium">Nowy Projekt</div>
+                      <div className="text-[10px] text-muted-foreground">Zdefiniuj cel i pracuj nad zadaniami</div>
+                    </div>
+                  </button>
+                  <button
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm rounded-md hover-elevate transition-colors"
+                    onClick={() => setAddSectionOpen(true)}
+                    data-testid="button-new-section-popover"
+                  >
+                    <ListPlus className="h-4 w-4 text-emerald-500" />
+                    <div className="text-left">
+                      <div className="font-medium">Nowa Sekcja</div>
+                      <div className="text-[10px] text-muted-foreground">Grupuj zadania w ramach projektu</div>
+                    </div>
+                  </button>
+                </PopoverContent>
+              </Popover>
+              <div className="flex-1" />
+              <button
+                className="p-1.5 rounded-md hover-elevate text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setSettingsOpen(true)}
+                data-testid="button-settings"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </button>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
       <main className="flex-1 flex flex-col overflow-hidden relative" data-testid="tasks-main">
         <div className="flex items-center gap-2 px-4 py-3 border-b">
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="p-1.5 rounded-md hover-elevate text-muted-foreground hover:text-foreground transition-colors"
             data-testid="button-toggle-sidebar"
           >
             {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <VIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-            <h2 className="text-lg font-semibold truncate" data-testid="text-view-title">{viewLabel(view, projects)}</h2>
+            <h2 className="text-lg font-semibold truncate" data-testid="text-view-title">
+              {viewLabel(view, projects)}
+            </h2>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" data-testid="button-context-menu">
+              <button className="p-1.5 rounded-md hover-elevate text-muted-foreground hover:text-foreground transition-colors" data-testid="button-context-menu">
                 <MoreHorizontal className="h-5 w-5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => { setSelectMode(true); }} data-testid="menu-select">
-                <Checkbox className="h-3.5 w-3.5 mr-2" /> Zaznacz
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setAddTaskOpen(true)} data-testid="menu-add-task">
                 <Plus className="h-3.5 w-3.5 mr-2" /> Dodaj zadanie
               </DropdownMenuItem>
@@ -364,678 +991,1083 @@ export default function Tasks() {
           </DropdownMenu>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="divide-y divide-border">
-            {isProjectView ? (
-              <>
-                {projectSections.map((sec) => {
-                  const sectionTasks = filtered.filter((t) => t.sectionId === sec.id).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-                  const collapsed = collapsedSections.has(sec.id);
-                  return (
-                    <div key={sec.id} data-testid={`section-${sec.id}`}>
-                      <button
-                        onClick={() => toggleSection(sec.id)}
-                        className="flex items-center gap-1.5 text-sm font-semibold py-2.5 px-4 w-full text-left hover:bg-muted/30 transition-colors text-foreground"
-                        data-testid={`button-toggle-section-${sec.id}`}
-                      >
-                        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {sec.name}
-                        <span className="text-muted-foreground font-normal ml-1">({sectionTasks.length})</span>
-                      </button>
-                      {!collapsed && (
-                        <div className="divide-y divide-border/50">
-                          {sectionTasks.map((t) => (
-                            <TaskRow
-                              key={t.id}
-                              task={t}
-                              onToggle={() => toggleComplete.mutate(t)}
-                              onEdit={() => setEditingTask(t)}
-                              onClick={() => handleTaskClick(t)}
-                              selected={selectedTasks.has(t.id)}
-                              selectMode={selectMode}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {filtered.filter((t) => !t.sectionId).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    onToggle={() => toggleComplete.mutate(t)}
-                    onEdit={() => setEditingTask(t)}
-                    onClick={() => handleTaskClick(t)}
-                    selected={selectedTasks.has(t.id)}
-                    selectMode={selectMode}
-                  />
-                ))}
-              </>
-            ) : (
-              filtered.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  onToggle={() => toggleComplete.mutate(t)}
-                  onEdit={() => setEditingTask(t)}
-                  onClick={() => handleTaskClick(t)}
-                  selected={selectedTasks.has(t.id)}
-                  selectMode={selectMode}
-                />
-              ))
-            )}
-          </div>
+        <motion.div
+          key={typeof view === "object" ? `project-${view.projectId}` : view}
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.2 }}
+          className="flex-1 overflow-y-auto"
+        >
+          {hasGroupedView ? (
+            renderGroupedView()
+          ) : isProjectView ? (
+            <>
+              {projectSections.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((sec) => {
+                const sectionTasks = filtered.filter((t) => t.sectionId === sec.id).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                const collapsed = collapsedSections.has(sec.id);
+                return (
+                  <div key={sec.id} data-testid={`section-${sec.id}`}>
+                    <button
+                      onClick={() => toggleSection(sec.id)}
+                      className="flex items-center gap-1.5 text-sm font-semibold py-2.5 px-4 w-full text-left hover-elevate transition-colors text-foreground"
+                      data-testid={`button-toggle-section-${sec.id}`}
+                    >
+                      {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      {sec.name}
+                      <span className="text-muted-foreground font-normal ml-1">({sectionTasks.length})</span>
+                    </button>
+                    {!collapsed && (
+                      <AnimatePresence>{sectionTasks.map((t) => renderTaskRow(t))}</AnimatePresence>
+                    )}
+                  </div>
+                );
+              })}
+              <AnimatePresence>
+                {filtered
+                  .filter((t) => !t.sectionId)
+                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                  .map((t) => renderTaskRow(t))}
+              </AnimatePresence>
+            </>
+          ) : (
+            <AnimatePresence>
+              {filtered.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((t) => renderTaskRow(t))}
+            </AnimatePresence>
+          )}
 
           {filtered.length === 0 && !inlineAddVisible && (
             <div className="text-center text-muted-foreground py-16" data-testid="text-empty-tasks">
               <VIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Brak zadań w tym widoku</p>
+              <p className="text-sm">Brak zada\u0144 w tym widoku</p>
             </div>
           )}
 
-          {inlineAddVisible ? (
-            <div className="px-4 py-3 border-t bg-muted/10" data-testid="inline-add-task">
-              <div className="flex items-center gap-3">
-                <Checkbox disabled className="opacity-30" />
-                <Input
-                  ref={inlineInputRef}
-                  value={inlineTitle}
-                  onChange={(e) => setInlineTitle(e.target.value)}
-                  onKeyDown={handleInlineKeyDown}
-                  onBlur={() => { if (!inlineTitle.trim()) { setInlineAddVisible(false); } }}
-                  placeholder="Nowe zadanie..."
-                  className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-sm h-auto py-0"
-                  data-testid="input-inline-task-title"
-                />
-              </div>
-            </div>
-          ) : (
-            <button
-              className="flex items-center gap-3 px-4 py-3 w-full text-left text-sm text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-              onClick={() => setInlineAddVisible(true)}
-              data-testid="button-inline-add"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Dodaj Zadanie</span>
-            </button>
+          {view !== "logbook" && (
+            <>
+              {inlineAddVisible ? (
+                <div className="px-4 py-3 border-t bg-muted/10" data-testid="inline-add-task">
+                  <div className="flex items-center gap-3">
+                    <Checkbox disabled className="opacity-30" />
+                    <Input
+                      ref={inlineInputRef}
+                      value={inlineTitle}
+                      onChange={(e) => setInlineTitle(e.target.value)}
+                      onKeyDown={handleInlineKeyDown}
+                      onBlur={() => {
+                        if (!inlineTitle.trim()) setInlineAddVisible(false);
+                      }}
+                      placeholder="Nowe zadanie..."
+                      className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-sm h-auto py-0"
+                      data-testid="input-inline-task-title"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="flex items-center gap-3 px-4 py-3 w-full text-left text-sm text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  onClick={() => setInlineAddVisible(true)}
+                  data-testid="button-inline-add"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Dodaj Zadanie</span>
+                </button>
+              )}
+            </>
           )}
-        </div>
+        </motion.div>
 
         {selectedTasks.size > 0 && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-card border rounded-xl shadow-lg px-2 py-1.5 z-50" data-testid="bottom-action-bar">
             <span className="text-xs text-muted-foreground px-2 tabular-nums">{selectedTasks.size} zaznaczonych</span>
             <div className="w-px h-5 bg-border mx-1" />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs h-8"
-              onClick={() => setMoveDialogOpen(true)}
-              data-testid="button-action-move"
-            >
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
               <ArrowRight className="h-3.5 w-3.5" />
-              Przenieś
+              Przenie\u015B
             </Button>
+            {selectedTasks.size === 1 && (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => duplicateTask.mutate(selectedTasksArray[0])} data-testid="button-action-duplicate">
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
-              className="gap-1.5 text-xs h-8 text-destructive hover:text-destructive"
-              onClick={() => bulkDelete.mutate(selectedTasksArray)}
-              disabled={bulkDelete.isPending}
+              className="gap-1.5 text-xs text-destructive"
+              onClick={() => setDeleteConfirmOpen(true)}
               data-testid="button-action-delete"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" data-testid="button-action-more">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" side="top">
-                {selectedTasks.size === 1 && (
-                  <>
-                    <DropdownMenuItem onClick={() => {
-                      const taskId = selectedTasksArray[0];
-                      const task = tasks.find(t => t.id === taskId);
-                      if (task) { setEditingTask(task); clearSelection(); }
-                    }} data-testid="menu-edit-selected">
-                      <Settings className="h-3.5 w-3.5 mr-2" /> Edytuj
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                <DropdownMenuItem onClick={() => {
-                  if (selectedTasks.size === 1) {
-                    const t = tasks.find(t => t.id === selectedTasksArray[0]);
-                    if (t?.recurring) {
-                      toast({ title: "Zadanie ma już ustawione powtarzanie" });
-                    } else {
-                      const task = tasks.find(t => t.id === selectedTasksArray[0]);
-                      if (task) { setEditingTask(task); clearSelection(); }
-                    }
-                  }
-                }} data-testid="menu-repeat">
-                  <RefreshCw className="h-3.5 w-3.5 mr-2" /> Powtarzaj...
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {
-                  for (const id of selectedTasksArray) duplicateTask.mutate(id);
-                  clearSelection();
-                }} data-testid="menu-duplicate">
-                  <Copy className="h-3.5 w-3.5 mr-2" /> Duplikuj
-                </DropdownMenuItem>
-                {selectedTasks.size === 1 && (
-                  <DropdownMenuItem onClick={() => {
-                    convertToProject.mutate(selectedTasksArray[0]);
-                  }} data-testid="menu-convert-project">
-                    <FolderPlus className="h-3.5 w-3.5 mr-2" /> Konwertuj na Projekt
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <div className="w-px h-5 bg-border mx-1" />
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={clearSelection} data-testid="button-clear-selection">
-              <X className="h-4 w-4" />
+            <Button variant="ghost" size="sm" className="text-xs" onClick={clearSelection} data-testid="button-action-clear">
+              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
 
-        <button
-          className="absolute bottom-6 right-6 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center z-40"
-          onClick={() => setAddTaskOpen(true)}
-          data-testid="button-fab-add"
+        <div
+          className="absolute bottom-6 right-6 z-40"
+          draggable
+          onDragStart={handleFabDragStart}
+          onDragEnd={handleFabDragEnd}
         >
-          <Plus className="h-6 w-6" />
-        </button>
+          <Button
+            size="icon"
+            className="h-12 w-12 rounded-full shadow-lg"
+            onClick={() => setAddTaskOpen(true)}
+            data-testid="button-fab-add"
+          >
+            <Plus className="h-6 w-6" />
+          </Button>
+        </div>
       </main>
 
-      <TaskDialog open={addTaskOpen} onOpenChange={setAddTaskOpen} projects={projects} sections={sections} defaultProjectId={isProjectView ? view.projectId : undefined} />
-      {editingTask && <TaskDialog open={!!editingTask} onOpenChange={(o) => { if (!o) setEditingTask(null); }} task={editingTask} projects={projects} sections={sections} />}
-      <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} areas={areas} />
-      <SectionDialog open={addSectionOpen} onOpenChange={setAddSectionOpen} projects={projects} defaultProjectId={isProjectView ? view.projectId : undefined} />
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      <MoveDialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen} projects={projects} sections={sections} onMove={(projectId, sectionId) => {
-        bulkMove.mutate({ ids: selectedTasksArray, projectId, sectionId });
-      }} isPending={bulkMove.isPending} />
-    </div>
-  );
-}
+      <AnimatePresence>
+        {detailTask && (
+          <DetailPanel
+            task={detailTask}
+            tasks={tasks}
+            projects={projects}
+            sections={sections}
+            childTasks={childTasksMap.get(detailTask.id) || []}
+            onClose={() => {
+              setDetailTask(null);
+              clearSelection();
+            }}
+            onUpdate={(data) => {
+              updateTask.mutate(
+                { id: detailTask.id, data },
+                {
+                  onSuccess: () => {
+                    const updated = { ...detailTask, ...data } as Task;
+                    setDetailTask(updated);
+                  },
+                }
+              );
+            }}
+            onDelete={() => {
+              deleteTask.mutate(detailTask.id);
+              setDetailTask(null);
+              clearSelection();
+            }}
+            onToggleComplete={() => toggleComplete.mutate(detailTask)}
+            onCreateSubtask={(title) => {
+              createTask.mutate({
+                title,
+                priority: "BRAK",
+                tags: [],
+                parentTaskId: detailTask.id,
+                projectId: detailTask.projectId,
+                sectionId: detailTask.sectionId,
+              });
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-function ProjectSidebarItem({ project, tasks, isActive, onClick }: { project: TaskProject; tasks: Task[]; isActive: boolean; onClick: () => void }) {
-  const count = tasks.filter(t => t.projectId === project.id).length;
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm w-full text-left transition-all ${isActive ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted/60 text-foreground"}`}
-      data-testid={`button-project-${project.id}`}
-    >
-      <Circle className="h-3 w-3 shrink-0" style={{ color: project.color || "#5ADBFA", fill: project.color || "#5ADBFA" }} />
-      <span className="truncate flex-1">{project.name}</span>
-      <span className="text-xs tabular-nums text-muted-foreground">{count || ""}</span>
-    </button>
-  );
-}
-
-function TaskRow({ task, onToggle, onEdit, onClick, selected, selectMode }: {
-  task: Task; onToggle: () => void; onEdit: () => void; onClick: () => void; selected: boolean; selectMode: boolean;
-}) {
-  const isOverdue = task.dueDate && !task.completed && isBefore(parseISO(task.dueDate), new Date()) && !isToday(parseISO(task.dueDate));
-
-  return (
-    <div
-      className={`flex items-center gap-3 px-4 py-2.5 transition-all cursor-pointer group
-        ${task.completed ? "opacity-40" : ""}
-        ${selected ? "bg-primary/8 ring-1 ring-inset ring-primary/20" : "hover:bg-muted/30"}`}
-      onClick={onClick}
-      data-testid={`task-row-${task.id}`}
-    >
-      {selectMode && (
-        <Checkbox
-          checked={selected}
-          onCheckedChange={() => onClick()}
-          className="shrink-0"
-          data-testid={`checkbox-select-${task.id}`}
-        />
-      )}
-      <Checkbox
-        checked={!!task.completed}
-        onCheckedChange={(e) => { e; onToggle(); }}
-        onClick={(e) => e.stopPropagation()}
-        className="shrink-0"
-        data-testid={`checkbox-task-${task.id}`}
+      <TaskDialog
+        open={addTaskOpen}
+        onOpenChange={setAddTaskOpen}
+        projects={projects}
+        sections={sections}
+        defaultProjectId={isProjectView ? (view as { projectId: number }).projectId : undefined}
       />
-      <div className="flex-1 min-w-0" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-        <div className={`text-sm ${task.completed ? "line-through text-muted-foreground" : ""}`}>{task.title}</div>
-        {task.notes && (
-          <div className="text-xs text-muted-foreground truncate mt-0.5">{task.notes}</div>
-        )}
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {task.priority && task.priority !== "BRAK" && PRIORITY_DOT[task.priority] && (
-          <div className={`h-2 w-2 rounded-full ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
-        )}
-        {task.dueDate && (
-          <span className={`text-xs flex items-center gap-1 ${isOverdue ? "text-red-500 font-medium" : "text-muted-foreground"}`} data-testid={`text-due-${task.id}`}>
-            <Clock className="h-3 w-3" />
-            {format(parseISO(task.dueDate), "d MMM", { locale: pl })}
-          </span>
-        )}
-        {task.tags && task.tags.length > 0 && (
-          <div className="hidden sm:flex items-center gap-1">
-            {task.tags.slice(0, 2).map((tag) => (
-              <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">{tag}</Badge>
-            ))}
-          </div>
-        )}
-      </div>
+
+      <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} onSubmit={(data) => createProject.mutate(data)} />
+
+      <SectionDialog
+        open={addSectionOpen}
+        onOpenChange={setAddSectionOpen}
+        projects={projects}
+        currentProjectId={isProjectView ? (view as { projectId: number }).projectId : undefined}
+        onSubmit={(data) => createSection.mutate(data)}
+      />
+
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        fontSize={fontSize}
+        setFontSize={(v) => {
+          setFontSize(v);
+          localStorage.setItem("tasksFontSize", String(v));
+        }}
+        showCounts={showCounts}
+        setShowCounts={(v) => {
+          setShowCounts(v);
+          localStorage.setItem("tasksShowCounts", String(v));
+        }}
+        showOverdueInToday={showOverdueInToday}
+        setShowOverdueInToday={(v) => {
+          setShowOverdueInToday(v);
+          localStorage.setItem("tasksShowOverdueToday", String(v));
+        }}
+        weekStart={weekStart}
+        setWeekStart={(v) => {
+          setWeekStart(v);
+          localStorage.setItem("tasksWeekStart", String(v));
+        }}
+        projects={projects}
+      />
+
+      <MoveDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        projects={projects}
+        sections={sections}
+        onMove={(projectId, sectionId) => bulkMove.mutate({ ids: selectedTasksArray, projectId, sectionId })}
+        isPending={bulkMove.isPending}
+      />
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-delete-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Usun\u0105\u0107 zadania?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Czy na pewno chcesz usun\u0105\u0107 {selectedTasks.size} {selectedTasks.size === 1 ? "zadanie" : "zada\u0144"}? Tej operacji nie mo\u017Cna cofn\u0105\u0107.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Anuluj</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                bulkDelete.mutate(selectedTasksArray);
+                setDeleteConfirmOpen(false);
+              }}
+              data-testid="button-confirm-delete"
+            >
+              Usu\u0144
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function TaskDialog({ open, onOpenChange, task, projects, sections, defaultProjectId }: {
-  open: boolean; onOpenChange: (o: boolean) => void; task?: Task; projects: TaskProject[]; sections: TaskSection[]; defaultProjectId?: number;
+function ProjectSidebarItem({
+  project,
+  tasks,
+  isActive,
+  onClick,
+  fabDragging,
+  dragOverProject,
+  setDragOverProject,
+  onFabDrop,
+  onDragStart,
+  onDrop,
+  onArchive,
+  onDelete,
+}: {
+  project: TaskProject;
+  tasks: Task[];
+  isActive: boolean;
+  onClick: () => void;
+  fabDragging: boolean;
+  dragOverProject: number | null;
+  setDragOverProject: (id: number | null) => void;
+  onFabDrop: (e: React.DragEvent, projectId: number) => void;
+  onDragStart: (e: React.DragEvent, projectId: number) => void;
+  onDrop: (e: React.DragEvent, projectId: number) => void;
+  onArchive: () => void;
+  onDelete: () => void;
 }) {
-  const { toast } = useToast();
-  const isEdit = !!task;
-  const [title, setTitle] = useState(task?.title || "");
-  const [notes, setNotes] = useState(task?.notes || "");
-  const [priority, setPriority] = useState(task?.priority || "BRAK");
-  const [dueDate, setDueDate] = useState(task?.dueDate || "");
-  const [dueTime, setDueTime] = useState(task?.dueTime || "");
-  const [projectId, setProjectId] = useState<string>(String(task?.projectId || defaultProjectId || ""));
-  const [sectionId, setSectionId] = useState<string>(String(task?.sectionId || ""));
-  const [tagsInput, setTagsInput] = useState((task?.tags || []).join(", "));
-  const [recurring, setRecurring] = useState(task?.recurring || "");
-  const [reminderDate, setReminderDate] = useState(task?.reminderDate || "");
-  const [reminderTime, setReminderTime] = useState(task?.reminderTime || "");
-  const [newCheckItem, setNewCheckItem] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const count = tasks.filter((t) => t.projectId === project.id && !t.completed && t.parentTaskId === null).length;
+  const isDragOver = dragOverProject === project.id;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <div
+          className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm w-full text-left transition-all cursor-pointer ${
+            isActive ? "bg-primary/10 text-primary font-medium" : "hover-elevate text-foreground"
+          } ${isDragOver && fabDragging ? "ring-2 ring-blue-400 bg-blue-50/30 dark:bg-blue-950/20" : ""}`}
+          onClick={onClick}
+          draggable
+          onDragStart={(e) => onDragStart(e, project.id)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (fabDragging) setDragOverProject(project.id);
+          }}
+          onDragLeave={() => setDragOverProject(null)}
+          onDrop={(e) => {
+            if (e.dataTransfer.getData("text/fab-drag")) {
+              onFabDrop(e, project.id);
+            } else if (e.dataTransfer.getData("text/project-id")) {
+              onDrop(e, project.id);
+            }
+          }}
+          data-testid={`sidebar-project-${project.id}`}
+        >
+          <Circle className="h-3 w-3 shrink-0" style={{ color: project.color || "#5ADBFA", fill: project.color || "#5ADBFA" }} />
+          <span className="flex-1 truncate">{project.name}</span>
+          {count > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground tabular-nums" data-testid={`badge-project-count-${project.id}`}>
+              {count}
+            </span>
+          )}
+        </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="right">
+        <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
+          <Archive className="h-3.5 w-3.5 mr-2" />
+          {project.archived ? "Przywr\u00F3\u0107 z archiwum" : "Archiwizuj"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
+          <Trash2 className="h-3.5 w-3.5 mr-2" />
+          Usu\u0144
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function DetailPanel({
+  task,
+  tasks,
+  projects,
+  sections,
+  childTasks,
+  onClose,
+  onUpdate,
+  onDelete,
+  onToggleComplete,
+  onCreateSubtask,
+}: {
+  task: Task;
+  tasks: Task[];
+  projects: TaskProject[];
+  sections: TaskSection[];
+  childTasks: Task[];
+  onClose: () => void;
+  onUpdate: (data: Record<string, unknown>) => void;
+  onDelete: () => void;
+  onToggleComplete: () => void;
+  onCreateSubtask: (title: string) => void;
+}) {
+  const [title, setTitle] = useState(task.title);
+  const [notes, setNotes] = useState(task.notes || "");
+  const [subtaskTitle, setSubtaskTitle] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [tagsInput, setTagsInput] = useState((task.tags || []).join(", "));
+  const subtaskRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setTitle(task?.title || "");
-    setNotes(task?.notes || "");
-    setPriority(task?.priority || "BRAK");
-    setDueDate(task?.dueDate || "");
-    setDueTime(task?.dueTime || "");
-    setProjectId(String(task?.projectId || defaultProjectId || ""));
-    setSectionId(String(task?.sectionId || ""));
-    setTagsInput((task?.tags || []).join(", "));
-    setRecurring(task?.recurring || "");
-    setReminderDate(task?.reminderDate || "");
-    setReminderTime(task?.reminderTime || "");
-    setConfirmDelete(false);
-  }, [task, open]);
+    setTitle(task.title);
+    setNotes(task.notes || "");
+    setTagsInput((task.tags || []).join(", "));
+  }, [task.id, task.title, task.notes, task.tags]);
 
   const { data: checklist = [] } = useQuery<TaskChecklistItem[]>({
-    queryKey: ["/api/task-checklist", task?.id],
-    enabled: !!task?.id,
+    queryKey: ["/api/task-checklist", task.id],
   });
 
-  const filteredSections = sections.filter((s) => projectId && s.projectId === Number(projectId));
+  const updateChecklist = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/task-checklist/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/task-checklist", task.id] }),
+  });
+
+  const createChecklistItem = useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/task-checklist", data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/task-checklist", task.id] }),
+  });
+
+  const deleteChecklistItem = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/task-checklist/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/task-checklist", task.id] }),
+  });
+
+  const [newChecklistTitle, setNewChecklistTitle] = useState("");
+
+  const projectSections = sections.filter((s) => s.projectId === task.projectId);
+
+  return (
+    <motion.div
+      initial={{ x: 400, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 400, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="w-[380px] shrink-0 border-l bg-background flex flex-col overflow-hidden"
+      data-testid="detail-panel"
+    >
+      <div className="flex items-center gap-2 px-4 py-3 border-b">
+        <button onClick={onClose} className="p-1.5 rounded-md hover-elevate text-muted-foreground" data-testid="button-close-detail">
+          <X className="h-4 w-4" />
+        </button>
+        <div className="flex-1" />
+        <button
+          onClick={() => setDeleteConfirm(true)}
+          className="p-1.5 rounded-md hover-elevate text-destructive"
+          data-testid="button-delete-detail"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            checked={!!task.completed}
+            onCheckedChange={onToggleComplete}
+            className="mt-1 shrink-0"
+            data-testid="checkbox-detail-complete"
+          />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => {
+              if (title.trim() && title !== task.title) onUpdate({ title: title.trim() });
+            }}
+            className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-base font-semibold h-auto py-0"
+            data-testid="input-detail-title"
+          />
+        </div>
+
+        <div>
+          <Label className="text-xs text-muted-foreground">Notatki</Label>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => {
+              if (notes !== (task.notes || "")) onUpdate({ notes });
+            }}
+            placeholder="Dodaj notatki..."
+            className="mt-1 resize-none text-sm min-h-[80px]"
+            data-testid="textarea-detail-notes"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-muted-foreground">Priorytet</Label>
+            <Select value={task.priority || "BRAK"} onValueChange={(v) => onUpdate({ priority: v })}>
+              <SelectTrigger className="mt-1" data-testid="select-detail-priority">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(PRIORITY_LABELS).map(([val, label]) => (
+                  <SelectItem key={val} value={val}>
+                    <div className="flex items-center gap-2">
+                      <Flag className={`h-3.5 w-3.5 ${PRIORITY_FLAG_COLORS[val]}`} />
+                      {label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground">Projekt</Label>
+            <Select
+              value={task.projectId ? String(task.projectId) : "none"}
+              onValueChange={(v) => onUpdate({ projectId: v === "none" ? null : Number(v), sectionId: null })}
+            >
+              <SelectTrigger className="mt-1" data-testid="select-detail-project">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Brak</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {projectSections.length > 0 && (
+          <div>
+            <Label className="text-xs text-muted-foreground">Sekcja</Label>
+            <Select
+              value={task.sectionId ? String(task.sectionId) : "none"}
+              onValueChange={(v) => onUpdate({ sectionId: v === "none" ? null : Number(v) })}
+            >
+              <SelectTrigger className="mt-1" data-testid="select-detail-section">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Brak</SelectItem>
+                {projectSections.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-muted-foreground">Termin</Label>
+            <Input
+              type="date"
+              value={task.dueDate || ""}
+              onChange={(e) => onUpdate({ dueDate: e.target.value || null })}
+              className="mt-1"
+              data-testid="input-detail-due-date"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Godzina</Label>
+            <Input
+              type="time"
+              value={task.dueTime || ""}
+              onChange={(e) => onUpdate({ dueTime: e.target.value || null })}
+              className="mt-1"
+              data-testid="input-detail-due-time"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-xs text-muted-foreground">Tagi (oddzielone przecinkami)</Label>
+          <Input
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+            onBlur={() => {
+              const newTags = tagsInput
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean);
+              const oldTags = task.tags || [];
+              if (JSON.stringify(newTags) !== JSON.stringify(oldTags)) {
+                onUpdate({ tags: newTags });
+              }
+            }}
+            placeholder="np. praca, dom, pilne"
+            className="mt-1"
+            data-testid="input-detail-tags"
+          />
+        </div>
+
+        <div>
+          <Label className="text-xs text-muted-foreground">Powtarzanie</Label>
+          <Select
+            value={task.recurring || "none"}
+            onValueChange={(v) => onUpdate({ recurring: v === "none" ? null : v })}
+          >
+            <SelectTrigger className="mt-1" data-testid="select-detail-recurring">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Brak</SelectItem>
+              <SelectItem value="codziennie">Codziennie</SelectItem>
+              <SelectItem value="co tydzie\u0144">Co tydzie\u0144</SelectItem>
+              <SelectItem value="co miesi\u0105c">Co miesi\u0105c</SelectItem>
+              <SelectItem value="co rok">Co rok</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-muted-foreground">Przypomnienie</Label>
+            <Input
+              type="date"
+              value={task.reminderDate || ""}
+              onChange={(e) => onUpdate({ reminderDate: e.target.value || null })}
+              className="mt-1"
+              data-testid="input-detail-reminder-date"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Godz. przyp.</Label>
+            <Input
+              type="time"
+              value={task.reminderTime || ""}
+              onChange={(e) => onUpdate({ reminderTime: e.target.value || null })}
+              className="mt-1"
+              data-testid="input-detail-reminder-time"
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-xs text-muted-foreground">Lista kontrolna</Label>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {checklist.filter((c) => c.completed).length}/{checklist.length}
+            </span>
+          </div>
+          {checklist
+            .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+            .map((item) => (
+              <div key={item.id} className="flex items-center gap-2 py-1 group">
+                <Checkbox
+                  checked={!!item.completed}
+                  onCheckedChange={() => updateChecklist.mutate({ id: item.id, data: { completed: !item.completed } })}
+                  data-testid={`checkbox-checklist-${item.id}`}
+                />
+                <span className={`text-sm flex-1 ${item.completed ? "line-through text-muted-foreground" : ""}`}>{item.title}</span>
+                <button
+                  onClick={() => deleteChecklistItem.mutate(item.id)}
+                  className="invisible group-hover:visible p-0.5 rounded hover-elevate text-muted-foreground"
+                  data-testid={`button-delete-checklist-${item.id}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          <div className="flex items-center gap-2 mt-1">
+            <Input
+              value={newChecklistTitle}
+              onChange={(e) => setNewChecklistTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newChecklistTitle.trim()) {
+                  createChecklistItem.mutate({ taskId: task.id, title: newChecklistTitle.trim(), sortOrder: checklist.length });
+                  setNewChecklistTitle("");
+                }
+              }}
+              placeholder="Dodaj element..."
+              className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-sm h-auto py-1"
+              data-testid="input-checklist-new"
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-xs text-muted-foreground">Podzadania</Label>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {childTasks.filter((c) => c.completed).length}/{childTasks.length}
+            </span>
+          </div>
+          {childTasks
+            .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+            .map((child) => (
+              <div key={child.id} className="flex items-center gap-2 py-1">
+                <Checkbox checked={!!child.completed} disabled className="shrink-0" />
+                <span className={`text-sm flex-1 ${child.completed ? "line-through text-muted-foreground" : ""}`}>{child.title}</span>
+              </div>
+            ))}
+          <div className="flex items-center gap-2 mt-1">
+            <Input
+              ref={subtaskRef}
+              value={subtaskTitle}
+              onChange={(e) => setSubtaskTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && subtaskTitle.trim()) {
+                  onCreateSubtask(subtaskTitle.trim());
+                  setSubtaskTitle("");
+                }
+              }}
+              placeholder="Dodaj podzadanie..."
+              className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-sm h-auto py-1"
+              data-testid="input-subtask-new"
+            />
+          </div>
+        </div>
+      </div>
+
+      <AlertDialog open={deleteConfirm} onOpenChange={setDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Usun\u0105\u0107 zadanie?</AlertDialogTitle>
+            <AlertDialogDescription>Tej operacji nie mo\u017Cna cofn\u0105\u0107.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-detail-delete">Anuluj</AlertDialogCancel>
+            <AlertDialogAction onClick={onDelete} data-testid="button-confirm-detail-delete">
+              Usu\u0144
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </motion.div>
+  );
+}
+
+function TaskDialog({
+  open,
+  onOpenChange,
+  projects,
+  sections,
+  defaultProjectId,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  projects: TaskProject[];
+  sections: TaskSection[];
+  defaultProjectId?: number;
+}) {
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [priority, setPriority] = useState(getStoredDefaultPriority());
+  const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
+  const [tags, setTags] = useState("");
+  const [projectId, setProjectId] = useState<string>(defaultProjectId ? String(defaultProjectId) : getStoredDefaultProject() || "none");
+  const [sectionId, setSectionId] = useState<string>("none");
+
+  useEffect(() => {
+    if (open) {
+      setTitle("");
+      setNotes("");
+      setPriority(getStoredDefaultPriority());
+      setDueDate("");
+      setDueTime("");
+      setTags("");
+      setProjectId(defaultProjectId ? String(defaultProjectId) : getStoredDefaultProject() || "none");
+      setSectionId("none");
+    }
+  }, [open, defaultProjectId]);
 
   const createTask = useMutation({
     mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/tasks", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }); onOpenChange(false); toast({ title: "Zadanie utworzone" }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      onOpenChange(false);
+    },
   });
 
-  const updateTask = useMutation({
-    mutationFn: (data: Record<string, unknown>) => apiRequest("PATCH", `/api/tasks/${task!.id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }); onOpenChange(false); toast({ title: "Zadanie zaktualizowane" }); },
-  });
-
-  const deleteTask = useMutation({
-    mutationFn: () => apiRequest("DELETE", `/api/tasks/${task!.id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }); onOpenChange(false); toast({ title: "Zadanie usunięte" }); },
-  });
-
-  const addCheckItem = useMutation({
-    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/task-checklist", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/task-checklist", task?.id] }); setNewCheckItem(""); },
-  });
-
-  const toggleCheckItem = useMutation({
-    mutationFn: (item: TaskChecklistItem) => apiRequest("PATCH", `/api/task-checklist/${item.id}`, { completed: !item.completed }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/task-checklist", task?.id] }),
-  });
-
-  const deleteCheckItem = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/task-checklist/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/task-checklist", task?.id] }),
-  });
+  const projectSections = sections.filter((s) => s.projectId === (projectId !== "none" ? Number(projectId) : null));
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    const tags = tagsInput.split(",").map((t) => t.trim()).filter(Boolean);
-    const data: Record<string, unknown> = {
-      title: title.trim(), notes: notes || null, priority, tags,
-      dueDate: dueDate || null, dueTime: dueTime || null,
-      projectId: projectId && projectId !== "none" ? Number(projectId) : null,
-      sectionId: sectionId && sectionId !== "none" ? Number(sectionId) : null,
-      recurring: recurring || null,
-      reminderDate: reminderDate || null, reminderTime: reminderTime || null,
-    };
-    isEdit ? updateTask.mutate(data) : createTask.mutate(data);
+    createTask.mutate({
+      title: title.trim(),
+      notes: notes || null,
+      priority,
+      dueDate: dueDate || null,
+      dueTime: dueTime || null,
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      projectId: projectId !== "none" ? Number(projectId) : null,
+      sectionId: sectionId !== "none" ? Number(sectionId) : null,
+    });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-task">
+      <DialogContent className="max-w-md" data-testid="dialog-add-task">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edytuj zadanie" : "Nowe zadanie"}</DialogTitle>
+          <DialogTitle>Nowe zadanie</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          <div className="space-y-1">
-            <Label>Tytuł</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nazwa zadania" data-testid="input-task-title" />
+          <div>
+            <Label className="text-xs text-muted-foreground">Tytu\u0142</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Tytu\u0142 zadania" className="mt-1" data-testid="input-task-title" autoFocus />
           </div>
-          <div className="space-y-1">
-            <Label>Notatki</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Dodatkowe informacje..." data-testid="input-task-notes" />
+          <div>
+            <Label className="text-xs text-muted-foreground">Notatki</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notatki..." className="mt-1 resize-none min-h-[60px]" data-testid="textarea-task-notes" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Priorytet</Label>
+            <div>
+              <Label className="text-xs text-muted-foreground">Priorytet</Label>
               <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger data-testid="select-priority-trigger"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1" data-testid="select-task-priority">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {["BRAK", "NISKI", "ŚREDNI", "WYSOKI", "PILNY"].map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  {Object.entries(PRIORITY_LABELS).map(([val, label]) => (
+                    <SelectItem key={val} value={val}>
+                      <div className="flex items-center gap-2">
+                        <Flag className={`h-3.5 w-3.5 ${PRIORITY_FLAG_COLORS[val]}`} />
+                        {label}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Termin</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} data-testid="input-task-due-date" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Godzina terminu</Label>
-              <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} data-testid="input-task-due-time" />
-            </div>
-            <div className="space-y-1">
-              <Label>Powtarzanie</Label>
-              <Input value={recurring} onChange={(e) => setRecurring(e.target.value)} placeholder="np. co tydzień" data-testid="input-task-recurring" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Projekt</Label>
-              <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSectionId(""); }}>
-                <SelectTrigger data-testid="select-project-trigger"><SelectValue placeholder="Brak" /></SelectTrigger>
+            <div>
+              <Label className="text-xs text-muted-foreground">Projekt</Label>
+              <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSectionId("none"); }}>
+                <SelectTrigger className="mt-1" data-testid="select-task-project">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Brak</SelectItem>
-                  {projects.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                  {projects.filter((p) => !p.archived).map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Sekcja</Label>
+          </div>
+          {projectSections.length > 0 && (
+            <div>
+              <Label className="text-xs text-muted-foreground">Sekcja</Label>
               <Select value={sectionId} onValueChange={setSectionId}>
-                <SelectTrigger data-testid="select-section-trigger"><SelectValue placeholder="Brak" /></SelectTrigger>
+                <SelectTrigger className="mt-1" data-testid="select-task-section">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Brak</SelectItem>
-                  {filteredSections.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  {projectSections.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label>Tagi (oddzielone przecinkami)</Label>
-            <Input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="pilne, praca, dom" data-testid="input-task-tags" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Data przypomnienia</Label>
-              <Input type="date" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} data-testid="input-task-reminder-date" />
-            </div>
-            <div className="space-y-1">
-              <Label>Godzina przypomnienia</Label>
-              <Input type="time" value={reminderTime} onChange={(e) => setReminderTime(e.target.value)} data-testid="input-task-reminder-time" />
-            </div>
-          </div>
-
-          {isEdit && (
-            <div className="space-y-2 border-t pt-3">
-              <Label>Lista kontrolna</Label>
-              {checklist.map((item) => (
-                <div key={item.id} className="flex items-center gap-2" data-testid={`checklist-item-${item.id}`}>
-                  <Checkbox checked={!!item.completed} onCheckedChange={() => toggleCheckItem.mutate(item)} data-testid={`checkbox-checklist-${item.id}`} />
-                  <span className={`text-sm flex-1 ${item.completed ? "line-through text-muted-foreground" : ""}`}>{item.title}</span>
-                  <Button size="icon" variant="ghost" onClick={() => deleteCheckItem.mutate(item.id)} data-testid={`button-delete-checklist-${item.id}`}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <Input value={newCheckItem} onChange={(e) => setNewCheckItem(e.target.value)} placeholder="Nowy element..." className="flex-1" data-testid="input-checklist-new"
-                  onKeyDown={(e) => { if (e.key === "Enter" && newCheckItem.trim()) { e.preventDefault(); addCheckItem.mutate({ taskId: task!.id, title: newCheckItem.trim() }); } }} />
-                <Button size="icon" variant="ghost" onClick={() => { if (newCheckItem.trim()) addCheckItem.mutate({ taskId: task!.id, title: newCheckItem.trim() }); }} data-testid="button-add-checklist">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
           )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Termin</Label>
+              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1" data-testid="input-task-due-date" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Godzina</Label>
+              <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className="mt-1" data-testid="input-task-due-time" />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Tagi</Label>
+            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="pilne, praca, dom" className="mt-1" data-testid="input-task-tags" />
+          </div>
         </div>
-
-        <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
-          {isEdit ? (
-            <>
-              {confirmDelete ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-destructive">Na pewno?</span>
-                  <Button size="sm" variant="destructive" onClick={() => deleteTask.mutate()} disabled={deleteTask.isPending} data-testid="button-confirm-delete-task">Tak, usuń</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)} data-testid="button-cancel-delete-task">Anuluj</Button>
-                </div>
-              ) : (
-                <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} data-testid="button-delete-task">
-                  <Trash2 className="h-4 w-4 mr-1" /> Usuń
-                </Button>
-              )}
-            </>
-          ) : <div />}
-          <Button onClick={handleSubmit} disabled={createTask.isPending || updateTask.isPending} data-testid="button-submit-task">
-            {(createTask.isPending || updateTask.isPending) ? "Zapisywanie..." : isEdit ? "Zapisz zmiany" : "Dodaj zadanie"}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-task">
+            Anuluj
           </Button>
-        </div>
+          <Button onClick={handleSubmit} disabled={!title.trim() || createTask.isPending} data-testid="button-save-task">
+            Utw\u00F3rz
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-const COLOR_OPTIONS = ["#5ADBFA", "#FF6B6B", "#51CF66", "#FFD43B", "#845EF7", "#FF922B", "#20C997", "#F06595"];
-
-function ProjectDialog({ open, onOpenChange, areas }: { open: boolean; onOpenChange: (o: boolean) => void; areas: string[] }) {
-  const { toast } = useToast();
+function ProjectDialog({ open, onOpenChange, onSubmit }: { open: boolean; onOpenChange: (o: boolean) => void; onSubmit: (data: Record<string, unknown>) => void }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#5ADBFA");
   const [area, setArea] = useState("");
-  const [newArea, setNewArea] = useState("");
 
-  const createProject = useMutation({
-    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/task-projects", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/task-projects"] });
-      onOpenChange(false);
+  useEffect(() => {
+    if (open) {
       setName("");
-      setNewArea("");
-      toast({ title: "Projekt utworzony" });
-    },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm" data-testid="dialog-project">
-        <DialogHeader>
-          <DialogTitle>Nowy projekt</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="space-y-1">
-            <Label>Nazwa</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nazwa projektu" data-testid="input-project-name" />
-          </div>
-          <div className="space-y-1">
-            <Label>Kolor</Label>
-            <div className="flex gap-2 flex-wrap">
-              {COLOR_OPTIONS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setColor(c)}
-                  className={`h-7 w-7 rounded-full border-2 transition-transform ${color === c ? "border-foreground scale-110" : "border-transparent"}`}
-                  style={{ backgroundColor: c }}
-                  data-testid={`button-color-${c}`}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label>Obszar (grupa)</Label>
-            <Select value={area} onValueChange={setArea}>
-              <SelectTrigger data-testid="select-project-area"><SelectValue placeholder="Brak" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Brak (bez grupy)</SelectItem>
-                {areas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Lub nowy obszar</Label>
-            <Input value={newArea} onChange={(e) => setNewArea(e.target.value)} placeholder="np. FIRMA, OSOBISTE" data-testid="input-new-area" />
-          </div>
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button
-            onClick={() => {
-              if (name.trim()) {
-                const finalArea = newArea.trim() || (area && area !== "none" ? area : null);
-                createProject.mutate({ name: name.trim(), color, area: finalArea });
-              }
-            }}
-            disabled={createProject.isPending}
-            data-testid="button-submit-project"
-          >
-            {createProject.isPending ? "Tworzenie..." : "Utwórz projekt"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SectionDialog({ open, onOpenChange, projects, defaultProjectId }: {
-  open: boolean; onOpenChange: (o: boolean) => void; projects: TaskProject[]; defaultProjectId?: number;
-}) {
-  const { toast } = useToast();
-  const [name, setName] = useState("");
-  const [projectId, setProjectId] = useState(String(defaultProjectId || ""));
-
-  const createSection = useMutation({
-    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/task-sections", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/task-sections"] });
-      onOpenChange(false);
-      setName("");
-      toast({ title: "Sekcja utworzona" });
-    },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm" data-testid="dialog-section">
-        <DialogHeader>
-          <DialogTitle>Nowa sekcja</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="space-y-1">
-            <Label>Nazwa sekcji</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nazwa sekcji" data-testid="input-section-name" />
-          </div>
-          <div className="space-y-1">
-            <Label>Projekt</Label>
-            <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger data-testid="select-section-project"><SelectValue placeholder="Wybierz projekt" /></SelectTrigger>
-              <SelectContent>
-                {projects.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button
-            onClick={() => {
-              if (name.trim() && projectId) {
-                createSection.mutate({ name: name.trim(), projectId: Number(projectId) });
-              }
-            }}
-            disabled={createSection.isPending}
-            data-testid="button-submit-section"
-          >
-            {createSection.isPending ? "Tworzenie..." : "Utwórz sekcję"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const [settingsPage, setSettingsPage] = useState<"main" | "appearance" | "general">("main");
-  const [theme, setTheme] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("theme") || "light";
+      setColor("#5ADBFA");
+      setArea("");
     }
-    return "light";
-  });
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm" data-testid="dialog-add-project">
+        <DialogHeader>
+          <DialogTitle>Nowy Projekt</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label className="text-xs text-muted-foreground">Nazwa</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nazwa projektu" className="mt-1" data-testid="input-project-name" autoFocus />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Kolor</Label>
+            <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="mt-1 h-9 w-16 p-1" data-testid="input-project-color" />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Obszar (opcjonalnie)</Label>
+            <Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="np. Praca, Dom" className="mt-1" data-testid="input-project-area" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-project">
+            Anuluj
+          </Button>
+          <Button
+            onClick={() => {
+              if (!name.trim()) return;
+              onSubmit({ name: name.trim(), color, area: area.trim() || null });
+            }}
+            disabled={!name.trim()}
+            data-testid="button-save-project"
+          >
+            Utw\u00F3rz
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SectionDialog({
+  open,
+  onOpenChange,
+  projects,
+  currentProjectId,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  projects: TaskProject[];
+  currentProjectId?: number;
+  onSubmit: (data: Record<string, unknown>) => void;
+}) {
+  const [name, setName] = useState("");
+  const [projectId, setProjectId] = useState<string>(currentProjectId ? String(currentProjectId) : "");
+
+  useEffect(() => {
+    if (open) {
+      setName("");
+      setProjectId(currentProjectId ? String(currentProjectId) : "");
+    }
+  }, [open, currentProjectId]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm" data-testid="dialog-add-section">
+        <DialogHeader>
+          <DialogTitle>Nowa Sekcja</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label className="text-xs text-muted-foreground">Nazwa</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nazwa sekcji" className="mt-1" data-testid="input-section-name" autoFocus />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Projekt</Label>
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="mt-1" data-testid="select-section-project">
+                <SelectValue placeholder="Wybierz projekt" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.filter((p) => !p.archived).map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-section">
+            Anuluj
+          </Button>
+          <Button
+            onClick={() => {
+              if (!name.trim() || !projectId) return;
+              onSubmit({ name: name.trim(), projectId: Number(projectId) });
+            }}
+            disabled={!name.trim() || !projectId}
+            data-testid="button-save-section"
+          >
+            Utw\u00F3rz
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SettingsDialog({
+  open,
+  onOpenChange,
+  fontSize,
+  setFontSize,
+  showCounts,
+  setShowCounts,
+  showOverdueInToday,
+  setShowOverdueInToday,
+  weekStart,
+  setWeekStart,
+  projects,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  fontSize: number;
+  setFontSize: (v: number) => void;
+  showCounts: boolean;
+  setShowCounts: (v: boolean) => void;
+  showOverdueInToday: boolean;
+  setShowOverdueInToday: (v: boolean) => void;
+  weekStart: 0 | 1;
+  setWeekStart: (v: 0 | 1) => void;
+  projects: TaskProject[];
+}) {
+  const [page, setPage] = useState<SettingsPage>("main");
+
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "system");
+  const [defaultProject, setDefaultProject] = useState(getStoredDefaultProject);
+  const [defaultPriority, setDefaultPriority] = useState(getStoredDefaultPriority);
 
   const applyTheme = (t: string) => {
     setTheme(t);
     localStorage.setItem("theme", t);
+    const root = document.documentElement;
     if (t === "dark") {
-      document.documentElement.classList.add("dark");
+      root.classList.add("dark");
+    } else if (t === "light") {
+      root.classList.remove("dark");
     } else {
-      document.documentElement.classList.remove("dark");
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        root.classList.add("dark");
+      } else {
+        root.classList.remove("dark");
+      }
     }
   };
 
-  const handleBack = () => setSettingsPage("main");
+  useEffect(() => {
+    if (open) setPage("main");
+  }, [open]);
+
+  const handleBack = () => setPage("main");
+
+  const pageTitle: Record<SettingsPage, string> = {
+    main: "Ustawienia",
+    appearance: "Wygl\u0105d",
+    general: "Og\u00F3lne",
+    counter: "Licznik zada\u0144",
+    today_settings: "Dzi\u015B",
+    week_settings: "Tydzie\u0144",
+    plus_settings: "Przycisk Plus",
+  };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setSettingsPage("main"); }}>
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setPage("main"); }}>
       <DialogContent className="max-w-sm" data-testid="dialog-settings">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            {settingsPage !== "main" && (
-              <button onClick={handleBack} className="p-1 rounded hover:bg-muted" data-testid="button-settings-back">
+            {page !== "main" && (
+              <button onClick={handleBack} className="p-1 rounded hover-elevate" data-testid="button-settings-back">
                 <ChevronRight className="h-4 w-4 rotate-180" />
               </button>
             )}
-            <DialogTitle>
-              {settingsPage === "main" ? "Ustawienia" : settingsPage === "appearance" ? "Wygląd" : "Ogólne"}
-            </DialogTitle>
+            <DialogTitle>{pageTitle[page]}</DialogTitle>
           </div>
         </DialogHeader>
 
-        {settingsPage === "main" && (
+        {page === "main" && (
           <div className="space-y-1 py-2">
-            <button className="flex items-center gap-3 w-full px-3 py-3 rounded-lg hover:bg-muted transition-colors text-left" onClick={() => setSettingsPage("appearance")} data-testid="button-settings-appearance">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white text-xs font-bold">Aa</div>
-              <span className="text-sm">Wygląd</span>
-              <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
-            </button>
-            <button className="flex items-center gap-3 w-full px-3 py-3 rounded-lg hover:bg-muted transition-colors text-left" onClick={() => setSettingsPage("general")} data-testid="button-settings-general">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center">
-                <Settings className="h-4 w-4 text-white" />
-              </div>
-              <span className="text-sm">Ogólne</span>
-              <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
-            </button>
+            {[
+              { key: "appearance" as SettingsPage, label: "Wygl\u0105d", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white text-xs font-bold">Aa</div> },
+              { key: "counter" as SettingsPage, label: "Licznik zada\u0144", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center"><Tag className="h-4 w-4 text-white" /></div> },
+              { key: "today_settings" as SettingsPage, label: "Dzi\u015B", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center"><Star className="h-4 w-4 text-white" /></div> },
+              { key: "week_settings" as SettingsPage, label: "Tydzie\u0144", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center"><Calendar className="h-4 w-4 text-white" /></div> },
+              { key: "plus_settings" as SettingsPage, label: "Przycisk Plus", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center"><Plus className="h-4 w-4 text-white" /></div> },
+            ].map(({ key, label, icon }) => (
+              <button
+                key={key}
+                className="flex items-center gap-3 w-full px-3 py-3 rounded-lg hover-elevate transition-colors text-left"
+                onClick={() => setPage(key)}
+                data-testid={`button-settings-${key}`}
+              >
+                {icon}
+                <span className="text-sm flex-1">{label}</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            ))}
           </div>
         )}
 
-        {settingsPage === "appearance" && (
+        {page === "appearance" && (
           <div className="space-y-4 py-2">
-            <p className="text-sm text-muted-foreground">Wybierz preferowany rozmiar tekstu i wygląd.</p>
             <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Wygląd</div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Motyw</div>
               <div className="space-y-1">
                 {[
                   { value: "light", label: "Jasny", icon: Sun },
@@ -1044,38 +2076,127 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
                 ].map(({ value, label, icon: Icon }) => (
                   <button
                     key={value}
-                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-left ${theme === value ? "bg-primary/10" : "hover:bg-muted"}`}
+                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-left ${theme === value ? "bg-primary/10" : "hover-elevate"}`}
                     onClick={() => applyTheme(value)}
                     data-testid={`button-theme-${value}`}
                   >
                     <Icon className="h-4 w-4" />
                     <span className="text-sm flex-1">{label}</span>
-                    {theme === value && <span className="text-primary text-sm">✓</span>}
+                    {theme === value && <Check className="h-4 w-4 text-primary" />}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Rozmiar czcionki</div>
+              <div className="px-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">{FONT_SIZES.find((f) => f.value === fontSize)?.label || "Średnia"}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{fontSize}px</span>
+                </div>
+                <Slider
+                  min={12}
+                  max={18}
+                  step={2}
+                  value={[fontSize]}
+                  onValueChange={([v]) => setFontSize(v)}
+                  data-testid="slider-font-size"
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  {FONT_SIZES.map((f) => (
+                    <span key={f.value}>{f.label}</span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {settingsPage === "general" && (
-          <div className="space-y-1 py-2">
-            {[
-              { label: "Licznik zadań", icon: "🔴" },
-              { label: "Dziś", icon: "⭐" },
-              { label: "Tydzień", icon: "📅" },
-              { label: "Przycisk Plus", icon: "➕" },
-            ].map(({ label, icon }) => (
-              <button
-                key={label}
-                className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-muted transition-colors text-left"
-                data-testid={`button-general-${label}`}
+        {page === "counter" && (
+          <div className="py-2 space-y-4">
+            <p className="text-sm text-muted-foreground">Poka\u017C liczniki zada\u0144 przy widokach inteligentnych na pasku bocznym.</p>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Poka\u017C liczniki</span>
+              <Switch checked={showCounts} onCheckedChange={setShowCounts} data-testid="switch-show-counts" />
+            </div>
+          </div>
+        )}
+
+        {page === "today_settings" && (
+          <div className="py-2 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium">Poka\u017C zaleg\u0142e</div>
+                <div className="text-xs text-muted-foreground">Wy\u015Bwietlaj przeterminowane zadania w widoku Dzi\u015B</div>
+              </div>
+              <Switch checked={showOverdueInToday} onCheckedChange={setShowOverdueInToday} data-testid="switch-show-overdue" />
+            </div>
+          </div>
+        )}
+
+        {page === "week_settings" && (
+          <div className="py-2 space-y-4">
+            <div>
+              <div className="text-sm font-medium mb-2">Pocz\u0105tek tygodnia</div>
+              <Select value={String(weekStart)} onValueChange={(v) => setWeekStart(Number(v) as 0 | 1)}>
+                <SelectTrigger data-testid="select-week-start">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Poniedzia\u0142ek</SelectItem>
+                  <SelectItem value="0">Niedziela</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {page === "plus_settings" && (
+          <div className="py-2 space-y-4">
+            <div>
+              <div className="text-sm font-medium mb-2">Domy\u015Blny projekt</div>
+              <Select
+                value={defaultProject || "none"}
+                onValueChange={(v) => {
+                  const val = v === "none" ? "" : v;
+                  setDefaultProject(val);
+                  localStorage.setItem("tasksDefaultProject", val);
+                }}
               >
-                <span className="text-lg">{icon}</span>
-                <span className="text-sm flex-1">{label}</span>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </button>
-            ))}
+                <SelectTrigger data-testid="select-default-project">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Brak (Odebrane)</SelectItem>
+                  {projects.filter((p) => !p.archived).map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="text-sm font-medium mb-2">Domy\u015Blny priorytet</div>
+              <Select
+                value={defaultPriority}
+                onValueChange={(v) => {
+                  setDefaultPriority(v);
+                  localStorage.setItem("tasksDefaultPriority", v);
+                }}
+              >
+                <SelectTrigger data-testid="select-default-priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PRIORITY_LABELS).map(([val, label]) => (
+                    <SelectItem key={val} value={val}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
       </DialogContent>
@@ -1083,9 +2204,18 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   );
 }
 
-function MoveDialog({ open, onOpenChange, projects, sections, onMove, isPending }: {
-  open: boolean; onOpenChange: (o: boolean) => void;
-  projects: TaskProject[]; sections: TaskSection[];
+function MoveDialog({
+  open,
+  onOpenChange,
+  projects,
+  sections,
+  onMove,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  projects: TaskProject[];
+  sections: TaskSection[];
   onMove: (projectId: number | null, sectionId: number | null) => void;
   isPending: boolean;
 }) {
@@ -1093,11 +2223,11 @@ function MoveDialog({ open, onOpenChange, projects, sections, onMove, isPending 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xs" data-testid="dialog-move">
         <DialogHeader>
-          <DialogTitle>Przenieś zadania</DialogTitle>
+          <DialogTitle>Przenie\u015B zadania</DialogTitle>
         </DialogHeader>
-        <div className="space-y-1 py-2">
+        <div className="space-y-1 py-2 max-h-[60vh] overflow-y-auto">
           <button
-            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg hover:bg-muted transition-colors text-left text-sm"
+            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg hover-elevate transition-colors text-left text-sm"
             onClick={() => onMove(null, null)}
             disabled={isPending}
             data-testid="button-move-inbox"
@@ -1105,12 +2235,12 @@ function MoveDialog({ open, onOpenChange, projects, sections, onMove, isPending 
             <Inbox className="h-4 w-4 text-[#5ADBFA]" />
             Odebrane (bez projektu)
           </button>
-          {projects.map((p) => {
-            const projectSections = sections.filter(s => s.projectId === p.id);
+          {projects.filter((p) => !p.archived).map((p) => {
+            const projectSections = sections.filter((s) => s.projectId === p.id);
             return (
               <div key={p.id}>
                 <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg hover:bg-muted transition-colors text-left text-sm"
+                  className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg hover-elevate transition-colors text-left text-sm"
                   onClick={() => onMove(p.id, null)}
                   disabled={isPending}
                   data-testid={`button-move-project-${p.id}`}
@@ -1121,7 +2251,7 @@ function MoveDialog({ open, onOpenChange, projects, sections, onMove, isPending 
                 {projectSections.map((s) => (
                   <button
                     key={s.id}
-                    className="flex items-center gap-2.5 w-full px-3 py-2.5 pl-8 rounded-lg hover:bg-muted transition-colors text-left text-sm text-muted-foreground"
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 pl-8 rounded-lg hover-elevate transition-colors text-left text-sm text-muted-foreground"
                     onClick={() => onMove(p.id, s.id)}
                     disabled={isPending}
                     data-testid={`button-move-section-${s.id}`}
