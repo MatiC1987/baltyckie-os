@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { 
   LayoutDashboard, 
@@ -419,6 +420,7 @@ function DroppableEmptySection({ sectionId }: { sectionId: string }) {
 export function Sidebar() {
   const [location, navigate] = useLocation();
   const { logout, user } = useAuth();
+  const { toast } = useToast();
   const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [layout, setLayout] = useState<SidebarLayout>(loadLayout);
@@ -802,12 +804,13 @@ export function Sidebar() {
                           const resp = await fetch(`/api/users/${user.id}/profile-photo`, { method: "POST", body: formData, credentials: "include" });
                           if (!resp.ok) {
                             const err = await resp.json().catch(() => ({ message: "Błąd przesyłania" }));
-                            console.error("Photo upload failed:", err.message);
+                            toast({ title: "Błąd", description: err.message, variant: "destructive" });
                             return;
                           }
-                          window.location.reload();
+                          toast({ title: "Sukces", description: "Zdjęcie profilowe zostało zaktualizowane" });
+                          setTimeout(() => window.location.reload(), 500);
                         } catch (err) {
-                          console.error("Photo upload error:", err);
+                          toast({ title: "Błąd", description: "Nie udało się przesłać zdjęcia", variant: "destructive" });
                         }
                       }}
                     />
