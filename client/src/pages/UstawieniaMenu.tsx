@@ -35,15 +35,18 @@ import {
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   DragOverlay,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
   type UniqueIdentifier,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -209,6 +212,15 @@ function SortableSettingsItem({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       )}
+    </div>
+  );
+}
+
+function DroppableSectionContainer({ sectionId, children }: { sectionId: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `droppable-${sectionId}` });
+  return (
+    <div ref={setNodeRef} className={cn("min-h-[40px] rounded-lg transition-colors", isOver && "bg-accent/30")}>
+      {children}
     </div>
   );
 }
@@ -483,6 +495,15 @@ export default function UstawieniaMenu() {
     setActiveId(event.active.id);
   }, []);
 
+  const resolveDropSection = useCallback((overId: string): string | null => {
+    if (overId.startsWith("droppable-")) {
+      return overId.replace("droppable-", "");
+    }
+    const section = findSectionOfItem(layout.sections, overId);
+    if (section) return section;
+    return layout.sections.find(s => s.id === overId)?.id || null;
+  }, [layout.sections]);
+
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
@@ -491,10 +512,7 @@ export default function UstawieniaMenu() {
     const overId = over.id as string;
 
     const activeSection = findSectionOfItem(layout.sections, activeItemId);
-    let overSection = findSectionOfItem(layout.sections, overId);
-    if (!overSection) {
-      overSection = layout.sections.find(s => s.id === overId)?.id || null;
-    }
+    const overSection = resolveDropSection(overId);
 
     if (!activeSection || !overSection || activeSection === overSection) return;
 
@@ -513,7 +531,7 @@ export default function UstawieniaMenu() {
 
       return { ...prev, sections: newSections };
     });
-  }, [layout.sections]);
+  }, [layout.sections, resolveDropSection]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -524,7 +542,7 @@ export default function UstawieniaMenu() {
     const overId = over.id as string;
 
     const activeSection = findSectionOfItem(layout.sections, activeItemId);
-    const overSection = findSectionOfItem(layout.sections, overId);
+    const overSection = resolveDropSection(overId);
 
     if (activeSection && overSection && activeSection === overSection) {
       const section = layout.sections.find(s => s.id === activeSection)!;
@@ -553,6 +571,12 @@ export default function UstawieniaMenu() {
       return prev;
     });
   }, [layout.sections, collapsed, customLabels, hiddenItems]);
+
+  const customCollisionDetection: CollisionDetection = useCallback((args) => {
+    const centerCollisions = closestCenter(args);
+    if (centerCollisions.length > 0) return centerCollisions;
+    return pointerWithin(args);
+  }, []);
 
   const activeItem = useMemo(() => {
     if (!activeId) return null;
@@ -590,7 +614,7 @@ export default function UstawieniaMenu() {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={customCollisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -664,6 +688,7 @@ export default function UstawieniaMenu() {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0">
+                  <DroppableSectionContainer sectionId={section.id}>
                   <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy} id={section.id}>
                     {section.itemIds.length === 0 ? (
                       <div className="py-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
@@ -686,6 +711,7 @@ export default function UstawieniaMenu() {
                       ))
                     )}
                   </SortableContext>
+                  </DroppableSectionContainer>
                 </CardContent>
               </Card>
             );
