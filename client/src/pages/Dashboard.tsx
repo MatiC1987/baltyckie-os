@@ -361,13 +361,15 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          {user?.id ? (
-            <UserAvatar userId={user.id} firstName={user.firstName} lastName={user.lastName} size="lg" className="hidden sm:flex" />
-          ) : (
-            <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
-              <LayoutDashboard className="h-5 w-5" />
-            </div>
-          )}
+          <div className="hidden sm:block">
+            {user?.id ? (
+              <UserAvatar userId={user.id} firstName={user.firstName} lastName={user.lastName} size="lg" />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0" data-testid="icon-dashboard">
+                <LayoutDashboard className="h-5 w-5" />
+              </div>
+            )}
+          </div>
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
               {greeting}{userName ? `, ${userName}` : ""}
