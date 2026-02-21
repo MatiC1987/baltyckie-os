@@ -124,6 +124,31 @@ export const COLLAPSED_KEY = "sidebar-collapsed-v2";
 export const LABELS_KEY = "sidebar-custom-labels-v1";
 export const HIDDEN_KEY = "sidebar-hidden-items-v1";
 export const CUSTOM_ITEMS_KEY = "sidebar-custom-items-v1";
+export const COMPACT_KEY = "sidebar-compact-v1";
+export const BADGE_CONFIG_KEY = "sidebar-badge-config-v1";
+
+export function loadCompactMode(): boolean {
+  try {
+    return localStorage.getItem(COMPACT_KEY) === "true";
+  } catch {}
+  return false;
+}
+
+export function saveCompactMode(compact: boolean) {
+  try { localStorage.setItem(COMPACT_KEY, String(compact)); } catch {}
+}
+
+export function loadBadgeConfig(): Record<string, boolean> {
+  try {
+    const stored = localStorage.getItem(BADGE_CONFIG_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  return { koszty: true, "apartment-schedule": true, podnajem: true };
+}
+
+export function saveBadgeConfig(config: Record<string, boolean>) {
+  try { localStorage.setItem(BADGE_CONFIG_KEY, JSON.stringify(config)); } catch {}
+}
 
 export function loadCustomLabels(): Record<string, string> {
   try {
@@ -284,3 +309,52 @@ export function findSectionOfItem(sections: NavSection[], itemId: string): strin
 export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
+
+export interface PresetLayout {
+  id: string;
+  label: string;
+  description: string;
+  sections: NavSection[];
+  hiddenItems?: string[];
+}
+
+export const PRESET_LAYOUTS: PresetLayout[] = [
+  {
+    id: "default",
+    label: "Domyślny",
+    description: "Standardowy układ z trzema sekcjami: Rezerwacje, Zarządzanie i Finanse",
+    sections: DEFAULT_SECTIONS.map(s => ({ ...s })),
+  },
+  {
+    id: "compact",
+    label: "Kompaktowy",
+    description: "Uproszczony układ z najważniejszymi elementami w jednej sekcji",
+    sections: [
+      { id: "main", itemIds: ["kokpit"] },
+      { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "tasks", "analizy", "revenue", "koszty", "invoices"], color: "cyan" },
+    ],
+    hiddenItems: ["source-comparison", "apartment-schedule", "salda", "dokumenty-ksiegowe", "contracts-services", "przeglady", "finance-forecast", "customers"],
+  },
+  {
+    id: "full",
+    label: "Pełny",
+    description: "Wszystkie elementy widoczne, pogrupowane tematycznie",
+    sections: [
+      { id: "main", itemIds: ["kokpit"] },
+      { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "podnajem", "customers"], color: "cyan" },
+      { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["tasks", "contracts-services", "przeglady"], color: "violet" },
+      { id: "finanse", title: "FINANSE", itemIds: ["analizy", "source-comparison", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe"], color: "emerald" },
+    ],
+  },
+  {
+    id: "finance",
+    label: "Finanse",
+    description: "Układ skupiony na finansach — rozbudowana sekcja finansowa, mniej rezerwacji",
+    sections: [
+      { id: "main", itemIds: ["kokpit"] },
+      { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations"], color: "cyan" },
+      { id: "finanse", title: "FINANSE", itemIds: ["revenue", "koszty", "analizy", "source-comparison", "finance-forecast", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services"], color: "emerald" },
+      { id: "inne", title: "INNE", itemIds: ["podnajem", "customers", "tasks", "przeglady"], color: "violet" },
+    ],
+  },
+];

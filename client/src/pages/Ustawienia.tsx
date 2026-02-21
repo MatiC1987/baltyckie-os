@@ -1,13 +1,16 @@
+import { lazy, Suspense, useState } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
 import { Slider } from "@/components/ui/slider";
-import { useState } from "react";
 import {
   Building2, Users, UserCog, MapPin, Briefcase, Files,
-  FileText, FileDown, DatabaseBackup, History, ScrollText, Building, ArrowUpDown,
-  Settings, Type
+  FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
+  Type, Menu, ChevronDown, ChevronRight,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const MenuCustomizationPanel = lazy(() => import("@/components/MenuCustomizationPanel"));
 
 const FONT_SIZE_KEY = "globalFontSize";
 
@@ -128,6 +131,24 @@ function GlobalFontSizeCard() {
   );
 }
 
+function CollapsibleSection({ title, icon: Icon, defaultOpen = false, children, testId }: { title: string; icon: any; defaultOpen?: boolean; children: React.ReactNode; testId: string }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <div className="space-y-3">
+      <button
+        className="flex items-center gap-2 w-full text-left group"
+        onClick={() => setIsOpen(!isOpen)}
+        data-testid={testId}
+      >
+        {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        <Icon className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-bold tracking-wide text-muted-foreground uppercase">{title}</h2>
+      </button>
+      {isOpen && children}
+    </div>
+  );
+}
+
 export default function Ustawienia() {
   return (
     <div className="p-4 lg:p-6 space-y-6" data-testid="page-ustawienia">
@@ -139,6 +160,15 @@ export default function Ustawienia() {
           <GlobalFontSizeCard />
         </div>
       </div>
+
+      <CollapsibleSection title="Personalizacja menu" icon={Menu} testId="toggle-menu-customization">
+        <p className="text-sm text-muted-foreground">
+          Dostosuj układ menu bocznego — zmieniaj kolejność sekcji strzałkami, przenoś strony między sekcjami, ukrywaj niepotrzebne elementy
+        </p>
+        <Suspense fallback={<div className="py-8 text-center text-sm text-muted-foreground">Ładowanie...</div>}>
+          <MenuCustomizationPanel />
+        </Suspense>
+      </CollapsibleSection>
 
       <SettingsGrid title="Zarządzanie" items={ZARZADZANIE_ITEMS} />
       <SettingsGrid title="Narzędzia" items={NARZEDZIA_ITEMS} />

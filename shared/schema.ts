@@ -1122,3 +1122,12 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 export const insertTaskChecklistItemSchema = createInsertSchema(taskChecklistItems).omit({ id: true });
 export type TaskChecklistItem = typeof taskChecklistItems.$inferSelect;
 export type InsertTaskChecklistItem = z.infer<typeof insertTaskChecklistItemSchema>;
+
+export const appConfig = pgTable("app_config", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type AppConfig = typeof appConfig.$inferSelect;

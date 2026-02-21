@@ -13,13 +13,13 @@ import {
   LogOut,
   Menu,
   X,
-  GripVertical,
   ChevronDown,
-  ChevronUp,
   Pencil,
   Moon,
   Sun,
   Plus,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
@@ -36,192 +36,92 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-  DragStartEvent,
-  DragEndEvent,
-  DragOverEvent,
-  useDroppable,
-  type UniqueIdentifier,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   type NavItem,
   type NavSection,
   type SidebarLayout,
   ICON_MAP,
-  DEFAULT_ITEMS,
-  DEFAULT_SECTIONS,
   STORAGE_KEY,
   loadCustomLabels,
   saveCustomLabels,
   loadCollapsed,
   saveCollapsed,
   loadHiddenItems,
-  saveHiddenItems,
   loadCustomItems,
   reconcileLayout,
   loadLayout,
-  saveLayout,
   syncToServer,
-  findSectionOfItem,
   getSectionColorClass,
   onLayoutChange,
+  loadCompactMode,
+  saveCompactMode,
+  loadBadgeConfig,
+  COMPACT_KEY,
+  BADGE_CONFIG_KEY,
 } from "@/lib/sidebar-config";
 
-function SortableNavItem({ item, isActive, onClick, onRename, badgeCount }: { item: NavItem; isActive: boolean; onClick: () => void; onRename: (id: string, newLabel: string) => void; badgeCount?: number }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
+function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: NavItem; isActive: boolean; onClick: () => void; badgeCount?: number; compact?: boolean }) {
   const Icon = ICON_MAP[item.iconName] || LayoutDashboard;
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(item.label);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
-
-  const confirmRename = () => {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== item.label) {
-      onRename(item.id, trimmed);
-    } else {
-      setEditValue(item.label);
-    }
-    setIsEditing(false);
-  };
+  if (compact) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className="no-underline">
+              <div
+                onClick={onClick}
+                className={cn(
+                  "relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 cursor-pointer mx-auto",
+                  isActive
+                    ? "!text-[#5ADBFA] bg-[#5ADBFA]/10"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                )}
+              >
+                <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "text-slate-400")} />
+                {badgeCount && badgeCount > 0 ? (
+                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5" data-testid={`badge-overdue-${item.id}`}>
+                    {badgeCount > 99 ? "99+" : badgeCount}
+                  </span>
+                ) : null}
+              </div>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">
+            {item.label}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "flex items-center gap-1 rounded-lg transition-all duration-200 group/navitem",
-        isDragging ? "opacity-50 z-50" : "",
-      )}
-    >
+    <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className={cn("flex-1 min-w-0 no-underline", isActive ? "!text-[#5ADBFA]" : "")}>
       <div
-        {...attributes}
-        {...listeners}
-        className="flex items-center justify-center w-5 h-8 cursor-grab active:cursor-grabbing text-slate-600 hover:text-slate-400 shrink-0"
-        data-testid={`drag-handle-${item.id}`}
+        onClick={onClick}
+        className={cn(
+          "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
+          isActive
+            ? "!text-[#5ADBFA]"
+            : "text-slate-400 hover:text-white hover:bg-white/5"
+        )}
       >
-        <GripVertical className="h-3 w-3" />
+        <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "text-slate-400")} />
+        <span className="font-medium text-xs leading-tight">{item.label}</span>
+        {badgeCount && badgeCount > 0 ? (
+          <span className="ml-auto shrink-0 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" data-testid={`badge-overdue-${item.id}`}>
+            {badgeCount > 99 ? "99+" : badgeCount}
+          </span>
+        ) : null}
       </div>
-      {isEditing ? (
-        <div className="flex-1 min-w-0 flex items-center gap-1 px-1">
-          <Icon className="h-4 w-4 shrink-0 text-slate-400" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") confirmRename();
-              if (e.key === "Escape") { setEditValue(item.label); setIsEditing(false); }
-            }}
-            onBlur={confirmRename}
-            className="flex-1 min-w-0 bg-white/10 text-white text-xs font-medium rounded px-2 py-1.5 outline-none border border-white/20 focus:border-[#5ADBFA]"
-            data-testid={`input-rename-${item.id}`}
-          />
-        </div>
-      ) : (
-        <>
-          <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className={cn("flex-1 min-w-0 no-underline", isActive ? "!text-[#5ADBFA]" : "")}>
-            <div
-              onClick={onClick}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
-                isActive
-                  ? "!text-[#5ADBFA]"
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
-              )}
-            >
-              <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "text-slate-400 group-hover/navitem:text-white")} />
-              <span className="font-medium text-xs leading-tight">{item.label}</span>
-              {badgeCount && badgeCount > 0 ? (
-                <span className="ml-auto shrink-0 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" data-testid={`badge-overdue-${item.id}`}>
-                  {badgeCount > 99 ? "99+" : badgeCount}
-                </span>
-              ) : null}
-            </div>
-          </Link>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              setEditValue(item.label);
-              setIsEditing(true);
-            }}
-            className="invisible group-hover/navitem:visible flex items-center justify-center w-6 h-6 rounded text-slate-500 hover:text-white hover:bg-white/10 transition-colors shrink-0"
-            data-testid={`button-rename-${item.id}`}
-            title="Zmień nazwę"
-          >
-            <Pencil className="h-3 w-3" />
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function DragOverlayItem({ item }: { item: NavItem }) {
-  const Icon = ICON_MAP[item.iconName] || LayoutDashboard;
-  return (
-    <div className="flex items-center gap-1 rounded-lg bg-slate-800 border border-white/20 shadow-2xl">
-      <div className="flex items-center justify-center w-5 h-8 text-slate-400 shrink-0">
-        <GripVertical className="h-3 w-3" />
-      </div>
-      <div className="flex items-center gap-3 px-3 py-2">
-        <Icon className="h-4 w-4 shrink-0 text-slate-300" />
-        <span className="font-medium text-xs text-white">{item.label}</span>
-      </div>
-    </div>
-  );
-}
-
-function DroppableEmptySection({ sectionId }: { sectionId: string }) {
-  const { setNodeRef, isOver } = useDroppable({ id: sectionId });
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "mx-2 py-3 border border-dashed rounded-lg flex items-center justify-center transition-colors",
-        isOver ? "border-[#5ADBFA]/50 bg-[#5ADBFA]/10" : "border-white/10"
-      )}
-      data-testid={`empty-section-${sectionId}`}
-    >
-      <span className="text-[10px] text-slate-600">Przeciągnij tutaj</span>
-    </div>
+    </Link>
   );
 }
 
@@ -232,12 +132,13 @@ export function Sidebar() {
   const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [layout, setLayout] = useState<SidebarLayout>(loadLayout);
-  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
   const [customLabels, setCustomLabels] = useState<Record<string, string>>(loadCustomLabels);
   const [hiddenItems, setHiddenItems] = useState<Set<string>>(loadHiddenItems);
   const [customItems, setCustomItems] = useState<Record<string, NavItem>>(loadCustomItems);
   const [showQuickActions, setShowQuickActions] = useState(false);
+  const [compact, setCompact] = useState(loadCompactMode);
+  const [badgeConfig, setBadgeConfig] = useState<Record<string, boolean>>(loadBadgeConfig);
   const lastAppliedTimestamp = useRef<string | null>(null);
 
   const { data: serverPrefs } = useQuery<any>({
@@ -298,37 +199,23 @@ export function Sidebar() {
     } catch {}
   }, [serverPrefs]);
 
-  const layoutRef = useRef(layout.sections);
-  const collapsedRef = useRef(collapsedSections);
-  const labelsRef = useRef(customLabels);
-  useEffect(() => { layoutRef.current = layout.sections; }, [layout.sections]);
-  useEffect(() => { collapsedRef.current = collapsedSections; }, [collapsedSections]);
-  useEffect(() => { labelsRef.current = customLabels; }, [customLabels]);
-
-  const syncAllToServer = useCallback(() => {
-    syncToServer(layoutRef.current, collapsedRef.current, labelsRef.current);
-  }, []);
-
   useEffect(() => {
     const handler = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        setLayout(loadLayout());
-      }
-      if (e.key === "sidebar-hidden-items-v1") {
-        setHiddenItems(loadHiddenItems());
-      }
-      if (e.key === "sidebar-custom-items-v1") {
-        setCustomItems(loadCustomItems());
-      }
-      if (e.key === "sidebar-custom-labels-v1") {
-        setCustomLabels(loadCustomLabels());
-      }
+      if (e.key === STORAGE_KEY) setLayout(loadLayout());
+      if (e.key === "sidebar-hidden-items-v1") setHiddenItems(loadHiddenItems());
+      if (e.key === "sidebar-custom-items-v1") setCustomItems(loadCustomItems());
+      if (e.key === "sidebar-custom-labels-v1") setCustomLabels(loadCustomLabels());
+      if (e.key === COMPACT_KEY) setCompact(loadCompactMode());
+      if (e.key === BADGE_CONFIG_KEY) setBadgeConfig(loadBadgeConfig());
     };
     const layoutChangedHandler = () => {
       setLayout(loadLayout());
       setHiddenItems(loadHiddenItems());
       setCustomLabels(loadCustomLabels());
       setCustomItems(loadCustomItems());
+      setCollapsedSections(loadCollapsed());
+      setCompact(loadCompactMode());
+      setBadgeConfig(loadBadgeConfig());
     };
     window.addEventListener("storage", handler);
     const unsubscribe = onLayoutChange(layoutChangedHandler);
@@ -354,23 +241,14 @@ export function Sidebar() {
     if (!overdueCounts) return {};
     const map: Record<string, number> = {};
     if (overdueCounts.costs > 0) {
-      map["koszty"] = overdueCounts.costs;
-      map["apartment-schedule"] = overdueCounts.costs;
+      if (badgeConfig["koszty"] !== false) map["koszty"] = overdueCounts.costs;
+      if (badgeConfig["apartment-schedule"] !== false) map["apartment-schedule"] = overdueCounts.costs;
     }
     if (overdueCounts.subleases > 0) {
-      map["podnajem"] = overdueCounts.subleases;
+      if (badgeConfig["podnajem"] !== false) map["podnajem"] = overdueCounts.subleases;
     }
     return map;
-  }, [overdueCounts]);
-
-  const handleRenameItem = useCallback((id: string, newLabel: string) => {
-    setCustomLabels(prev => {
-      const next = { ...prev, [id]: newLabel };
-      saveCustomLabels(next);
-      syncAllToServer();
-      return next;
-    });
-  }, [syncAllToServer]);
+  }, [overdueCounts, badgeConfig]);
 
   const toggleSection = useCallback((sectionId: string) => {
     setCollapsedSections(prev => {
@@ -378,127 +256,19 @@ export function Sidebar() {
       if (next.has(sectionId)) next.delete(sectionId);
       else next.add(sectionId);
       saveCollapsed(next);
-      syncAllToServer();
       return next;
     });
-  }, [syncAllToServer]);
-
-  const titledSectionIds = useMemo(() => {
-    return layout.sections.filter(s => !!s.title).map(s => s.id);
-  }, [layout.sections]);
-
-  const moveSection = useCallback((sectionId: string, direction: "up" | "down") => {
-    setLayout(prev => {
-      const titled = prev.sections.filter(s => !!s.title);
-      const untitled = prev.sections.filter(s => !s.title);
-      const idx = titled.findIndex(s => s.id === sectionId);
-      if (idx < 0) return prev;
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= titled.length) return prev;
-      const newTitled = [...titled];
-      [newTitled[idx], newTitled[targetIdx]] = [newTitled[targetIdx], newTitled[idx]];
-      const newSections = [...untitled, ...newTitled];
-      saveLayout(newSections);
-      syncAllToServer();
-      return { ...prev, sections: newSections };
-    });
-  }, [syncAllToServer]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const activeItem = useMemo(() => {
-    if (!activeId) return null;
-    return itemsWithLabels[activeId as string] || null;
-  }, [activeId, itemsWithLabels]);
-
-  const allItemIds = useMemo(() => {
-    return layout.sections.flatMap(s => s.itemIds);
-  }, [layout.sections]);
-
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(event.active.id);
   }, []);
 
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeItemId = active.id as string;
-    const overId = over.id as string;
-
-    const activeSection = findSectionOfItem(layout.sections, activeItemId);
-    let overSection = findSectionOfItem(layout.sections, overId);
-
-    if (!overSection) {
-      overSection = layout.sections.find(s => s.id === overId)?.id || null;
-    }
-
-    if (!activeSection || !overSection || activeSection === overSection) return;
-
-    setLayout(prev => {
-      const newSections = prev.sections.map(s => ({ ...s, itemIds: [...s.itemIds] }));
-      const fromSection = newSections.find(s => s.id === activeSection)!;
-      const toSection = newSections.find(s => s.id === overSection)!;
-
-      fromSection.itemIds = fromSection.itemIds.filter(id => id !== activeItemId);
-
-      const overIndex = toSection.itemIds.indexOf(overId);
-      if (overIndex >= 0) {
-        toSection.itemIds.splice(overIndex, 0, activeItemId);
-      } else {
-        toSection.itemIds.push(activeItemId);
-      }
-
-      return { ...prev, sections: newSections };
+  const toggleCompact = useCallback(() => {
+    setCompact(prev => {
+      const next = !prev;
+      saveCompactMode(next);
+      return next;
     });
-  }, [layout.sections]);
+  }, []);
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-
-    if (!over) return;
-
-    const activeItemId = active.id as string;
-    const overId = over.id as string;
-
-    const activeSection = findSectionOfItem(layout.sections, activeItemId);
-    const overSection = findSectionOfItem(layout.sections, overId);
-
-    if (activeSection && overSection && activeSection === overSection) {
-      const section = layout.sections.find(s => s.id === activeSection)!;
-      const oldIndex = section.itemIds.indexOf(activeItemId);
-      const newIndex = section.itemIds.indexOf(overId);
-
-      if (oldIndex !== newIndex) {
-        setLayout(prev => {
-          const newSections = prev.sections.map(s => {
-            if (s.id === activeSection) {
-              return { ...s, itemIds: arrayMove(s.itemIds, oldIndex, newIndex) };
-            }
-            return s;
-          });
-          saveLayout(newSections);
-          syncAllToServer();
-          return { ...prev, sections: newSections };
-        });
-        return;
-      }
-    }
-
-    setLayout(prev => {
-      saveLayout(prev.sections);
-      syncAllToServer();
-      return prev;
-    });
-  }, [layout.sections, syncAllToServer]);
+  const sidebarWidth = compact ? "w-16" : "w-64";
 
   return (
     <>
@@ -514,221 +284,255 @@ export function Sidebar() {
       </div>
 
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:h-screen shadow-xl",
+        "fixed inset-y-0 left-0 z-40 bg-slate-900 text-white transform transition-all duration-200 ease-in-out lg:translate-x-0 lg:static lg:h-screen shadow-xl",
+        sidebarWidth,
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col">
-          <div className="px-5 pt-5 pb-5 flex items-center justify-center">
-            {companyLogoUrl ? (
+          <div className={cn("flex items-center justify-center", compact ? "px-2 pt-4 pb-3" : "px-5 pt-5 pb-5")}>
+            {compact ? (
+              <div className="w-8 h-8 rounded-lg bg-[#5ADBFA]/20 flex items-center justify-center" data-testid="img-logo-compact">
+                <LayoutDashboard className="h-4 w-4 text-[#5ADBFA]" />
+              </div>
+            ) : companyLogoUrl ? (
               <img src={companyLogoUrl} alt={companyName || "Logo"} className="h-7 object-contain" data-testid="img-logo" onError={(e) => { (e.target as HTMLImageElement).src = logoSrc; }} />
             ) : (
               <img src={logoSrc} alt="Bałtyckie Finanse" className="h-7 object-contain" data-testid="img-logo" />
             )}
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-1" data-testid="nav-sidebar">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-            >
-              {layout.sections.map((section, sIdx) => {
-                const isCollapsed = (section.title && section.id !== "finanse") ? collapsedSections.has(section.id) : false;
-                return (
-                  <div key={section.id} data-testid={`nav-section-${section.id}`}>
-                    {sIdx > 0 && (
-                      <div className="my-3 border-t border-white/10" />
-                    )}
-                    {section.title && (
+          <nav className={cn("flex-1 overflow-y-auto pb-4 space-y-1", compact ? "px-1" : "px-3")} data-testid="nav-sidebar">
+            {layout.sections.map((section, sIdx) => {
+              const isCollapsed = (section.title && section.id !== "finanse") ? collapsedSections.has(section.id) : false;
+              return (
+                <div key={section.id} data-testid={`nav-section-${section.id}`}>
+                  {sIdx > 0 && (
+                    <div className={cn("border-t border-white/10", compact ? "my-2 mx-1" : "my-3")} />
+                  )}
+                  {section.title && !compact && (
+                    <div
+                      className="px-3 pt-1 pb-2 flex items-center justify-between select-none group/section"
+                      data-testid={`section-header-${section.id}`}
+                    >
                       <div
-                        className="px-3 pt-1 pb-2 flex items-center justify-between select-none group/section"
-                        data-testid={`section-header-${section.id}`}
+                        className={cn("flex items-center gap-1 flex-1 min-w-0", section.id !== "finanse" && "cursor-pointer")}
+                        onClick={() => section.id !== "finanse" && toggleSection(section.id)}
+                        data-testid={`toggle-section-${section.id}`}
                       >
-                        <div
-                          className={cn("flex items-center gap-1 flex-1 min-w-0", section.id !== "finanse" && "cursor-pointer")}
-                          onClick={() => section.id !== "finanse" && toggleSection(section.id)}
-                          data-testid={`toggle-section-${section.id}`}
-                        >
-                          <span className={cn(
-                            "text-[10px] font-bold tracking-widest uppercase",
-                            getSectionColorClass(section.color)
-                          )}>{section.title}</span>
-                          {section.id !== "finanse" && (
-                            <ChevronDown className={cn(
-                              "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover/section:text-slate-300",
-                              isCollapsed ? "-rotate-90" : ""
-                            )} />
-                          )}
-                        </div>
-                        <div className="invisible group-hover/section:visible flex items-center gap-0.5 shrink-0">
-                          {titledSectionIds.indexOf(section.id) > 0 && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); moveSection(section.id, "up"); }}
-                              className="flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-white hover:bg-white/10 transition-colors"
-                              data-testid={`button-section-up-${section.id}`}
-                              title="Przesuń w górę"
-                            >
-                              <ChevronUp className="h-3 w-3" />
-                            </button>
-                          )}
-                          {titledSectionIds.indexOf(section.id) < titledSectionIds.length - 1 && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); moveSection(section.id, "down"); }}
-                              className="flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-white hover:bg-white/10 transition-colors"
-                              data-testid={`button-section-down-${section.id}`}
-                              title="Przesuń w dół"
-                            >
-                              <ChevronDown className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
+                        <span className={cn(
+                          "text-[10px] font-bold tracking-widest uppercase",
+                          getSectionColorClass(section.color)
+                        )}>{section.title}</span>
+                        {section.id !== "finanse" && (
+                          <ChevronDown className={cn(
+                            "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover/section:text-slate-300",
+                            isCollapsed ? "-rotate-90" : ""
+                          )} />
+                        )}
                       </div>
-                    )}
-                    <div className={cn(
-                      "transition-all duration-200 overflow-hidden",
-                      isCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
-                    )}>
-                      <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy} id={section.id}>
-                        {section.itemIds.map((itemId) => {
-                          if (hiddenItems.has(itemId)) return null;
-                          if (itemId.startsWith("sep-")) {
-                            return <div key={itemId} className="my-2 mx-3 border-t border-white/10" />;
-                          }
-                          if (itemId.startsWith("label-")) {
-                            const labelItem = customItems[itemId];
-                            return (
-                              <div key={itemId} className="px-3 pt-2 pb-1">
-                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{labelItem?.label || ""}</span>
-                              </div>
-                            );
-                          }
-                          const item = itemsWithLabels[itemId];
-                          if (!item) return null;
-                          return (
-                            <SortableNavItem
-                              key={item.id}
-                              item={item}
-                              isActive={location === item.href}
-                              onClick={() => setIsOpen(false)}
-                              onRename={handleRenameItem}
-                              badgeCount={badgeMap[item.id]}
-                            />
-                          );
-                        })}
-                      </SortableContext>
-                      {section.itemIds.length === 0 && (
-                        <DroppableEmptySection sectionId={section.id} />
-                      )}
                     </div>
+                  )}
+                  <div className={cn(
+                    "transition-all duration-200 overflow-hidden",
+                    !compact && isCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
+                  )}>
+                    {section.itemIds.map((itemId) => {
+                      if (hiddenItems.has(itemId)) return null;
+                      if (itemId.startsWith("sep-")) {
+                        if (compact) return null;
+                        return <div key={itemId} className="my-2 mx-3 border-t border-white/10" />;
+                      }
+                      if (itemId.startsWith("label-")) {
+                        if (compact) return null;
+                        const labelItem = customItems[itemId];
+                        return (
+                          <div key={itemId} className="px-3 pt-2 pb-1">
+                            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{labelItem?.label || ""}</span>
+                          </div>
+                        );
+                      }
+                      const item = itemsWithLabels[itemId];
+                      if (!item) return null;
+                      return (
+                        <NavItemLink
+                          key={item.id}
+                          item={item}
+                          isActive={location === item.href}
+                          onClick={() => setIsOpen(false)}
+                          badgeCount={badgeMap[item.id]}
+                          compact={compact}
+                        />
+                      );
+                    })}
                   </div>
-                );
-              })}
-
-              <DragOverlay>
-                {activeItem ? <DragOverlayItem item={activeItem} /> : null}
-              </DragOverlay>
-            </DndContext>
+                </div>
+              );
+            })}
           </nav>
 
-          <div className="px-3 py-3">
-            <button
-              onClick={() => setShowQuickActions(true)}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors bg-[#5ADBFA] text-slate-900 hover:bg-[#5ADBFA]/85"
-              data-testid="button-quick-actions"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Dodaj</span>
-            </button>
-          </div>
+          {!compact && (
+            <div className="px-3 py-3">
+              <button
+                onClick={() => setShowQuickActions(true)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors bg-[#5ADBFA] text-slate-900 hover:bg-[#5ADBFA]/85"
+                data-testid="button-quick-actions"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Dodaj</span>
+              </button>
+            </div>
+          )}
+          {compact && (
+            <div className="px-1 py-2 flex justify-center">
+              <TooltipProvider delayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowQuickActions(true)}
+                      className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors bg-[#5ADBFA] text-slate-900 hover:bg-[#5ADBFA]/85"
+                      data-testid="button-quick-actions"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs">Dodaj</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
 
-          <div className="px-3 pb-3 pt-2 border-t border-white/10">
-            <div className="flex items-center gap-2.5 px-3 mb-2">
-              {user?.id && (
-                <div className="relative group/avatar">
-                  <UserAvatar userId={user.id} firstName={user.firstName} lastName={user.lastName} size="sm" className="border border-white/10" />
-                  <label className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                    <Pencil className="h-3 w-3 text-white" />
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file || !user?.id) return;
-                        const formData = new FormData();
-                        formData.append("photo", file);
-                        try {
-                          const resp = await fetch(`/api/users/${user.id}/profile-photo`, { method: "POST", body: formData, credentials: "include" });
-                          if (!resp.ok) {
-                            const err = await resp.json().catch(() => ({ message: "Błąd przesyłania" }));
-                            toast({ title: "Błąd", description: err.message, variant: "destructive" });
-                            return;
+          <div className={cn("pb-3 pt-2 border-t border-white/10", compact ? "px-1" : "px-3")}>
+            {!compact && (
+              <div className="flex items-center gap-2.5 px-3 mb-2">
+                {user?.id && (
+                  <div className="relative group/avatar">
+                    <UserAvatar userId={user.id} firstName={user.firstName} lastName={user.lastName} size="sm" className="border border-white/10" />
+                    <label className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                      <Pencil className="h-3 w-3 text-white" />
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file || !user?.id) return;
+                          const formData = new FormData();
+                          formData.append("photo", file);
+                          try {
+                            const resp = await fetch(`/api/users/${user.id}/profile-photo`, { method: "POST", body: formData, credentials: "include" });
+                            if (!resp.ok) {
+                              const err = await resp.json().catch(() => ({ message: "Błąd przesyłania" }));
+                              toast({ title: "Błąd", description: err.message, variant: "destructive" });
+                              return;
+                            }
+                            toast({ title: "Sukces", description: "Zdjęcie profilowe zostało zaktualizowane" });
+                            setTimeout(() => window.location.reload(), 500);
+                          } catch (err) {
+                            toast({ title: "Błąd", description: "Nie udało się przesłać zdjęcia", variant: "destructive" });
                           }
-                          toast({ title: "Sukces", description: "Zdjęcie profilowe zostało zaktualizowane" });
-                          setTimeout(() => window.location.reload(), 500);
-                        } catch (err) {
-                          toast({ title: "Błąd", description: "Nie udało się przesłać zdjęcia", variant: "destructive" });
-                        }
-                      }}
-                    />
-                  </label>
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-medium text-white truncate">{user?.firstName}</span>
+                  <span className="text-[10px] text-slate-400 leading-tight">Admin</span>
                 </div>
-              )}
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-medium text-white truncate">{user?.firstName}</span>
-                <span className="text-[10px] text-slate-400 leading-tight">Admin</span>
               </div>
-            </div>
-            <Link href="/ustawienia">
-              <div
-                onClick={() => setIsOpen(false)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors mb-0.5 cursor-pointer",
-                  location === "/ustawienia"
-                    ? "text-[#5ADBFA]"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                )}
-                data-testid="link-nav-ustawienia"
-              >
-                <Settings className={cn("h-3.5 w-3.5", location === "/ustawienia" ? "text-[#5ADBFA]" : "")} />
-                <span className="text-xs font-medium">Ustawienia</span>
+            )}
+
+            {compact ? (
+              <div className="flex flex-col items-center gap-1">
+                <TooltipProvider delayDuration={0}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link href="/ustawienia">
+                        <div
+                          onClick={() => setIsOpen(false)}
+                          className={cn(
+                            "flex items-center justify-center w-10 h-10 rounded-lg transition-colors cursor-pointer",
+                            location === "/ustawienia" ? "text-[#5ADBFA] bg-[#5ADBFA]/10" : "text-slate-400 hover:text-white hover:bg-white/5"
+                          )}
+                          data-testid="link-nav-ustawienia"
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                        </div>
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="text-xs">Ustawienia</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={toggleCompact}
+                        className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                        data-testid="button-toggle-compact"
+                      >
+                        <PanelLeft className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="text-xs">Rozwiń menu</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => logout()}
+                        className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                        data-testid="button-logout"
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="text-xs">Wyloguj</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
-            </Link>
-            <Link href="/ustawienia-menu">
-              <div
-                onClick={() => setIsOpen(false)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors mb-0.5 cursor-pointer",
-                  location === "/ustawienia-menu"
-                    ? "text-[#5ADBFA]"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                )}
-                data-testid="link-nav-ustawienia-menu"
-              >
-                <Menu className={cn("h-3.5 w-3.5", location === "/ustawienia-menu" ? "text-[#5ADBFA]" : "")} />
-                <span className="text-xs font-medium">Personalizacja menu</span>
-              </div>
-            </Link>
-            <div className="flex items-center gap-2.5 px-3 py-1.5 mb-0.5">
-              <Sun className="h-3.5 w-3.5 text-slate-400" />
-              <Switch
-                checked={theme === "dark"}
-                onCheckedChange={toggleTheme}
-                data-testid="switch-toggle-theme"
-                className="data-[state=checked]:bg-slate-600 data-[state=unchecked]:bg-slate-600"
-              />
-              <Moon className="h-3.5 w-3.5 text-slate-400" />
-            </div>
-            <button
-              onClick={() => logout()}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-              data-testid="button-logout"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="text-xs font-medium">Wyloguj</span>
-            </button>
+            ) : (
+              <>
+                <Link href="/ustawienia">
+                  <div
+                    onClick={() => setIsOpen(false)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors mb-0.5 cursor-pointer",
+                      location === "/ustawienia" || location === "/ustawienia-menu"
+                        ? "text-[#5ADBFA]"
+                        : "text-slate-400 hover:text-white hover:bg-white/5"
+                    )}
+                    data-testid="link-nav-ustawienia"
+                  >
+                    <Settings className={cn("h-3.5 w-3.5", location === "/ustawienia" || location === "/ustawienia-menu" ? "text-[#5ADBFA]" : "")} />
+                    <span className="text-xs font-medium">Ustawienia</span>
+                  </div>
+                </Link>
+                <button
+                  onClick={toggleCompact}
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors mb-0.5"
+                  data-testid="button-toggle-compact"
+                >
+                  <PanelLeftClose className="h-3.5 w-3.5" />
+                  <span className="text-xs font-medium">Zwiń menu</span>
+                </button>
+                <div className="flex items-center gap-2.5 px-3 py-1.5 mb-0.5">
+                  <Sun className="h-3.5 w-3.5 text-slate-400" />
+                  <Switch
+                    checked={theme === "dark"}
+                    onCheckedChange={toggleTheme}
+                    data-testid="switch-toggle-theme"
+                    className="data-[state=checked]:bg-slate-600 data-[state=unchecked]:bg-slate-600"
+                  />
+                  <Moon className="h-3.5 w-3.5 text-slate-400" />
+                </div>
+                <button
+                  onClick={() => logout()}
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                  data-testid="button-logout"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="text-xs font-medium">Wyloguj</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </aside>
