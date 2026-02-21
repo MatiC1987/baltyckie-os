@@ -12,6 +12,12 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
+import {
   GripVertical,
   Plus,
   Trash2,
@@ -22,7 +28,9 @@ import {
   Type,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Palette,
+  MoveRight,
 } from "lucide-react";
 import {
   DndContext,
@@ -77,14 +85,20 @@ function SortableSettingsItem({
   isHidden,
   onToggleVisibility,
   onRemove,
+  onMoveToSection,
   isCustom,
+  sections,
+  currentSectionId,
 }: {
   itemId: string;
   item: NavItem | null;
   isHidden: boolean;
   onToggleVisibility: (id: string) => void;
   onRemove?: (id: string) => void;
+  onMoveToSection?: (itemId: string, targetSectionId: string) => void;
   isCustom: boolean;
+  sections?: NavSection[];
+  currentSectionId?: string;
 }) {
   const {
     attributes,
@@ -161,6 +175,23 @@ function SortableSettingsItem({
         {Icon && <Icon className="h-4 w-4 text-muted-foreground shrink-0" />}
         <span className={cn("text-sm truncate", isHidden ? "line-through text-muted-foreground" : "text-foreground")}>{item?.label || itemId}</span>
       </div>
+      {onMoveToSection && sections && sections.length > 1 && (
+        <Select
+          value=""
+          onValueChange={(val) => onMoveToSection(itemId, val)}
+        >
+          <SelectTrigger className="h-7 w-7 p-0 border-0 bg-transparent shadow-none [&>svg]:hidden" data-testid={`move-item-${itemId}`} title="Przenieś do sekcji">
+            <MoveRight className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+          </SelectTrigger>
+          <SelectContent>
+            {sections.filter(s => s.id !== currentSectionId).map(s => (
+              <SelectItem key={s.id} value={s.id} data-testid={`move-to-${s.id}`}>
+                {s.title || "Główne"}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <button
         onClick={() => onToggleVisibility(itemId)}
         className="text-muted-foreground hover:text-foreground transition-colors"
@@ -397,6 +428,36 @@ export default function UstawieniaMenu() {
     }
   }, [collapsed, customLabels, hiddenItems]);
 
+  const moveSection = useCallback((sectionId: string, direction: "up" | "down") => {
+    setLayoutState(prev => {
+      const idx = prev.sections.findIndex(s => s.id === sectionId);
+      if (idx < 0) return prev;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.sections.length) return prev;
+      const newSections = [...prev.sections];
+      [newSections[idx], newSections[targetIdx]] = [newSections[targetIdx], newSections[idx]];
+      saveLayout(newSections);
+      syncToServer(newSections, collapsed, customLabels, hiddenItems);
+      return { ...prev, sections: newSections };
+    });
+  }, [collapsed, customLabels, hiddenItems]);
+
+  const moveItemToSection = useCallback((itemId: string, targetSectionId: string) => {
+    setLayoutState(prev => {
+      const currentSection = findSectionOfItem(prev.sections, itemId);
+      if (!currentSection || currentSection === targetSectionId) return prev;
+      const newSections = prev.sections.map(s => {
+        if (s.id === currentSection) return { ...s, itemIds: s.itemIds.filter(id => id !== itemId) };
+        if (s.id === targetSectionId) return { ...s, itemIds: [...s.itemIds, itemId] };
+        return s;
+      });
+      saveLayout(newSections);
+      syncToServer(newSections, collapsed, customLabels, hiddenItems);
+      return { ...prev, sections: newSections };
+    });
+    toast({ title: "Przeniesiono element" });
+  }, [collapsed, customLabels, hiddenItems]);
+
   const resetToDefault = useCallback(() => {
     const defaultSections = DEFAULT_SECTIONS.map(s => ({ ...s }));
     setLayoutState({ sections: defaultSections, items: { ...DEFAULT_ITEMS } });
@@ -503,7 +564,7 @@ export default function UstawieniaMenu() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Personalizacja menu</h1>
-          <p className="text-sm text-muted-foreground mt-1">Dostosuj układ menu bocznego, ukrywaj strony, dodawaj sekcje i separatory</p>
+          <p className="text-sm text-muted-foreground mt-1">Dostosuj układ menu bocznego — zmieniaj kolejność sekcji strzałkami, przenoś strony między sekcjami, ukrywaj niepotrzebne elementy</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -535,13 +596,33 @@ export default function UstawieniaMenu() {
         onDragEnd={handleDragEnd}
       >
         <div className="space-y-4">
-          {layout.sections.map((section) => {
+          {layout.sections.map((section, sIdx) => {
             const SectionIcon = section.iconName ? ICON_MAP[section.iconName] : null;
             return (
               <Card key={section.id} data-testid={`settings-section-${section.id}`}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          onClick={() => moveSection(section.id, "up")}
+                          disabled={sIdx === 0}
+                          className={cn("p-0.5 rounded transition-colors", sIdx === 0 ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:text-foreground hover:bg-accent")}
+                          data-testid={`move-section-up-${section.id}`}
+                          title="Przesuń sekcję w górę"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => moveSection(section.id, "down")}
+                          disabled={sIdx === layout.sections.length - 1}
+                          className={cn("p-0.5 rounded transition-colors", sIdx === layout.sections.length - 1 ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:text-foreground hover:bg-accent")}
+                          data-testid={`move-section-down-${section.id}`}
+                          title="Przesuń sekcję w dół"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </div>
                       {SectionIcon && <SectionIcon className={cn("h-4 w-4", getSectionColorClass(section.color))} />}
                       <CardTitle className={cn("text-sm font-bold uppercase tracking-wider", getSectionColorClass(section.color))}>
                         {section.title || "Główne"}
@@ -597,7 +678,10 @@ export default function UstawieniaMenu() {
                           isHidden={hiddenItems.has(itemId)}
                           onToggleVisibility={toggleVisibility}
                           onRemove={removeItem}
+                          onMoveToSection={!itemId.startsWith("sep-") && !itemId.startsWith("label-") ? moveItemToSection : undefined}
                           isCustom={itemId.startsWith("sep-") || itemId.startsWith("label-")}
+                          sections={layout.sections}
+                          currentSectionId={section.id}
                         />
                       ))
                     )}
