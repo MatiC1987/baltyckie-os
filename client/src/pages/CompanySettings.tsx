@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/PageHeader";
 export default function CompanySettings() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const darkFileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: settings, isLoading } = useQuery<CompanySettingsType>({
     queryKey: ["/api/company-settings"],
@@ -35,6 +36,7 @@ export default function CompanySettings() {
   });
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoDarkPreview, setLogoDarkPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -55,6 +57,9 @@ export default function CompanySettings() {
       });
       if (settings.logoUrl) {
         setLogoPreview(`/api/company-settings/logo?t=${Date.now()}`);
+      }
+      if (settings.logoDarkUrl) {
+        setLogoDarkPreview(`/api/company-settings/logo-dark?t=${Date.now()}`);
       }
     }
   }, [settings]);
@@ -101,6 +106,37 @@ export default function CompanySettings() {
     },
   });
 
+  const logoDarkUpload = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("logo", file);
+      const res = await fetch("/api/company-settings/logo-dark", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Blad uploadu");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      setLogoDarkPreview(`/api/company-settings/logo-dark?t=${Date.now()}`);
+      toast({ title: "Logo (tryb ciemny) zostalo zapisane" });
+    },
+    onError: () => {
+      toast({ title: "Blad", description: "Nie udalo sie zapisac logo", variant: "destructive" });
+    },
+  });
+
+  const removeDarkLogo = useMutation({
+    mutationFn: async () => apiRequest("PUT", "/api/company-settings", { logoDarkUrl: null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      setLogoDarkPreview(null);
+      toast({ title: "Logo (tryb ciemny) zostalo usuniete" });
+    },
+  });
+
   const handleChange = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(prev => ({ ...prev, [field]: e.target.value }));
   };
@@ -114,6 +150,13 @@ export default function CompanySettings() {
     const file = e.target.files?.[0];
     if (file) {
       logoUpload.mutate(file);
+    }
+  };
+
+  const handleDarkLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      logoDarkUpload.mutate(file);
     }
   };
 
@@ -135,52 +178,107 @@ export default function CompanySettings() {
 
       <Card>
         <CardContent className="p-6">
-          <div className="mb-6 space-y-3">
+          <div className="mb-6 space-y-4">
             <Label className="text-sm font-medium">Logo firmy</Label>
-            <p className="text-xs text-muted-foreground">Logo bedzie wyswietlane w naglowku generowanych dokumentow (umowy, noty ksiegowe)</p>
-            <div className="flex items-center gap-4 flex-wrap">
-              {logoPreview ? (
-                <div className="relative">
-                  <img
-                    src={logoPreview}
-                    alt="Logo firmy"
-                    className="h-16 max-w-[200px] object-contain border rounded-md p-1"
-                    data-testid="img-company-logo"
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
-                    onClick={() => removeLogo.mutate()}
-                    disabled={removeLogo.isPending}
-                    data-testid="button-remove-logo"
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
+            <p className="text-xs text-muted-foreground">Logo bedzie wyswietlane w naglowku generowanych dokumentow i na stronie logowania. Wgraj osobne wersje dla jasnego i ciemnego motywu.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Jasny motyw (na bialym tle)</Label>
+                <div className="flex items-center gap-3">
+                  {logoPreview ? (
+                    <div className="relative">
+                      <img
+                        src={logoPreview}
+                        alt="Logo firmy (jasny motyw)"
+                        className="h-16 max-w-[180px] object-contain border rounded-md p-1 bg-white"
+                        data-testid="img-company-logo"
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
+                        onClick={() => removeLogo.mutate()}
+                        disabled={removeLogo.isPending}
+                        data-testid="button-remove-logo"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="h-16 w-[180px] border-2 border-dashed rounded-md flex items-center justify-center text-muted-foreground text-xs bg-white">
+                      Brak logo
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="hidden"
+                      onChange={handleLogoSelect}
+                      data-testid="input-logo-file"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={logoUpload.isPending}
+                      data-testid="button-upload-logo"
+                    >
+                      <Upload className="w-4 h-4 mr-1" />
+                      {logoUpload.isPending ? "..." : "Wgraj"}
+                    </Button>
+                  </div>
                 </div>
-              ) : (
-                <div className="h-16 w-[200px] border-2 border-dashed rounded-md flex items-center justify-center text-muted-foreground text-xs">
-                  Brak logo
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Ciemny motyw (na ciemnym tle)</Label>
+                <div className="flex items-center gap-3">
+                  {logoDarkPreview ? (
+                    <div className="relative">
+                      <img
+                        src={logoDarkPreview}
+                        alt="Logo firmy (ciemny motyw)"
+                        className="h-16 max-w-[180px] object-contain border rounded-md p-1 bg-slate-800"
+                        data-testid="img-company-logo-dark"
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
+                        onClick={() => removeDarkLogo.mutate()}
+                        disabled={removeDarkLogo.isPending}
+                        data-testid="button-remove-logo-dark"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="h-16 w-[180px] border-2 border-dashed rounded-md flex items-center justify-center text-muted-foreground text-xs bg-slate-800 text-slate-400">
+                      Brak logo
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      ref={darkFileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="hidden"
+                      onChange={handleDarkLogoSelect}
+                      data-testid="input-logo-dark-file"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => darkFileInputRef.current?.click()}
+                      disabled={logoDarkUpload.isPending}
+                      data-testid="button-upload-logo-dark"
+                    >
+                      <Upload className="w-4 h-4 mr-1" />
+                      {logoDarkUpload.isPending ? "..." : "Wgraj"}
+                    </Button>
+                  </div>
                 </div>
-              )}
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  className="hidden"
-                  onChange={handleLogoSelect}
-                  data-testid="input-logo-file"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={logoUpload.isPending}
-                  data-testid="button-upload-logo"
-                >
-                  <Upload className="w-4 h-4 mr-1" />
-                  {logoUpload.isPending ? "Przesylanie..." : "Wgraj logo"}
-                </Button>
               </div>
             </div>
           </div>

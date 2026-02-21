@@ -1255,6 +1255,13 @@ export async function registerRoutes(
       if (data.additionalFees === "" || data.additionalFees === undefined) data.additionalFees = null;
       if (data.depositAmount === "" || data.depositAmount === undefined) data.depositAmount = null;
       if (data.depositReturnDate === "") data.depositReturnDate = null;
+      if (data.paymentDay === "" || data.paymentDay === undefined) data.paymentDay = null;
+      if (typeof data.paymentDay === "string" && data.paymentDay !== null) data.paymentDay = parseInt(data.paymentDay, 10) || null;
+      if (data.apartmentId === null || data.apartmentId === "" || data.apartmentId === undefined) data.apartmentId = null;
+      if (typeof data.apartmentId === "string") data.apartmentId = parseInt(data.apartmentId, 10) || null;
+      if (data.apartmentIds && Array.isArray(data.apartmentIds) && data.apartmentIds.length === 0) delete data.apartmentIds;
+      if (data.idNumber === undefined) data.idNumber = null;
+      if (data.peselOrPassport === undefined) data.peselOrPassport = null;
       if (data.status === "W_TRAKCIE_PODPISYWANIA" && !data.preparedAt) {
         data.preparedAt = new Date();
       }
@@ -2208,6 +2215,63 @@ export async function registerRoutes(
       const [fileBuffer] = await storageFile.download();
 
       const ext = settings.logoUrl!.split(".").pop()?.toLowerCase() || "png";
+      const mimeMap: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", webp: "image/webp" };
+      res.setHeader("Content-Type", mimeMap[ext] || "image/png");
+      res.send(fileBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/company-settings/logo-dark', isAuthenticated, upload.single('logo'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const allowedMimes = ["image/png", "image/jpeg", "image/jpg"];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({ message: "Dozwolone formaty: PNG, JPG" });
+      }
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const publicPaths = osService.getPublicSearchPaths();
+      const publicDir = publicPaths[0];
+
+      const ext = req.file.originalname.split(".").pop() || "png";
+      const fileName = `company-logo-dark.${ext}`;
+      const storagePath = `${publicDir}/${fileName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(req.file.buffer, { contentType: req.file.mimetype });
+
+      const logoDarkUrl = storagePath;
+      await storage.upsertCompanySettings({ logoDarkUrl });
+      res.json({ logoDarkUrl });
+    } catch (err: any) {
+      console.error("Dark logo upload error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/company-settings/logo-dark', async (req, res) => {
+    try {
+      const settings = await storage.getCompanySettings();
+      if (!settings?.logoDarkUrl) return res.status(404).json({ message: "Brak logo dark" });
+
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const parsedPath = (() => {
+        const p = settings.logoDarkUrl!.startsWith("/") ? settings.logoDarkUrl!.slice(1) : settings.logoDarkUrl!;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      const [fileBuffer] = await storageFile.download();
+
+      const ext = settings.logoDarkUrl!.split(".").pop()?.toLowerCase() || "png";
       const mimeMap: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", webp: "image/webp" };
       res.setHeader("Content-Type", mimeMap[ext] || "image/png");
       res.send(fileBuffer);
@@ -5918,6 +5982,43 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/gus/lookup-nip/:nip', isAuthenticated, async (req, res) => {
+    try {
+      const nip = req.params.nip.replace(/[\s-]/g, '');
+      if (!/^\d{10}$/.test(nip)) {
+        return res.status(400).json({ message: "NIP musi mieć 10 cyfr" });
+      }
+
+      const Bir = (await import('bir1')).default;
+      const bir = new Bir();
+      await bir.login();
+
+      const results = await bir.search({ nip });
+      if (!results || (Array.isArray(results) && results.length === 0)) {
+        return res.status(404).json({ message: "Nie znaleziono podmiotu o podanym NIP" });
+      }
+
+      const entity = Array.isArray(results) ? results[0] : results;
+      const name = entity.Nazwa || entity.nazwa || '';
+      const street = [entity.Ulica || entity.ulica, entity.NrNieruchomosci || entity.nrNieruchomosci, entity.NrLokalu || entity.nrLokalu].filter(Boolean).join(' ');
+      const city = entity.Miejscowosc || entity.miejscowosc || '';
+      const postalCode = entity.KodPocztowy || entity.kodPocztowy || '';
+      const regon = entity.Regon || entity.regon || '';
+
+      res.json({
+        name: name.trim(),
+        street: street.trim(),
+        city,
+        postalCode,
+        regon,
+        nip,
+      });
+    } catch (err: any) {
+      console.error("GUS lookup error:", err);
+      res.status(500).json({ message: "Błąd komunikacji z bazą GUS: " + (err.message || "Nieznany błąd") });
     }
   });
 

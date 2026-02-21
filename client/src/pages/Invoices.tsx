@@ -102,6 +102,37 @@ export default function Invoices() {
   const [sec2, setSec2] = useState(false);
   const [sec3, setSec3] = useState(false);
   const [showCustomerSelect, setShowCustomerSelect] = useState(false);
+  const [gusLoading, setGusLoading] = useState(false);
+
+  const lookupGus = async () => {
+    const nip = form.buyerNip.replace(/[\s-]/g, '');
+    if (!nip || nip.length < 10) {
+      toast({ title: "Wpisz poprawny NIP (10 cyfr)", variant: "destructive" });
+      return;
+    }
+    setGusLoading(true);
+    try {
+      const res = await fetch(`/api/gus/lookup-nip/${nip}`, { credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Nie znaleziono");
+      }
+      const data = await res.json();
+      setForm(f => ({
+        ...f,
+        buyerName: data.name || f.buyerName,
+        buyerNip: data.nip || f.buyerNip,
+        buyerAddress: data.street || f.buyerAddress,
+        buyerCity: data.city || f.buyerCity,
+        buyerPostalCode: data.postalCode || f.buyerPostalCode,
+      }));
+      toast({ title: "Pobrano dane z GUS" });
+    } catch (err: any) {
+      toast({ title: "Błąd GUS", description: err.message, variant: "destructive" });
+    } finally {
+      setGusLoading(false);
+    }
+  };
 
   const { data: invoicesData = [], isLoading } = useQuery<Invoice[]>({ queryKey: ["/api/invoices"] });
   const { data: customersData = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
@@ -381,7 +412,7 @@ export default function Invoices() {
                   )}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div className="space-y-1"><Label>Nazwa</Label><Input {...F("buyerName")} data-testid="input-buyer-name" /></div>
-                    <div className="space-y-1"><Label>NIP</Label><Input {...F("buyerNip")} data-testid="input-buyer-nip" /></div>
+                    <div className="space-y-1"><Label>NIP</Label><div className="flex gap-1"><Input {...F("buyerNip")} className="flex-1" data-testid="input-buyer-nip" /><Button type="button" variant="outline" size="icon" onClick={lookupGus} disabled={gusLoading} title="Pobierz dane z GUS" data-testid="button-gus-lookup">{gusLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</Button></div></div>
                     <div className="space-y-1"><Label>Email</Label><Input {...F("buyerEmail")} data-testid="input-buyer-email" /></div>
                     <div className="space-y-1"><Label>Adres</Label><Input {...F("buyerAddress")} data-testid="input-buyer-address" /></div>
                     <div className="space-y-1"><Label>Miasto</Label><Input {...F("buyerCity")} data-testid="input-buyer-city" /></div>

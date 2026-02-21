@@ -812,6 +812,7 @@ export const companySettings = pgTable("company_settings", {
   phone: text("phone"),
   email: text("email"),
   logoUrl: text("logo_url"),
+  logoDarkUrl: text("logo_dark_url"),
   websiteUrl: text("website_url"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

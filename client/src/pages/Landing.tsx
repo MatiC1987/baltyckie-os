@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { LogIn, Building2, BarChart3, Calendar, Shield } from "lucide-react";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
@@ -10,7 +11,61 @@ const features = [
   { icon: Shield, label: "Bezpieczne dane" },
 ];
 
+function useThemeLogo() {
+  const [logoSrc, setLogoSrc] = useState(logoImg);
+  const prevUrlRef = { current: "" };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function tryLoadLogo() {
+      const isDark = document.documentElement.classList.contains("dark");
+      const endpoint = isDark ? "/api/company-settings/logo-dark" : "/api/company-settings/logo";
+      const fallbackEndpoint = "/api/company-settings/logo";
+      try {
+        const res = await fetch(`${endpoint}?t=${Date.now()}`);
+        if (!cancelled && res.ok) {
+          if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          prevUrlRef.current = url;
+          setLogoSrc(url);
+          return;
+        }
+        if (isDark) {
+          const fallback = await fetch(`${fallbackEndpoint}?t=${Date.now()}`);
+          if (!cancelled && fallback.ok) {
+            if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
+            const blob = await fallback.blob();
+            const url = URL.createObjectURL(blob);
+            prevUrlRef.current = url;
+            setLogoSrc(url);
+            return;
+          }
+        }
+      } catch {}
+      if (!cancelled) setLogoSrc(logoImg);
+    }
+
+    tryLoadLogo();
+
+    const observer = new MutationObserver(() => {
+      tryLoadLogo();
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
+    };
+  }, []);
+
+  return logoSrc;
+}
+
 export default function Landing() {
+  const themeLogo = useThemeLogo();
+
   return (
     <div className="fixed inset-0 flex flex-col lg:flex-row" data-testid="landing-page">
       <motion.div
@@ -42,9 +97,9 @@ export default function Landing() {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.3, ease: "easeOut" }}
-            src={logoImg}
+            src={themeLogo}
             alt="Bałtyckie Finanse"
-            className="w-40 h-40 lg:w-52 lg:h-52 rounded-2xl shadow-2xl mb-8 object-contain bg-white/90 p-2"
+            className="w-40 h-40 lg:w-52 lg:h-52 rounded-2xl shadow-2xl mb-8 object-contain bg-white/90 dark:bg-white/10 p-2"
             data-testid="img-logo"
           />
           <motion.h1
