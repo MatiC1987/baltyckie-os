@@ -170,7 +170,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
         "fixed inset-y-0 left-0 z-40 bg-slate-900 text-white transform transition-all duration-200 ease-in-out lg:translate-x-0 lg:static lg:h-screen shadow-xl",
         sidebarWidth,
         isOpen ? "translate-x-0" : "-translate-x-full"
-      )} style={style}>
+      )} style={style} data-sidebar-fs>
         <div className="h-full flex flex-col">
           <div className={cn("flex items-center justify-center", compact ? "px-2 pt-4 pb-3" : "px-5 pt-5 pb-5")}>
             {compact ? (

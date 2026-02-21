@@ -52,14 +52,14 @@ export function Layout({ children }: LayoutProps) {
     return () => window.removeEventListener("fontSizeChanged", handler);
   }, []);
 
-  const mainStyle = useMemo(() => ({ fontSize: `${pageFontSize}px` }), [pageFontSize]);
-  const sidebarStyle = useMemo(() => ({ fontSize: `${sidebarFontSize}px` }), [sidebarFontSize]);
+  const sidebarStyle = useMemo(() => ({ "--sidebar-fs": `${sidebarFontSize}px` } as React.CSSProperties), [sidebarFontSize]);
+  const mainStyle = useMemo(() => ({ "--page-fs": `${pageFontSize}px` } as React.CSSProperties), [pageFontSize]);
 
   return (
     <SidebarProvider>
     <div className="flex min-h-screen bg-background">
       <Sidebar style={sidebarStyle} />
-      <main className="flex-1 p-4 md:p-6 pt-20 lg:pt-4 overflow-y-auto h-screen" style={mainStyle}>
+      <main className="flex-1 p-4 md:p-6 pt-20 lg:pt-4 overflow-y-auto h-screen" style={mainStyle} data-page-fs>
         <Breadcrumbs />
         <PageTransition>
           <div className="space-y-6 md:space-y-8 pb-12">

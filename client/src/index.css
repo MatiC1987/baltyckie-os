@@ -251,3 +251,58 @@
     @apply h-full rounded-full transition-all duration-700 ease-out;
   }
 }
+
+aside[data-sidebar-fs] {
+  --_fs: var(--sidebar-fs, 14px);
+  font-size: var(--_fs);
+}
+aside[data-sidebar-fs] .text-\[10px\] {
+  font-size: calc(var(--_fs) - 4px) !important;
+}
+aside[data-sidebar-fs] .text-xs {
+  font-size: calc(var(--_fs) - 2px) !important;
+}
+aside[data-sidebar-fs] .text-sm {
+  font-size: var(--_fs) !important;
+}
+aside[data-sidebar-fs] .text-base {
+  font-size: calc(var(--_fs) + 1px) !important;
+}
+aside[data-sidebar-fs] .text-lg {
+  font-size: calc(var(--_fs) + 4px) !important;
+}
+aside[data-sidebar-fs] .text-xl {
+  font-size: calc(var(--_fs) + 6px) !important;
+}
+
+main[data-page-fs] {
+  --_pfs: var(--page-fs, 14px);
+  font-size: var(--_pfs);
+}
+main[data-page-fs] .text-\[10px\] {
+  font-size: calc(var(--_pfs) - 4px) !important;
+}
+main[data-page-fs] .text-xs {
+  font-size: calc(var(--_pfs) - 2px) !important;
+}
+main[data-page-fs] .text-sm {
+  font-size: var(--_pfs) !important;
+}
+main[data-page-fs] .text-base {
+  font-size: calc(var(--_pfs) + 1px) !important;
+}
+main[data-page-fs] .text-lg {
+  font-size: calc(var(--_pfs) + 3px) !important;
+}
+main[data-page-fs] .text-xl {
+  font-size: calc(var(--_pfs) + 6px) !important;
+}
+main[data-page-fs] .text-2xl {
+  font-size: calc(var(--_pfs) + 10px) !important;
+}
+main[data-page-fs] .text-3xl {
+  font-size: calc(var(--_pfs) + 14px) !important;
+}
+main[data-page-fs] .text-4xl {
+  font-size: calc(var(--_pfs) + 20px) !important;
+}
