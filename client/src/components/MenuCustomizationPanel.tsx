@@ -638,12 +638,13 @@ export default function MenuCustomizationPanel() {
     const activeItemId = active.id as string;
     const overId = over.id as string;
 
-    const activeSection = findSectionOfItem(layout.sections, activeItemId);
-    const overSection = resolveDropSection(overId);
-
-    if (!activeSection || !overSection || activeSection === overSection) return;
-
     setLayoutState(prev => {
+      const activeSection = findSectionOfItem(prev.sections, activeItemId);
+      const overSectionFromItem = findSectionOfItem(prev.sections, overId);
+      const overSection = overSectionFromItem || prev.sections.find(s => s.id === overId)?.id || null;
+
+      if (!activeSection || !overSection || activeSection === overSection) return prev;
+
       const newSections = prev.sections.map(s => ({ ...s, itemIds: [...s.itemIds] }));
       const fromSection = newSections.find(s => s.id === activeSection)!;
       const toSection = newSections.find(s => s.id === overSection)!;
@@ -658,7 +659,7 @@ export default function MenuCustomizationPanel() {
 
       return { ...prev, sections: newSections };
     });
-  }, [layout.sections, resolveDropSection]);
+  }, []);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -668,38 +669,60 @@ export default function MenuCustomizationPanel() {
     const activeItemId = active.id as string;
     const overId = over.id as string;
 
-    const activeSection = findSectionOfItem(layout.sections, activeItemId);
-    const overSection = resolveDropSection(overId);
+    setLayoutState(prev => {
+      const currentActiveSection = findSectionOfItem(prev.sections, activeItemId);
+      if (!currentActiveSection) {
+        saveLayout(prev.sections);
+        syncToServer(prev.sections, collapsed, customLabels, hiddenItems);
+        return prev;
+      }
 
-    if (activeSection && overSection && activeSection === overSection) {
-      const section = layout.sections.find(s => s.id === activeSection)!;
+      const overItemSection = findSectionOfItem(prev.sections, overId);
+      const overContainerSection = prev.sections.find(s => s.id === overId || s.id === overId.replace("droppable-", ""))?.id || null;
+      const resolvedOverSection = overItemSection || overContainerSection;
+
+      if (resolvedOverSection && resolvedOverSection !== currentActiveSection) {
+        const newSections = prev.sections.map(s => ({ ...s, itemIds: [...s.itemIds] }));
+        const fromSection = newSections.find(s => s.id === currentActiveSection)!;
+        const toSection = newSections.find(s => s.id === resolvedOverSection)!;
+
+        fromSection.itemIds = fromSection.itemIds.filter(id => id !== activeItemId);
+        if (!toSection.itemIds.includes(activeItemId)) {
+          const overIndex = toSection.itemIds.indexOf(overId);
+          if (overIndex >= 0) {
+            toSection.itemIds.splice(overIndex, 0, activeItemId);
+          } else {
+            toSection.itemIds.push(activeItemId);
+          }
+        }
+
+        saveLayout(newSections);
+        syncToServer(newSections, collapsed, customLabels, hiddenItems);
+        return { ...prev, sections: newSections };
+      }
+
+      const section = prev.sections.find(s => s.id === currentActiveSection)!;
       const oldIndex = section.itemIds.indexOf(activeItemId);
       const newIndex = section.itemIds.indexOf(overId);
 
-      if (oldIndex !== newIndex) {
-        setLayoutState(prev => {
-          const newSections = prev.sections.map(s => {
-            if (s.id === activeSection) {
-              return { ...s, itemIds: arrayMove(s.itemIds, oldIndex, newIndex) };
-            }
-            return s;
-          });
-          saveLayout(newSections);
-          syncToServer(newSections, collapsed, customLabels, hiddenItems);
-          return { ...prev, sections: newSections };
+      if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
+        const newSections = prev.sections.map(s => {
+          if (s.id === currentActiveSection) {
+            return { ...s, itemIds: arrayMove(s.itemIds, oldIndex, newIndex) };
+          }
+          return s;
         });
-        notifyLayoutChanged();
-        return;
+        saveLayout(newSections);
+        syncToServer(newSections, collapsed, customLabels, hiddenItems);
+        return { ...prev, sections: newSections };
       }
-    }
 
-    setLayoutState(prev => {
       saveLayout(prev.sections);
       syncToServer(prev.sections, collapsed, customLabels, hiddenItems);
       return prev;
     });
     notifyLayoutChanged();
-  }, [layout.sections, collapsed, customLabels, hiddenItems]);
+  }, [collapsed, customLabels, hiddenItems]);
 
   const customCollisionDetection: CollisionDetection = useCallback((args) => {
     const centerCollisions = closestCenter(args);
