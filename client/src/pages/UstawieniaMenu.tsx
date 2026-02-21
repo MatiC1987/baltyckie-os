@@ -78,6 +78,7 @@ import {
   syncToServer,
   findSectionOfItem,
   generateId,
+  notifyLayoutChanged,
   STORAGE_KEY,
 } from "@/lib/sidebar-config";
 import { useToast } from "@/hooks/use-toast";
@@ -321,6 +322,7 @@ export default function UstawieniaMenu() {
     saveCustomLabels(labels);
     saveCustomItems(items);
     syncToServer(sections, collapsed, labels, hidden);
+    notifyLayoutChanged();
   }, [collapsed]);
 
   const toggleVisibility = useCallback((itemId: string) => {
@@ -332,6 +334,7 @@ export default function UstawieniaMenu() {
       syncToServer(layout.sections, collapsed, customLabels, next);
       return next;
     });
+    notifyLayoutChanged();
   }, [layout.sections, collapsed, customLabels]);
 
   const addSeparator = useCallback((sectionId: string) => {
@@ -345,6 +348,7 @@ export default function UstawieniaMenu() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
+    notifyLayoutChanged();
     toast({ title: "Dodano separator" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -365,6 +369,7 @@ export default function UstawieniaMenu() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
+    notifyLayoutChanged();
     toast({ title: "Dodano etykietę" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -385,6 +390,7 @@ export default function UstawieniaMenu() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
+    notifyLayoutChanged();
     setShowNewSection(false);
     setNewSectionTitle("");
     setNewSectionIcon("Star");
@@ -417,6 +423,7 @@ export default function UstawieniaMenu() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
+    notifyLayoutChanged();
     toast({ title: "Usunięto sekcję" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -430,6 +437,7 @@ export default function UstawieniaMenu() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
+    notifyLayoutChanged();
     if (itemId.startsWith("label-") || itemId.startsWith("sep-")) {
       setCustomItemsState(prev => {
         const next = { ...prev };
@@ -452,6 +460,7 @@ export default function UstawieniaMenu() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
+    notifyLayoutChanged();
   }, [collapsed, customLabels, hiddenItems]);
 
   const moveItemToSection = useCallback((itemId: string, targetSectionId: string) => {
@@ -467,6 +476,7 @@ export default function UstawieniaMenu() {
       syncToServer(newSections, collapsed, customLabels, hiddenItems);
       return { ...prev, sections: newSections };
     });
+    notifyLayoutChanged();
     toast({ title: "Przeniesiono element" });
   }, [collapsed, customLabels, hiddenItems]);
 
@@ -483,6 +493,7 @@ export default function UstawieniaMenu() {
     saveCustomItems({});
     saveCollapsed(new Set());
     syncToServer(defaultSections, new Set(), {}, new Set());
+    notifyLayoutChanged();
     toast({ title: "Przywrócono domyślne ustawienia menu" });
   }, []);
 
@@ -561,6 +572,7 @@ export default function UstawieniaMenu() {
           syncToServer(newSections, collapsed, customLabels, hiddenItems);
           return { ...prev, sections: newSections };
         });
+        notifyLayoutChanged();
         return;
       }
     }
@@ -570,6 +582,7 @@ export default function UstawieniaMenu() {
       syncToServer(prev.sections, collapsed, customLabels, hiddenItems);
       return prev;
     });
+    notifyLayoutChanged();
   }, [layout.sections, collapsed, customLabels, hiddenItems]);
 
   const customCollisionDetection: CollisionDetection = useCallback((args) => {

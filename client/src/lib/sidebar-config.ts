@@ -237,13 +237,23 @@ export function loadLayout(): SidebarLayout {
 
 export const LAYOUT_CHANGED_EVENT = "sidebar-layout-changed";
 
+const layoutChangeListeners = new Set<() => void>();
+
+export function onLayoutChange(cb: () => void): () => void {
+  layoutChangeListeners.add(cb);
+  return () => { layoutChangeListeners.delete(cb); };
+}
+
 export function saveLayout(sections: NavSection[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections, items: {} }));
-    queueMicrotask(() => {
-      window.dispatchEvent(new CustomEvent(LAYOUT_CHANGED_EVENT));
-    });
   } catch {}
+}
+
+export function notifyLayoutChanged() {
+  setTimeout(() => {
+    layoutChangeListeners.forEach(cb => cb());
+  }, 0);
 }
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
