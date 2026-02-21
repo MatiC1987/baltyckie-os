@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,6 @@ import {
 import {
   DndContext,
   closestCenter,
-  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -50,7 +49,6 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type UniqueIdentifier,
-  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -67,32 +65,11 @@ import {
   ICON_CATEGORIES,
   SECTION_COLORS,
   DEFAULT_ITEMS,
-  DEFAULT_SECTIONS,
   getSectionColorClass,
-  loadLayout,
-  saveLayout,
-  loadCustomLabels,
-  saveCustomLabels,
-  loadHiddenItems,
-  saveHiddenItems,
-  loadCustomItems,
-  saveCustomItems,
-  loadCollapsed,
-  saveCollapsed,
-  syncToServer,
-  findSectionOfItem,
-  generateId,
-  notifyLayoutChanged,
-  onLayoutChange,
-  STORAGE_KEY,
   PRESET_LAYOUTS,
-  loadCompactMode,
-  saveCompactMode as saveCompactModeFn,
-  loadBadgeConfig,
-  saveBadgeConfig as saveBadgeConfigFn,
 } from "@/lib/sidebar-config";
+import { useSidebar } from "@/contexts/SidebarContext";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 
 function SortableSettingsItem({
   itemId,
@@ -144,11 +121,7 @@ function SortableSettingsItem({
           <span className="text-[10px] text-muted-foreground">Separator</span>
         </div>
         {onRemove && (
-          <button
-            onClick={() => onRemove(itemId)}
-            className="invisible group-hover:visible text-muted-foreground hover:text-destructive transition-colors"
-            data-testid={`remove-${itemId}`}
-          >
+          <button onClick={() => onRemove(itemId)} className="invisible group-hover:visible text-muted-foreground hover:text-destructive transition-colors" data-testid={`remove-${itemId}`}>
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
@@ -167,11 +140,7 @@ function SortableSettingsItem({
           <span className="text-xs font-medium text-muted-foreground truncate">{item?.label || "Etykieta"}</span>
         </div>
         {onRemove && (
-          <button
-            onClick={() => onRemove(itemId)}
-            className="invisible group-hover:visible text-muted-foreground hover:text-destructive transition-colors"
-            data-testid={`remove-${itemId}`}
-          >
+          <button onClick={() => onRemove(itemId)} className="invisible group-hover:visible text-muted-foreground hover:text-destructive transition-colors" data-testid={`remove-${itemId}`}>
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
@@ -191,10 +160,7 @@ function SortableSettingsItem({
         <span className={cn("text-sm truncate", isHidden ? "line-through text-muted-foreground" : "text-foreground")}>{item?.label || itemId}</span>
       </div>
       {onMoveToSection && sections && sections.length > 1 && (
-        <Select
-          value=""
-          onValueChange={(val) => onMoveToSection(itemId, val)}
-        >
+        <Select value="" onValueChange={(val) => onMoveToSection(itemId, val)}>
           <SelectTrigger className="h-7 w-7 p-0 border-0 bg-transparent shadow-none [&>svg]:hidden" data-testid={`move-item-${itemId}`} title="Przenieś do sekcji">
             <MoveRight className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
           </SelectTrigger>
@@ -216,11 +182,7 @@ function SortableSettingsItem({
         {isHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>
       {isCustom && onRemove && (
-        <button
-          onClick={() => onRemove(itemId)}
-          className="invisible group-hover:visible text-muted-foreground hover:text-destructive transition-colors"
-          data-testid={`remove-${itemId}`}
-        >
+        <button onClick={() => onRemove(itemId)} className="invisible group-hover:visible text-muted-foreground hover:text-destructive transition-colors" data-testid={`remove-${itemId}`}>
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       )}
@@ -252,13 +214,7 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 
   return (
     <div className="space-y-2">
-      <Input
-        placeholder="Szukaj ikony..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="text-sm"
-        data-testid="input-icon-search"
-      />
+      <Input placeholder="Szukaj ikony..." value={search} onChange={(e) => setSearch(e.target.value)} className="text-sm" data-testid="input-icon-search" />
       <div className="max-h-48 overflow-y-auto space-y-1">
         {filteredCategories.map(cat => (
           <div key={cat.label}>
@@ -300,714 +256,259 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 
 export default function MenuCustomizationPanel() {
   const { toast } = useToast();
-  const [layout, setLayoutState] = useState(() => loadLayout());
-  const [customLabels, setCustomLabelsState] = useState(() => loadCustomLabels());
-  const [hiddenItems, setHiddenItemsState] = useState(() => loadHiddenItems());
-  const [customItems, setCustomItemsState] = useState(() => loadCustomItems());
-  const [collapsed, setCollapsedState] = useState(() => loadCollapsed());
+  const {
+    config, allItems, updateConfig, toggleHidden,
+    addSection: ctxAddSection, removeSection, addSeparator, addLabel: ctxAddLabel,
+    removeItem, moveItemToSection, applyPreset, resetToDefault,
+    exportConfig, importConfig, setCompact: ctxSetCompact, setBadgeConfig: ctxSetBadgeConfig,
+  } = useSidebar();
+
+  const { sections, hiddenItems, compact, badgeConfig, customItems } = config;
+  const hiddenSet = useMemo(() => new Set(hiddenItems), [hiddenItems]);
+
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
-  const selfTriggered = useRef(false);
-
-  const notifySidebar = useCallback(() => {
-    selfTriggered.current = true;
-    notifyLayoutChanged();
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onLayoutChange(() => {
-      if (selfTriggered.current) {
-        selfTriggered.current = false;
-        return;
-      }
-      setLayoutState(loadLayout());
-      setCustomLabelsState(loadCustomLabels());
-      setHiddenItemsState(loadHiddenItems());
-      setCustomItemsState(loadCustomItems());
-      setCollapsedState(loadCollapsed());
-    });
-    return unsubscribe;
-  }, []);
-
   const [showNewSection, setShowNewSection] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionIcon, setNewSectionIcon] = useState("Star");
   const [newSectionColor, setNewSectionColor] = useState("cyan");
-
   const [showAddLabel, setShowAddLabel] = useState<string | null>(null);
   const [newLabelText, setNewLabelText] = useState("");
-
   const [showPresets, setShowPresets] = useState(false);
-  const [compactMode, setCompactMode] = useState(loadCompactMode);
-  const [badgeConf, setBadgeConf] = useState<Record<string, boolean>>(loadBadgeConfig);
-
-  const allItems = useMemo(() => {
-    return { ...layout.items, ...customItems };
-  }, [layout.items, customItems]);
-
-  const itemsWithLabels = useMemo(() => {
-    const merged: Record<string, NavItem> = {};
-    for (const [key, item] of Object.entries(allItems)) {
-      merged[key] = customLabels[key] ? { ...item, label: customLabels[key] } : item;
-    }
-    return merged;
-  }, [allItems, customLabels]);
-
-  const persistAll = useCallback((sections: NavSection[], hidden: Set<string>, labels: Record<string, string>, items: Record<string, NavItem>) => {
-    saveLayout(sections);
-    saveHiddenItems(hidden);
-    saveCustomLabels(labels);
-    saveCustomItems(items);
-    syncToServer(sections, collapsed, labels, hidden);
-    notifySidebar();
-  }, [collapsed]);
-
-  const toggleVisibility = useCallback((itemId: string) => {
-    setHiddenItemsState(prev => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      saveHiddenItems(next);
-      syncToServer(layout.sections, collapsed, customLabels, next);
-      return next;
-    });
-    notifySidebar();
-  }, [layout.sections, collapsed, customLabels]);
-
-  const addSeparator = useCallback((sectionId: string) => {
-    const sepId = generateId("sep");
-    setLayoutState(prev => {
-      const newSections = prev.sections.map(s => {
-        if (s.id === sectionId) return { ...s, itemIds: [...s.itemIds, sepId] };
-        return s;
-      });
-      saveLayout(newSections);
-      syncToServer(newSections, collapsed, customLabels, hiddenItems);
-      return { ...prev, sections: newSections };
-    });
-    notifySidebar();
-    toast({ title: "Dodano separator" });
-  }, [collapsed, customLabels, hiddenItems]);
-
-  const addLabel = useCallback((sectionId: string, text: string) => {
-    const labelId = generateId("label");
-    const newItem: NavItem = { id: labelId, href: "", label: text, iconName: "Type", type: "label" };
-    setCustomItemsState(prev => {
-      const next = { ...prev, [labelId]: newItem };
-      saveCustomItems(next);
-      return next;
-    });
-    setLayoutState(prev => {
-      const newSections = prev.sections.map(s => {
-        if (s.id === sectionId) return { ...s, itemIds: [...s.itemIds, labelId] };
-        return s;
-      });
-      saveLayout(newSections);
-      syncToServer(newSections, collapsed, customLabels, hiddenItems);
-      return { ...prev, sections: newSections };
-    });
-    notifySidebar();
-    toast({ title: "Dodano etykietę" });
-  }, [collapsed, customLabels, hiddenItems]);
-
-  const addSection = useCallback(() => {
-    if (!newSectionTitle.trim()) return;
-    const sectionId = generateId("section");
-    const newSection: NavSection = {
-      id: sectionId,
-      title: newSectionTitle.trim().toUpperCase(),
-      itemIds: [],
-      iconName: newSectionIcon,
-      color: newSectionColor,
-      isCustom: true,
-    };
-    setLayoutState(prev => {
-      const newSections = [...prev.sections, newSection];
-      saveLayout(newSections);
-      syncToServer(newSections, collapsed, customLabels, hiddenItems);
-      return { ...prev, sections: newSections };
-    });
-    notifySidebar();
-    setShowNewSection(false);
-    setNewSectionTitle("");
-    setNewSectionIcon("Star");
-    setNewSectionColor("cyan");
-    toast({ title: "Dodano sekcję" });
-  }, [newSectionTitle, newSectionIcon, newSectionColor, collapsed, customLabels, hiddenItems]);
-
-  const removeSection = useCallback((sectionId: string) => {
-    setLayoutState(prev => {
-      const section = prev.sections.find(s => s.id === sectionId);
-      if (!section) return prev;
-      const lastDefault = prev.sections.filter(s => !s.isCustom).pop();
-      const newSections = prev.sections.filter(s => s.id !== sectionId).map(s => {
-        if (lastDefault && s.id === lastDefault.id) {
-          const defaultItemIds = section.itemIds.filter(id => DEFAULT_ITEMS[id]);
-          return { ...s, itemIds: [...s.itemIds, ...defaultItemIds] };
-        }
-        return s;
-      });
-      const customItemsToRemove = section.itemIds.filter(id => id.startsWith("sep-") || id.startsWith("label-"));
-      if (customItemsToRemove.length > 0) {
-        setCustomItemsState(prevItems => {
-          const next = { ...prevItems };
-          customItemsToRemove.forEach(id => delete next[id]);
-          saveCustomItems(next);
-          return next;
-        });
-      }
-      saveLayout(newSections);
-      syncToServer(newSections, collapsed, customLabels, hiddenItems);
-      return { ...prev, sections: newSections };
-    });
-    notifySidebar();
-    toast({ title: "Usunięto sekcję" });
-  }, [collapsed, customLabels, hiddenItems]);
-
-  const removeItem = useCallback((itemId: string) => {
-    setLayoutState(prev => {
-      const newSections = prev.sections.map(s => ({
-        ...s,
-        itemIds: s.itemIds.filter(id => id !== itemId),
-      }));
-      saveLayout(newSections);
-      syncToServer(newSections, collapsed, customLabels, hiddenItems);
-      return { ...prev, sections: newSections };
-    });
-    notifySidebar();
-    if (itemId.startsWith("label-") || itemId.startsWith("sep-")) {
-      setCustomItemsState(prev => {
-        const next = { ...prev };
-        delete next[itemId];
-        saveCustomItems(next);
-        return next;
-      });
-    }
-  }, [collapsed, customLabels, hiddenItems]);
-
-  const moveSection = useCallback((sectionId: string, direction: "up" | "down") => {
-    setLayoutState(prev => {
-      const idx = prev.sections.findIndex(s => s.id === sectionId);
-      if (idx < 0) return prev;
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= prev.sections.length) return prev;
-      const newSections = [...prev.sections];
-      [newSections[idx], newSections[targetIdx]] = [newSections[targetIdx], newSections[idx]];
-      saveLayout(newSections);
-      syncToServer(newSections, collapsed, customLabels, hiddenItems);
-      return { ...prev, sections: newSections };
-    });
-    notifySidebar();
-  }, [collapsed, customLabels, hiddenItems]);
-
-  const moveItemToSection = useCallback((itemId: string, targetSectionId: string) => {
-    setLayoutState(prev => {
-      const currentSection = findSectionOfItem(prev.sections, itemId);
-      if (!currentSection || currentSection === targetSectionId) return prev;
-      const newSections = prev.sections.map(s => {
-        if (s.id === currentSection) return { ...s, itemIds: s.itemIds.filter(id => id !== itemId) };
-        if (s.id === targetSectionId) return { ...s, itemIds: [...s.itemIds, itemId] };
-        return s;
-      });
-      saveLayout(newSections);
-      syncToServer(newSections, collapsed, customLabels, hiddenItems);
-      return { ...prev, sections: newSections };
-    });
-    notifySidebar();
-    toast({ title: "Przeniesiono element" });
-  }, [collapsed, customLabels, hiddenItems]);
-
-  const resetToDefault = useCallback(() => {
-    const defaultSections = DEFAULT_SECTIONS.map(s => ({ ...s }));
-    setLayoutState({ sections: defaultSections, items: { ...DEFAULT_ITEMS } });
-    setCustomLabelsState({});
-    setHiddenItemsState(new Set());
-    setCustomItemsState({});
-    setCollapsedState(new Set());
-    saveLayout(defaultSections);
-    saveCustomLabels({});
-    saveHiddenItems(new Set());
-    saveCustomItems({});
-    saveCollapsed(new Set());
-    syncToServer(defaultSections, new Set(), {}, new Set());
-    notifySidebar();
-    toast({ title: "Przywrócono domyślne ustawienia menu" });
-  }, []);
-
-  const applyPreset = useCallback((presetId: string) => {
-    const preset = PRESET_LAYOUTS.find(p => p.id === presetId);
-    if (!preset) return;
-    const sections = preset.sections.map(s => ({ ...s }));
-    setLayoutState({ sections, items: { ...DEFAULT_ITEMS } });
-    setCustomLabelsState({});
-    setHiddenItemsState(new Set(preset.hiddenItems || []));
-    setCustomItemsState({});
-    setCollapsedState(new Set());
-    saveLayout(sections);
-    saveCustomLabels({});
-    saveHiddenItems(new Set(preset.hiddenItems || []));
-    saveCustomItems({});
-    saveCollapsed(new Set());
-    syncToServer(sections, new Set(), {}, new Set(preset.hiddenItems || []));
-    notifySidebar();
-    setShowPresets(false);
-    toast({ title: `Zastosowano szablon: ${preset.label}` });
-  }, []);
-
-  const exportConfig = useCallback(() => {
-    const config = {
-      version: 1,
-      layout: layout.sections,
-      customLabels,
-      hiddenItems: [...hiddenItems],
-      customItems,
-      collapsed: [...collapsed],
-      compactMode,
-      badgeConfig: badgeConf,
-    };
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "menu-config.json";
-    a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "Wyeksportowano konfigurację menu" });
-  }, [layout.sections, customLabels, hiddenItems, customItems, collapsed, compactMode, badgeConf]);
-
-  const importConfig = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const config = JSON.parse(e.target?.result as string);
-        if (!config.version || !config.layout) {
-          toast({ title: "Błąd", description: "Nieprawidłowy format pliku konfiguracji", variant: "destructive" });
-          return;
-        }
-        const sections = config.layout as NavSection[];
-        const labels = config.customLabels || {};
-        const hidden = new Set<string>(config.hiddenItems || []);
-        const items = config.customItems || {};
-        const coll = new Set<string>(config.collapsed || []);
-
-        setLayoutState({ sections, items: { ...DEFAULT_ITEMS } });
-        setCustomLabelsState(labels);
-        setHiddenItemsState(hidden);
-        setCustomItemsState(items);
-        setCollapsedState(coll);
-        saveLayout(sections);
-        saveCustomLabels(labels);
-        saveHiddenItems(hidden);
-        saveCustomItems(items);
-        saveCollapsed(coll);
-        syncToServer(sections, coll, labels, hidden);
-
-        if (typeof config.compactMode === "boolean") {
-          setCompactMode(config.compactMode);
-          saveCompactModeFn(config.compactMode);
-        }
-        if (config.badgeConfig && typeof config.badgeConfig === "object") {
-          setBadgeConf(config.badgeConfig);
-          saveBadgeConfigFn(config.badgeConfig);
-        }
-
-        notifySidebar();
-        toast({ title: "Zaimportowano konfigurację menu" });
-      } catch {
-        toast({ title: "Błąd", description: "Nie udało się odczytać pliku", variant: "destructive" });
-      }
-    };
-    reader.readAsText(file);
-  }, []);
-
-  const saveAsDefault = useCallback(async () => {
-    try {
-      const config = {
-        layout: layout.sections,
-        customLabels,
-        hiddenItems: [...hiddenItems],
-        customItems,
-        collapsed: [...collapsed],
-      };
-      await apiRequest("PUT", "/api/default-menu-config", config);
-      toast({ title: "Zapisano jako domyślne ustawienia menu dla nowych użytkowników" });
-    } catch {
-      toast({ title: "Błąd", description: "Nie udało się zapisać domyślnych ustawień", variant: "destructive" });
-    }
-  }, [layout.sections, customLabels, hiddenItems, customItems, collapsed]);
+  const [showImport, setShowImport] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(sections.map(s => s.id)));
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  const findSectionOfItem = useCallback((itemId: string): string | null => {
+    for (const section of sections) {
+      if (section.itemIds.includes(itemId as string)) return section.id;
+    }
+    return null;
+  }, [sections]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id);
   }, []);
 
-  const resolveDropSection = useCallback((overId: string): string | null => {
-    if (overId.startsWith("droppable-")) {
-      return overId.replace("droppable-", "");
-    }
-    const section = findSectionOfItem(layout.sections, overId);
-    if (section) return section;
-    return layout.sections.find(s => s.id === overId)?.id || null;
-  }, [layout.sections]);
-
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
-    const activeItemId = active.id as string;
+    const activeId = active.id as string;
     const overId = over.id as string;
 
-    setLayoutState(prev => {
-      const activeSection = findSectionOfItem(prev.sections, activeItemId);
-      const overSectionFromItem = findSectionOfItem(prev.sections, overId);
-      const overSection = overSectionFromItem || prev.sections.find(s => s.id === overId)?.id || null;
+    const activeSection = findSectionOfItem(activeId);
+    let overSection: string | null = null;
 
-      if (!activeSection || !overSection || activeSection === overSection) return prev;
+    if (overId.startsWith("droppable-")) {
+      overSection = overId.replace("droppable-", "");
+    } else {
+      overSection = findSectionOfItem(overId);
+    }
 
-      const newSections = prev.sections.map(s => ({ ...s, itemIds: [...s.itemIds] }));
-      const fromSection = newSections.find(s => s.id === activeSection)!;
-      const toSection = newSections.find(s => s.id === overSection)!;
+    if (!activeSection || !overSection || activeSection === overSection) return;
 
-      fromSection.itemIds = fromSection.itemIds.filter(id => id !== activeItemId);
-      const overIndex = toSection.itemIds.indexOf(overId);
-      if (overIndex >= 0) {
-        toSection.itemIds.splice(overIndex, 0, activeItemId);
-      } else {
-        toSection.itemIds.push(activeItemId);
-      }
-
+    updateConfig(prev => {
+      const newSections = prev.sections.map(s => {
+        if (s.id === activeSection) {
+          return { ...s, itemIds: s.itemIds.filter(id => id !== activeId) };
+        }
+        if (s.id === overSection) {
+          const overIndex = s.itemIds.indexOf(overId);
+          const newIds = [...s.itemIds];
+          if (overIndex >= 0) {
+            newIds.splice(overIndex, 0, activeId);
+          } else {
+            newIds.push(activeId);
+          }
+          return { ...s, itemIds: newIds };
+        }
+        return s;
+      });
       return { ...prev, sections: newSections };
     });
-  }, []);
+  }, [findSectionOfItem, updateConfig]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
-    if (!over) return;
+    if (!over || active.id === over.id) return;
 
-    const activeItemId = active.id as string;
+    const activeId = active.id as string;
     const overId = over.id as string;
 
-    setLayoutState(prev => {
-      const currentActiveSection = findSectionOfItem(prev.sections, activeItemId);
-      if (!currentActiveSection) {
-        saveLayout(prev.sections);
-        syncToServer(prev.sections, collapsed, customLabels, hiddenItems);
-        return prev;
-      }
+    let overSectionId: string | null = null;
+    if (overId.startsWith("droppable-")) {
+      overSectionId = overId.replace("droppable-", "");
+    } else {
+      overSectionId = findSectionOfItem(overId);
+    }
 
-      const overItemSection = findSectionOfItem(prev.sections, overId);
-      const overContainerSection = prev.sections.find(s => s.id === overId || s.id === overId.replace("droppable-", ""))?.id || null;
-      const resolvedOverSection = overItemSection || overContainerSection;
+    const activeSectionId = findSectionOfItem(activeId);
+    if (!activeSectionId) return;
 
-      if (resolvedOverSection && resolvedOverSection !== currentActiveSection) {
-        const newSections = prev.sections.map(s => ({ ...s, itemIds: [...s.itemIds] }));
-        const fromSection = newSections.find(s => s.id === currentActiveSection)!;
-        const toSection = newSections.find(s => s.id === resolvedOverSection)!;
-
-        fromSection.itemIds = fromSection.itemIds.filter(id => id !== activeItemId);
-        if (!toSection.itemIds.includes(activeItemId)) {
-          const overIndex = toSection.itemIds.indexOf(overId);
-          if (overIndex >= 0) {
-            toSection.itemIds.splice(overIndex, 0, activeItemId);
-          } else {
-            toSection.itemIds.push(activeItemId);
-          }
-        }
-
-        saveLayout(newSections);
-        syncToServer(newSections, collapsed, customLabels, hiddenItems);
-        return { ...prev, sections: newSections };
-      }
-
-      const section = prev.sections.find(s => s.id === currentActiveSection)!;
-      const oldIndex = section.itemIds.indexOf(activeItemId);
-      const newIndex = section.itemIds.indexOf(overId);
-
-      if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
+    if (activeSectionId === overSectionId) {
+      updateConfig(prev => {
         const newSections = prev.sections.map(s => {
-          if (s.id === currentActiveSection) {
-            return { ...s, itemIds: arrayMove(s.itemIds, oldIndex, newIndex) };
-          }
-          return s;
+          if (s.id !== activeSectionId) return s;
+          const oldIndex = s.itemIds.indexOf(activeId);
+          const newIndex = s.itemIds.indexOf(overId);
+          if (oldIndex < 0 || newIndex < 0) return s;
+          return { ...s, itemIds: arrayMove(s.itemIds, oldIndex, newIndex) };
         });
-        saveLayout(newSections);
-        syncToServer(newSections, collapsed, customLabels, hiddenItems);
         return { ...prev, sections: newSections };
-      }
+      });
+    }
+  }, [findSectionOfItem, updateConfig]);
 
-      saveLayout(prev.sections);
-      syncToServer(prev.sections, collapsed, customLabels, hiddenItems);
-      return prev;
+  const handleMoveToSection = useCallback((itemId: string, targetSectionId: string) => {
+    const fromSection = findSectionOfItem(itemId);
+    if (fromSection) {
+      moveItemToSection(itemId, fromSection, targetSectionId);
+      toast({ title: "Przeniesiono element" });
+    }
+  }, [findSectionOfItem, moveItemToSection, toast]);
+
+  const handleAddSection = useCallback(() => {
+    if (!newSectionTitle.trim()) return;
+    ctxAddSection(newSectionTitle.trim(), newSectionIcon, newSectionColor);
+    setShowNewSection(false);
+    setNewSectionTitle("");
+    setNewSectionIcon("Star");
+    setNewSectionColor("cyan");
+    toast({ title: "Dodano nową sekcję" });
+  }, [newSectionTitle, newSectionIcon, newSectionColor, ctxAddSection, toast]);
+
+  const handleAddLabel = useCallback(() => {
+    if (!showAddLabel || !newLabelText.trim()) return;
+    ctxAddLabel(showAddLabel, newLabelText.trim());
+    setShowAddLabel(null);
+    setNewLabelText("");
+    toast({ title: "Dodano etykietę" });
+  }, [showAddLabel, newLabelText, ctxAddLabel, toast]);
+
+  const handleRemoveSection = useCallback((sectionId: string) => {
+    removeSection(sectionId);
+    toast({ title: "Usunięto sekcję" });
+  }, [removeSection, toast]);
+
+  const handleRemoveItem = useCallback((itemId: string) => {
+    removeItem(itemId);
+    toast({ title: "Usunięto element" });
+  }, [removeItem, toast]);
+
+  const handleApplyPreset = useCallback((presetId: string) => {
+    const preset = PRESET_LAYOUTS.find(p => p.id === presetId);
+    if (!preset) return;
+    applyPreset(preset.sections, preset.hiddenItems);
+    setShowPresets(false);
+    toast({ title: `Zastosowano preset: ${preset.label}` });
+  }, [applyPreset, toast]);
+
+  const handleReset = useCallback(() => {
+    resetToDefault();
+    toast({ title: "Przywrócono domyślne ustawienia" });
+  }, [resetToDefault, toast]);
+
+  const handleExport = useCallback(() => {
+    const json = exportConfig();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sidebar-config.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Wyeksportowano konfigurację" });
+  }, [exportConfig, toast]);
+
+  const handleImport = useCallback(() => {
+    if (importConfig(importJson)) {
+      setShowImport(false);
+      setImportJson("");
+      toast({ title: "Zaimportowano konfigurację" });
+    } else {
+      toast({ title: "Błąd importu", description: "Nieprawidłowy format danych", variant: "destructive" });
+    }
+  }, [importJson, importConfig, toast]);
+
+  const handleMoveSectionUp = useCallback((sectionId: string) => {
+    updateConfig(prev => {
+      const idx = prev.sections.findIndex(s => s.id === sectionId);
+      if (idx <= 0) return prev;
+      return { ...prev, sections: arrayMove(prev.sections, idx, idx - 1) };
     });
-    notifySidebar();
-  }, [collapsed, customLabels, hiddenItems]);
+  }, [updateConfig]);
 
-  const customCollisionDetection: CollisionDetection = useCallback((args) => {
-    const centerCollisions = closestCenter(args);
-    if (centerCollisions.length > 0) return centerCollisions;
-    return pointerWithin(args);
+  const handleMoveSectionDown = useCallback((sectionId: string) => {
+    updateConfig(prev => {
+      const idx = prev.sections.findIndex(s => s.id === sectionId);
+      if (idx < 0 || idx >= prev.sections.length - 1) return prev;
+      return { ...prev, sections: arrayMove(prev.sections, idx, idx + 1) };
+    });
+  }, [updateConfig]);
+
+  const toggleExpandSection = useCallback((sectionId: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
   }, []);
 
-  const activeItem = useMemo(() => {
-    if (!activeId) return null;
-    return itemsWithLabels[activeId as string] || null;
-  }, [activeId, itemsWithLabels]);
+  const activeItem = activeId ? allItems[activeId as string] : null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowPresets(true)}
-          data-testid="button-presets"
-        >
-          <LayoutTemplate className="h-4 w-4 mr-1" />
-          Szablony
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowNewSection(true)}
-          data-testid="button-add-section"
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          Nowa sekcja
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={exportConfig}
-          data-testid="button-export-config"
-        >
-          <Download className="h-4 w-4 mr-1" />
-          Eksport
-        </Button>
-        <label>
-          <Button
-            variant="outline"
-            size="sm"
-            asChild
-            data-testid="button-import-config"
-          >
-            <span>
-              <Upload className="h-4 w-4 mr-1" />
-              Import
-            </span>
+    <div className="space-y-6" data-testid="menu-customization-panel">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-lg font-semibold" data-testid="text-panel-title">Personalizacja menu</h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setShowPresets(true)} data-testid="button-presets">
+            <LayoutTemplate className="h-3.5 w-3.5 mr-1.5" />
+            Presety
           </Button>
-          <input
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) importConfig(file);
-              e.target.value = "";
-            }}
-          />
-        </label>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={saveAsDefault}
-          data-testid="button-save-default"
-        >
-          <Save className="h-4 w-4 mr-1" />
-          Zapisz jako domyślne
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={resetToDefault}
-          data-testid="button-reset-menu"
-        >
-          <RotateCcw className="h-4 w-4 mr-1" />
-          Reset
-        </Button>
+          <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export">
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Eksport
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowImport(true)} data-testid="button-import">
+            <Upload className="h-3.5 w-3.5 mr-1.5" />
+            Import
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleReset} data-testid="button-reset">
+            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+            Reset
+          </Button>
+        </div>
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={customCollisionDetection}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="space-y-4">
-          {layout.sections.map((section, sIdx) => {
-            const SectionIcon = section.iconName ? ICON_MAP[section.iconName] : null;
-            return (
-              <Card key={section.id} data-testid={`settings-section-${section.id}`}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-col gap-0.5">
-                        <button
-                          onClick={() => moveSection(section.id, "up")}
-                          disabled={sIdx === 0}
-                          className={cn("p-0.5 rounded transition-colors", sIdx === 0 ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:text-foreground hover:bg-accent")}
-                          data-testid={`move-section-up-${section.id}`}
-                          title="Przesuń sekcję w górę"
-                        >
-                          <ChevronUp className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => moveSection(section.id, "down")}
-                          disabled={sIdx === layout.sections.length - 1}
-                          className={cn("p-0.5 rounded transition-colors", sIdx === layout.sections.length - 1 ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:text-foreground hover:bg-accent")}
-                          data-testid={`move-section-down-${section.id}`}
-                          title="Przesuń sekcję w dół"
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
-                      </div>
-                      {SectionIcon && <SectionIcon className={cn("h-4 w-4", getSectionColorClass(section.color))} />}
-                      <CardTitle className={cn("text-sm font-bold uppercase tracking-wider", getSectionColorClass(section.color))}>
-                        {section.title || "Główne"}
-                      </CardTitle>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => addSeparator(section.id)}
-                        className="h-7 px-2 text-xs"
-                        data-testid={`add-separator-${section.id}`}
-                      >
-                        <Minus className="h-3 w-3 mr-1" />
-                        Separator
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => { setShowAddLabel(section.id); setNewLabelText(""); }}
-                        className="h-7 px-2 text-xs"
-                        data-testid={`add-label-${section.id}`}
-                      >
-                        <Type className="h-3 w-3 mr-1" />
-                        Etykieta
-                      </Button>
-                      {section.isCustom && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeSection(section.id)}
-                          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                          data-testid={`remove-section-${section.id}`}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <DroppableSectionContainer sectionId={section.id}>
-                    <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy} id={section.id}>
-                      {section.itemIds.length === 0 ? (
-                        <div className="py-4 text-center text-xs text-muted-foreground border border-dashed rounded-lg">
-                          Przeciągnij elementy tutaj
-                        </div>
-                      ) : (
-                        section.itemIds.map(itemId => (
-                          <SortableSettingsItem
-                            key={itemId}
-                            itemId={itemId}
-                            item={itemsWithLabels[itemId] || null}
-                            isHidden={hiddenItems.has(itemId)}
-                            onToggleVisibility={toggleVisibility}
-                            onRemove={removeItem}
-                            onMoveToSection={!itemId.startsWith("sep-") && !itemId.startsWith("label-") ? moveItemToSection : undefined}
-                            isCustom={itemId.startsWith("sep-") || itemId.startsWith("label-")}
-                            sections={layout.sections}
-                            currentSectionId={section.id}
-                          />
-                        ))
-                      )}
-                    </SortableContext>
-                  </DroppableSectionContainer>
-                </CardContent>
-              </Card>
-            );
-          })}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Tryb kompaktowy</span>
+          <Switch checked={compact} onCheckedChange={ctxSetCompact} data-testid="switch-compact-mode" />
         </div>
+      </div>
 
-        <DragOverlay>
-          {activeItem ? (
-            <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-xl">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-              {activeItem.iconName && ICON_MAP[activeItem.iconName] && (
-                (() => { const I = ICON_MAP[activeItem.iconName]; return <I className="h-4 w-4 text-muted-foreground" />; })()
-              )}
-              <span className="text-sm">{activeItem.label}</span>
-            </div>
-          ) : activeId && String(activeId).startsWith("sep-") ? (
-            <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-xl">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-              <Minus className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Separator</span>
-            </div>
-          ) : activeId && String(activeId).startsWith("label-") ? (
-            <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-xl">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-              <Type className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Etykieta</span>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
-
-      <Card className="mt-4">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Tryb kompaktowy</CardTitle>
+      <Card data-testid="card-badge-config">
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm">Odznaki powiadomień</CardTitle>
         </CardHeader>
-        <CardContent className="pt-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-foreground">Menu jako ikony</p>
-              <p className="text-xs text-muted-foreground">Pokazuj tylko ikony w menu bocznym</p>
-            </div>
-            <Switch
-              checked={compactMode}
-              onCheckedChange={(checked) => {
-                setCompactMode(checked);
-                saveCompactModeFn(checked);
-                notifySidebar();
-              }}
-              data-testid="switch-compact-mode"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="mt-4">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Powiadomienia (badge)</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0 space-y-3">
-          <p className="text-xs text-muted-foreground mb-2">Wybierz, które elementy menu pokazują liczniki powiadomień</p>
+        <CardContent className="px-4 pb-3 space-y-2">
           {[
-            { id: "koszty", label: "Koszty", desc: "Nieopłacone koszty" },
-            { id: "apartment-schedule", label: "Kalendarz", desc: "Zaległe płatności" },
-            { id: "podnajem", label: "Podnajmy", desc: "Zaległe opłaty podnajmu" },
+            { id: "koszty", label: "Koszty — zaległe płatności" },
+            { id: "apartment-schedule", label: "Harmonogram — zaległe płatności" },
+            { id: "podnajem", label: "Podnajem — zaległe płatności" },
           ].map(badge => (
             <div key={badge.id} className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-foreground">{badge.label}</p>
-                <p className="text-xs text-muted-foreground">{badge.desc}</p>
-              </div>
+              <span className="text-xs text-muted-foreground">{badge.label}</span>
               <Switch
-                checked={badgeConf[badge.id] !== false}
-                onCheckedChange={(checked) => {
-                  const next = { ...badgeConf, [badge.id]: checked };
-                  setBadgeConf(next);
-                  saveBadgeConfigFn(next);
-                  notifySidebar();
-                }}
+                checked={badgeConfig[badge.id] !== false}
+                onCheckedChange={(checked) => ctxSetBadgeConfig({ ...badgeConfig, [badge.id]: checked })}
                 data-testid={`switch-badge-${badge.id}`}
               />
             </div>
@@ -1015,117 +516,215 @@ export default function MenuCustomizationPanel() {
         </CardContent>
       </Card>
 
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="space-y-3">
+          {sections.map((section, sIdx) => {
+            const isExpanded = expandedSections.has(section.id);
+            return (
+              <Card key={section.id} data-testid={`settings-section-${section.id}`}>
+                <CardHeader className="py-2 px-4">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => toggleExpandSection(section.id)}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                      data-testid={`expand-section-${section.id}`}
+                    >
+                      {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                      <span className={cn("text-sm font-semibold", getSectionColorClass(section.color))}>
+                        {section.title || "GŁÓWNE"}
+                      </span>
+                      <span className="text-xs text-muted-foreground ml-1">({section.itemIds.length})</span>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {sIdx > 0 && (
+                        <button onClick={() => handleMoveSectionUp(section.id)} className="text-muted-foreground hover:text-foreground p-1" title="W górę" data-testid={`move-up-${section.id}`}>
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {sIdx < sections.length - 1 && (
+                        <button onClick={() => handleMoveSectionDown(section.id)} className="text-muted-foreground hover:text-foreground p-1" title="W dół" data-testid={`move-down-${section.id}`}>
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => addSeparator(section.id)} className="text-muted-foreground hover:text-foreground p-1" title="Dodaj separator" data-testid={`add-sep-${section.id}`}>
+                        <Minus className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => { setShowAddLabel(section.id); setNewLabelText(""); }} className="text-muted-foreground hover:text-foreground p-1" title="Dodaj etykietę" data-testid={`add-label-${section.id}`}>
+                        <Type className="h-3.5 w-3.5" />
+                      </button>
+                      {section.isCustom && (
+                        <button onClick={() => handleRemoveSection(section.id)} className="text-muted-foreground hover:text-destructive p-1" title="Usuń sekcję" data-testid={`remove-section-${section.id}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                {isExpanded && (
+                  <CardContent className="px-4 pb-3 pt-0">
+                    <DroppableSectionContainer sectionId={section.id}>
+                      <SortableContext items={section.itemIds} strategy={verticalListSortingStrategy}>
+                        {section.itemIds.length === 0 ? (
+                          <div className="py-4 text-center text-xs text-muted-foreground">
+                            Przeciągnij elementy tutaj
+                          </div>
+                        ) : (
+                          section.itemIds.map(itemId => (
+                            <SortableSettingsItem
+                              key={itemId}
+                              itemId={itemId}
+                              item={allItems[itemId] || null}
+                              isHidden={hiddenSet.has(itemId)}
+                              onToggleVisibility={toggleHidden}
+                              onRemove={(itemId.startsWith("sep-") || itemId.startsWith("label-") || customItems[itemId]) ? handleRemoveItem : undefined}
+                              onMoveToSection={handleMoveToSection}
+                              isCustom={!DEFAULT_ITEMS[itemId]}
+                              sections={sections}
+                              currentSectionId={section.id}
+                            />
+                          ))
+                        )}
+                      </SortableContext>
+                    </DroppableSectionContainer>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+
+        <DragOverlay>
+          {activeId && activeItem ? (
+            <div className="flex items-center gap-2 py-1.5 px-2 bg-background border rounded-lg shadow-lg">
+              {ICON_MAP[activeItem.iconName] && (() => { const I = ICON_MAP[activeItem.iconName]; return <I className="h-4 w-4 text-muted-foreground" />; })()}
+              <span className="text-sm">{activeItem.label}</span>
+            </div>
+          ) : activeId && (activeId as string).startsWith("sep-") ? (
+            <div className="flex items-center gap-2 py-1 px-2 bg-background border rounded-lg shadow-lg">
+              <Minus className="h-3 w-3 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground">Separator</span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      <Button onClick={() => setShowNewSection(true)} variant="outline" className="w-full" data-testid="button-add-section">
+        <Plus className="h-4 w-4 mr-2" />
+        Dodaj nową sekcję
+      </Button>
+
       <Dialog open={showNewSection} onOpenChange={setShowNewSection}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Nowa sekcja menu</DialogTitle>
-            <DialogDescription>Dodaj nową sekcję do menu bocznego</DialogDescription>
+            <DialogTitle>Nowa sekcja</DialogTitle>
+            <DialogDescription>Podaj nazwę, wybierz ikonę i kolor dla nowej sekcji menu.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 py-2">
+            <Input
+              placeholder="Nazwa sekcji"
+              value={newSectionTitle}
+              onChange={(e) => setNewSectionTitle(e.target.value)}
+              data-testid="input-section-title"
+            />
             <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Nazwa sekcji</label>
-              <Input
-                placeholder="np. MOJE NARZĘDZIA"
-                value={newSectionTitle}
-                onChange={(e) => setNewSectionTitle(e.target.value)}
-                data-testid="input-section-title"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Kolor</label>
+              <span className="text-sm font-medium mb-2 block">Kolor</span>
               <div className="flex flex-wrap gap-2">
-                {SECTION_COLORS.map(c => (
+                {SECTION_COLORS.map(color => (
                   <button
-                    key={c.value}
-                    onClick={() => setNewSectionColor(c.value)}
+                    key={color.value}
+                    onClick={() => setNewSectionColor(color.value)}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors",
-                      newSectionColor === c.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                      "w-8 h-8 rounded-full border-2 transition-colors",
+                      color.className.replace("text-", "bg-").replace("-400", "-500").replace("-500", "-400"),
+                      newSectionColor === color.value ? "border-foreground scale-110" : "border-transparent"
                     )}
-                    data-testid={`color-option-${c.value}`}
-                  >
-                    <div className={cn("w-3 h-3 rounded-full", c.className.replace("text-", "bg-"))} />
-                    {c.label}
-                  </button>
+                    title={color.label}
+                    data-testid={`color-option-${color.value}`}
+                  />
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Ikona</label>
+              <span className="text-sm font-medium mb-2 block">Ikona</span>
               <IconPicker value={newSectionIcon} onChange={setNewSectionIcon} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewSection(false)}>Anuluj</Button>
-            <Button onClick={addSection} disabled={!newSectionTitle.trim()} data-testid="button-confirm-add-section">
-              Dodaj sekcję
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showAddLabel !== null} onOpenChange={(open) => !open && setShowAddLabel(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Dodaj etykietę</DialogTitle>
-            <DialogDescription>Wpisz tekst etykiety</DialogDescription>
-          </DialogHeader>
-          <div className="pt-2">
-            <Input
-              placeholder="Tekst etykiety..."
-              value={newLabelText}
-              onChange={(e) => setNewLabelText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newLabelText.trim() && showAddLabel) {
-                  addLabel(showAddLabel, newLabelText.trim());
-                  setShowAddLabel(null);
-                }
-              }}
-              data-testid="input-label-text"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddLabel(null)}>Anuluj</Button>
-            <Button
-              onClick={() => {
-                if (newLabelText.trim() && showAddLabel) {
-                  addLabel(showAddLabel, newLabelText.trim());
-                  setShowAddLabel(null);
-                }
-              }}
-              disabled={!newLabelText.trim()}
-              data-testid="button-confirm-add-label"
-            >
+            <Button onClick={handleAddSection} disabled={!newSectionTitle.trim()} data-testid="button-confirm-add-section">
+              <Plus className="h-4 w-4 mr-1.5" />
               Dodaj
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showPresets} onOpenChange={setShowPresets}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={!!showAddLabel} onOpenChange={() => setShowAddLabel(null)}>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Szablony menu</DialogTitle>
-            <DialogDescription>Wybierz gotowy układ menu</DialogDescription>
+            <DialogTitle>Dodaj etykietę</DialogTitle>
+            <DialogDescription>Wprowadź tekst etykiety, która pojawi się w sekcji menu.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <Input
+            placeholder="Tekst etykiety"
+            value={newLabelText}
+            onChange={(e) => setNewLabelText(e.target.value)}
+            data-testid="input-label-text"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddLabel(null)}>Anuluj</Button>
+            <Button onClick={handleAddLabel} disabled={!newLabelText.trim()} data-testid="button-confirm-add-label">Dodaj</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPresets} onOpenChange={setShowPresets}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Presety układu menu</DialogTitle>
+            <DialogDescription>Wybierz gotowy układ menu. Twoje obecne ustawienia zostaną zastąpione.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
             {PRESET_LAYOUTS.map(preset => (
               <Card
                 key={preset.id}
-                className="cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => applyPreset(preset.id)}
+                className="cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => handleApplyPreset(preset.id)}
                 data-testid={`preset-${preset.id}`}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <LayoutTemplate className="h-4 w-4 text-primary" />
-                    <span className="font-medium text-sm">{preset.label}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{preset.description}</p>
+                <CardContent className="p-3">
+                  <p className="font-medium text-sm">{preset.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{preset.description}</p>
                 </CardContent>
               </Card>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showImport} onOpenChange={setShowImport}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Import konfiguracji</DialogTitle>
+            <DialogDescription>Wklej JSON z eksportu konfiguracji menu.</DialogDescription>
+          </DialogHeader>
+          <textarea
+            className="w-full h-40 p-3 text-xs border rounded-lg bg-background font-mono resize-none"
+            placeholder='{"sections": [...]}'
+            value={importJson}
+            onChange={(e) => setImportJson(e.target.value)}
+            data-testid="textarea-import-json"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowImport(false)}>Anuluj</Button>
+            <Button onClick={handleImport} disabled={!importJson.trim()} data-testid="button-confirm-import">Importuj</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

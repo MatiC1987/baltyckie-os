@@ -23,10 +23,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -45,30 +44,10 @@ import {
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
 import {
   type NavItem,
-  type NavSection,
-  type SidebarLayout,
   ICON_MAP,
-  STORAGE_KEY,
-  loadCustomLabels,
-  saveCustomLabels,
-  loadCollapsed,
-  saveCollapsed,
-  loadHiddenItems,
-  saveHiddenItems,
-  loadCustomItems,
-  reconcileLayout,
-  loadLayout,
-  saveLayout,
-  syncToServer,
   getSectionColorClass,
-  onLayoutChange,
-  notifyLayoutChanged,
-  loadCompactMode,
-  saveCompactMode,
-  loadBadgeConfig,
-  COMPACT_KEY,
-  BADGE_CONFIG_KEY,
 } from "@/lib/sidebar-config";
+import { useSidebar } from "@/contexts/SidebarContext";
 
 function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: NavItem; isActive: boolean; onClick: () => void; badgeCount?: number; compact?: boolean }) {
   const Icon = ICON_MAP[item.iconName] || LayoutDashboard;
@@ -134,21 +113,12 @@ export function Sidebar() {
   const { toast } = useToast();
   const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
-  const [layout, setLayout] = useState<SidebarLayout>(loadLayout);
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsed);
-  const [customLabels, setCustomLabels] = useState<Record<string, string>>(loadCustomLabels);
-  const [hiddenItems, setHiddenItems] = useState<Set<string>>(loadHiddenItems);
-  const [customItems, setCustomItems] = useState<Record<string, NavItem>>(loadCustomItems);
   const [showQuickActions, setShowQuickActions] = useState(false);
-  const [compact, setCompact] = useState(loadCompactMode);
-  const [badgeConfig, setBadgeConfig] = useState<Record<string, boolean>>(loadBadgeConfig);
-  const lastAppliedTimestamp = useRef<string | null>(null);
 
-  const { data: serverPrefs } = useQuery<any>({
-    queryKey: ["/api/user-preferences"],
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-  });
+  const { config, allItems, toggleCollapsed, setCompact } = useSidebar();
+  const { sections, hiddenItems, collapsed, compact } = config;
+  const hiddenSet = useMemo(() => new Set(hiddenItems), [hiddenItems]);
+  const collapsedSet = useMemo(() => new Set(collapsed), [collapsed]);
 
   const { data: companySettings } = useQuery<any>({
     queryKey: ["/api/company-settings"],
@@ -163,116 +133,22 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5,
   });
 
-  useEffect(() => {
-    if (!serverPrefs) return;
-    const serverTimestamp = serverPrefs.updatedAt || "";
-    if (lastAppliedTimestamp.current === serverTimestamp) return;
-    lastAppliedTimestamp.current = serverTimestamp;
-
-    try {
-      if (serverPrefs.sidebarLayout) {
-        const parsed = JSON.parse(serverPrefs.sidebarLayout);
-        if (parsed?.sections) {
-          const reconciled = reconcileLayout(parsed);
-          saveLayout(reconciled.sections);
-          setLayout(reconciled);
-          notifyLayoutChanged();
-        }
-      }
-      if (serverPrefs.sidebarCollapsed) {
-        const parsed = JSON.parse(serverPrefs.sidebarCollapsed);
-        if (Array.isArray(parsed)) {
-          const set = new Set<string>(parsed);
-          setCollapsedSections(set);
-          saveCollapsed(set);
-        }
-      }
-      if (serverPrefs.sidebarLabels) {
-        const parsed = JSON.parse(serverPrefs.sidebarLabels);
-        if (parsed && typeof parsed === "object") {
-          setCustomLabels(parsed);
-          saveCustomLabels(parsed);
-        }
-      }
-      if (serverPrefs.sidebarHidden) {
-        const parsed = JSON.parse(serverPrefs.sidebarHidden);
-        if (Array.isArray(parsed)) {
-          const set = new Set<string>(parsed);
-          setHiddenItems(set);
-          saveHiddenItems(set);
-        }
-      }
-    } catch {}
-  }, [serverPrefs]);
-
-  useEffect(() => {
-    const handler = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) setLayout(loadLayout());
-      if (e.key === "sidebar-hidden-items-v1") setHiddenItems(loadHiddenItems());
-      if (e.key === "sidebar-custom-items-v1") setCustomItems(loadCustomItems());
-      if (e.key === "sidebar-custom-labels-v1") setCustomLabels(loadCustomLabels());
-      if (e.key === COMPACT_KEY) setCompact(loadCompactMode());
-      if (e.key === BADGE_CONFIG_KEY) setBadgeConfig(loadBadgeConfig());
-    };
-    const layoutChangedHandler = () => {
-      setLayout(loadLayout());
-      setHiddenItems(loadHiddenItems());
-      setCustomLabels(loadCustomLabels());
-      setCustomItems(loadCustomItems());
-      setCollapsedSections(loadCollapsed());
-      setCompact(loadCompactMode());
-      setBadgeConfig(loadBadgeConfig());
-    };
-    window.addEventListener("storage", handler);
-    const unsubscribe = onLayoutChange(layoutChangedHandler);
-    return () => {
-      window.removeEventListener("storage", handler);
-      unsubscribe();
-    };
-  }, []);
-
-  const allItems = useMemo(() => {
-    return { ...layout.items, ...customItems };
-  }, [layout.items, customItems]);
-
-  const itemsWithLabels = useMemo(() => {
-    const merged: Record<string, NavItem> = {};
-    for (const [key, item] of Object.entries(allItems)) {
-      merged[key] = customLabels[key] ? { ...item, label: customLabels[key] } : item;
-    }
-    return merged;
-  }, [allItems, customLabels]);
-
   const badgeMap = useMemo<Record<string, number>>(() => {
     if (!overdueCounts) return {};
     const map: Record<string, number> = {};
     if (overdueCounts.costs > 0) {
-      if (badgeConfig["koszty"] !== false) map["koszty"] = overdueCounts.costs;
-      if (badgeConfig["apartment-schedule"] !== false) map["apartment-schedule"] = overdueCounts.costs;
+      if (config.badgeConfig["koszty"] !== false) map["koszty"] = overdueCounts.costs;
+      if (config.badgeConfig["apartment-schedule"] !== false) map["apartment-schedule"] = overdueCounts.costs;
     }
     if (overdueCounts.subleases > 0) {
-      if (badgeConfig["podnajem"] !== false) map["podnajem"] = overdueCounts.subleases;
+      if (config.badgeConfig["podnajem"] !== false) map["podnajem"] = overdueCounts.subleases;
     }
     return map;
-  }, [overdueCounts, badgeConfig]);
-
-  const toggleSection = useCallback((sectionId: string) => {
-    setCollapsedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) next.delete(sectionId);
-      else next.add(sectionId);
-      saveCollapsed(next);
-      return next;
-    });
-  }, []);
+  }, [overdueCounts, config.badgeConfig]);
 
   const toggleCompact = useCallback(() => {
-    setCompact(prev => {
-      const next = !prev;
-      saveCompactMode(next);
-      return next;
-    });
-  }, []);
+    setCompact(!compact);
+  }, [compact, setCompact]);
 
   const sidebarWidth = compact ? "w-16" : "w-64";
 
@@ -308,8 +184,8 @@ export function Sidebar() {
           </div>
 
           <nav className={cn("flex-1 overflow-y-auto pb-4 space-y-1", compact ? "px-1" : "px-3")} data-testid="nav-sidebar">
-            {layout.sections.map((section, sIdx) => {
-              const isCollapsed = (section.title && section.id !== "finanse") ? collapsedSections.has(section.id) : false;
+            {sections.map((section, sIdx) => {
+              const isCollapsed = (section.title && section.id !== "finanse") ? collapsedSet.has(section.id) : false;
               return (
                 <div key={section.id} data-testid={`nav-section-${section.id}`}>
                   {sIdx > 0 && (
@@ -322,7 +198,7 @@ export function Sidebar() {
                     >
                       <div
                         className={cn("flex items-center gap-1 flex-1 min-w-0", section.id !== "finanse" && "cursor-pointer")}
-                        onClick={() => section.id !== "finanse" && toggleSection(section.id)}
+                        onClick={() => section.id !== "finanse" && toggleCollapsed(section.id)}
                         data-testid={`toggle-section-${section.id}`}
                       >
                         <span className={cn(
@@ -343,21 +219,21 @@ export function Sidebar() {
                     !compact && isCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
                   )}>
                     {section.itemIds.map((itemId) => {
-                      if (hiddenItems.has(itemId)) return null;
+                      if (hiddenSet.has(itemId)) return null;
                       if (itemId.startsWith("sep-")) {
                         if (compact) return null;
                         return <div key={itemId} className="my-2 mx-3 border-t border-white/10" />;
                       }
                       if (itemId.startsWith("label-")) {
                         if (compact) return null;
-                        const labelItem = customItems[itemId];
+                        const labelItem = config.customItems[itemId];
                         return (
                           <div key={itemId} className="px-3 pt-2 pb-1">
                             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{labelItem?.label || ""}</span>
                           </div>
                         );
                       }
-                      const item = itemsWithLabels[itemId];
+                      const item = allItems[itemId];
                       if (!item) return null;
                       return (
                         <NavItemLink

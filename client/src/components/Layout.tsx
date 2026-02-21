@@ -3,6 +3,7 @@ import { GlobalSearch } from "./GlobalSearch";
 import { NotificationBell } from "./NotificationBell";
 import { PageTransition } from "./PageTransition";
 import { Breadcrumbs } from "./Breadcrumbs";
+import { SidebarProvider } from "@/contexts/SidebarContext";
 import { useState, useEffect } from "react";
 
 const FONT_SIZE_KEY = "globalFontSize";
@@ -40,6 +41,7 @@ export function Layout({ children }: LayoutProps) {
   }, []);
 
   return (
+    <SidebarProvider>
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       <main className="flex-1 p-4 md:p-6 pt-20 lg:pt-4 overflow-y-auto h-screen">
@@ -55,5 +57,6 @@ export function Layout({ children }: LayoutProps) {
         <GlobalSearch />
       </div>
     </div>
+    </SidebarProvider>
   );
 }

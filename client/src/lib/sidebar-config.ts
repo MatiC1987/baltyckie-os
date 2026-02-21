@@ -18,7 +18,6 @@ import {
   Compass, Anchor, Sun, Moon, CloudRain, Wind, Droplet, Flame,
   type LucideIcon
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
 
 export interface NavItem {
   id: string;
@@ -26,7 +25,6 @@ export interface NavItem {
   label: string;
   iconName: string;
   type?: "item" | "separator" | "label";
-  hidden?: boolean;
 }
 
 export interface NavSection {
@@ -38,9 +36,14 @@ export interface NavSection {
   isCustom?: boolean;
 }
 
-export interface SidebarLayout {
+export interface SidebarConfig {
   sections: NavSection[];
-  items: Record<string, NavItem>;
+  customItems: Record<string, NavItem>;
+  hiddenItems: string[];
+  customLabels: Record<string, string>;
+  collapsed: string[];
+  compact: boolean;
+  badgeConfig: Record<string, boolean>;
 }
 
 export const ICON_MAP: Record<string, LucideIcon> = {
@@ -119,112 +122,59 @@ export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "finanse", title: "FINANSE", itemIds: ["analizy", "source-comparison", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
 ];
 
-export const STORAGE_KEY = "sidebar-layout-v6";
-export const COLLAPSED_KEY = "sidebar-collapsed-v2";
-export const LABELS_KEY = "sidebar-custom-labels-v1";
-export const HIDDEN_KEY = "sidebar-hidden-items-v1";
-export const CUSTOM_ITEMS_KEY = "sidebar-custom-items-v1";
-export const COMPACT_KEY = "sidebar-compact-v1";
-export const BADGE_CONFIG_KEY = "sidebar-badge-config-v1";
+export const DEFAULT_CONFIG: SidebarConfig = {
+  sections: DEFAULT_SECTIONS.map(s => ({ ...s })),
+  customItems: {},
+  hiddenItems: [],
+  customLabels: {},
+  collapsed: [],
+  compact: false,
+  badgeConfig: { koszty: true, "apartment-schedule": true, podnajem: true },
+};
 
-export function loadCompactMode(): boolean {
-  try {
-    return localStorage.getItem(COMPACT_KEY) === "true";
-  } catch {}
-  return false;
+export function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function saveCompactMode(compact: boolean) {
-  try { localStorage.setItem(COMPACT_KEY, String(compact)); } catch {}
-}
+const STORAGE_KEY = "sidebar-config-v7";
 
-export function loadBadgeConfig(): Record<string, boolean> {
+export function loadConfigFromStorage(): SidebarConfig | null {
   try {
-    const stored = localStorage.getItem(BADGE_CONFIG_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return JSON.parse(stored);
   } catch {}
-  return { koszty: true, "apartment-schedule": true, podnajem: true };
+  return null;
 }
 
-export function saveBadgeConfig(config: Record<string, boolean>) {
-  try { localStorage.setItem(BADGE_CONFIG_KEY, JSON.stringify(config)); } catch {}
-}
-
-export function loadCustomLabels(): Record<string, string> {
+export function saveConfigToStorage(config: SidebarConfig) {
   try {
-    const stored = localStorage.getItem(LABELS_KEY);
-    if (stored) return JSON.parse(stored);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   } catch {}
-  return {};
 }
 
-export function saveCustomLabels(labels: Record<string, string>) {
-  try { localStorage.setItem(LABELS_KEY, JSON.stringify(labels)); } catch {}
-}
-
-export function loadHiddenItems(): Set<string> {
-  try {
-    const stored = localStorage.getItem(HIDDEN_KEY);
-    if (stored) return new Set(JSON.parse(stored));
-  } catch {}
-  return new Set();
-}
-
-export function saveHiddenItems(hidden: Set<string>) {
-  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hidden])); } catch {}
-}
-
-export function loadCustomItems(): Record<string, NavItem> {
-  try {
-    const stored = localStorage.getItem(CUSTOM_ITEMS_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch {}
-  return {};
-}
-
-export function saveCustomItems(items: Record<string, NavItem>) {
-  try { localStorage.setItem(CUSTOM_ITEMS_KEY, JSON.stringify(items)); } catch {}
-}
-
-export function loadCollapsed(): Set<string> {
-  try {
-    const stored = localStorage.getItem(COLLAPSED_KEY);
-    if (stored) return new Set(JSON.parse(stored));
-  } catch {}
-  return new Set();
-}
-
-export function saveCollapsed(collapsed: Set<string>) {
-  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed])); } catch {}
-}
-
-export function reconcileLayout(stored: { sections: NavSection[] }): SidebarLayout {
+export function reconcileConfig(stored: Partial<SidebarConfig>): SidebarConfig {
+  const sections = stored.sections || DEFAULT_CONFIG.sections.map(s => ({ ...s }));
   const allDefaultIds = new Set(Object.keys(DEFAULT_ITEMS));
-  const defaultSectionMap = new Map(DEFAULT_SECTIONS.map(s => [s.id, s]));
-
   const seen = new Set<string>();
   const reconciledSections: NavSection[] = [];
+  const defaultSectionMap = new Map(DEFAULT_SECTIONS.map(s => [s.id, s]));
 
-  for (const storedSection of stored.sections) {
-    if (storedSection.isCustom) {
-      reconciledSections.push(storedSection);
-      for (const id of storedSection.itemIds) {
-        seen.add(id);
-      }
+  for (const section of sections) {
+    if (section.isCustom) {
+      reconciledSections.push(section);
+      for (const id of section.itemIds) seen.add(id);
       continue;
     }
-
-    const ds = defaultSectionMap.get(storedSection.id);
+    const ds = defaultSectionMap.get(section.id);
     if (!ds) continue;
-    defaultSectionMap.delete(storedSection.id);
-
-    const itemIds = storedSection.itemIds.filter(id => {
+    defaultSectionMap.delete(section.id);
+    const itemIds = section.itemIds.filter(id => {
       if (seen.has(id)) return false;
       if (!allDefaultIds.has(id) && !id.startsWith("sep-") && !id.startsWith("label-")) return false;
       seen.add(id);
       return true;
     });
-    reconciledSections.push({ ...ds, title: ds.title, itemIds, color: storedSection.color || ds.color });
+    reconciledSections.push({ ...ds, title: ds.title, itemIds, color: section.color || ds.color });
   }
 
   for (const [, ds] of defaultSectionMap) {
@@ -239,75 +189,50 @@ export function reconcileLayout(stored: { sections: NavSection[] }): SidebarLayo
   const orphaned = [...allDefaultIds].filter(id => !seen.has(id));
   if (orphaned.length > 0 && reconciledSections.length > 0) {
     const lastDefault = [...reconciledSections].reverse().find(s => !s.isCustom);
-    if (lastDefault) {
-      lastDefault.itemIds.push(...orphaned);
-    } else {
-      reconciledSections[reconciledSections.length - 1].itemIds.push(...orphaned);
-    }
+    if (lastDefault) lastDefault.itemIds.push(...orphaned);
+    else reconciledSections[reconciledSections.length - 1].itemIds.push(...orphaned);
   }
 
-  return { sections: reconciledSections, items: { ...DEFAULT_ITEMS } };
+  return {
+    sections: reconciledSections,
+    customItems: stored.customItems || {},
+    hiddenItems: stored.hiddenItems || [],
+    customLabels: stored.customLabels || {},
+    collapsed: stored.collapsed || [],
+    compact: stored.compact ?? false,
+    badgeConfig: stored.badgeConfig ?? { koszty: true, "apartment-schedule": true, podnajem: true },
+  };
 }
 
-export function loadLayout(): SidebarLayout {
+export function parseServerConfig(serverPrefs: any): SidebarConfig | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as { sections: NavSection[] };
-      return reconcileLayout(parsed);
-    }
-  } catch {}
-  return { sections: DEFAULT_SECTIONS.map(s => ({ ...s })), items: { ...DEFAULT_ITEMS } };
-}
-
-export const LAYOUT_CHANGED_EVENT = "sidebar-layout-changed";
-
-const layoutChangeListeners = new Set<() => void>();
-
-export function onLayoutChange(cb: () => void): () => void {
-  layoutChangeListeners.add(cb);
-  return () => { layoutChangeListeners.delete(cb); };
-}
-
-export function saveLayout(sections: NavSection[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections, items: {} }));
-  } catch {}
-}
-
-export function notifyLayoutChanged() {
-  setTimeout(() => {
-    layoutChangeListeners.forEach(cb => cb());
-  }, 0);
-}
-
-let syncTimer: ReturnType<typeof setTimeout> | null = null;
-export function syncToServer(layout: NavSection[], collapsed: Set<string>, labels: Record<string, string>, hidden?: Set<string>) {
-  if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(async () => {
-    try {
-      const payload: any = {
-        sidebarLayout: JSON.stringify({ sections: layout }),
-        sidebarCollapsed: JSON.stringify([...collapsed]),
-        sidebarLabels: JSON.stringify(labels),
-      };
-      if (hidden) {
-        payload.sidebarHidden = JSON.stringify([...hidden]);
+    if (!serverPrefs?.sidebarLayout) return null;
+    const parsed = JSON.parse(serverPrefs.sidebarLayout);
+    if (parsed?.sections) {
+      let collapsed = parsed.collapsed || [];
+      let customLabels = parsed.customLabels || {};
+      if (serverPrefs.sidebarCollapsed && !parsed.collapsed) {
+        try { collapsed = JSON.parse(serverPrefs.sidebarCollapsed); } catch {}
       }
-      await apiRequest("PUT", "/api/user-preferences", payload);
-    } catch {}
-  }, 1000);
-}
-
-export function findSectionOfItem(sections: NavSection[], itemId: string): string | null {
-  for (const section of sections) {
-    if (section.itemIds.includes(itemId)) return section.id;
-  }
+      if (serverPrefs.sidebarLabels && !parsed.customLabels) {
+        try { customLabels = JSON.parse(serverPrefs.sidebarLabels); } catch {}
+      }
+      return reconcileConfig({ ...parsed, collapsed, customLabels });
+    }
+  } catch {}
   return null;
 }
 
-export function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+export function serializeForServer(config: SidebarConfig): string {
+  return JSON.stringify({
+    sections: config.sections,
+    customItems: config.customItems,
+    hiddenItems: config.hiddenItems,
+    customLabels: config.customLabels,
+    collapsed: config.collapsed,
+    compact: config.compact,
+    badgeConfig: config.badgeConfig,
+  });
 }
 
 export interface PresetLayout {
