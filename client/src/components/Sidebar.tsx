@@ -328,6 +328,7 @@ export function Sidebar() {
       setLayout(loadLayout());
       setHiddenItems(loadHiddenItems());
       setCustomLabels(loadCustomLabels());
+      setCustomItems(loadCustomItems());
     };
     window.addEventListener("storage", handler);
     window.addEventListener(LAYOUT_CHANGED_EVENT, layoutChangedHandler);
