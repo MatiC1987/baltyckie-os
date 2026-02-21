@@ -46,6 +46,7 @@ import {
   type NavItem,
   ICON_MAP,
   getSectionColorClass,
+  getSectionColorStyle,
 } from "@/lib/sidebar-config";
 import { useSidebar } from "@/contexts/SidebarContext";
 
@@ -204,7 +205,7 @@ export function Sidebar() {
                         <span className={cn(
                           "text-[10px] font-bold tracking-widest uppercase",
                           getSectionColorClass(section.color)
-                        )}>{section.title}</span>
+                        )} style={getSectionColorStyle(section.color)}>{section.title}</span>
                         {section.id !== "finanse" && (
                           <ChevronDown className={cn(
                             "h-3 w-3 text-slate-500 transition-transform duration-200 group-hover/section:text-slate-300",

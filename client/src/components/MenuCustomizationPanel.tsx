@@ -35,6 +35,8 @@ import {
   Upload,
   Save,
   LayoutTemplate,
+  Palette,
+  Check,
 } from "lucide-react";
 import {
   DndContext,
@@ -59,13 +61,19 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   type NavItem,
   type NavSection,
   ICON_MAP,
   ICON_CATEGORIES,
-  SECTION_COLORS,
+  COLOR_PALETTE,
   DEFAULT_ITEMS,
   getSectionColorClass,
+  getSectionColorStyle,
   PRESET_LAYOUTS,
 } from "@/lib/sidebar-config";
 import { useSidebar } from "@/contexts/SidebarContext";
@@ -254,6 +262,56 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+function ColorPalettePicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const [customHex, setCustomHex] = useState(value.startsWith("#") ? value : "");
+
+  const namedToHex: Record<string, string> = {
+    cyan: "#06b6d4", emerald: "#10b981", violet: "#8b5cf6", blue: "#3b82f6",
+    orange: "#f97316", pink: "#ec4899", yellow: "#eab308", red: "#ef4444", slate: "#64748b",
+  };
+
+  const currentHex = value.startsWith("#") ? value : (namedToHex[value] || "#64748b");
+
+  return (
+    <div className="space-y-3" data-testid="color-palette-picker">
+      <div className="grid grid-cols-10 gap-1.5">
+        {COLOR_PALETTE.map(hex => (
+          <button
+            key={hex}
+            onClick={() => onChange(hex)}
+            className={cn(
+              "w-7 h-7 rounded-full border-2 transition-colors",
+              currentHex === hex ? "border-foreground ring-2 ring-foreground/20" : "border-transparent"
+            )}
+            style={{ backgroundColor: hex }}
+            data-testid={`color-hex-${hex.replace("#", "")}`}
+          >
+            {currentHex === hex && (
+              <Check className={cn("h-3.5 w-3.5 mx-auto", hex === "#ffffff" || hex === "#eab308" || hex === "#f59e0b" ? "text-black" : "text-white")} />
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-full border border-border shrink-0" style={{ backgroundColor: customHex || currentHex }} />
+        <Input
+          placeholder="#HEX"
+          value={customHex}
+          onChange={(e) => {
+            const v = e.target.value;
+            setCustomHex(v);
+            if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+              onChange(v);
+            }
+          }}
+          className="h-8 text-xs font-mono"
+          data-testid="input-custom-hex"
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function MenuCustomizationPanel() {
   const { toast } = useToast();
   const {
@@ -270,7 +328,7 @@ export default function MenuCustomizationPanel() {
   const [showNewSection, setShowNewSection] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionIcon, setNewSectionIcon] = useState("Star");
-  const [newSectionColor, setNewSectionColor] = useState("cyan");
+  const [newSectionColor, setNewSectionColor] = useState("#06b6d4");
   const [showAddLabel, setShowAddLabel] = useState<string | null>(null);
   const [newLabelText, setNewLabelText] = useState("");
   const [showPresets, setShowPresets] = useState(false);
@@ -379,7 +437,7 @@ export default function MenuCustomizationPanel() {
     setShowNewSection(false);
     setNewSectionTitle("");
     setNewSectionIcon("Star");
-    setNewSectionColor("cyan");
+    setNewSectionColor("#06b6d4");
     toast({ title: "Dodano nową sekcję" });
   }, [newSectionTitle, newSectionIcon, newSectionColor, ctxAddSection, toast]);
 
@@ -413,6 +471,15 @@ export default function MenuCustomizationPanel() {
     resetToDefault();
     toast({ title: "Przywrócono domyślne ustawienia" });
   }, [resetToDefault, toast]);
+
+  const handleChangeSectionColor = useCallback((sectionId: string, color: string) => {
+    updateConfig(prev => ({
+      ...prev,
+      sections: prev.sections.map(s =>
+        s.id === sectionId ? { ...s, color } : s
+      ),
+    }));
+  }, [updateConfig]);
 
   const handleExport = useCallback(() => {
     const json = exportConfig();
@@ -536,12 +603,27 @@ export default function MenuCustomizationPanel() {
                       data-testid={`expand-section-${section.id}`}
                     >
                       {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                      <span className={cn("text-sm font-semibold", getSectionColorClass(section.color))}>
+                      <span className={cn("text-sm font-semibold", getSectionColorClass(section.color))} style={getSectionColorStyle(section.color)}>
                         {section.title || "GŁÓWNE"}
                       </span>
                       <span className="text-xs text-muted-foreground ml-1">({section.itemIds.length})</span>
                     </button>
                     <div className="flex items-center gap-1 shrink-0">
+                      {section.title && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="p-1 rounded" title="Zmień kolor" data-testid={`color-picker-${section.id}`}>
+                              <div className="w-3.5 h-3.5 rounded-full border border-border" style={{ backgroundColor: section.color?.startsWith("#") ? section.color : ({ cyan: "#06b6d4", emerald: "#10b981", violet: "#8b5cf6", blue: "#3b82f6", orange: "#f97316", pink: "#ec4899", yellow: "#eab308", red: "#ef4444", slate: "#64748b" }[section.color || "slate"] || "#64748b") }} />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80" align="end">
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Kolor sekcji</p>
+                              <ColorPalettePicker value={section.color || "slate"} onChange={(c) => handleChangeSectionColor(section.id, c)} />
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
                       {sIdx > 0 && (
                         <button onClick={() => handleMoveSectionUp(section.id)} className="text-muted-foreground hover:text-foreground p-1" title="W górę" data-testid={`move-up-${section.id}`}>
                           <ChevronUp className="h-3.5 w-3.5" />
@@ -634,21 +716,7 @@ export default function MenuCustomizationPanel() {
             />
             <div>
               <span className="text-sm font-medium mb-2 block">Kolor</span>
-              <div className="flex flex-wrap gap-2">
-                {SECTION_COLORS.map(color => (
-                  <button
-                    key={color.value}
-                    onClick={() => setNewSectionColor(color.value)}
-                    className={cn(
-                      "w-8 h-8 rounded-full border-2 transition-colors",
-                      color.className.replace("text-", "bg-").replace("-400", "-500").replace("-500", "-400"),
-                      newSectionColor === color.value ? "border-foreground scale-110" : "border-transparent"
-                    )}
-                    title={color.label}
-                    data-testid={`color-option-${color.value}`}
-                  />
-                ))}
-              </div>
+              <ColorPalettePicker value={newSectionColor} onChange={setNewSectionColor} />
             </div>
             <div>
               <span className="text-sm font-medium mb-2 block">Ikona</span>

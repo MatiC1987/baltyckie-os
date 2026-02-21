@@ -14,7 +14,7 @@ import {
   SortAsc, AlertCircle, CheckCircle, Info, HelpCircle, MessageSquare,
   Send, Share2, Link, Paperclip, Scissors, Copy, Clipboard, Terminal,
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
-  Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map, Navigation,
+  Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map as MapIcon, Navigation,
   Compass, Anchor, Sun, Moon, CloudRain, Wind, Droplet, Flame,
   type LucideIcon
 } from "lucide-react";
@@ -62,7 +62,7 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   SortAsc, AlertCircle, CheckCircle, Info, HelpCircle, MessageSquare,
   Send, Share2, Link, Paperclip, Scissors, Copy, Clipboard, Terminal,
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
-  Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map, Navigation,
+  Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map: MapIcon, Navigation,
   Compass, Anchor, Sun, Moon, CloudRain, Wind, Droplet, Flame,
 };
 
@@ -91,9 +91,23 @@ export const SECTION_COLORS: { label: string; value: string; className: string }
 ];
 
 export function getSectionColorClass(color?: string): string {
+  if (!color) return "text-slate-500";
+  if (color.startsWith("#")) return "";
   const found = SECTION_COLORS.find(c => c.value === color);
   return found?.className || "text-slate-500";
 }
+
+export function getSectionColorStyle(color?: string): { color: string } | undefined {
+  if (color && /^#[0-9a-fA-F]{6}$/.test(color)) return { color };
+  return undefined;
+}
+
+export const COLOR_PALETTE: string[] = [
+  "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
+  "#22c55e", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9",
+  "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
+  "#ec4899", "#f43f5e", "#64748b", "#94a3b8", "#ffffff",
+];
 
 export const DEFAULT_ITEMS: Record<string, NavItem> = {
   kokpit: { id: "kokpit", href: "/", label: "Pulpit", iconName: "LayoutDashboard" },
