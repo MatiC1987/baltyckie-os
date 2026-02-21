@@ -264,13 +264,20 @@ export function Sidebar() {
     const serverTimestamp = serverPrefs.updatedAt || "";
     if (lastAppliedTimestamp.current === serverTimestamp) return;
     lastAppliedTimestamp.current = serverTimestamp;
+
+    const localData = localStorage.getItem(STORAGE_KEY);
+    const hasLocalChanges = !!localData;
+
     try {
       if (serverPrefs.sidebarLayout) {
         const parsed = JSON.parse(serverPrefs.sidebarLayout);
         if (parsed?.sections) {
-          const reconciled = reconcileLayout(parsed);
-          setLayout(reconciled);
-          saveLayout(reconciled.sections);
+          if (hasLocalChanges) {
+            setLayout(loadLayout());
+          } else {
+            const reconciled = reconcileLayout(parsed);
+            setLayout(reconciled);
+          }
         }
       }
       if (serverPrefs.sidebarCollapsed) {

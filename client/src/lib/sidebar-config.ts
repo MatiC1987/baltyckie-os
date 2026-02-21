@@ -240,7 +240,9 @@ export const LAYOUT_CHANGED_EVENT = "sidebar-layout-changed";
 export function saveLayout(sections: NavSection[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections, items: {} }));
-    window.dispatchEvent(new CustomEvent(LAYOUT_CHANGED_EVENT));
+    queueMicrotask(() => {
+      window.dispatchEvent(new CustomEvent(LAYOUT_CHANGED_EVENT));
+    });
   } catch {}
 }
 
