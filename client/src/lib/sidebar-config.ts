@@ -192,7 +192,14 @@ export function reconcileLayout(stored: { sections: NavSection[] }): SidebarLayo
     return { ...ds, title: ds.title, itemIds, color: match?.color || ds.color };
   });
 
-  const orphaned = [...allDefaultIds].filter(id => !seen.has(id));
+  const itemsInCustomSections = new Set<string>();
+  for (const cs of customSections) {
+    for (const id of cs.itemIds) {
+      itemsInCustomSections.add(id);
+    }
+  }
+
+  const orphaned = [...allDefaultIds].filter(id => !seen.has(id) && !itemsInCustomSections.has(id));
   if (orphaned.length > 0 && sections.length > 0) {
     sections[sections.length - 1].itemIds.push(...orphaned);
   }
