@@ -548,9 +548,6 @@ export default function Apartments() {
                 <TabsTrigger value="photo" className="flex-1" data-testid="tab-edit-photo">
                   <Camera className="h-4 w-4 mr-1" /> Zdjęcie
                 </TabsTrigger>
-                <TabsTrigger value="attachments" className="flex-1" data-testid="tab-edit-attachments">
-                  <Paperclip className="h-4 w-4 mr-1" /> Załączniki
-                </TabsTrigger>
                 <TabsTrigger value="contracts" className="flex-1" data-testid="tab-edit-contracts">
                   <FileText className="h-4 w-4 mr-1" /> Umowy
                 </TabsTrigger>
@@ -566,9 +563,6 @@ export default function Apartments() {
               </TabsContent>
               <TabsContent value="photo">
                 <PhotoSection apartment={editingApartment} />
-              </TabsContent>
-              <TabsContent value="attachments">
-                <AttachmentsSection apartmentId={editingApartment.id} />
               </TabsContent>
               <TabsContent value="contracts">
                 <ContractsSection apartment={editingApartment} />
@@ -1258,10 +1252,21 @@ function AttachmentsSection({ apartmentId }: { apartmentId: number }) {
 function ContractsSection({ apartment }: { apartment: Apartment }) {
   const { data: allContracts = [] } = useQuery<OwnerContract[]>({ queryKey: ["/api/owner-contracts"] });
   const { data: owners = [] } = useQuery<Owner[]>({ queryKey: ["/api/owners"] });
+  const { data: allAttachments = [] } = useQuery<Attachment[]>({
+    queryKey: ['/api/apartments', apartment.id, 'attachments'],
+    queryFn: async () => {
+      const res = await fetch(`/api/apartments/${apartment.id}/attachments`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+  });
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { uploadFile, isUploading } = useUpload({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const batchFileInputRef = useRef<HTMLInputElement>(null);
+  const attachInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const generalAttachInputRef = useRef<HTMLInputElement>(null);
   const [contractFormOpen, setContractFormOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<OwnerContract | null>(null);
   const [pdfParsedData, setPdfParsedData] = useState<any>(null);
@@ -1276,8 +1281,68 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   const [batchSaving, setBatchSaving] = useState(false);
   const [batchParsing, setBatchParsing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [expandedAttachments, setExpandedAttachments] = useState<Set<number>>(new Set());
 
   const contracts = useMemo(() => allContracts.filter(c => c.apartmentId === apartment.id), [allContracts, apartment.id]);
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/attachments/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartment.id, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/attachments/all'] });
+      toast({ title: "Zalacznik usuniety" });
+    },
+  });
+
+  async function handleAttachFile(contractId: number | null, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const response = await uploadFile(file);
+    if (response) {
+      const saveRes = await fetch(`/api/apartments/${apartment.id}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          fileName: file.name,
+          objectPath: response.objectPath,
+          fileType: file.type,
+          category: 'INNY',
+          contractId: contractId,
+        }),
+      });
+      if (saveRes.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartment.id, 'attachments'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/attachments/all'] });
+        toast({ title: "Zalacznik dodany" });
+      } else {
+        toast({ title: "Blad", description: "Nie udalo sie zapisac zalacznika", variant: "destructive" });
+      }
+    } else {
+      toast({ title: "Blad", description: "Nie udalo sie przeslac pliku", variant: "destructive" });
+    }
+    e.target.value = '';
+  }
+
+  function getContractAttachments(contractId: number): Attachment[] {
+    return allAttachments.filter(a => a.contractId === contractId);
+  }
+
+  function getGeneralAttachments(): Attachment[] {
+    return allAttachments.filter(a => !a.contractId);
+  }
+
+  function toggleAttachments(contractId: number) {
+    setExpandedAttachments(prev => {
+      const next = new Set(prev);
+      if (next.has(contractId)) next.delete(contractId);
+      else next.add(contractId);
+      return next;
+    });
+  }
 
   function openContractForm(contract: OwnerContract | null, parsed: any) {
     setEditingContract(contract);
@@ -1532,6 +1597,8 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
         {[...rootContracts, ...standalone].map(c => {
           const ownerName = owners.find(o => o.id === c.ownerId)?.name || "\u2014";
           const annexes = (annexesMap.get(c.id) || []).sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+          const contractAtts = getContractAttachments(c.id);
+          const isExpanded = expandedAttachments.has(c.id);
           return (
             <div key={c.id} className="space-y-0">
               <Card data-testid={`card-apt-contract-${c.id}`}>
@@ -1548,6 +1615,12 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      <Button size="icon" variant="ghost" onClick={() => toggleAttachments(c.id)} title="Zalaczniki" data-testid={`btn-attachments-contract-${c.id}`}>
+                        <Paperclip className="h-4 w-4" />
+                        {contractAtts.length > 0 && (
+                          <span className="absolute -top-1 -right-1 bg-[#5ADBFA] text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center">{contractAtts.length}</span>
+                        )}
+                      </Button>
                       <Button size="icon" variant="ghost" onClick={() => openContractForm(c, null)} data-testid={`btn-edit-apt-contract-${c.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -1556,6 +1629,43 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                       </Button>
                     </div>
                   </div>
+                  {isExpanded && (
+                    <div className="mt-2 pt-2 border-t space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Zalaczniki</span>
+                        <Label htmlFor={`attach-contract-${c.id}`} className="cursor-pointer">
+                          <div className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] border hover:bg-muted transition-colors">
+                            <Upload className="h-3 w-3" />
+                            {isUploading ? "..." : "Dodaj"}
+                          </div>
+                          <input
+                            id={`attach-contract-${c.id}`}
+                            ref={el => { attachInputRefs.current[c.id] = el; }}
+                            type="file"
+                            className="hidden"
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xlsx"
+                            onChange={(e) => handleAttachFile(c.id, e)}
+                            disabled={isUploading}
+                          />
+                        </Label>
+                      </div>
+                      {contractAtts.length === 0 ? (
+                        <p className="text-[10px] text-muted-foreground">Brak zalacznikow</p>
+                      ) : (
+                        contractAtts.map(att => (
+                          <div key={att.id} className="flex items-center justify-between gap-2 p-1.5 rounded bg-muted/50 text-xs">
+                            <a href={att.objectPath} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 min-w-0 hover:underline truncate" data-testid={`link-contract-att-${att.id}`}>
+                              <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate">{att.fileName}</span>
+                            </a>
+                            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => deleteAttachmentMutation.mutate(att.id)} data-testid={`btn-delete-contract-att-${att.id}`}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
               {annexes.length > 0 && (
@@ -1563,40 +1673,119 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                   <div className="px-4 py-1.5">
                     <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Aneksy ({annexes.length})</span>
                   </div>
-                  {annexes.map((ax, idx) => (
-                    <div key={ax.id} className={`px-4 py-2 flex items-center justify-between gap-2 ${idx < annexes.length - 1 ? "border-b border-border/50" : ""}`} data-testid={`card-apt-annex-${ax.id}`}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-4 flex flex-col items-center shrink-0">
-                          <div className="w-px h-2 bg-border" />
-                          <div className="w-2 h-2 rounded-full bg-[#5ADBFA] border-2 border-background" />
-                          {idx < annexes.length - 1 && <div className="w-px h-2 bg-border" />}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <Badge variant="outline" className="text-[9px] bg-amber-50 dark:bg-amber-950">ANEKS</Badge>
-                            <span className="text-xs">{ax.startDate} &rarr; {ax.endDate || "bezterminowo"}</span>
+                  {annexes.map((ax, idx) => {
+                    const annexAtts = getContractAttachments(ax.id);
+                    const annexExpanded = expandedAttachments.has(ax.id);
+                    return (
+                      <div key={ax.id} className={`px-4 py-2 ${idx < annexes.length - 1 ? "border-b border-border/50" : ""}`} data-testid={`card-apt-annex-${ax.id}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-4 flex flex-col items-center shrink-0">
+                              <div className="w-px h-2 bg-border" />
+                              <div className="w-2 h-2 rounded-full bg-[#5ADBFA] border-2 border-background" />
+                              {idx < annexes.length - 1 && <div className="w-px h-2 bg-border" />}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Badge variant="outline" className="text-[9px] bg-amber-50 dark:bg-amber-950">ANEKS</Badge>
+                                <span className="text-xs">{ax.startDate} &rarr; {ax.endDate || "bezterminowo"}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                                {ax.monthlyRent && <span>Czynsz: {Number(ax.monthlyRent).toLocaleString("pl-PL")} zl</span>}
+                                {ax.notes && <span className="truncate max-w-[200px]">{ax.notes}</span>}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
-                            {ax.monthlyRent && <span>Czynsz: {Number(ax.monthlyRent).toLocaleString("pl-PL")} zl</span>}
-                            {ax.notes && <span className="truncate max-w-[200px]">{ax.notes}</span>}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button size="icon" variant="ghost" className="h-7 w-7 relative" onClick={() => toggleAttachments(ax.id)} title="Zalaczniki">
+                              <Paperclip className="h-3.5 w-3.5" />
+                              {annexAtts.length > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-[#5ADBFA] text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center">{annexAtts.length}</span>
+                              )}
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openContractForm(ax, null)} data-testid={`btn-edit-apt-annex-${ax.id}`}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { if (confirm("Usunac aneks?")) deleteContractMutation.mutate(ax.id); }} data-testid={`btn-delete-apt-annex-${ax.id}`}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </div>
+                        {annexExpanded && (
+                          <div className="mt-1.5 ml-6 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] text-muted-foreground">Zalaczniki</span>
+                              <Label htmlFor={`attach-annex-${ax.id}`} className="cursor-pointer">
+                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] border hover:bg-muted transition-colors">
+                                  <Upload className="h-2.5 w-2.5" /> Dodaj
+                                </div>
+                                <input id={`attach-annex-${ax.id}`} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xlsx" onChange={(e) => handleAttachFile(ax.id, e)} disabled={isUploading} />
+                              </Label>
+                            </div>
+                            {annexAtts.length === 0 ? (
+                              <p className="text-[9px] text-muted-foreground">Brak</p>
+                            ) : (
+                              annexAtts.map(att => (
+                                <div key={att.id} className="flex items-center justify-between gap-1 p-1 rounded bg-muted/50 text-[10px]">
+                                  <a href={att.objectPath} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 min-w-0 hover:underline truncate">
+                                    <FileText className="h-3 w-3 shrink-0" /> <span className="truncate">{att.fileName}</span>
+                                  </a>
+                                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => deleteAttachmentMutation.mutate(att.id)}>
+                                    <X className="h-2.5 w-2.5" />
+                                  </Button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button size="icon" variant="ghost" onClick={() => openContractForm(ax, null)} data-testid={`btn-edit-apt-annex-${ax.id}`}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => { if (confirm("Usunac aneks?")) deleteContractMutation.mutate(ax.id); }} data-testid={`btn-delete-apt-annex-${ax.id}`}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           );
         })}
+      </div>
+
+      {/* General attachments (not linked to specific contract) */}
+      {getGeneralAttachments().length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Pozostale dokumenty (bez przypisania do umowy)</span>
+          </div>
+          {getGeneralAttachments().map(att => (
+            <div key={att.id} className="flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-xs">
+              <a href={att.objectPath} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 min-w-0 hover:underline truncate">
+                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{att.fileName}</span>
+                <Badge variant="outline" className="text-[9px] shrink-0">{att.category}</Badge>
+              </a>
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => deleteAttachmentMutation.mutate(att.id)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        <Label htmlFor="attach-general" className="cursor-pointer">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs hover:bg-muted transition-colors">
+            <Upload className="h-3.5 w-3.5" />
+            {isUploading ? "Przesylanie..." : "Dodaj dokument"}
+          </div>
+          <input
+            id="attach-general"
+            ref={generalAttachInputRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xlsx"
+            onChange={(e) => handleAttachFile(null, e)}
+            disabled={isUploading}
+          />
+        </Label>
+        <span className="text-[10px] text-muted-foreground">Porozumienia, zaliczki, inne dokumenty</span>
       </div>
 
       <Dialog open={contractFormOpen} onOpenChange={v => { setContractFormOpen(v); if (!v) { setEditingContract(null); setPdfParsedData(null); } }}>

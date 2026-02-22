@@ -96,6 +96,7 @@ export const accountSnapshots = pgTable("account_snapshots", {
 export const attachments = pgTable("attachments", {
   id: serial("id").primaryKey(),
   apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  contractId: integer("contract_id").references(() => ownerContracts.id),
   fileName: text("file_name").notNull(),
   objectPath: text("object_path").notNull(),
   fileType: text("file_type"),

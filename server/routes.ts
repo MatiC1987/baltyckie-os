@@ -165,6 +165,84 @@ function computeNextRecurringDate(currentDate: string | null, recurring: string)
   return d.toISOString().split("T")[0];
 }
 
+async function syncApartmentLeaseDates(apartmentId: number) {
+  try {
+    const allContracts = await storage.getOwnerContracts({ apartmentId });
+    const activeContracts = allContracts.filter(c => c.status === 'AKTYWNA');
+    if (activeContracts.length === 0) return;
+
+    activeContracts.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+    const latest = activeContracts[0];
+
+    await db.update(apartments).set({
+      leaseStartDate: latest.startDate || null,
+      leaseEndDate: latest.endDate || null,
+    }).where(eq(apartments.id, apartmentId));
+  } catch (err) {
+    console.error('Error syncing apartment lease dates:', err);
+  }
+}
+
+async function syncContractCostForecasts(contract: any) {
+  try {
+    if (!contract.apartmentId || !contract.monthlyRent) return;
+
+    const apt = await storage.getApartment(contract.apartmentId);
+    const startDate = contract.startDate ? new Date(contract.startDate) : null;
+    const endDate = contract.endDate ? new Date(contract.endDate) : null;
+    const currentYear = new Date().getFullYear();
+
+    for (const year of [currentYear, currentYear + 1]) {
+      await db.delete(costForecasts).where(
+        and(
+          eq(costForecasts.year, year),
+          eq(costForecasts.sourceType, 'owner_contract'),
+          eq(costForecasts.sourceContractId, contract.id)
+        )
+      );
+
+      const costsToCreate: any[] = [];
+      for (let month = 1; month <= 12; month++) {
+        const checkDate = new Date(year, month - 1, 15);
+        if (startDate && checkDate < startDate) continue;
+        if (endDate && checkDate > endDate) continue;
+
+        if (contract.monthlyRent) {
+          costsToCreate.push({
+            year,
+            month,
+            apartmentId: contract.apartmentId,
+            category: 'czynsz_wlasciciel',
+            forecast: String(contract.monthlyRent),
+            actual: "0",
+            sourceType: 'owner_contract',
+            sourceContractId: contract.id,
+            locationName: apt?.location || null,
+          });
+        }
+        if (contract.additionalFees && Number(contract.additionalFees) > 0) {
+          costsToCreate.push({
+            year,
+            month,
+            apartmentId: contract.apartmentId,
+            category: 'oplaty_dodatkowe_wlasciciel',
+            forecast: String(contract.additionalFees),
+            actual: "0",
+            sourceType: 'owner_contract',
+            sourceContractId: contract.id,
+            locationName: apt?.location || null,
+          });
+        }
+      }
+      if (costsToCreate.length > 0) {
+        await storage.createCostForecastsBulk(costsToCreate);
+      }
+    }
+  } catch (err) {
+    console.error('Error syncing contract cost forecasts:', err);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1001,6 +1079,12 @@ export async function registerRoutes(
       if (body.additionalFees !== null && body.additionalFees !== undefined) body.additionalFees = String(body.additionalFees);
       const parsed = insertOwnerContractSchema.parse(body);
       const contract = await storage.createOwnerContract(parsed);
+
+      if (contract.apartmentId && contract.status === 'AKTYWNA') {
+        await syncApartmentLeaseDates(contract.apartmentId);
+        await syncContractCostForecasts(contract);
+      }
+
       res.status(201).json(contract);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -1014,6 +1098,14 @@ export async function registerRoutes(
       if (body.monthlyRent !== null && body.monthlyRent !== undefined) body.monthlyRent = String(body.monthlyRent);
       if (body.additionalFees !== null && body.additionalFees !== undefined) body.additionalFees = String(body.additionalFees);
       const contract = await storage.updateOwnerContract(Number(req.params.id), body);
+
+      if (contract.apartmentId) {
+        await syncApartmentLeaseDates(contract.apartmentId);
+        if (contract.status === 'AKTYWNA') {
+          await syncContractCostForecasts(contract);
+        }
+      }
+
       res.json(contract);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1697,10 +1789,11 @@ Odpowiedz TYLKO czystym JSON (tablica) bez komentarzy ani markdown.`
 
   app.post('/api/apartments/:id/attachments', isAuthenticated, async (req, res) => {
     try {
-      const { fileName, objectPath, fileType, category } = req.body;
+      const { fileName, objectPath, fileType, category, contractId } = req.body;
       if (!fileName || !objectPath) return res.status(400).json({ message: "Brak wymaganych pól" });
       const attachment = await storage.createAttachment({
         apartmentId: Number(req.params.id),
+        contractId: contractId || null,
         fileName,
         objectPath,
         fileType: fileType || null,
