@@ -1126,6 +1126,7 @@ export async function registerRoutes(
       const payments = subleasePaymentsAll[s.id] || [];
       for (const p of payments) {
         if (!p.dueDate) continue;
+        if ((p.category || '').toLowerCase() === 'kaucja') continue;
         const pd = new Date(p.dueDate);
         if (pd.getFullYear() !== year) continue;
         const month = pd.getMonth();
@@ -3784,7 +3785,7 @@ export async function registerRoutes(
     const allSubleasePayments: { dueDate: string; amount: string; status: string }[] = [];
     for (const sub of subleases) {
       const payments = await storage.getSubleasePayments(sub.id);
-      allSubleasePayments.push(...payments.map(p => ({ dueDate: p.dueDate, amount: p.amount, status: p.status })));
+      allSubleasePayments.push(...payments.filter(p => (p.category || '').toLowerCase() !== 'kaucja').map(p => ({ dueDate: p.dueDate, amount: p.amount, status: p.status })));
     }
 
     const months: { year: number; month: number; label: string }[] = [];
