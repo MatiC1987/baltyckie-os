@@ -570,7 +570,7 @@ export default function Apartments() {
                 <PaymentsSection apartmentId={editingApartment.id} />
               </TabsContent>
               <TabsContent value="forecast">
-                <RevenueForecastSection apartment={editingApartment} />
+                <RevenueForecastSection apartment={editingApartment} allApartments={apartments || []} />
               </TabsContent>
               <TabsContent value="contracts">
                 <AttachmentsSection apartmentId={editingApartment.id} />
@@ -2149,9 +2149,12 @@ function PaymentsSection({ apartmentId }: { apartmentId: number }) {
   );
 }
 
-function RevenueForecastSection({ apartment }: { apartment: Apartment }) {
+function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: Apartment; allApartments?: Apartment[] }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
+  const [showCopyFrom, setShowCopyFrom] = useState(false);
+  const [sourceApartmentId, setSourceApartmentId] = useState<string>("");
+  const [isCopying, setIsCopying] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -2226,6 +2229,48 @@ function RevenueForecastSection({ apartment }: { apartment: Apartment }) {
     toast({ title: "Skopiowano", description: `Wartość ${firstVal} zł skopiowana na wszystkie miesiące` });
   };
 
+  const copyFromApartment = async () => {
+    const srcId = Number(sourceApartmentId);
+    if (!srcId) return;
+    setIsCopying(true);
+    try {
+      const res = await fetch(`/api/revenue-forecasts?year=${year}`, { credentials: "include" });
+      const all: RevenueForecast[] = await res.json();
+      const srcForecasts = all.filter((f: RevenueForecast) => f.apartmentId === srcId);
+
+      if (srcForecasts.length === 0) {
+        toast({ title: "Brak danych", description: "Wybrany apartament nie ma prognozy na ten rok", variant: "destructive" });
+        setIsCopying(false);
+        return;
+      }
+
+      const updated: Record<number, string> = {};
+      for (const f of srcForecasts) {
+        if (f.forecast && Number(f.forecast) > 0) {
+          updated[f.month] = String(f.forecast);
+          await apiRequest("PUT", "/api/revenue-forecasts", {
+            year,
+            month: f.month,
+            apartmentId: apartment.id,
+            locationName: apartment.location || "",
+            forecast: String(f.forecast),
+          });
+        }
+      }
+      setValues(prev => ({ ...prev, ...updated }));
+      queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${year}`] });
+      const srcApt = allApartments.find(a => a.id === srcId);
+      toast({ title: "Skopiowano", description: `Prognoza z "${srcApt?.name || srcId}" skopiowana na rok ${year}` });
+      setShowCopyFrom(false);
+      setSourceApartmentId("");
+    } catch (err) {
+      toast({ title: "Błąd", description: "Nie udało się skopiować prognozy", variant: "destructive" });
+    }
+    setIsCopying(false);
+  };
+
+  const otherApartments = allApartments.filter(a => a.id !== apartment.id);
+
   const total = Object.values(values).reduce((s, v) => s + (parseFloat(v) || 0), 0);
 
   if (isLoading) {
@@ -2282,10 +2327,43 @@ function RevenueForecastSection({ apartment }: { apartment: Apartment }) {
           <span className="text-muted-foreground">Suma roczna: </span>
           <span className="font-semibold" data-testid="text-forecast-total">{total.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</span>
         </div>
-        <Button variant="outline" size="sm" onClick={copyToAll} data-testid="btn-forecast-copy-all">
-          <Copy className="h-4 w-4 mr-1" /> Kopiuj wartość na wszystkie miesiące
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {otherApartments.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowCopyFrom(!showCopyFrom)} data-testid="btn-forecast-copy-from">
+              <FolderInput className="h-4 w-4 mr-1" /> Kopiuj z apartamentu
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={copyToAll} data-testid="btn-forecast-copy-all">
+            <Copy className="h-4 w-4 mr-1" /> Kopiuj wartość na wszystkie miesiące
+          </Button>
+        </div>
       </div>
+
+      {showCopyFrom && (
+        <div className="flex items-center gap-2 flex-wrap border rounded-md p-3 bg-muted/30">
+          <Select value={sourceApartmentId} onValueChange={setSourceApartmentId}>
+            <SelectTrigger className="w-[240px]" data-testid="select-copy-source-apartment">
+              <SelectValue placeholder="Wybierz apartament źródłowy" />
+            </SelectTrigger>
+            <SelectContent>
+              {otherApartments.map(a => (
+                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            onClick={copyFromApartment}
+            disabled={!sourceApartmentId || isCopying}
+            data-testid="btn-confirm-copy-from"
+          >
+            {isCopying ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Kopiowanie...</> : "Kopiuj"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setShowCopyFrom(false); setSourceApartmentId(""); }}>
+            Anuluj
+          </Button>
+        </div>
+      )}
 
       {mutation.isPending && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
