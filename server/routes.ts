@@ -1153,6 +1153,168 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.post('/api/parse-owner-contracts-batch', isAuthenticated, contractUpload.array('files', 20), async (req, res) => {
+    const tmpFiles: string[] = [];
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "Brak plików" });
+      }
+
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+      for (const file of files) {
+        const ext = file.originalname.toLowerCase();
+        const isAllowed = allowedTypes.includes(file.mimetype) ||
+          ext.endsWith('.pdf') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') ||
+          ext.endsWith('.png') || ext.endsWith('.webp') || ext.endsWith('.heic');
+        if (!isAllowed) {
+          return res.status(400).json({ message: `Nieobsługiwany format pliku: ${file.originalname}. Dozwolone: PDF, JPG, PNG, WEBP` });
+        }
+      }
+
+      const tmpDir = os.tmpdir();
+
+      const documentsData: { fileName: string; pageImages: string[] }[] = [];
+
+      for (const file of files) {
+        const docPages: string[] = [];
+        if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+          const pdfPath = path.join(tmpDir, `batch_contract_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+          fs.writeFileSync(pdfPath, file.buffer);
+          tmpFiles.push(pdfPath);
+
+          const prefix = path.join(tmpDir, `batch_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+          execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+
+          const pageFiles = fs.readdirSync(tmpDir)
+            .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+            .sort();
+
+          for (const pageFile of pageFiles) {
+            const pagePath = path.join(tmpDir, pageFile);
+            tmpFiles.push(pagePath);
+            const imgBuffer = fs.readFileSync(pagePath);
+            docPages.push(imgBuffer.toString('base64'));
+          }
+        } else {
+          docPages.push(file.buffer.toString('base64'));
+        }
+        documentsData.push({ fileName: file.originalname, pageImages: docPages });
+      }
+
+      const totalPages = documentsData.reduce((sum, d) => sum + d.pageImages.length, 0);
+      if (totalPages === 0) {
+        return res.status(400).json({ message: "Nie udało się odczytać plików" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const existingContracts = await storage.getOwnerContracts();
+      const contractsContext = existingContracts.length > 0
+        ? `\nISNIEJACE UMOWY W SYSTEMIE:\n${existingContracts.map(c => {
+            return `  ID:${c.id} | ${c.contractType} | owner_id:${c.ownerId || "?"} | apt_id:${c.apartmentId || "?"} | ${c.startDate} - ${c.endDate || "bezterminowo"} | status:${c.status}${c.parentContractId ? ` | parent:${c.parentContractId}` : ""}`;
+          }).join("\n")}`
+        : "";
+
+      const content: any[] = [
+        {
+          type: 'text',
+          text: `Analizujesz ${documentsData.length} dokumentow (umow/aneksow najmu) przeslanych JEDNOCZESNIE. Kazdy dokument moze miec wiele stron.
+Twoim zadaniem jest:
+1. Wyciagnac dane z KAZDEGO dokumentu osobno
+2. WYKRYC LANCUCH UMOW - ktore dokumenty to umowy glowne, a ktore to aneksy
+3. Uporzadkowac je CHRONOLOGICZNIE
+4. Okreslic powiazania miedzy nimi (ktory aneks odnosi sie do ktorej umowy)
+
+PLIKI (w kolejnosci przeslania):
+${documentsData.map((d, i) => `  Dokument ${i + 1}: "${d.fileName}" (${d.pageImages.length} stron)`).join("\n")}
+
+Odpowiedz w formacie JSON - TABLICA obiektow, jeden na kazdy dokument:
+[
+  {
+    "documentIndex": 0,
+    "fileName": "nazwa_pliku.pdf",
+    "ownerName": "imie i nazwisko lub nazwa firmy wlasciciela nieruchomosci",
+    "ownerNip": "NIP wlasciciela jesli firma",
+    "apartmentAddress": "pelny adres nieruchomosci",
+    "apartmentName": "nazwa lub numer lokalu",
+    "contractType": "UMOWA" lub "ANEKS",
+    "parentContractRef": "jesli ANEKS - referencja do umowy glownej (np. 'Umowa z dnia 2024-01-15')",
+    "parentDocumentIndex": null lub numer indeksu dokumentu glownego z tej paczki (np. 0 jesli aneks odnosi sie do pierwszego dokumentu),
+    "annexNumber": "numer aneksu jesli ANEKS",
+    "changedFields": ["monthlyRent", "endDate"] jesli ANEKS,
+    "startDate": "YYYY-MM-DD",
+    "endDate": "YYYY-MM-DD lub null",
+    "monthlyRent": kwota brutto jako liczba,
+    "additionalFees": dodatkowe oplaty jako liczba lub null,
+    "notes": "wazne postanowienia",
+    "chainOrder": numer w lancuchu (0 = umowa glowna, 1 = aneks 1, 2 = aneks 2 itd.),
+    "suggestedParentContractId": null lub ID istniejącej umowy z systemu
+  }
+]
+
+WAZNE:
+1. Wynajmujacy/Wydzierzawiajacy = WLASCICIEL. Najemca/Dzierzawca = firma zarzadzajaca.
+2. Kwoty BRUTTO (z VAT). Jesli netto + VAT, oblicz brutto.
+3. LANCUCH: Przeanalizuj daty, numery umow, referencje w tresci aneksow aby poprawnie polaczyc dokumenty w lancuch. Jesli aneks mowi "do umowy z dnia X" - znajdz ten dokument w paczce.
+4. parentDocumentIndex: KLUCZOWE POLE - indeks (0-based) dokumentu-umowy glownej z tej samej paczki, do ktorej odnosi sie aneks. null jesli to umowa glowna lub nie znaleziono powiazania w paczce.
+5. chainOrder: 0 dla umowy glownej, 1,2,3... dla kolejnych aneksow chronologicznie.
+6. Jesli w systemie istnieja juz umowy pasujace, uzyj suggestedParentContractId.
+${contractsContext}
+Odpowiedz TYLKO czystym JSON (tablica) bez komentarzy ani markdown.`
+        }
+      ];
+
+      let imageIdx = 0;
+      for (const doc of documentsData) {
+        const maxPagesPerDoc = Math.min(doc.pageImages.length, Math.floor(16 / documentsData.length) || 2);
+        for (let i = 0; i < maxPagesPerDoc && imageIdx < 16; i++) {
+          content.push({
+            type: 'text',
+            text: `--- Dokument "${doc.fileName}" strona ${i + 1} ---`
+          });
+          content.push({
+            type: 'image_url',
+            image_url: { url: `data:image/png;base64,${doc.pageImages[i]}` }
+          });
+          imageIdx++;
+        }
+      }
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content }],
+        max_tokens: 8000,
+      });
+
+      const rawText = response.choices[0]?.message?.content || '';
+      let parsed;
+      try {
+        const cleaned = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        parsed = JSON.parse(cleaned);
+        if (!Array.isArray(parsed)) {
+          parsed = [parsed];
+        }
+      } catch {
+        return res.status(422).json({ message: "Nie udało się odczytać danych z dokumentów", raw: rawText });
+      }
+
+      parsed.sort((a: any, b: any) => (a.chainOrder || 0) - (b.chainOrder || 0));
+
+      res.json({ contracts: parsed, totalDocuments: documentsData.length });
+    } catch (err: any) {
+      console.error("Batch contract PDF parse error:", err);
+      res.status(500).json({ message: "Błąd analizy dokumentów: " + (err.message || "Nieznany błąd") });
+    } finally {
+      for (const f of tmpFiles) {
+        try { fs.unlinkSync(f); } catch {}
+      }
+    }
+  });
+
   // Cost forecasts bulk operations
   app.post('/api/cost-forecasts/bulk', isAuthenticated, async (req, res) => {
     try {

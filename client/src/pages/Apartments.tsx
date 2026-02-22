@@ -4,7 +4,7 @@ import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, Loader2, FileCheck, ArrowDown, Check, Files } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
@@ -1261,6 +1261,7 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
   const [contractFormOpen, setContractFormOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<OwnerContract | null>(null);
   const [pdfParsedData, setPdfParsedData] = useState<any>(null);
@@ -1269,6 +1270,12 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   const [formContractType, setFormContractType] = useState("UMOWA");
   const [formStatus, setFormStatus] = useState("AKTYWNA");
   const [formParentContractId, setFormParentContractId] = useState("");
+
+  const [batchPreviewOpen, setBatchPreviewOpen] = useState(false);
+  const [batchContracts, setBatchContracts] = useState<any[]>([]);
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [batchParsing, setBatchParsing] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const contracts = useMemo(() => allContracts.filter(c => c.apartmentId === apartment.id), [allContracts, apartment.id]);
 
@@ -1324,39 +1331,129 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
     }
   }
 
-  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function matchOwner(ownerName: string | null): number | null {
+    if (!ownerName) return null;
+    const matched = owners.find(o => o.name.toLowerCase().includes(ownerName.toLowerCase()) || ownerName.toLowerCase().includes(o.name.toLowerCase()));
+    return matched?.id || null;
+  }
+
+  async function handleBatchUpload(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
     const fd = new FormData();
-    fd.append("files", file);
+    for (let i = 0; i < fileList.length; i++) {
+      fd.append("files", fileList[i]);
+    }
+    setBatchParsing(true);
     try {
-      toast({ title: "Analizuje dokument...", description: "AI odczytuje dane z pliku" });
-      const res = await fetch("/api/parse-owner-contract-pdf", { method: "POST", body: fd, credentials: "include" });
-      if (!res.ok) throw new Error("Blad parsowania PDF");
+      toast({ title: `Analizuje ${fileList.length} dokumentow...`, description: "AI odczytuje dane i wykrywa lancuch umow" });
+      const res = await fetch("/api/parse-owner-contracts-batch", { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) throw new Error("Blad parsowania dokumentow");
       const data = await res.json();
 
-      data.apartmentId = apartment.id;
+      const enriched = (data.contracts || []).map((c: any) => {
+        const ownerId = matchOwner(c.ownerName) || (apartment.ownerId || null);
+        return {
+          ...c,
+          ownerId,
+          apartmentId: apartment.id,
+          selected: true,
+          editedMonthlyRent: c.monthlyRent,
+          editedAdditionalFees: c.additionalFees,
+          editedStartDate: c.startDate,
+          editedEndDate: c.endDate,
+          editedNotes: c.notes,
+          editedStatus: "AKTYWNA",
+        };
+      });
 
-      if (data.ownerName) {
-        const matchedOwner = owners.find(o => o.name.toLowerCase().includes(data.ownerName.toLowerCase()) || data.ownerName.toLowerCase().includes(o.name.toLowerCase()));
-        if (matchedOwner) data.ownerId = matchedOwner.id;
-      }
-      if (!data.ownerId && apartment.ownerId) {
-        data.ownerId = apartment.ownerId;
-      }
-      if (data.suggestedParentContractId) {
-        data.parentContractId = data.suggestedParentContractId;
-      }
+      setBatchContracts(enriched);
+      setBatchPreviewOpen(true);
 
-      openContractForm(null, data);
-
-      const typeLabel = data.contractType === "ANEKS" ? "Rozpoznano aneks" : "Rozpoznano umowe";
-      const chainInfo = data.parentContractRef ? ` (do: ${data.parentContractRef})` : "";
-      toast({ title: `PDF sparsowany - ${typeLabel}`, description: `Sprawdz dane i zapisz${chainInfo}` });
+      const umowy = enriched.filter((c: any) => c.contractType === "UMOWA").length;
+      const aneksy = enriched.filter((c: any) => c.contractType === "ANEKS").length;
+      toast({ title: `Rozpoznano ${enriched.length} dokumentow`, description: `${umowy} umow, ${aneksy} aneksow` });
     } catch (err: any) {
       toast({ title: "Blad", description: err.message, variant: "destructive" });
+    } finally {
+      setBatchParsing(false);
+      if (batchFileInputRef.current) batchFileInputRef.current.value = "";
     }
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    handleBatchUpload(e.dataTransfer.files);
+  }
+
+  async function handleBatchSave() {
+    const toSave = batchContracts.filter(c => c.selected);
+    if (toSave.length === 0) return;
+    setBatchSaving(true);
+    try {
+      const savedIds = new Map<number, number>();
+
+      const sorted = [...toSave].sort((a, b) => (a.chainOrder || 0) - (b.chainOrder || 0));
+      const roots = sorted.filter(c => c.contractType === "UMOWA");
+      const annexes = sorted.filter(c => c.contractType === "ANEKS");
+
+      for (const c of roots) {
+        const body = {
+          ownerId: c.ownerId,
+          apartmentId: apartment.id,
+          monthlyRent: c.editedMonthlyRent || null,
+          additionalFees: c.editedAdditionalFees || null,
+          startDate: c.editedStartDate || null,
+          endDate: c.editedEndDate || null,
+          contractType: "UMOWA",
+          parentContractId: c.suggestedParentContractId || null,
+          notes: c.editedNotes || null,
+          status: c.editedStatus || "AKTYWNA",
+        };
+        const res = await apiRequest("POST", "/api/owner-contracts", body);
+        const saved = await res.json();
+        savedIds.set(c.documentIndex, saved.id);
+      }
+
+      for (const c of annexes) {
+        let parentId = c.suggestedParentContractId || null;
+        if (c.parentDocumentIndex !== null && c.parentDocumentIndex !== undefined && savedIds.has(c.parentDocumentIndex)) {
+          parentId = savedIds.get(c.parentDocumentIndex)!;
+        }
+        const body = {
+          ownerId: c.ownerId,
+          apartmentId: apartment.id,
+          monthlyRent: c.editedMonthlyRent || null,
+          additionalFees: c.editedAdditionalFees || null,
+          startDate: c.editedStartDate || null,
+          endDate: c.editedEndDate || null,
+          contractType: "ANEKS",
+          parentContractId: parentId,
+          notes: c.editedNotes || null,
+          status: c.editedStatus || "AKTYWNA",
+        };
+        const res = await apiRequest("POST", "/api/owner-contracts", body);
+        const saved = await res.json();
+        savedIds.set(c.documentIndex, saved.id);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/owner-contracts"] });
+      setBatchPreviewOpen(false);
+      setBatchContracts([]);
+      toast({ title: `Zapisano ${toSave.length} umow/aneksow` });
+    } catch (err: any) {
+      toast({ title: "Blad zapisu", description: err.message, variant: "destructive" });
+    } finally {
+      setBatchSaving(false);
+    }
+  }
+
+  function toggleBatchItem(idx: number) {
+    setBatchContracts(prev => prev.map((c, i) => i === idx ? { ...c, selected: !c.selected } : c));
+  }
+
+  function updateBatchItem(idx: number, field: string, value: any) {
+    setBatchContracts(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
   }
 
   const rootContracts = contracts.filter(c => !c.parentContractId);
@@ -1379,18 +1476,62 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
         <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} data-testid="btn-import-pdf-apt">
           <Upload className="h-4 w-4 mr-1" /> Import PDF (AI)
         </Button>
-        <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" className="hidden" onChange={handlePdfUpload} />
+        <Button variant="outline" size="sm" onClick={() => batchFileInputRef.current?.click()} disabled={batchParsing} data-testid="btn-batch-import-apt">
+          {batchParsing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Files className="h-4 w-4 mr-1" />}
+          Wiele plikow
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" className="hidden" onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const fd = new FormData();
+          fd.append("files", file);
+          toast({ title: "Analizuje dokument...", description: "AI odczytuje dane z pliku" });
+          fetch("/api/parse-owner-contract-pdf", { method: "POST", body: fd, credentials: "include" })
+            .then(res => { if (!res.ok) throw new Error("Blad"); return res.json(); })
+            .then(data => {
+              data.apartmentId = apartment.id;
+              if (data.ownerName) { const m = matchOwner(data.ownerName); if (m) data.ownerId = m; }
+              if (!data.ownerId && apartment.ownerId) data.ownerId = apartment.ownerId;
+              if (data.suggestedParentContractId) data.parentContractId = data.suggestedParentContractId;
+              openContractForm(null, data);
+              toast({ title: `Rozpoznano ${data.contractType === "ANEKS" ? "aneks" : "umowe"}`, description: "Sprawdz dane i zapisz" });
+            })
+            .catch((err: any) => toast({ title: "Blad", description: err.message, variant: "destructive" }));
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }} />
+        <input ref={batchFileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" multiple className="hidden" onChange={(e) => handleBatchUpload(e.target.files)} />
       </div>
 
-      {contracts.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-4">Brak umow dla tego apartamentu</p>
+      <div
+        className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer ${dragOver ? "border-[#5ADBFA] bg-[#5ADBFA]/10" : "border-border hover:border-muted-foreground/50"}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => batchFileInputRef.current?.click()}
+        data-testid="drop-zone-batch"
+      >
+        {batchParsing ? (
+          <div className="flex items-center justify-center gap-2 py-2">
+            <Loader2 className="h-5 w-5 animate-spin text-[#5ADBFA]" />
+            <span className="text-sm text-muted-foreground">AI analizuje dokumenty i wykrywa lancuch umow...</span>
+          </div>
+        ) : (
+          <div className="space-y-1 py-1">
+            <Files className="h-6 w-6 mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Przeciagnij pliki tutaj lub kliknij aby wybrac</p>
+            <p className="text-[10px] text-muted-foreground">Wiele plikow naraz - AI wykryje lancuch umow i aneksow</p>
+          </div>
+        )}
+      </div>
+
+      {contracts.length === 0 && !batchParsing && (
+        <p className="text-sm text-muted-foreground text-center py-2">Brak umow dla tego apartamentu</p>
       )}
 
       <div className="space-y-2">
         {[...rootContracts, ...standalone].map(c => {
           const ownerName = owners.find(o => o.id === c.ownerId)?.name || "\u2014";
           const annexes = (annexesMap.get(c.id) || []).sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
-          const hasChain = annexes.length > 0;
           return (
             <div key={c.id} className="space-y-0">
               <Card data-testid={`card-apt-contract-${c.id}`}>
@@ -1560,6 +1701,123 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={batchPreviewOpen} onOpenChange={v => { setBatchPreviewOpen(v); if (!v) setBatchContracts([]); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import wielu umow - podglad ({batchContracts.filter(c => c.selected).length}/{batchContracts.length})</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">AI rozpoznal lancuch umow. Sprawdz dane i odznacz te, ktorych nie chcesz importowac.</p>
+
+          <div className="space-y-3 mt-2">
+            {batchContracts.map((c, idx) => {
+              const ownerName = owners.find(o => o.id === c.ownerId)?.name || c.ownerName || "\u2014";
+              const isAnnex = c.contractType === "ANEKS";
+              const parentDoc = isAnnex && c.parentDocumentIndex !== null && c.parentDocumentIndex !== undefined
+                ? batchContracts[c.parentDocumentIndex]
+                : null;
+              return (
+                <div key={idx} className={`border rounded-lg transition-opacity ${c.selected ? "opacity-100" : "opacity-50"}`} data-testid={`batch-item-${idx}`}>
+                  <div className="flex items-start gap-3 p-3">
+                    <button
+                      type="button"
+                      className={`mt-0.5 shrink-0 rounded border p-0.5 transition-colors ${c.selected ? "bg-[#5ADBFA] border-[#5ADBFA] text-white" : "border-border"}`}
+                      onClick={() => toggleBatchItem(idx)}
+                      data-testid={`batch-toggle-${idx}`}
+                    >
+                      {c.selected ? <Check className="h-3 w-3" /> : <div className="h-3 w-3" />}
+                    </button>
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant={isAnnex ? "outline" : "default"} className={`text-[10px] ${isAnnex ? "bg-amber-50 dark:bg-amber-950" : ""}`}>
+                          {c.contractType} {c.annexNumber ? `#${c.annexNumber}` : ""}
+                        </Badge>
+                        <span className="text-xs font-medium">{ownerName}</span>
+                        <span className="text-[10px] text-muted-foreground">{c.fileName}</span>
+                        {isAnnex && parentDoc && (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                            aneks do: {parentDoc.fileName}
+                          </span>
+                        )}
+                        {isAnnex && c.parentContractRef && !parentDoc && (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                            ref: {c.parentContractRef}
+                          </span>
+                        )}
+                      </div>
+                      {c.selected && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-[10px]">Czynsz</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={c.editedMonthlyRent || ""}
+                              onChange={e => updateBatchItem(idx, "editedMonthlyRent", e.target.value)}
+                              className="h-8 text-xs"
+                              data-testid={`batch-rent-${idx}`}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">Oplaty dod.</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={c.editedAdditionalFees || ""}
+                              onChange={e => updateBatchItem(idx, "editedAdditionalFees", e.target.value)}
+                              className="h-8 text-xs"
+                              data-testid={`batch-fees-${idx}`}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">Data od</Label>
+                            <Input
+                              type="date"
+                              value={c.editedStartDate || ""}
+                              onChange={e => updateBatchItem(idx, "editedStartDate", e.target.value)}
+                              className="h-8 text-xs"
+                              data-testid={`batch-start-${idx}`}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">Data do</Label>
+                            <Input
+                              type="date"
+                              value={c.editedEndDate || ""}
+                              onChange={e => updateBatchItem(idx, "editedEndDate", e.target.value)}
+                              className="h-8 text-xs"
+                              data-testid={`batch-end-${idx}`}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {c.selected && c.changedFields && c.changedFields.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground">Zmienia: {c.changedFields.join(", ")}</p>
+                      )}
+                    </div>
+                  </div>
+                  {idx < batchContracts.length - 1 && isAnnex === false && batchContracts[idx + 1]?.contractType === "ANEKS" && batchContracts[idx + 1]?.parentDocumentIndex === idx && (
+                    <div className="flex justify-center -mb-1 pb-1">
+                      <div className="flex flex-col items-center">
+                        <div className="w-px h-2 bg-[#5ADBFA]" />
+                        <ArrowDown className="h-3 w-3 text-[#5ADBFA]" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => { setBatchPreviewOpen(false); setBatchContracts([]); }}>Anuluj</Button>
+            <Button onClick={handleBatchSave} disabled={batchSaving || batchContracts.filter(c => c.selected).length === 0} data-testid="btn-batch-save">
+              {batchSaving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileCheck className="h-4 w-4 mr-1" />}
+              Zapisz {batchContracts.filter(c => c.selected).length} umow
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
