@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useApartments, useCreateApartment, useUpdateApartment, useDeleteApartment } from "@/hooks/use-apartments";
 import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
@@ -19,15 +19,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertApartmentSchema, insertOwnerPaymentSchema, type InsertApartment, type InsertOwnerPayment, type Apartment, type Attachment, type Owner, type OwnerPayment } from "@shared/schema";
+import { insertApartmentSchema, insertOwnerPaymentSchema, type InsertApartment, type InsertOwnerPayment, type Apartment, type Attachment, type Owner, type OwnerPayment, type OwnerContract } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUpload } from "@/hooks/use-upload";
 import { useToast } from "@/hooks/use-toast";
 import { useOwners } from "@/hooks/use-owners";
+import { apiRequest } from "@/lib/queryClient";
 
 const LOCATIONS = [
   "BULWAR PORTOWY",
@@ -549,6 +551,9 @@ export default function Apartments() {
                 <TabsTrigger value="attachments" className="flex-1" data-testid="tab-edit-attachments">
                   <Paperclip className="h-4 w-4 mr-1" /> Załączniki
                 </TabsTrigger>
+                <TabsTrigger value="contracts" className="flex-1" data-testid="tab-edit-contracts">
+                  <FileText className="h-4 w-4 mr-1" /> Umowy
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="details">
                 <EditApartmentForm
@@ -564,6 +569,9 @@ export default function Apartments() {
               </TabsContent>
               <TabsContent value="attachments">
                 <AttachmentsSection apartmentId={editingApartment.id} />
+              </TabsContent>
+              <TabsContent value="contracts">
+                <ContractsSection apartment={editingApartment} />
               </TabsContent>
             </Tabs>
           )}
@@ -1243,6 +1251,317 @@ function AttachmentsSection({ apartmentId }: { apartmentId: number }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ContractsSection({ apartment }: { apartment: Apartment }) {
+  const { data: allContracts = [] } = useQuery<OwnerContract[]>({ queryKey: ["/api/owner-contracts"] });
+  const { data: owners = [] } = useQuery<Owner[]>({ queryKey: ["/api/owners"] });
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [contractFormOpen, setContractFormOpen] = useState(false);
+  const [editingContract, setEditingContract] = useState<OwnerContract | null>(null);
+  const [pdfParsedData, setPdfParsedData] = useState<any>(null);
+
+  const [formOwnerId, setFormOwnerId] = useState("");
+  const [formContractType, setFormContractType] = useState("UMOWA");
+  const [formStatus, setFormStatus] = useState("AKTYWNA");
+  const [formParentContractId, setFormParentContractId] = useState("");
+
+  const contracts = useMemo(() => allContracts.filter(c => c.apartmentId === apartment.id), [allContracts, apartment.id]);
+
+  function openContractForm(contract: OwnerContract | null, parsed: any) {
+    setEditingContract(contract);
+    setPdfParsedData(parsed);
+    setFormOwnerId(String(contract?.ownerId || parsed?.ownerId || apartment.ownerId || ""));
+    setFormContractType(contract?.contractType || parsed?.contractType || "UMOWA");
+    setFormStatus(contract?.status || "AKTYWNA");
+    setFormParentContractId(String(contract?.parentContractId || parsed?.parentContractId || ""));
+    setContractFormOpen(true);
+  }
+
+  const contractMutation = useMutation({
+    mutationFn: (d: { method: string; url: string; body?: any }) => apiRequest(d.method, d.url, d.body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/owner-contracts"] });
+      setContractFormOpen(false);
+      setEditingContract(null);
+      setPdfParsedData(null);
+      toast({ title: "Zapisano" });
+    },
+    onError: (e: Error) => toast({ title: "Blad", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteContractMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/owner-contracts/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/owner-contracts"] });
+      toast({ title: "Usunieto" });
+    },
+  });
+
+  function handleContractSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = {
+      ownerId: formOwnerId ? Number(formOwnerId) : null,
+      apartmentId: apartment.id,
+      monthlyRent: fd.get("monthlyRent") || null,
+      additionalFees: fd.get("additionalFees") || null,
+      startDate: fd.get("startDate") || null,
+      endDate: fd.get("endDate") || null,
+      contractType: formContractType,
+      parentContractId: formParentContractId ? Number(formParentContractId) : null,
+      notes: fd.get("notes") || null,
+      status: formStatus,
+    };
+    if (editingContract) {
+      contractMutation.mutate({ method: "PUT", url: `/api/owner-contracts/${editingContract.id}`, body });
+    } else {
+      contractMutation.mutate({ method: "POST", url: "/api/owner-contracts", body });
+    }
+  }
+
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("files", file);
+    try {
+      toast({ title: "Analizuje dokument...", description: "AI odczytuje dane z pliku" });
+      const res = await fetch("/api/parse-owner-contract-pdf", { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) throw new Error("Blad parsowania PDF");
+      const data = await res.json();
+
+      data.apartmentId = apartment.id;
+
+      if (data.ownerName) {
+        const matchedOwner = owners.find(o => o.name.toLowerCase().includes(data.ownerName.toLowerCase()) || data.ownerName.toLowerCase().includes(o.name.toLowerCase()));
+        if (matchedOwner) data.ownerId = matchedOwner.id;
+      }
+      if (!data.ownerId && apartment.ownerId) {
+        data.ownerId = apartment.ownerId;
+      }
+      if (data.suggestedParentContractId) {
+        data.parentContractId = data.suggestedParentContractId;
+      }
+
+      openContractForm(null, data);
+
+      const typeLabel = data.contractType === "ANEKS" ? "Rozpoznano aneks" : "Rozpoznano umowe";
+      const chainInfo = data.parentContractRef ? ` (do: ${data.parentContractRef})` : "";
+      toast({ title: `PDF sparsowany - ${typeLabel}`, description: `Sprawdz dane i zapisz${chainInfo}` });
+    } catch (err: any) {
+      toast({ title: "Blad", description: err.message, variant: "destructive" });
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const rootContracts = contracts.filter(c => !c.parentContractId);
+  const annexesMap = new Map<number, OwnerContract[]>();
+  contracts.forEach(c => {
+    if (c.parentContractId) {
+      const existing = annexesMap.get(c.parentContractId) || [];
+      existing.push(c);
+      annexesMap.set(c.parentContractId, existing);
+    }
+  });
+  const standalone = contracts.filter(c => c.parentContractId && !rootContracts.some(r => r.id === c.parentContractId));
+
+  return (
+    <div className="space-y-4 py-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button size="sm" onClick={() => openContractForm(null, null)} data-testid="btn-add-contract-apt">
+          <Plus className="h-4 w-4 mr-1" /> Dodaj umowe
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} data-testid="btn-import-pdf-apt">
+          <Upload className="h-4 w-4 mr-1" /> Import PDF (AI)
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" className="hidden" onChange={handlePdfUpload} />
+      </div>
+
+      {contracts.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-4">Brak umow dla tego apartamentu</p>
+      )}
+
+      <div className="space-y-2">
+        {[...rootContracts, ...standalone].map(c => {
+          const ownerName = owners.find(o => o.id === c.ownerId)?.name || "\u2014";
+          const annexes = (annexesMap.get(c.id) || []).sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+          const hasChain = annexes.length > 0;
+          return (
+            <div key={c.id} className="space-y-0">
+              <Card data-testid={`card-apt-contract-${c.id}`}>
+                <CardContent className="py-3 px-4">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div className="space-y-1">
+                      <p className="font-semibold text-sm">{ownerName}</p>
+                      <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                        <span>Czynsz: {c.monthlyRent ? `${Number(c.monthlyRent).toLocaleString("pl-PL")} zl` : "\u2014"}</span>
+                        {c.additionalFees && Number(c.additionalFees) > 0 && <span>+ {Number(c.additionalFees).toLocaleString("pl-PL")} zl</span>}
+                        <span>{c.startDate || "\u2014"} &rarr; {c.endDate || "bezterminowo"}</span>
+                        <Badge variant={c.status === "AKTYWNA" ? "default" : "secondary"} className="text-[10px]">{c.status}</Badge>
+                        <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">{c.contractType}</Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="icon" variant="ghost" onClick={() => openContractForm(c, null)} data-testid={`btn-edit-apt-contract-${c.id}`}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => { if (confirm("Usunac umowe?")) deleteContractMutation.mutate(c.id); }} data-testid={`btn-delete-apt-contract-${c.id}`}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              {annexes.length > 0 && (
+                <div className="border rounded-lg mt-1 bg-muted/30 dark:bg-muted/10">
+                  <div className="px-4 py-1.5">
+                    <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Aneksy ({annexes.length})</span>
+                  </div>
+                  {annexes.map((ax, idx) => (
+                    <div key={ax.id} className={`px-4 py-2 flex items-center justify-between gap-2 ${idx < annexes.length - 1 ? "border-b border-border/50" : ""}`} data-testid={`card-apt-annex-${ax.id}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-4 flex flex-col items-center shrink-0">
+                          <div className="w-px h-2 bg-border" />
+                          <div className="w-2 h-2 rounded-full bg-[#5ADBFA] border-2 border-background" />
+                          {idx < annexes.length - 1 && <div className="w-px h-2 bg-border" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[9px] bg-amber-50 dark:bg-amber-950">ANEKS</Badge>
+                            <span className="text-xs">{ax.startDate} &rarr; {ax.endDate || "bezterminowo"}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                            {ax.monthlyRent && <span>Czynsz: {Number(ax.monthlyRent).toLocaleString("pl-PL")} zl</span>}
+                            {ax.notes && <span className="truncate max-w-[200px]">{ax.notes}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button size="icon" variant="ghost" onClick={() => openContractForm(ax, null)} data-testid={`btn-edit-apt-annex-${ax.id}`}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => { if (confirm("Usunac aneks?")) deleteContractMutation.mutate(ax.id); }} data-testid={`btn-delete-apt-annex-${ax.id}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <Dialog open={contractFormOpen} onOpenChange={v => { setContractFormOpen(v); if (!v) { setEditingContract(null); setPdfParsedData(null); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingContract ? "Edytuj umowe" : pdfParsedData ? `Import ${pdfParsedData.contractType === "ANEKS" ? "aneksu" : "umowy"} (AI)` : "Dodaj umowe"}</DialogTitle>
+          </DialogHeader>
+          {pdfParsedData && (
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs space-y-1">
+              <p className="font-medium text-blue-700 dark:text-blue-300">Dane odczytane z dokumentu:</p>
+              {pdfParsedData.ownerName && <p>Wlasciciel: <strong>{pdfParsedData.ownerName}</strong></p>}
+              {pdfParsedData.apartmentName && <p>Apartament: <strong>{pdfParsedData.apartmentName}</strong></p>}
+              {pdfParsedData.contractType === "ANEKS" && pdfParsedData.parentContractRef && (
+                <p className="text-amber-700 dark:text-amber-300">Aneks do: <strong>{pdfParsedData.parentContractRef}</strong></p>
+              )}
+              {pdfParsedData.changedFields && pdfParsedData.changedFields.length > 0 && (
+                <p>Zmienione pola: {pdfParsedData.changedFields.join(", ")}</p>
+              )}
+            </div>
+          )}
+          <form onSubmit={handleContractSubmit} className="space-y-3">
+            <div>
+              <Label>Wlasciciel</Label>
+              <Select value={formOwnerId} onValueChange={setFormOwnerId}>
+                <SelectTrigger data-testid="select-apt-contract-owner"><SelectValue placeholder="Wybierz" /></SelectTrigger>
+                <SelectContent>
+                  {owners.map(o => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Czynsz miesiecznie</Label>
+                <Input name="monthlyRent" type="number" step="0.01" defaultValue={editingContract?.monthlyRent || pdfParsedData?.monthlyRent || ""} data-testid="input-apt-contract-rent" />
+              </div>
+              <div>
+                <Label>Oplaty dodatkowe</Label>
+                <Input name="additionalFees" type="number" step="0.01" defaultValue={editingContract?.additionalFees || pdfParsedData?.additionalFees || ""} data-testid="input-apt-contract-fees" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Data od</Label>
+                <Input name="startDate" type="date" defaultValue={editingContract?.startDate || pdfParsedData?.startDate || ""} data-testid="input-apt-contract-start" />
+              </div>
+              <div>
+                <Label>Data do</Label>
+                <Input name="endDate" type="date" defaultValue={editingContract?.endDate || pdfParsedData?.endDate || ""} data-testid="input-apt-contract-end" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Typ</Label>
+                <Select value={formContractType} onValueChange={setFormContractType}>
+                  <SelectTrigger data-testid="select-apt-contract-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UMOWA">UMOWA</SelectItem>
+                    <SelectItem value="ANEKS">ANEKS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select value={formStatus} onValueChange={setFormStatus}>
+                  <SelectTrigger data-testid="select-apt-contract-status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AKTYWNA">AKTYWNA</SelectItem>
+                    <SelectItem value="ZAKONCZONA">ZAKONCZONA</SelectItem>
+                    <SelectItem value="ROZWIAZANA">ROZWIAZANA</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {contracts.length > 0 && (
+              <div>
+                <Label>Umowa nadrzedna (opcjonalnie)</Label>
+                <Select value={formParentContractId} onValueChange={setFormParentContractId}>
+                  <SelectTrigger data-testid="select-apt-contract-parent"><SelectValue placeholder="Brak" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Brak</SelectItem>
+                    {contracts.filter(c => c.id !== editingContract?.id && c.contractType === "UMOWA").map(c => {
+                      const ownerName = owners.find(o => o.id === c.ownerId)?.name || "?";
+                      return (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          #{c.id} - {ownerName} ({c.startDate})
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label>Notatki</Label>
+              <Textarea name="notes" defaultValue={editingContract?.notes || pdfParsedData?.notes || ""} rows={2} data-testid="input-apt-contract-notes" />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setContractFormOpen(false)}>Anuluj</Button>
+              <Button type="submit" disabled={contractMutation.isPending} data-testid="btn-save-apt-contract">
+                {contractMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                Zapisz
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
