@@ -18,7 +18,8 @@ import Employees from "@/pages/Employees";
 import Terminarz from "@/pages/Terminarz";
 import Lokalizacje from "@/pages/Lokalizacje";
 import ServiceContracts from "@/pages/ServiceContracts";
-import Koszty from "@/pages/Koszty";
+import CostsApartments from "@/pages/CostsApartments";
+import CostsExpenses from "@/pages/CostsExpenses";
 import Podnajem from "@/pages/Podnajem";
 import Analizy from "@/pages/Analizy";
 import UserAccounts from "@/pages/UserAccounts";
@@ -114,7 +115,8 @@ function AuthenticatedRouter() {
 
       <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
       <Route path="/finance-forecast" component={() => <AuthenticatedRoute component={Prognoza} />} />
-      <Route path="/koszty" component={() => <AuthenticatedRoute component={Koszty} />} />
+      <Route path="/koszty-apartamentowe" component={() => <AuthenticatedRoute component={CostsApartments} />} />
+      <Route path="/koszty-operacyjne" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
       <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
       <Route path="/apartment-schedule" component={() => <AuthenticatedRoute component={ApartmentSchedule} />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
@@ -145,8 +147,9 @@ function AuthenticatedRouter() {
       <Route path="/source-comparison" component={() => <AuthenticatedRoute component={SourceComparison} />} />
       <Route path="/ustawienia-menu" component={() => <Redirect to="/ustawienia" />} />
 
-      <Route path="/costs-expenses" component={() => <Redirect to="/koszty" />} />
-      <Route path="/costs-apartments" component={() => <Redirect to="/koszty?tab=apartamenty" />} />
+      <Route path="/koszty">{() => <Redirect to="/koszty-apartamentowe" />}</Route>
+      <Route path="/costs-expenses" component={() => <Redirect to="/koszty-operacyjne" />} />
+      <Route path="/costs-apartments" component={() => <Redirect to="/koszty-apartamentowe" />} />
       <Route path="/contracts-subrent" component={() => <Redirect to="/podnajem" />} />
       <Route path="/subrent-settlement" component={() => <Redirect to="/podnajem?tab=rozliczenia" />} />
       <Route path="/subrent-media" component={() => <Redirect to="/podnajem?tab=media" />} />

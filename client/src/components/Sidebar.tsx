@@ -138,7 +138,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
     if (!overdueCounts) return {};
     const map: Record<string, number> = {};
     if (overdueCounts.costs > 0) {
-      if (config.badgeConfig["koszty"] !== false) map["koszty"] = overdueCounts.costs;
+      if (config.badgeConfig["koszty-apartamentowe"] !== false) map["koszty-apartamentowe"] = overdueCounts.costs;
       if (config.badgeConfig["apartment-schedule"] !== false) map["apartment-schedule"] = overdueCounts.costs;
     }
     if (overdueCounts.subleases > 0) {
@@ -436,7 +436,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
             {[
               { label: "Nowa rezerwacja", description: "Dodaj rezerwację krótkoterminową", icon: CalendarDays, href: "/reservations?action=new", color: "text-blue-500", bg: "bg-blue-500/10" },
               { label: "Nowy podnajem", description: "Utwórz umowę podnajmu", icon: FileSignature, href: "/podnajem?action=new", color: "text-violet-500", bg: "bg-violet-500/10" },
-              { label: "Nowy koszt", description: "Dodaj wydatek operacyjny", icon: Receipt, href: "/koszty?tab=operacyjne&action=new", color: "text-red-500", bg: "bg-red-500/10" },
+              { label: "Nowy koszt", description: "Dodaj wydatek operacyjny", icon: Receipt, href: "/koszty-operacyjne?action=new", color: "text-red-500", bg: "bg-red-500/10" },
               { label: "Faktura kosztowa", description: "Dodaj dokument księgowy", icon: FileText, href: "/dokumenty-ksiegowe", color: "text-amber-500", bg: "bg-amber-500/10" },
               { label: "Importuj rezerwacje", description: "Import z Excel / HotRes", icon: Upload, href: "/import-export", color: "text-emerald-500", bg: "bg-emerald-500/10" },
             ].map((action) => (
