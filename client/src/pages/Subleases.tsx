@@ -894,7 +894,7 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
 
 type DepositSortKey = "apartment" | "tenant" | "amount" | "returnDate";
 
-function DepositsToReturn({ subleases, apartments }: { subleases: Sublease[]; apartments: Apartment[] }) {
+function DepositsToReturn({ subleases, apartments, allApartmentChanges = [] }: { subleases: Sublease[]; apartments: Apartment[]; allApartmentChanges?: SubleaseApartmentChange[] }) {
   const [sortKey, setSortKey] = useState<DepositSortKey>("returnDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -903,8 +903,17 @@ function DepositsToReturn({ subleases, apartments }: { subleases: Sublease[]; ap
   }, [subleases]);
 
   const getApartmentNames = (s: Sublease) => {
-    const ids = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
-    if (ids.length === 0) return "—";
+    const baseIds = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
+    if (baseIds.length === 0) return "—";
+    const changes = allApartmentChanges.filter(ch => ch.subleaseId === s.id);
+    const ids = changes.length === 0 ? baseIds : baseIds.map(id => {
+      let currentId = id;
+      const sorted = [...changes].sort((a, b) => (a.changeDate || '').localeCompare(b.changeDate || ''));
+      for (const ch of sorted) {
+        if (ch.oldApartmentId === currentId) currentId = ch.newApartmentId;
+      }
+      return currentId;
+    });
     return ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ");
   };
 
@@ -977,10 +986,21 @@ function DepositsToReturn({ subleases, apartments }: { subleases: Sublease[]; ap
                 <TableRow key={s.id} data-testid={`row-deposit-${s.id}`}>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
-                        const apt = apartments.find(a => a.id === id);
-                        return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
-                      })}
+                      {(() => {
+                        const baseIds = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
+                        const changes = allApartmentChanges.filter(ch => ch.subleaseId === s.id);
+                        const ids = changes.length === 0 ? baseIds : baseIds.map(id => {
+                          let cur = id;
+                          for (const ch of [...changes].sort((a, b) => (a.changeDate || '').localeCompare(b.changeDate || ''))) {
+                            if (ch.oldApartmentId === cur) cur = ch.newApartmentId;
+                          }
+                          return cur;
+                        });
+                        return ids.map(id => {
+                          const apt = apartments.find(a => a.id === id);
+                          return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+                        });
+                      })()}
                     </div>
                   </TableCell>
                   <TableCell className="font-medium">{getTenantName(s)}</TableCell>
@@ -1199,6 +1219,10 @@ export default function Subleases() {
 
   const { data: docTemplates = [] } = useQuery<DocumentTemplate[]>({
     queryKey: ['/api/document-templates'],
+  });
+
+  const { data: allApartmentChanges = [] } = useQuery<SubleaseApartmentChange[]>({
+    queryKey: ['/api/sublease-apartment-changes/all'],
   });
 
   const createMut = useMutation({
@@ -1581,8 +1605,24 @@ export default function Subleases() {
     return [s.firstName, s.lastName].filter(Boolean).join(" ") || "—";
   };
 
+  const resolveCurrentApartmentIds = (s: Sublease) => {
+    const baseIds = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
+    const changes = allApartmentChanges.filter(ch => ch.subleaseId === s.id);
+    if (changes.length === 0) return baseIds;
+    return baseIds.map(id => {
+      let currentId = id;
+      const sorted = [...changes].sort((a, b) => (a.changeDate || '').localeCompare(b.changeDate || ''));
+      for (const ch of sorted) {
+        if (ch.oldApartmentId === currentId) {
+          currentId = ch.newApartmentId;
+        }
+      }
+      return currentId;
+    });
+  };
+
   const getApartmentNames = (s: Sublease) => {
-    const ids = s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []);
+    const ids = resolveCurrentApartmentIds(s);
     if (ids.length === 0) return "—";
     return ids.map(id => apartments.find(a => a.id === id)?.name || "?").join(", ");
   };
@@ -1734,7 +1774,7 @@ export default function Subleases() {
                             <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
-                                {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                                {resolveCurrentApartmentIds(s).map(id => {
                                   const apt = apartments.find(a => a.id === id);
                                   return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
                                 })}
@@ -1892,11 +1932,11 @@ export default function Subleases() {
                           <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
-                              {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                              {resolveCurrentApartmentIds(s).map(id => {
                                 const apt = apartments.find(a => a.id === id);
                                 return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
                               })}
-                              {!(s.apartmentIds?.length) && !s.apartmentId && "—"}
+                              {resolveCurrentApartmentIds(s).length === 0 && "—"}
                             </div>
                           </TableCell>
                           <TableCell className="text-sm">{s.startDate}</TableCell>
@@ -1989,11 +2029,11 @@ export default function Subleases() {
                           <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
-                              {(s.apartmentIds || (s.apartmentId ? [s.apartmentId] : [])).map(id => {
+                              {resolveCurrentApartmentIds(s).map(id => {
                                 const apt = apartments.find(a => a.id === id);
                                 return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
                               })}
-                              {!(s.apartmentIds?.length) && !s.apartmentId && "—"}
+                              {resolveCurrentApartmentIds(s).length === 0 && "—"}
                             </div>
                           </TableCell>
                           <TableCell className="text-sm">{s.startDate}</TableCell>
@@ -2052,7 +2092,7 @@ export default function Subleases() {
         </div>
       )}
 
-      <DepositsToReturn subleases={subleases} apartments={apartments} />
+      <DepositsToReturn subleases={subleases} apartments={apartments} allApartmentChanges={allApartmentChanges} />
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(v); }}>
         <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] overflow-hidden flex flex-col">
