@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Calculator, Copy, FileSpreadsheet, Download, FileText,
-  ChevronDown, ChevronRight, Plus, Pencil, Trash2, Upload, Loader2,
+  ChevronDown, ChevronRight, Plus, Pencil, Trash2, Loader2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, ArrowUp, ArrowDown, X,
   CopyPlus, CalendarArrowDown, Rows3, MoreHorizontal, FolderOpen, Save, Lightbulb, ClipboardList
 } from "lucide-react";
@@ -74,7 +74,6 @@ export default function Prognoza() {
   const { toast } = useToast();
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
   const [fillYearOpen, setFillYearOpen] = useState<string | null>(null);
@@ -1160,41 +1159,6 @@ export default function Prognoza() {
     }
   }
 
-  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("files", file);
-    try {
-      toast({ title: "Analizuję dokument...", description: "AI odczytuje dane z pliku" });
-      const res = await fetch("/api/parse-owner-contract-pdf", { method: "POST", body: fd, credentials: "include" });
-      if (!res.ok) throw new Error("Blad parsowania PDF");
-      const data = await res.json();
-
-      if (data.ownerName) {
-        const matchedOwner = owners.find(o => o.name.toLowerCase().includes(data.ownerName.toLowerCase()) || data.ownerName.toLowerCase().includes(o.name.toLowerCase()));
-        if (matchedOwner) data.ownerId = matchedOwner.id;
-      }
-      if (data.apartmentName) {
-        const matchedApt = apartments.find(a => a.name.toLowerCase().includes(data.apartmentName.toLowerCase()) || data.apartmentName.toLowerCase().includes(a.name.toLowerCase()));
-        if (matchedApt) data.apartmentId = matchedApt.id;
-      }
-      if (data.suggestedParentContractId) {
-        data.parentContractId = data.suggestedParentContractId;
-      }
-
-      setPdfParsedData(data);
-      setEditingContract(null);
-      setContractFormOpen(true);
-
-      const typeLabel = data.contractType === "ANEKS" ? "Rozpoznano aneks" : "Rozpoznano umowe";
-      const chainInfo = data.parentContractRef ? ` (do: ${data.parentContractRef})` : "";
-      toast({ title: `PDF sparsowany - ${typeLabel}`, description: `Sprawdz dane i zapisz${chainInfo}` });
-    } catch (err: any) {
-      toast({ title: "Blad", description: err.message, variant: "destructive" });
-    }
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -1425,10 +1389,6 @@ export default function Prognoza() {
               <Button size="sm" onClick={() => { setEditingContract(null); setPdfParsedData(null); setContractFormOpen(true); }} data-testid="btn-add-contract">
                 <Plus className="h-4 w-4 mr-1" /> Dodaj umowe
               </Button>
-              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} data-testid="btn-import-pdf">
-                <Upload className="h-4 w-4 mr-1" /> Import PDF (AI)
-              </Button>
-              <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" className="hidden" onChange={handlePdfUpload} />
             </div>
             <div className="space-y-3">
               {contracts.length === 0 && <p className="text-sm text-muted-foreground">Brak umow</p>}

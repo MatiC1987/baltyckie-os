@@ -1,11 +1,11 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useApartments, useCreateApartment, useUpdateApartment, useDeleteApartment } from "@/hooks/use-apartments";
 import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, Loader2, FileCheck, ArrowDown, Check, Files, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -1480,14 +1480,10 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { uploadFile, isUploading } = useUpload({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const batchFileInputRef = useRef<HTMLInputElement>(null);
   const attachInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const generalAttachInputRef = useRef<HTMLInputElement>(null);
   const [contractFormOpen, setContractFormOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<OwnerContract | null>(null);
-  const [pdfParsedData, setPdfParsedData] = useState<any>(null);
-
   const [formOwnerId, setFormOwnerId] = useState("");
   const [formContractType, setFormContractType] = useState("UMOWA");
   const [formStatus, setFormStatus] = useState("AKTYWNA");
@@ -1499,11 +1495,6 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
 
   const { data: allApartments = [] } = useQuery<Apartment[]>({ queryKey: ['/api/apartments'] });
 
-  const [batchPreviewOpen, setBatchPreviewOpen] = useState(false);
-  const [batchContracts, setBatchContracts] = useState<any[]>([]);
-  const [batchSaving, setBatchSaving] = useState(false);
-  const [batchParsing, setBatchParsing] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
   const [expandedAttachments, setExpandedAttachments] = useState<Set<number>>(new Set());
   const [showCostsDialog, setShowCostsDialog] = useState(false);
   const [showRevenueDialog, setShowRevenueDialog] = useState(false);
@@ -1570,40 +1561,24 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
     });
   }
 
-  function openContractForm(contract: OwnerContract | null, parsed: any) {
+  function openContractForm(contract: OwnerContract | null) {
     setEditingContract(contract);
-    setPdfParsedData(parsed);
-    setFormOwnerId(String(contract?.ownerId || parsed?.ownerId || apartment.ownerId || ""));
-    setFormContractType(contract?.contractType || parsed?.contractType || "UMOWA");
+    setFormOwnerId(String(contract?.ownerId || apartment.ownerId || ""));
+    setFormContractType(contract?.contractType || "UMOWA");
     setFormStatus(contract?.status || "AKTYWNA");
-    setFormParentContractId(String(contract?.parentContractId || parsed?.parentContractId || ""));
+    setFormParentContractId(String(contract?.parentContractId || ""));
 
     if (contract && (contract as any).allocations?.length > 0) {
       const allocs = (contract as any).allocations;
       setFormApartmentIds(allocs.map((a: any) => a.apartmentId));
       setAllocations(allocs.map((a: any) => ({ apartmentId: a.apartmentId, rentAmount: String(a.rentAmount || '') })));
-    } else if (parsed?.apartmentNames?.length > 0 && allApartments) {
-      const matchedIds: number[] = [];
-      for (const name of parsed.apartmentNames) {
-        const found = allApartments.find((a: any) => a.name?.toLowerCase().includes(String(name).toLowerCase()));
-        if (found) matchedIds.push(found.id);
-      }
-      if (matchedIds.length === 0) matchedIds.push(apartment.id);
-      setFormApartmentIds(matchedIds);
-      const totalRent = parseFloat(parsed?.monthlyRent || '0');
-      if (matchedIds.length > 1 && totalRent > 0) {
-        const perApt = Math.round((totalRent / matchedIds.length) * 100) / 100;
-        setAllocations(matchedIds.map(id => ({ apartmentId: id, rentAmount: String(perApt) })));
-      } else {
-        setAllocations([]);
-      }
     } else {
       setFormApartmentIds([apartment.id]);
       setAllocations([]);
     }
 
-    setFormPaymentFrequency(contract?.paymentFrequency || parsed?.paymentFrequency || "MIESIECZNIE");
-    setFormPaymentDay(String(contract?.paymentDay || parsed?.paymentDay || "10"));
+    setFormPaymentFrequency(contract?.paymentFrequency || "MIESIECZNIE");
+    setFormPaymentDay(String(contract?.paymentDay || "10"));
     setContractFormOpen(true);
   }
 
@@ -1625,7 +1600,6 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
         setShowCostsDialog(true);
       } else {
         setEditingContract(null);
-        setPdfParsedData(null);
       }
     },
     onError: (e: Error) => toast({ title: "Blad", description: e.message, variant: "destructive" }),
@@ -1681,135 +1655,6 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
     } else {
       contractMutation.mutate({ method: "POST", url: "/api/owner-contracts", body, isNew: true });
     }
-  }
-
-  function matchOwner(ownerName: string | null): number | null {
-    if (!ownerName) return null;
-    const matched = owners.find(o => o.name.toLowerCase().includes(ownerName.toLowerCase()) || ownerName.toLowerCase().includes(o.name.toLowerCase()));
-    return matched?.id || null;
-  }
-
-  async function handleBatchUpload(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) return;
-    const fd = new FormData();
-    for (let i = 0; i < fileList.length; i++) {
-      fd.append("files", fileList[i]);
-    }
-    setBatchParsing(true);
-    try {
-      toast({ title: `Analizuje ${fileList.length} dokumentow...`, description: "AI odczytuje dane i wykrywa lancuch umow" });
-      const res = await fetch("/api/parse-owner-contracts-batch", { method: "POST", body: fd, credentials: "include" });
-      if (!res.ok) throw new Error("Blad parsowania dokumentow");
-      const data = await res.json();
-
-      const enriched = (data.contracts || []).map((c: any) => {
-        const ownerId = matchOwner(c.ownerName) || (apartment.ownerId || null);
-        return {
-          ...c,
-          ownerId,
-          apartmentId: apartment.id,
-          selected: true,
-          editedMonthlyRent: c.monthlyRent,
-          editedAdditionalFees: c.additionalFees,
-          editedStartDate: c.startDate,
-          editedEndDate: c.endDate,
-          editedNotes: c.notes,
-          editedStatus: "AKTYWNA",
-        };
-      });
-
-      setBatchContracts(enriched);
-      setBatchPreviewOpen(true);
-
-      const umowy = enriched.filter((c: any) => c.contractType === "UMOWA").length;
-      const aneksy = enriched.filter((c: any) => c.contractType === "ANEKS").length;
-      toast({ title: `Rozpoznano ${enriched.length} dokumentow`, description: `${umowy} umow, ${aneksy} aneksow` });
-    } catch (err: any) {
-      toast({ title: "Blad", description: err.message, variant: "destructive" });
-    } finally {
-      setBatchParsing(false);
-      if (batchFileInputRef.current) batchFileInputRef.current.value = "";
-    }
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(false);
-    handleBatchUpload(e.dataTransfer.files);
-  }
-
-  async function handleBatchSave() {
-    const toSave = batchContracts.filter(c => c.selected);
-    if (toSave.length === 0) return;
-    setBatchSaving(true);
-    try {
-      const savedIds = new Map<number, number>();
-
-      const sorted = [...toSave].sort((a, b) => (a.chainOrder || 0) - (b.chainOrder || 0));
-      const roots = sorted.filter(c => c.contractType === "UMOWA");
-      const annexes = sorted.filter(c => c.contractType === "ANEKS");
-
-      for (const c of roots) {
-        const body = {
-          ownerId: c.ownerId,
-          apartmentId: apartment.id,
-          monthlyRent: c.editedMonthlyRent || null,
-          additionalFees: c.editedAdditionalFees || null,
-          startDate: c.editedStartDate || null,
-          endDate: c.editedEndDate || null,
-          contractType: "UMOWA",
-          parentContractId: c.suggestedParentContractId || null,
-          notes: c.editedNotes || null,
-          status: c.editedStatus || "AKTYWNA",
-          paymentFrequency: c.paymentFrequency || "MIESIECZNIE",
-          paymentDay: c.paymentDay || 10,
-        };
-        const res = await apiRequest("POST", "/api/owner-contracts", body);
-        const saved = await res.json();
-        savedIds.set(c.documentIndex, saved.id);
-      }
-
-      for (const c of annexes) {
-        let parentId = c.suggestedParentContractId || null;
-        if (c.parentDocumentIndex !== null && c.parentDocumentIndex !== undefined && savedIds.has(c.parentDocumentIndex)) {
-          parentId = savedIds.get(c.parentDocumentIndex)!;
-        }
-        const body = {
-          ownerId: c.ownerId,
-          apartmentId: apartment.id,
-          monthlyRent: c.editedMonthlyRent || null,
-          additionalFees: c.editedAdditionalFees || null,
-          startDate: c.editedStartDate || null,
-          endDate: c.editedEndDate || null,
-          contractType: "ANEKS",
-          parentContractId: parentId,
-          notes: c.editedNotes || null,
-          status: c.editedStatus || "AKTYWNA",
-          paymentFrequency: c.paymentFrequency || "MIESIECZNIE",
-          paymentDay: c.paymentDay || 10,
-        };
-        const res = await apiRequest("POST", "/api/owner-contracts", body);
-        const saved = await res.json();
-        savedIds.set(c.documentIndex, saved.id);
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["/api/owner-contracts"] });
-      setBatchPreviewOpen(false);
-      setBatchContracts([]);
-      toast({ title: `Zapisano ${toSave.length} umow/aneksow` });
-    } catch (err: any) {
-      toast({ title: "Blad zapisu", description: err.message, variant: "destructive" });
-    } finally {
-      setBatchSaving(false);
-    }
-  }
-
-  function toggleBatchItem(idx: number) {
-    setBatchContracts(prev => prev.map((c, i) => i === idx ? { ...c, selected: !c.selected } : c));
-  }
-
-  function updateBatchItem(idx: number, field: string, value: any) {
-    setBatchContracts(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
   }
 
   const MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
@@ -2013,7 +1858,6 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
       setShowCostsDialog(false);
       setSavedContractData(null);
       setEditingContract(null);
-      setPdfParsedData(null);
     };
 
     const handleSave = async () => {
@@ -2105,68 +1949,12 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   return (
     <div className="space-y-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <Button size="sm" onClick={() => openContractForm(null, null)} data-testid="btn-add-contract-apt">
+        <Button size="sm" onClick={() => openContractForm(null)} data-testid="btn-add-contract-apt">
           <Plus className="h-4 w-4 mr-1" /> Dodaj umowe
         </Button>
-        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} data-testid="btn-import-pdf-apt">
-          <Upload className="h-4 w-4 mr-1" /> Import PDF (AI)
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => batchFileInputRef.current?.click()} disabled={batchParsing} data-testid="btn-batch-import-apt">
-          {batchParsing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Files className="h-4 w-4 mr-1" />}
-          Wiele plikow
-        </Button>
-        <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" className="hidden" onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const fd = new FormData();
-          fd.append("files", file);
-          toast({ title: "Analizuje dokument...", description: "AI odczytuje dane z pliku" });
-          fetch("/api/parse-owner-contract-pdf", { method: "POST", body: fd, credentials: "include" })
-            .then(res => { if (!res.ok) throw new Error("Blad"); return res.json(); })
-            .then(data => {
-              data.apartmentId = apartment.id;
-              if (data.ownerName) {
-                const m = matchOwner(data.ownerName);
-                if (m) {
-                  data.ownerId = m;
-                } else {
-                  data._ownerNotFound = true;
-                }
-              }
-              if (!data.ownerId && apartment.ownerId) data.ownerId = apartment.ownerId;
-              if (data.suggestedParentContractId) data.parentContractId = data.suggestedParentContractId;
-              openContractForm(null, data);
-              toast({ title: `Rozpoznano ${data.contractType === "ANEKS" ? "aneks" : "umowe"}`, description: "Sprawdz dane i zapisz" });
-            })
-            .catch((err: any) => toast({ title: "Blad", description: err.message, variant: "destructive" }));
-          if (fileInputRef.current) fileInputRef.current.value = "";
-        }} />
-        <input ref={batchFileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" multiple className="hidden" onChange={(e) => handleBatchUpload(e.target.files)} />
       </div>
 
-      <div
-        className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer ${dragOver ? "border-[#5ADBFA] bg-[#5ADBFA]/10" : "border-border hover:border-muted-foreground/50"}`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        onClick={() => batchFileInputRef.current?.click()}
-        data-testid="drop-zone-batch"
-      >
-        {batchParsing ? (
-          <div className="flex items-center justify-center gap-2 py-2">
-            <Loader2 className="h-5 w-5 animate-spin text-[#5ADBFA]" />
-            <span className="text-sm text-muted-foreground">AI analizuje dokumenty i wykrywa lancuch umow...</span>
-          </div>
-        ) : (
-          <div className="space-y-1 py-1">
-            <Files className="h-6 w-6 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Przeciagnij pliki tutaj lub kliknij aby wybrac</p>
-            <p className="text-[10px] text-muted-foreground">Wiele plikow naraz - AI wykryje lancuch umow i aneksow</p>
-          </div>
-        )}
-      </div>
-
-      {contracts.length === 0 && !batchParsing && (
+      {contracts.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-2">Brak umow dla tego apartamentu</p>
       )}
 
@@ -2209,7 +1997,7 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                           <span className="absolute -top-1 -right-1 bg-[#5ADBFA] text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center">{contractAtts.length}</span>
                         )}
                       </Button>
-                      <Button size="icon" variant="ghost" onClick={() => openContractForm(c, null)} data-testid={`btn-edit-apt-contract-${c.id}`}>
+                      <Button size="icon" variant="ghost" onClick={() => openContractForm(c)} data-testid={`btn-edit-apt-contract-${c.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button size="icon" variant="ghost" onClick={() => { if (confirm("Usunac umowe?")) deleteContractMutation.mutate(c.id); }} data-testid={`btn-delete-apt-contract-${c.id}`}>
@@ -2302,7 +2090,7 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                                 <span className="absolute -top-1 -right-1 bg-[#5ADBFA] text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center">{annexAtts.length}</span>
                               )}
                             </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openContractForm(ax, null)} data-testid={`btn-edit-apt-annex-${ax.id}`}>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openContractForm(ax)} data-testid={`btn-edit-apt-annex-${ax.id}`}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { if (confirm("Usunac aneks?")) deleteContractMutation.mutate(ax.id); }} data-testid={`btn-delete-apt-annex-${ax.id}`}>
@@ -2398,51 +2186,11 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
         <span className="text-[10px] text-muted-foreground">Porozumienia, zaliczki, inne dokumenty</span>
       </div>
 
-      <Dialog open={contractFormOpen} onOpenChange={v => { setContractFormOpen(v); if (!v) { setEditingContract(null); setPdfParsedData(null); } }}>
+      <Dialog open={contractFormOpen} onOpenChange={v => { setContractFormOpen(v); if (!v) { setEditingContract(null); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingContract ? "Edytuj umowe" : pdfParsedData ? `Import ${pdfParsedData.contractType === "ANEKS" ? "aneksu" : "umowy"} (AI)` : "Dodaj umowe"}</DialogTitle>
+            <DialogTitle>{editingContract ? "Edytuj umowe" : "Dodaj umowe"}</DialogTitle>
           </DialogHeader>
-          {pdfParsedData && (
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs space-y-1">
-              <p className="font-medium text-blue-700 dark:text-blue-300">Dane odczytane z dokumentu:</p>
-              {pdfParsedData.ownerName && <p>Wlasciciel: <strong>{pdfParsedData.ownerName}</strong></p>}
-              {pdfParsedData.apartmentName && <p>Apartament: <strong>{pdfParsedData.apartmentName}</strong></p>}
-              {pdfParsedData.contractType === "ANEKS" && pdfParsedData.parentContractRef && (
-                <p className="text-amber-700 dark:text-amber-300">Aneks do: <strong>{pdfParsedData.parentContractRef}</strong></p>
-              )}
-              {pdfParsedData.changedFields && pdfParsedData.changedFields.length > 0 && (
-                <p>Zmienione pola: {pdfParsedData.changedFields.join(", ")}</p>
-              )}
-            </div>
-          )}
-          {pdfParsedData?._ownerNotFound && pdfParsedData.ownerName && (
-            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-3 text-xs space-y-2">
-              <p className="text-yellow-800 dark:text-yellow-200">
-                Nie znaleziono właściciela '{pdfParsedData.ownerName}' w systemie.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                data-testid="btn-create-owner-from-pdf"
-                onClick={async () => {
-                  try {
-                    const res = await apiRequest("POST", "/api/owners", { name: pdfParsedData.ownerName, ownerType: "osoba_fizyczna" });
-                    const newOwner = await res.json();
-                    queryClient.invalidateQueries({ queryKey: ["/api/owners"] });
-                    setFormOwnerId(String(newOwner.id));
-                    setPdfParsedData((prev: any) => ({ ...prev, _ownerNotFound: false, ownerId: newOwner.id }));
-                    toast({ title: "Sukces", description: `Utworzono właściciela: ${pdfParsedData.ownerName}` });
-                  } catch {
-                    toast({ title: "Błąd", description: "Nie udało się utworzyć właściciela", variant: "destructive" });
-                  }
-                }}
-              >
-                Utwórz właściciela
-              </Button>
-            </div>
-          )}
           <form onSubmit={handleContractSubmit} className="space-y-3">
             <div>
               <Label>Wlasciciel</Label>
@@ -2486,11 +2234,11 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Czynsz miesiecznie</Label>
-                <Input name="monthlyRent" type="number" step="0.01" defaultValue={editingContract?.monthlyRent || pdfParsedData?.monthlyRent || ""} data-testid="input-apt-contract-rent" />
+                <Input name="monthlyRent" type="number" step="0.01" defaultValue={editingContract?.monthlyRent || ""} data-testid="input-apt-contract-rent" />
               </div>
               <div>
                 <Label>Oplaty dodatkowe</Label>
-                <Input name="additionalFees" type="number" step="0.01" defaultValue={editingContract?.additionalFees || pdfParsedData?.additionalFees || ""} data-testid="input-apt-contract-fees" />
+                <Input name="additionalFees" type="number" step="0.01" defaultValue={editingContract?.additionalFees || ""} data-testid="input-apt-contract-fees" />
               </div>
             </div>
             {formApartmentIds.length > 1 && (
@@ -2535,11 +2283,11 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Data od</Label>
-                <Input name="startDate" type="date" defaultValue={editingContract?.startDate || pdfParsedData?.startDate || ""} data-testid="input-apt-contract-start" />
+                <Input name="startDate" type="date" defaultValue={editingContract?.startDate || ""} data-testid="input-apt-contract-start" />
               </div>
               <div>
                 <Label>Data do</Label>
-                <Input name="endDate" type="date" defaultValue={editingContract?.endDate || pdfParsedData?.endDate || ""} data-testid="input-apt-contract-end" />
+                <Input name="endDate" type="date" defaultValue={editingContract?.endDate || ""} data-testid="input-apt-contract-end" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -2610,7 +2358,7 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
             )}
             <div>
               <Label>Notatki</Label>
-              <Textarea name="notes" defaultValue={editingContract?.notes || pdfParsedData?.notes || ""} rows={2} data-testid="input-apt-contract-notes" />
+              <Textarea name="notes" defaultValue={editingContract?.notes || ""} rows={2} data-testid="input-apt-contract-notes" />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setContractFormOpen(false)}>Anuluj</Button>
@@ -2625,123 +2373,6 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
 
       <RecurringCostsDialog />
       <RevenueForecastDialog />
-
-      <Dialog open={batchPreviewOpen} onOpenChange={v => { setBatchPreviewOpen(v); if (!v) setBatchContracts([]); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Import wielu umow - podglad ({batchContracts.filter(c => c.selected).length}/{batchContracts.length})</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">AI rozpoznal lancuch umow. Sprawdz dane i odznacz te, ktorych nie chcesz importowac.</p>
-
-          <div className="space-y-3 mt-2">
-            {batchContracts.map((c, idx) => {
-              const ownerName = owners.find(o => o.id === c.ownerId)?.name || c.ownerName || "\u2014";
-              const isAnnex = c.contractType === "ANEKS";
-              const parentDoc = isAnnex && c.parentDocumentIndex !== null && c.parentDocumentIndex !== undefined
-                ? batchContracts[c.parentDocumentIndex]
-                : null;
-              return (
-                <div key={idx} className={`border rounded-lg transition-opacity ${c.selected ? "opacity-100" : "opacity-50"}`} data-testid={`batch-item-${idx}`}>
-                  <div className="flex items-start gap-3 p-3">
-                    <button
-                      type="button"
-                      className={`mt-0.5 shrink-0 rounded border p-0.5 transition-colors ${c.selected ? "bg-[#5ADBFA] border-[#5ADBFA] text-white" : "border-border"}`}
-                      onClick={() => toggleBatchItem(idx)}
-                      data-testid={`batch-toggle-${idx}`}
-                    >
-                      {c.selected ? <Check className="h-3 w-3" /> : <div className="h-3 w-3" />}
-                    </button>
-                    <div className="flex-1 min-w-0 space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant={isAnnex ? "outline" : "default"} className={`text-[10px] ${isAnnex ? "bg-amber-50 dark:bg-amber-950" : ""}`}>
-                          {c.contractType} {c.annexNumber ? `#${c.annexNumber}` : ""}
-                        </Badge>
-                        <span className="text-xs font-medium">{ownerName}</span>
-                        <span className="text-[10px] text-muted-foreground">{c.fileName}</span>
-                        {isAnnex && parentDoc && (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                            aneks do: {parentDoc.fileName}
-                          </span>
-                        )}
-                        {isAnnex && c.parentContractRef && !parentDoc && (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                            ref: {c.parentContractRef}
-                          </span>
-                        )}
-                      </div>
-                      {c.selected && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label className="text-[10px]">Czynsz</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={c.editedMonthlyRent || ""}
-                              onChange={e => updateBatchItem(idx, "editedMonthlyRent", e.target.value)}
-                              className="h-8 text-xs"
-                              data-testid={`batch-rent-${idx}`}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-[10px]">Oplaty dod.</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={c.editedAdditionalFees || ""}
-                              onChange={e => updateBatchItem(idx, "editedAdditionalFees", e.target.value)}
-                              className="h-8 text-xs"
-                              data-testid={`batch-fees-${idx}`}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-[10px]">Data od</Label>
-                            <Input
-                              type="date"
-                              value={c.editedStartDate || ""}
-                              onChange={e => updateBatchItem(idx, "editedStartDate", e.target.value)}
-                              className="h-8 text-xs"
-                              data-testid={`batch-start-${idx}`}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-[10px]">Data do</Label>
-                            <Input
-                              type="date"
-                              value={c.editedEndDate || ""}
-                              onChange={e => updateBatchItem(idx, "editedEndDate", e.target.value)}
-                              className="h-8 text-xs"
-                              data-testid={`batch-end-${idx}`}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {c.selected && c.changedFields && c.changedFields.length > 0 && (
-                        <p className="text-[10px] text-muted-foreground">Zmienia: {c.changedFields.join(", ")}</p>
-                      )}
-                    </div>
-                  </div>
-                  {idx < batchContracts.length - 1 && isAnnex === false && batchContracts[idx + 1]?.contractType === "ANEKS" && batchContracts[idx + 1]?.parentDocumentIndex === idx && (
-                    <div className="flex justify-center -mb-1 pb-1">
-                      <div className="flex flex-col items-center">
-                        <div className="w-px h-2 bg-[#5ADBFA]" />
-                        <ArrowDown className="h-3 w-3 text-[#5ADBFA]" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <DialogFooter className="mt-4">
-            <Button type="button" variant="outline" onClick={() => { setBatchPreviewOpen(false); setBatchContracts([]); }}>Anuluj</Button>
-            <Button onClick={handleBatchSave} disabled={batchSaving || batchContracts.filter(c => c.selected).length === 0} data-testid="btn-batch-save">
-              {batchSaving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileCheck className="h-4 w-4 mr-1" />}
-              Zapisz {batchContracts.filter(c => c.selected).length} umow
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
