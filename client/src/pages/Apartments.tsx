@@ -1107,13 +1107,13 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
       const months: { year: number; month: number }[] = [];
       if (mode === "year") {
         const currentYear = new Date().getFullYear();
-        for (let m = 1; m <= 12; m++) months.push({ year: currentYear, month: m });
+        for (let m = 0; m < 12; m++) months.push({ year: currentYear, month: m });
       } else if (mode === "contract" && savedContractData) {
         const start = savedContractData.startDate ? new Date(savedContractData.startDate) : new Date();
         const end = savedContractData.endDate ? new Date(savedContractData.endDate) : new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
         const current = new Date(start.getFullYear(), start.getMonth(), 1);
         while (current <= end) {
-          months.push({ year: current.getFullYear(), month: current.getMonth() + 1 });
+          months.push({ year: current.getFullYear(), month: current.getMonth() });
           current.setMonth(current.getMonth() + 1);
         }
       }
@@ -1246,7 +1246,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
       const firstVal = Object.values(forecasts).find(v => v && Number(v) > 0);
       if (!firstVal) return;
       const updated: Record<string, string> = {};
-      for (let m = 1; m <= 12; m++) {
+      for (let m = 0; m < 12; m++) {
         updated[`${currentYear}-${String(m).padStart(2, '0')}`] = firstVal;
       }
       setForecasts(updated);
@@ -1260,7 +1260,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
       const updated: Record<string, string> = {};
       const current = new Date(start.getFullYear(), start.getMonth(), 1);
       while (current <= end) {
-        const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+        const key = `${current.getFullYear()}-${String(current.getMonth()).padStart(2, '0')}`;
         updated[key] = firstVal;
         current.setMonth(current.getMonth() + 1);
       }
@@ -1310,7 +1310,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {MONTH_NAMES.map((name, idx) => {
-                const key = `${currentYear}-${String(idx + 1).padStart(2, '0')}`;
+                const key = `${currentYear}-${String(idx).padStart(2, '0')}`;
                 return (
                   <div key={key} className="space-y-1">
                     <Label className="text-xs">{name}</Label>
@@ -1320,7 +1320,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
                       placeholder="0.00"
                       value={forecasts[key] || ""}
                       onChange={(e) => updateForecast(key, e.target.value)}
-                      data-testid={`input-revenue-${idx + 1}`}
+                      data-testid={`input-revenue-${idx}`}
                     />
                   </div>
                 );
@@ -2252,11 +2252,11 @@ function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: 
       return;
     }
     const updated: Record<number, string> = {};
-    for (let m = 1; m <= 12; m++) {
+    for (let m = 0; m < 12; m++) {
       updated[m] = firstVal;
     }
     setValues(updated);
-    for (let m = 1; m <= 12; m++) {
+    for (let m = 0; m < 12; m++) {
       mutation.mutate({
         year,
         month: m,
@@ -2335,7 +2335,7 @@ function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: 
 
       const multiplier = copyMode === "percent" ? 1 + (parseFloat(copyPercent) || 0) / 100 : 1;
 
-      for (let m = 1; m <= 12; m++) {
+      for (let m = 0; m < 12; m++) {
         const val = values[m];
         const newVal = val && Number(val) > 0 ? (Number(val) * multiplier).toFixed(2) : "0";
         await apiRequest("PUT", "/api/revenue-forecasts", {
@@ -2393,18 +2393,17 @@ function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: 
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {MONTH_NAMES.map((name, idx) => {
-          const month = idx + 1;
           return (
-            <div key={month} className="space-y-1">
+            <div key={idx} className="space-y-1">
               <Label className="text-xs text-muted-foreground">{name}</Label>
               <Input
                 type="number"
                 step="0.01"
                 placeholder="0.00"
-                value={values[month] || ""}
-                onChange={(e) => setValues(prev => ({ ...prev, [month]: e.target.value }))}
-                onBlur={() => handleBlur(month)}
-                data-testid={`input-forecast-month-${month}`}
+                value={values[idx] || ""}
+                onChange={(e) => setValues(prev => ({ ...prev, [idx]: e.target.value }))}
+                onBlur={() => handleBlur(idx)}
+                data-testid={`input-forecast-month-${idx}`}
               />
             </div>
           );

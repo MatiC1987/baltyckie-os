@@ -1707,8 +1707,8 @@ export async function registerRoutes(
         const startDate = contract.startDate ? new Date(contract.startDate) : null;
         const endDate = contract.endDate ? new Date(contract.endDate) : null;
 
-        for (let month = 1; month <= 12; month++) {
-          const checkDate = new Date(year, month - 1, 15);
+        for (let month = 0; month < 12; month++) {
+          const checkDate = new Date(year, month, 15);
           if (startDate && checkDate < startDate) continue;
           if (endDate && checkDate > endDate) continue;
 
