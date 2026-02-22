@@ -20,7 +20,7 @@ The application is built with a modern full-stack architecture.
 
 **Core Features and Design:**
 -   **Dashboard**: Provides an overview of revenue, expenses, recent reservations, and upcoming arrivals.
--   **Apartment Management**: CRUD operations for apartments, including location categories, owner details, photos, and associated lease/owner payment information.
+-   **Apartment Management**: CRUD operations for apartments with restructured detail dialog tabs: Dashboard (KPIs), Dane (edit form + owner contact info + inline photo upload + active/archived contracts), Koszty (owner payment installments), Prognoza (per-month revenue forecast with year navigation and copy-to-all), Umowy (document attachments with category labels). Owner contracts managed in Dane tab with multi-apartment support, payment frequency, and post-creation cost/revenue forecast prompts.
 -   **Reservation Management**: Comprehensive system for short-term bookings with detailed status tracking (DO_OPLACENIA, PRZYJETA, ANULOWANA), inline editing, filtering, and sorting capabilities. Supports group reservations.
 -   **Lease Management**: Manages long-term rental contracts.
 -   **Financial Tracking**: Dedicated sections for expenses (categorized), bank accounts, balance snapshots, and owner payments.
