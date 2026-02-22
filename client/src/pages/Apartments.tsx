@@ -2188,6 +2188,12 @@ function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: 
   const [showCopyFrom, setShowCopyFrom] = useState(false);
   const [sourceApartmentId, setSourceApartmentId] = useState<string>("");
   const [isCopying, setIsCopying] = useState(false);
+  const [showCopyToYear, setShowCopyToYear] = useState(false);
+  const [copyTargetYear, setCopyTargetYear] = useState(currentYear + 1);
+  const [copyMode, setCopyMode] = useState<"exact" | "percent">("exact");
+  const [copyPercent, setCopyPercent] = useState("0");
+  const [copyFromMode, setCopyFromMode] = useState<"exact" | "percent">("exact");
+  const [copyFromPercent, setCopyFromPercent] = useState("0");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -2277,25 +2283,75 @@ function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: 
         return;
       }
 
+      const multiplier = copyFromMode === "percent" ? 1 + (parseFloat(copyFromPercent) || 0) / 100 : 1;
       const updated: Record<number, string> = {};
       for (const f of srcForecasts) {
         if (f.forecast && Number(f.forecast) > 0) {
-          updated[f.month] = String(f.forecast);
+          const newVal = (Number(f.forecast) * multiplier).toFixed(2);
+          updated[f.month] = newVal;
           await apiRequest("PUT", "/api/revenue-forecasts", {
             year,
             month: f.month,
             apartmentId: apartment.id,
             locationName: apartment.location || "",
-            forecast: String(f.forecast),
+            forecast: newVal,
           });
         }
       }
       setValues(prev => ({ ...prev, ...updated }));
       queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${year}`] });
       const srcApt = allApartments.find(a => a.id === srcId);
-      toast({ title: "Skopiowano", description: `Prognoza z "${srcApt?.name || srcId}" skopiowana na rok ${year}` });
+      const pctLabel = copyFromMode === "percent" && Number(copyFromPercent) !== 0
+        ? ` z korektą ${Number(copyFromPercent) > 0 ? "+" : ""}${copyFromPercent}%`
+        : "";
+      toast({ title: "Skopiowano", description: `Prognoza z "${srcApt?.name || srcId}" skopiowana na rok ${year}${pctLabel}` });
       setShowCopyFrom(false);
       setSourceApartmentId("");
+    } catch (err) {
+      toast({ title: "Błąd", description: "Nie udało się skopiować prognozy", variant: "destructive" });
+    }
+    setIsCopying(false);
+  };
+
+  const copyToYear = async () => {
+    const hasValues = Object.values(values).some(v => v && Number(v) > 0);
+    if (!hasValues) {
+      toast({ title: "Brak wartości", description: "Brak danych prognozy do skopiowania w bieżącym roku", variant: "destructive" });
+      return;
+    }
+    setIsCopying(true);
+    try {
+      const targetRes = await fetch(`/api/revenue-forecasts?year=${copyTargetYear}`, { credentials: "include" });
+      const targetAll: RevenueForecast[] = await targetRes.json();
+      const targetExisting = targetAll.filter((f: RevenueForecast) => f.apartmentId === apartment.id && f.forecast && Number(f.forecast) > 0);
+
+      if (targetExisting.length > 0) {
+        const confirmed = window.confirm(`Rok ${copyTargetYear} zawiera już dane prognozy (${targetExisting.length} miesięcy). Czy chcesz je nadpisać?`);
+        if (!confirmed) {
+          setIsCopying(false);
+          return;
+        }
+      }
+
+      const multiplier = copyMode === "percent" ? 1 + (parseFloat(copyPercent) || 0) / 100 : 1;
+
+      for (let m = 1; m <= 12; m++) {
+        const val = values[m];
+        const newVal = val && Number(val) > 0 ? (Number(val) * multiplier).toFixed(2) : "0";
+        await apiRequest("PUT", "/api/revenue-forecasts", {
+          year: copyTargetYear,
+          month: m,
+          apartmentId: apartment.id,
+          locationName: apartment.location || "",
+          forecast: newVal,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${copyTargetYear}`] });
+      const pctLabel = copyMode === "percent" && Number(copyPercent) !== 0
+        ? ` z korektą ${Number(copyPercent) > 0 ? "+" : ""}${copyPercent}%`
+        : "";
+      toast({ title: "Skopiowano", description: `Prognoza skopiowana na rok ${copyTargetYear}${pctLabel}` });
+      setShowCopyToYear(false);
     } catch (err) {
       toast({ title: "Błąd", description: "Nie udało się skopiować prognozy", variant: "destructive" });
     }
@@ -2361,8 +2417,11 @@ function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: 
           <span className="font-semibold" data-testid="text-forecast-total">{total.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => { setShowCopyToYear(!showCopyToYear); setShowCopyFrom(false); }} data-testid="btn-forecast-copy-to-year">
+            <CalendarDays className="h-4 w-4 mr-1" /> Kopiuj na kolejny rok
+          </Button>
           {otherApartments.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setShowCopyFrom(!showCopyFrom)} data-testid="btn-forecast-copy-from">
+            <Button variant="outline" size="sm" onClick={() => { setShowCopyFrom(!showCopyFrom); setShowCopyToYear(false); }} data-testid="btn-forecast-copy-from">
               <FolderInput className="h-4 w-4 mr-1" /> Kopiuj z apartamentu
             </Button>
           )}
@@ -2372,29 +2431,119 @@ function RevenueForecastSection({ apartment, allApartments = [] }: { apartment: 
         </div>
       </div>
 
+      {showCopyToYear && (
+        <div className="border rounded-md p-3 bg-muted/30 space-y-3">
+          <div className="text-xs font-medium text-muted-foreground">Kopiuj prognozę z roku {year} na inny rok</div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs whitespace-nowrap">Rok docelowy:</Label>
+              <Input
+                type="number"
+                className="w-[100px] h-8"
+                value={copyTargetYear}
+                onChange={(e) => setCopyTargetYear(Number(e.target.value))}
+                data-testid="input-copy-target-year"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={copyMode} onValueChange={(v: "exact" | "percent") => setCopyMode(v)}>
+                <SelectTrigger className="w-[180px] h-8" data-testid="select-copy-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="exact">Kopiuj dokładnie</SelectItem>
+                  <SelectItem value="percent">Kopiuj z korektą %</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {copyMode === "percent" && (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  step="0.1"
+                  className="w-[80px] h-8"
+                  value={copyPercent}
+                  onChange={(e) => setCopyPercent(e.target.value)}
+                  data-testid="input-copy-percent"
+                />
+                <Percent className="h-4 w-4 text-muted-foreground" />
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={copyToYear}
+              disabled={isCopying || copyTargetYear === year || !copyTargetYear || copyTargetYear < 2020 || copyTargetYear > 2050}
+              data-testid="btn-confirm-copy-to-year"
+            >
+              {isCopying ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Kopiowanie...</> : "Kopiuj"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setShowCopyToYear(false); setCopyMode("exact"); setCopyPercent("0"); }} data-testid="btn-cancel-copy-to-year">
+              Anuluj
+            </Button>
+            {copyTargetYear === year && (
+              <span className="text-xs text-destructive">Rok docelowy musi być inny niż bieżący</span>
+            )}
+            {copyTargetYear && (copyTargetYear < 2020 || copyTargetYear > 2050) && (
+              <span className="text-xs text-destructive">Rok musi być w zakresie 2020-2050</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {showCopyFrom && (
-        <div className="flex items-center gap-2 flex-wrap border rounded-md p-3 bg-muted/30">
-          <Select value={sourceApartmentId} onValueChange={setSourceApartmentId}>
-            <SelectTrigger className="w-[240px]" data-testid="select-copy-source-apartment">
-              <SelectValue placeholder="Wybierz apartament źródłowy" />
-            </SelectTrigger>
-            <SelectContent>
-              {otherApartments.map(a => (
-                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            onClick={copyFromApartment}
-            disabled={!sourceApartmentId || isCopying}
-            data-testid="btn-confirm-copy-from"
-          >
-            {isCopying ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Kopiowanie...</> : "Kopiuj"}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => { setShowCopyFrom(false); setSourceApartmentId(""); }}>
-            Anuluj
-          </Button>
+        <div className="border rounded-md p-3 bg-muted/30 space-y-3">
+          <div className="text-xs font-medium text-muted-foreground">Kopiuj prognozę z innego apartamentu na rok {year}</div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Select value={sourceApartmentId} onValueChange={setSourceApartmentId}>
+              <SelectTrigger className="w-[240px] h-8" data-testid="select-copy-source-apartment">
+                <SelectValue placeholder="Wybierz apartament źródłowy" />
+              </SelectTrigger>
+              <SelectContent>
+                {otherApartments.map(a => (
+                  <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-2">
+              <Select value={copyFromMode} onValueChange={(v: "exact" | "percent") => setCopyFromMode(v)}>
+                <SelectTrigger className="w-[180px] h-8" data-testid="select-copy-from-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="exact">Kopiuj dokładnie</SelectItem>
+                  <SelectItem value="percent">Kopiuj z korektą %</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {copyFromMode === "percent" && (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  step="0.1"
+                  className="w-[80px] h-8"
+                  value={copyFromPercent}
+                  onChange={(e) => setCopyFromPercent(e.target.value)}
+                  data-testid="input-copy-from-percent"
+                />
+                <Percent className="h-4 w-4 text-muted-foreground" />
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={copyFromApartment}
+              disabled={!sourceApartmentId || isCopying}
+              data-testid="btn-confirm-copy-from"
+            >
+              {isCopying ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Kopiowanie...</> : "Kopiuj"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setShowCopyFrom(false); setSourceApartmentId(""); setCopyFromMode("exact"); setCopyFromPercent("0"); }}>
+              Anuluj
+            </Button>
+          </div>
         </div>
       )}
 
