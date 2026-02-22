@@ -996,7 +996,10 @@ export async function registerRoutes(
 
   app.post('/api/owner-contracts', isAuthenticated, async (req, res) => {
     try {
-      const parsed = insertOwnerContractSchema.parse(req.body);
+      const body = { ...req.body };
+      if (body.monthlyRent !== null && body.monthlyRent !== undefined) body.monthlyRent = String(body.monthlyRent);
+      if (body.additionalFees !== null && body.additionalFees !== undefined) body.additionalFees = String(body.additionalFees);
+      const parsed = insertOwnerContractSchema.parse(body);
       const contract = await storage.createOwnerContract(parsed);
       res.status(201).json(contract);
     } catch (err: any) {
@@ -1007,7 +1010,10 @@ export async function registerRoutes(
 
   app.put('/api/owner-contracts/:id', isAuthenticated, async (req, res) => {
     try {
-      const contract = await storage.updateOwnerContract(Number(req.params.id), req.body);
+      const body = { ...req.body };
+      if (body.monthlyRent !== null && body.monthlyRent !== undefined) body.monthlyRent = String(body.monthlyRent);
+      if (body.additionalFees !== null && body.additionalFees !== undefined) body.additionalFees = String(body.additionalFees);
+      const contract = await storage.updateOwnerContract(Number(req.params.id), body);
       res.json(contract);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
