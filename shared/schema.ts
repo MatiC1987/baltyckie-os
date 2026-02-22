@@ -156,6 +156,8 @@ export const ownerContracts = pgTable("owner_contracts", {
   extractedData: text("extracted_data"),
   status: text("status").default("AKTYWNA"),
   notes: text("notes"),
+  paymentFrequency: text("payment_frequency").default("MIESIECZNIE"),
+  paymentDay: integer("payment_day"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

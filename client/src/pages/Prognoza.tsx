@@ -1150,6 +1150,8 @@ export default function Prognoza() {
       parentContractId: fd.get("parentContractId") ? Number(fd.get("parentContractId")) : null,
       notes: fd.get("notes") || null,
       status: fd.get("status") || "AKTYWNA",
+      paymentFrequency: fd.get("paymentFrequency") || "MIESIECZNIE",
+      paymentDay: fd.get("paymentDay") ? Number(fd.get("paymentDay")) : 10,
     };
     if (editingContract) {
       contractMutation.mutate({ method: "PUT", url: `/api/owner-contracts/${editingContract.id}`, body });
@@ -1600,6 +1602,25 @@ export default function Prognoza() {
               <div>
                 <Label>Data do</Label>
                 <Input name="endDate" type="date" defaultValue={editingContract?.endDate || pdfParsedData?.endDate || ""} data-testid="input-contract-end" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Czestotliwosc platnosci</Label>
+                <Select name="paymentFrequency" defaultValue={editingContract?.paymentFrequency || pdfParsedData?.paymentFrequency || "MIESIECZNIE"}>
+                  <SelectTrigger data-testid="select-contract-frequency"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MIESIECZNIE">Miesiecznie</SelectItem>
+                    <SelectItem value="KWARTALNIE">Kwartalnie</SelectItem>
+                    <SelectItem value="POLROCZNIE">Polrocznie</SelectItem>
+                    <SelectItem value="ROCZNIE">Rocznie</SelectItem>
+                    <SelectItem value="NIEREGULARNE">Nieregularne</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Dzien platnosci</Label>
+                <Input name="paymentDay" type="number" min="1" max="28" defaultValue={editingContract?.paymentDay || pdfParsedData?.paymentDay || "10"} data-testid="input-contract-pay-day" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

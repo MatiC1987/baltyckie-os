@@ -1494,6 +1494,8 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   const [formParentContractId, setFormParentContractId] = useState("");
   const [formApartmentIds, setFormApartmentIds] = useState<number[]>([apartment.id]);
   const [allocations, setAllocations] = useState<{apartmentId: number; rentAmount: string}[]>([]);
+  const [formPaymentFrequency, setFormPaymentFrequency] = useState("MIESIECZNIE");
+  const [formPaymentDay, setFormPaymentDay] = useState("10");
 
   const { data: allApartments = [] } = useQuery<Apartment[]>({ queryKey: ['/api/apartments'] });
 
@@ -1600,6 +1602,8 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
       setAllocations([]);
     }
 
+    setFormPaymentFrequency(contract?.paymentFrequency || parsed?.paymentFrequency || "MIESIECZNIE");
+    setFormPaymentDay(String(contract?.paymentDay || parsed?.paymentDay || "10"));
     setContractFormOpen(true);
   }
 
@@ -1649,6 +1653,8 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
       parentContractId: formParentContractId ? Number(formParentContractId) : null,
       notes: fd.get("notes") || null,
       status: formStatus,
+      paymentFrequency: formPaymentFrequency,
+      paymentDay: formPaymentDay ? Number(formPaymentDay) : 10,
     };
     if (formApartmentIds.length > 1) {
       const totalRent = parseFloat(String(body.monthlyRent) || '0');
@@ -1755,6 +1761,8 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
           parentContractId: c.suggestedParentContractId || null,
           notes: c.editedNotes || null,
           status: c.editedStatus || "AKTYWNA",
+          paymentFrequency: c.paymentFrequency || "MIESIECZNIE",
+          paymentDay: c.paymentDay || 10,
         };
         const res = await apiRequest("POST", "/api/owner-contracts", body);
         const saved = await res.json();
@@ -1777,6 +1785,8 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
           parentContractId: parentId,
           notes: c.editedNotes || null,
           status: c.editedStatus || "AKTYWNA",
+          paymentFrequency: c.paymentFrequency || "MIESIECZNIE",
+          paymentDay: c.paymentDay || 10,
         };
         const res = await apiRequest("POST", "/api/owner-contracts", body);
         const saved = await res.json();
@@ -2179,6 +2189,14 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                         <span>{c.startDate || "\u2014"} &rarr; {c.endDate || "bezterminowo"}</span>
                         <Badge variant={c.status === "AKTYWNA" ? "default" : "secondary"} className="text-[10px]">{c.status}</Badge>
                         <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">{c.contractType}</Badge>
+                        {c.paymentFrequency && c.paymentFrequency !== 'MIESIECZNIE' && (
+                          <Badge variant="outline" className="text-[10px] bg-purple-50 dark:bg-purple-950">{
+                            c.paymentFrequency === 'KWARTALNIE' ? 'Kwartalnie' :
+                            c.paymentFrequency === 'POLROCZNIE' ? 'Polrocznie' :
+                            c.paymentFrequency === 'ROCZNIE' ? 'Rocznie' :
+                            c.paymentFrequency === 'NIEREGULARNE' ? 'Nieregularne' : c.paymentFrequency
+                          }</Badge>
+                        )}
                         {(c as any).allocations?.length > 1 && (
                           <Badge variant="outline" className="text-[10px]">{(c as any).allocations.length} apt.</Badge>
                         )}
@@ -2524,6 +2542,30 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                 <Input name="endDate" type="date" defaultValue={editingContract?.endDate || pdfParsedData?.endDate || ""} data-testid="input-apt-contract-end" />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Czestotliwosc platnosci</Label>
+                <Select value={formPaymentFrequency} onValueChange={setFormPaymentFrequency}>
+                  <SelectTrigger data-testid="select-apt-contract-frequency"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MIESIECZNIE">Miesiecznie</SelectItem>
+                    <SelectItem value="KWARTALNIE">Kwartalnie</SelectItem>
+                    <SelectItem value="POLROCZNIE">Polrocznie</SelectItem>
+                    <SelectItem value="ROCZNIE">Rocznie</SelectItem>
+                    <SelectItem value="NIEREGULARNE">Nieregularne</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Dzien platnosci</Label>
+                <Input type="number" min="1" max="28" value={formPaymentDay} onChange={e => setFormPaymentDay(e.target.value)} data-testid="input-apt-contract-pay-day" />
+              </div>
+            </div>
+            {formPaymentFrequency === 'NIEREGULARNE' && (
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-2 text-xs text-amber-700 dark:text-amber-300">
+                Platnosci nieregularne - raty nie zostana wygenerowane automatycznie. Dodaj je recznie w zakladce Raty.
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Typ</Label>

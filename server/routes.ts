@@ -222,9 +222,38 @@ async function syncApartmentAddressAndLocation(apartmentId: number, parsedData: 
   }
 }
 
+function getPaymentDatesForFrequency(
+  frequency: string,
+  startDate: Date,
+  endDate: Date,
+  payDay: number
+): Date[] {
+  const dates: Date[] = [];
+  const freq = (frequency || 'MIESIECZNIE').toUpperCase();
+
+  if (freq === 'NIEREGULARNE') return [];
+
+  let monthStep = 1;
+  if (freq === 'KWARTALNIE') monthStep = 3;
+  else if (freq === 'POLROCZNIE') monthStep = 6;
+  else if (freq === 'ROCZNIE') monthStep = 12;
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  while (current <= endDate) {
+    const paymentDate = new Date(current.getFullYear(), current.getMonth(), Math.min(payDay, 28));
+    if (paymentDate >= startDate && paymentDate <= endDate) {
+      dates.push(paymentDate);
+    }
+    current.setMonth(current.getMonth() + monthStep);
+  }
+  return dates;
+}
+
 async function syncContractPaymentSchedule(contract: any) {
   try {
     if (!contract.apartmentId || !contract.monthlyRent || !contract.startDate) return;
+    const freq = contract.paymentFrequency || 'MIESIECZNIE';
+    if (freq === 'NIEREGULARNE') return;
 
     const startDate = new Date(contract.startDate);
     const endDate = contract.endDate ? new Date(contract.endDate) : new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate());
@@ -233,26 +262,17 @@ async function syncContractPaymentSchedule(contract: any) {
     const contractPayments = existingPayments.filter(p => p.title?.includes(`Umowa #${contract.id}`));
     if (contractPayments.length > 0) return;
 
-    const payments: any[] = [];
-    const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
     const payDay = contract.paymentDay || 10;
+    const paymentDates = getPaymentDatesForFrequency(freq, startDate, endDate, payDay);
 
-    while (current <= endDate) {
-      const paymentDate = new Date(current.getFullYear(), current.getMonth(), Math.min(payDay, 28));
-      if (paymentDate >= startDate && paymentDate <= endDate) {
-        payments.push({
-          apartmentId: contract.apartmentId,
-          title: `Czynsz - Umowa #${contract.id}`,
-          category: 'czynsz_wlasciciel',
-          amount: String(contract.monthlyRent),
-          paymentDate: paymentDate.toISOString().split('T')[0],
-        });
-      }
-      current.setMonth(current.getMonth() + 1);
-    }
-
-    for (const p of payments) {
-      await storage.createOwnerPayment(p);
+    for (const paymentDate of paymentDates) {
+      await storage.createOwnerPayment({
+        apartmentId: contract.apartmentId,
+        title: `Czynsz - Umowa #${contract.id}`,
+        category: 'czynsz_wlasciciel',
+        amount: String(contract.monthlyRent),
+        paymentDate: paymentDate.toISOString().split('T')[0],
+      });
     }
   } catch (err) {
     console.error('Error syncing contract payment schedule:', err);
@@ -262,6 +282,8 @@ async function syncContractPaymentSchedule(contract: any) {
 async function syncContractPaymentScheduleForApartment(contract: any, alloc: any) {
   try {
     if (!alloc.apartmentId || !alloc.rentAmount || !contract.startDate) return;
+    const freq = contract.paymentFrequency || 'MIESIECZNIE';
+    if (freq === 'NIEREGULARNE') return;
 
     const startDate = new Date(contract.startDate);
     const endDate = contract.endDate ? new Date(contract.endDate) : new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate());
@@ -270,26 +292,17 @@ async function syncContractPaymentScheduleForApartment(contract: any, alloc: any
     const contractPayments = existingPayments.filter(p => p.title?.includes(`Umowa #${contract.id}`));
     if (contractPayments.length > 0) return;
 
-    const payments: any[] = [];
-    const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
     const payDay = contract.paymentDay || 10;
+    const paymentDates = getPaymentDatesForFrequency(freq, startDate, endDate, payDay);
 
-    while (current <= endDate) {
-      const paymentDate = new Date(current.getFullYear(), current.getMonth(), Math.min(payDay, 28));
-      if (paymentDate >= startDate && paymentDate <= endDate) {
-        payments.push({
-          apartmentId: alloc.apartmentId,
-          title: `Czynsz - Umowa #${contract.id}`,
-          category: 'czynsz_wlasciciel',
-          amount: String(alloc.rentAmount),
-          paymentDate: paymentDate.toISOString().split('T')[0],
-        });
-      }
-      current.setMonth(current.getMonth() + 1);
-    }
-
-    for (const p of payments) {
-      await storage.createOwnerPayment(p);
+    for (const paymentDate of paymentDates) {
+      await storage.createOwnerPayment({
+        apartmentId: alloc.apartmentId,
+        title: `Czynsz - Umowa #${contract.id}`,
+        category: 'czynsz_wlasciciel',
+        amount: String(alloc.rentAmount),
+        paymentDate: paymentDate.toISOString().split('T')[0],
+      });
     }
   } catch (err) {
     console.error('Error syncing contract payment schedule for apartment:', err);
@@ -335,36 +348,45 @@ async function syncContractCostForecasts(contract: any) {
       );
 
       const costsToCreate: any[] = [];
-      for (let month = 1; month <= 12; month++) {
-        const checkDate = new Date(year, month - 1, 15);
-        if (startDate && checkDate < startDate) continue;
-        if (endDate && checkDate > endDate) continue;
+      const freq = contract.paymentFrequency || 'MIESIECZNIE';
+      const yearStart = new Date(year, 0, 1);
+      const yearEnd = new Date(year, 11, 31);
+      const effStart = startDate && startDate > yearStart ? startDate : yearStart;
+      const effEnd = endDate && endDate < yearEnd ? endDate : yearEnd;
+      const payDay = contract.paymentDay || 10;
 
-        if (contract.monthlyRent) {
-          costsToCreate.push({
-            year,
-            month,
-            apartmentId: contract.apartmentId,
-            category: 'czynsz_wlasciciel',
-            forecast: String(contract.monthlyRent),
-            actual: "0",
-            sourceType: 'owner_contract',
-            sourceContractId: contract.id,
-            locationName: apt?.location || null,
-          });
-        }
-        if (contract.additionalFees && Number(contract.additionalFees) > 0) {
-          costsToCreate.push({
-            year,
-            month,
-            apartmentId: contract.apartmentId,
-            category: 'oplaty_dodatkowe_wlasciciel',
-            forecast: String(contract.additionalFees),
-            actual: "0",
-            sourceType: 'owner_contract',
-            sourceContractId: contract.id,
-            locationName: apt?.location || null,
-          });
+      if (freq === 'NIEREGULARNE') {
+        // skip
+      } else {
+        const paymentDates = getPaymentDatesForFrequency(freq, effStart, effEnd, payDay);
+        for (const pd of paymentDates) {
+          const month = pd.getMonth() + 1;
+          if (contract.monthlyRent) {
+            costsToCreate.push({
+              year,
+              month,
+              apartmentId: contract.apartmentId,
+              category: 'czynsz_wlasciciel',
+              forecast: String(contract.monthlyRent),
+              actual: "0",
+              sourceType: 'owner_contract',
+              sourceContractId: contract.id,
+              locationName: apt?.location || null,
+            });
+          }
+          if (contract.additionalFees && Number(contract.additionalFees) > 0) {
+            costsToCreate.push({
+              year,
+              month,
+              apartmentId: contract.apartmentId,
+              category: 'oplaty_dodatkowe_wlasciciel',
+              forecast: String(contract.additionalFees),
+              actual: "0",
+              sourceType: 'owner_contract',
+              sourceContractId: contract.id,
+              locationName: apt?.location || null,
+            });
+          }
         }
       }
       if (costsToCreate.length > 0) {
@@ -824,7 +846,15 @@ export async function registerRoutes(
 
   app.delete(api.apartments.delete.path, isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteApartment(Number(req.params.id));
+      const aptId = Number(req.params.id);
+
+      await db.delete(costForecasts).where(eq(costForecasts.apartmentId, aptId));
+      await db.delete(revenueForecasts).where(eq(revenueForecasts.apartmentId, aptId));
+      await db.delete(ownerPayments).where(eq(ownerPayments.apartmentId, aptId));
+      await db.delete(ownerContractApartments).where(eq(ownerContractApartments.apartmentId, aptId));
+      await db.delete(ownerContracts).where(eq(ownerContracts.apartmentId, aptId));
+
+      await storage.deleteApartment(aptId);
       res.status(204).send();
     } catch (err: any) {
       console.error("Error deleting apartment:", err);
@@ -1205,8 +1235,36 @@ export async function registerRoutes(
   });
 
   app.delete('/api/owner-payments/:id', isAuthenticated, async (req, res) => {
-    await storage.deleteOwnerPayment(Number(req.params.id));
-    res.status(204).send();
+    try {
+      const paymentId = Number(req.params.id);
+      const [payment] = await db.select().from(ownerPayments).where(eq(ownerPayments.id, paymentId));
+
+      if (payment && payment.title) {
+        const contractMatch = payment.title.match(/Umowa #(\d+)/);
+        if (contractMatch) {
+          const contractId = Number(contractMatch[1]);
+          const paymentDate = new Date(payment.paymentDate);
+          const month = paymentDate.getMonth() + 1;
+          const year = paymentDate.getFullYear();
+
+          await db.delete(costForecasts).where(
+            and(
+              eq(costForecasts.year, year),
+              eq(costForecasts.month, month),
+              eq(costForecasts.apartmentId, payment.apartmentId),
+              eq(costForecasts.sourceType, 'owner_contract'),
+              eq(costForecasts.sourceContractId, contractId)
+            )
+          );
+        }
+      }
+
+      await storage.deleteOwnerPayment(paymentId);
+      res.status(204).send();
+    } catch (err: any) {
+      console.error("Error deleting owner payment:", err);
+      res.status(500).json({ message: "Nie udało się usunąć raty." });
+    }
   });
 
   // Owner Contracts
@@ -1534,6 +1592,7 @@ Jesli dane nie wystepuja w dokumencie, wpisz null.
   "endDate": "YYYY-MM-DD data zakonczenia umowy (null jesli nieokreslona)",
   "monthlyRent": kwota miesiecznego czynszu/raty jako liczba (BRUTTO z VAT jesli dotyczy). Jesli kwota podana netto + VAT, oblicz brutto,
   "additionalFees": dodatkowe oplaty miesieczne (media, eksploatacja, administracja itp.) jako liczba lub null,
+  "paymentFrequency": "MIESIECZNIE" lub "KWARTALNIE" lub "POLROCZNIE" lub "ROCZNIE" lub "NIEREGULARNE" - czestotliwosc platnosci czynszu. Domyslnie MIESIECZNIE. Sprawdz tresc umowy czy sa inne ustalenia np. platnosc kwartalna, polroczna, roczna lub nieregularna,
   "paymentDay": dzien miesiaca do kiedy nalezy zaplacic czynsz (np. 10 jesli do 10-tego kazdego miesiaca),
   "depositAmount": kwota kaucji jako liczba lub null,
   "noticePeriod": "okres wypowiedzenia np. 3 miesiace",
@@ -1683,6 +1742,8 @@ Odpowiedz w formacie JSON - TABLICA obiektow, jeden na kazdy dokument:
     "endDate": "YYYY-MM-DD lub null",
     "monthlyRent": kwota brutto jako liczba,
     "additionalFees": dodatkowe oplaty jako liczba lub null,
+    "paymentFrequency": "MIESIECZNIE" lub "KWARTALNIE" lub "POLROCZNIE" lub "ROCZNIE" lub "NIEREGULARNE",
+    "paymentDay": dzien miesiaca do kiedy nalezy zaplacic czynsz (np. 10),
     "notes": "wazne postanowienia",
     "locationHint": "nazwa budynku/osiedla z adresu (np. 'Grand Baltic', 'Bulwar Portowy', 'Na Wydmie', 'Wczasowa', 'Luxuro Park', 'Przewloka') lub null",
     "chainOrder": numer w lancuchu (0 = umowa glowna, 1 = aneks 1, 2 = aneks 2 itd.),
