@@ -1164,13 +1164,30 @@ export default function Prognoza() {
     const fd = new FormData();
     fd.append("files", file);
     try {
+      toast({ title: "Analizuję dokument...", description: "AI odczytuje dane z pliku" });
       const res = await fetch("/api/parse-owner-contract-pdf", { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) throw new Error("Blad parsowania PDF");
       const data = await res.json();
+
+      if (data.ownerName) {
+        const matchedOwner = owners.find(o => o.name.toLowerCase().includes(data.ownerName.toLowerCase()) || data.ownerName.toLowerCase().includes(o.name.toLowerCase()));
+        if (matchedOwner) data.ownerId = matchedOwner.id;
+      }
+      if (data.apartmentName) {
+        const matchedApt = apartments.find(a => a.name.toLowerCase().includes(data.apartmentName.toLowerCase()) || data.apartmentName.toLowerCase().includes(a.name.toLowerCase()));
+        if (matchedApt) data.apartmentId = matchedApt.id;
+      }
+      if (data.suggestedParentContractId) {
+        data.parentContractId = data.suggestedParentContractId;
+      }
+
       setPdfParsedData(data);
       setEditingContract(null);
       setContractFormOpen(true);
-      toast({ title: "PDF sparsowany", description: "Sprawdz dane i zapisz umowe" });
+
+      const typeLabel = data.contractType === "ANEKS" ? "Rozpoznano aneks" : "Rozpoznano umowe";
+      const chainInfo = data.parentContractRef ? ` (do: ${data.parentContractRef})` : "";
+      toast({ title: `PDF sparsowany - ${typeLabel}`, description: `Sprawdz dane i zapisz${chainInfo}` });
     } catch (err: any) {
       toast({ title: "Blad", description: err.message, variant: "destructive" });
     }
@@ -1407,42 +1424,121 @@ export default function Prognoza() {
                 <Plus className="h-4 w-4 mr-1" /> Dodaj umowe
               </Button>
               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} data-testid="btn-import-pdf">
-                <Upload className="h-4 w-4 mr-1" /> Import PDF
+                <Upload className="h-4 w-4 mr-1" /> Import PDF (AI)
               </Button>
-              <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} />
+              <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" className="hidden" onChange={handlePdfUpload} />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {contracts.length === 0 && <p className="text-sm text-muted-foreground">Brak umow</p>}
-              {contracts.map(c => {
-                const ownerName = owners.find(o => o.id === c.ownerId)?.name || "\u2014";
-                const aptName = apartments.find(a => a.id === c.apartmentId)?.name || "\u2014";
-                return (
-                  <Card key={c.id} data-testid={`card-contract-${c.id}`}>
-                    <CardContent className="py-3 px-4">
-                      <div className="flex items-start justify-between gap-2 flex-wrap">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-sm">{ownerName} &mdash; {aptName}</p>
-                          <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                            <span>Czynsz: {c.monthlyRent ? `${Number(c.monthlyRent).toLocaleString("pl-PL")} zl` : "\u2014"}</span>
-                            {c.additionalFees && Number(c.additionalFees) > 0 && <span>+ {Number(c.additionalFees).toLocaleString("pl-PL")} zl</span>}
-                            <span>{c.startDate || "\u2014"} &rarr; {c.endDate || "bezterminowo"}</span>
-                            <Badge variant="outline" className="text-[10px]">{c.status}</Badge>
-                            <Badge variant="outline" className="text-[10px]">{c.contractType}</Badge>
+              {(() => {
+                const grouped = new Map<number, OwnerContract[]>();
+                const rootContracts: OwnerContract[] = [];
+                contracts.forEach(c => {
+                  if (!c.parentContractId) {
+                    rootContracts.push(c);
+                    if (!grouped.has(c.id)) grouped.set(c.id, []);
+                  }
+                });
+                contracts.forEach(c => {
+                  if (c.parentContractId) {
+                    const chain = grouped.get(c.parentContractId);
+                    if (chain) chain.push(c);
+                    else grouped.set(c.parentContractId, [c]);
+                  }
+                });
+                const standalone = contracts.filter(c => c.parentContractId && !rootContracts.some(r => r.id === c.parentContractId));
+                const aptGroups = new Map<number, { root: OwnerContract[]; annexes: Map<number, OwnerContract[]> }>();
+                rootContracts.forEach(c => {
+                  const aptId = c.apartmentId || 0;
+                  if (!aptGroups.has(aptId)) aptGroups.set(aptId, { root: [], annexes: new Map() });
+                  const g = aptGroups.get(aptId)!;
+                  g.root.push(c);
+                  g.annexes.set(c.id, grouped.get(c.id) || []);
+                });
+                standalone.forEach(c => {
+                  const aptId = c.apartmentId || 0;
+                  if (!aptGroups.has(aptId)) aptGroups.set(aptId, { root: [], annexes: new Map() });
+                  aptGroups.get(aptId)!.root.push(c);
+                });
+
+                return Array.from(aptGroups.entries()).map(([aptId, group]) => {
+                  const aptName = apartments.find(a => a.id === aptId)?.name || "Brak apartamentu";
+                  return (
+                    <div key={aptId} className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{aptName}</h4>
+                      {group.root.map(c => {
+                        const ownerName = owners.find(o => o.id === c.ownerId)?.name || "\u2014";
+                        const annexes = group.annexes.get(c.id) || [];
+                        const hasChain = annexes.length > 0;
+                        return (
+                          <div key={c.id} className="space-y-0">
+                            <Card className={hasChain ? "rounded-b-none border-b-0" : ""} data-testid={`card-contract-${c.id}`}>
+                              <CardContent className="py-3 px-4">
+                                <div className="flex items-start justify-between gap-2 flex-wrap">
+                                  <div className="space-y-1">
+                                    <p className="font-semibold text-sm">{ownerName}</p>
+                                    <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                                      <span>Czynsz: {c.monthlyRent ? `${Number(c.monthlyRent).toLocaleString("pl-PL")} zl` : "\u2014"}</span>
+                                      {c.additionalFees && Number(c.additionalFees) > 0 && <span>+ {Number(c.additionalFees).toLocaleString("pl-PL")} zl</span>}
+                                      <span>{c.startDate || "\u2014"} &rarr; {c.endDate || "bezterminowo"}</span>
+                                      <Badge variant={c.status === "AKTYWNA" ? "default" : "secondary"} className="text-[10px]">{c.status}</Badge>
+                                      <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">{c.contractType}</Badge>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button size="icon" variant="ghost" onClick={() => { setEditingContract(c); setPdfParsedData(null); setContractFormOpen(true); }} data-testid={`btn-edit-contract-${c.id}`}>
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" onClick={() => { if (confirm("Usunac umowe?")) deleteContractMutation.mutate(c.id); }} data-testid={`btn-delete-contract-${c.id}`}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                            {annexes.length > 0 && (
+                              <div className="border border-t-0 rounded-b-lg bg-muted/30 dark:bg-muted/10">
+                                <div className="px-4 py-1.5">
+                                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Aneksy ({annexes.length})</span>
+                                </div>
+                                {annexes.sort((a, b) => (a.startDate || "").localeCompare(b.startDate || "")).map((ax, idx) => (
+                                  <div key={ax.id} className={`px-4 py-2 flex items-center justify-between gap-2 ${idx < annexes.length - 1 ? "border-b border-border/50" : ""}`} data-testid={`card-annex-${ax.id}`}>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className="w-4 flex flex-col items-center shrink-0">
+                                        <div className="w-px h-2 bg-border" />
+                                        <div className="w-2 h-2 rounded-full bg-[#5ADBFA] border-2 border-background" />
+                                        {idx < annexes.length - 1 && <div className="w-px h-2 bg-border" />}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <Badge variant="outline" className="text-[9px] bg-amber-50 dark:bg-amber-950">ANEKS</Badge>
+                                          <span className="text-xs">{ax.startDate} &rarr; {ax.endDate || "bezterminowo"}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                                          {ax.monthlyRent && <span>Czynsz: {Number(ax.monthlyRent).toLocaleString("pl-PL")} zl</span>}
+                                          {ax.notes && <span className="truncate max-w-[200px]">{ax.notes}</span>}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingContract(ax); setPdfParsedData(null); setContractFormOpen(true); }} data-testid={`btn-edit-annex-${ax.id}`}>
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { if (confirm("Usunac aneks?")) deleteContractMutation.mutate(ax.id); }} data-testid={`btn-delete-annex-${ax.id}`}>
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button size="icon" variant="ghost" onClick={() => { setEditingContract(c); setPdfParsedData(null); setContractFormOpen(true); }} data-testid={`btn-edit-contract-${c.id}`}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => { if (confirm("Usunac umowe?")) deleteContractMutation.mutate(c.id); }} data-testid={`btn-delete-contract-${c.id}`}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                        );
+                      })}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         </SheetContent>
@@ -1451,7 +1547,20 @@ export default function Prognoza() {
       {/* Contract form dialog */}
       <Dialog open={contractFormOpen} onOpenChange={v => { setContractFormOpen(v); if (!v) { setEditingContract(null); setPdfParsedData(null); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingContract ? "Edytuj umowe" : "Dodaj umowe"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingContract ? "Edytuj umowe" : pdfParsedData ? `Import ${pdfParsedData.contractType === "ANEKS" ? "aneksu" : "umowy"} (AI)` : "Dodaj umowe"}</DialogTitle></DialogHeader>
+          {pdfParsedData && (
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs space-y-1">
+              <p className="font-medium text-blue-700 dark:text-blue-300">Dane odczytane z dokumentu:</p>
+              {pdfParsedData.ownerName && <p>Wlasciciel: <strong>{pdfParsedData.ownerName}</strong></p>}
+              {pdfParsedData.apartmentName && <p>Apartament: <strong>{pdfParsedData.apartmentName}</strong> {pdfParsedData.apartmentAddress && `(${pdfParsedData.apartmentAddress})`}</p>}
+              {pdfParsedData.contractType === "ANEKS" && pdfParsedData.parentContractRef && (
+                <p className="text-amber-700 dark:text-amber-300">Aneks do: <strong>{pdfParsedData.parentContractRef}</strong></p>
+              )}
+              {pdfParsedData.changedFields && pdfParsedData.changedFields.length > 0 && (
+                <p>Zmienione pola: {pdfParsedData.changedFields.join(", ")}</p>
+              )}
+            </div>
+          )}
           <form onSubmit={handleContractSubmit} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1496,7 +1605,7 @@ export default function Prognoza() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Typ</Label>
-                <Select name="contractType" defaultValue={editingContract?.contractType || "UMOWA"}>
+                <Select name="contractType" defaultValue={editingContract?.contractType || pdfParsedData?.contractType || "UMOWA"}>
                   <SelectTrigger data-testid="select-contract-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="UMOWA">UMOWA</SelectItem>
@@ -1518,7 +1627,7 @@ export default function Prognoza() {
             </div>
             <div>
               <Label>Umowa nadrzedna (opcjonalnie)</Label>
-              <Select name="parentContractId" defaultValue={String(editingContract?.parentContractId || "")}>
+              <Select name="parentContractId" defaultValue={String(editingContract?.parentContractId || pdfParsedData?.parentContractId || "")}>
                 <SelectTrigger data-testid="select-contract-parent"><SelectValue placeholder="Brak" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Brak</SelectItem>

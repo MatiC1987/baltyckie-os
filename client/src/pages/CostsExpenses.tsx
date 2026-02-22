@@ -2,7 +2,7 @@ import type React from "react";
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { CostSchedule, CostSchedulePayment } from "@shared/schema";
+import type { CostSchedule, CostSchedulePayment, OperationalCostForecast } from "@shared/schema";
 import { DEFAULT_OPLATY_CATEGORIES, loadOplatyCategories, type OplatyCostCategory, type OplatyCostItem } from "@/lib/oplaty-defaults";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -254,6 +254,24 @@ export default function CostsExpenses() {
     queryKey: ["/api/cost-schedule-payments"],
   });
 
+  const { data: serverForecasts = [] } = useQuery<OperationalCostForecast[]>({
+    queryKey: ["/api/operational-cost-forecasts", selectedYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/operational-cost-forecasts?year=${selectedYear}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const serverForecastLookup = useMemo(() => {
+    const lookup: Record<string, number> = {};
+    for (const f of serverForecasts) {
+      const key = makeCellKey(f.categoryId, f.itemIndex, f.month, "prognoza");
+      lookup[key] = Number(f.forecast) || 0;
+    }
+    return lookup;
+  }, [serverForecasts]);
+
   const scheduleOverlay = useMemo(
     () => buildScheduleOverlay(costSchedules, costSchedulePayments, selectedYear),
     [costSchedules, costSchedulePayments, selectedYear]
@@ -282,6 +300,32 @@ export default function CostsExpenses() {
   const [editCatDialog, setEditCatDialog] = useState<CostCategory | null>(null);
   const [editCatTitle, setEditCatTitle] = useState("");
   const [editCatColor, setEditCatColor] = useState("");
+
+  const [forecastPrompt, setForecastPrompt] = useState<{
+    catId: string; itemIdx: number; month: number; amount: number; itemName: string; catTitle: string;
+  } | null>(null);
+  const [forecastPromptOption, setForecastPromptOption] = useState<"one_time" | "remaining" | "all">("remaining");
+
+  const addToForecastMutation = useMutation({
+    mutationFn: async (params: { catId: string; itemIdx: number; months: number[]; amount: number }) => {
+      const entries = params.months.map(m => ({
+        year: selectedYear,
+        month: m,
+        categoryId: params.catId,
+        itemIndex: params.itemIdx,
+        forecast: String(params.amount),
+      }));
+      return apiRequest("POST", "/api/operational-cost-forecasts/bulk", { entries });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+      toast({ title: "Dodano do prognozy", description: "Wartosci prognozowane zostaly zaktualizowane" });
+      setForecastPrompt(null);
+    },
+    onError: () => {
+      toast({ title: "Blad", description: "Nie udalo sie dodac do prognozy", variant: "destructive" });
+    },
+  });
 
   const dragCatRef = useRef<string | null>(null);
   const dragOverCatRef = useRef<string | null>(null);
@@ -473,14 +517,20 @@ export default function CostsExpenses() {
   }, []);
 
   const getCellValue = useCallback((key: CellKey): number => {
+    if (key.endsWith("__prognoza") && key in serverForecastLookup) {
+      return serverForecastLookup[key];
+    }
     if (key in scheduleOverlay) return scheduleOverlay[key];
     return cellData[key] || 0;
-  }, [cellData, scheduleOverlay]);
+  }, [cellData, scheduleOverlay, serverForecastLookup]);
 
   const startEditing = useCallback((key: CellKey) => {
+    if (key.endsWith("__prognoza") && key in serverForecastLookup) {
+      return;
+    }
     setEditingCell(key);
     setEditValue(cellData[key]?.toString() || "");
-  }, [cellData]);
+  }, [cellData, serverForecastLookup]);
 
   const commitEdit = useCallback(() => {
     if (editingCell) {
@@ -493,9 +543,28 @@ export default function CostsExpenses() {
       }
       setCellData(newData);
       saveData(selectedYear, newData);
+
+      if (val > 0 && editingCell.endsWith("__rzeczywiste")) {
+        const { catId, itemIdx, month } = parseCellKey(editingCell);
+        const prognozaKey = makeCellKey(catId, itemIdx, month, "prognoza");
+        const hasServerForecast = prognozaKey in serverForecastLookup;
+        const hasLocalForecast = prognozaKey in newData && newData[prognozaKey] > 0;
+        if (!hasServerForecast && !hasLocalForecast) {
+          const cat = categories.find(c => c.id === catId);
+          const item = cat?.items[itemIdx];
+          if (cat && item) {
+            setForecastPrompt({
+              catId, itemIdx, month, amount: val,
+              itemName: item.label, catTitle: cat.title,
+            });
+            setForecastPromptOption("remaining");
+          }
+        }
+      }
+
       setEditingCell(null);
     }
-  }, [editingCell, editValue, cellData, selectedYear]);
+  }, [editingCell, editValue, cellData, selectedYear, serverForecastLookup, categories, parseCellKey]);
 
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
@@ -1275,6 +1344,7 @@ export default function CostsExpenses() {
                                 onFillHandleMouseDown={handleFillHandleMouseDown}
                                 onCellMouseEnter={handleCellMouseEnter}
                                 month={m}
+                                isServerManaged={pKey in serverForecastLookup}
                               />
                               <EditableCell
                                 cellKey={rKey}
@@ -1659,6 +1729,68 @@ export default function CostsExpenses() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={forecastPrompt !== null} onOpenChange={(open) => { if (!open) setForecastPrompt(null); }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-forecast-prompt">
+          <DialogHeader>
+            <DialogTitle>Dodac do prognozy?</DialogTitle>
+          </DialogHeader>
+          {forecastPrompt && (
+            <div className="space-y-3 py-1">
+              <p className="text-sm text-muted-foreground">
+                Wprowadziles koszt <strong>{forecastPrompt.amount.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zl</strong> dla pozycji
+                &ldquo;{forecastPrompt.itemName}&rdquo; ({forecastPrompt.catTitle}).
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Czy chcesz dodac te kwote do prognozy operacyjnej?
+              </p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="radio" name="forecastOption" checked={forecastPromptOption === "one_time"} onChange={() => setForecastPromptOption("one_time")} data-testid="radio-forecast-one-time" />
+                  Tylko {MONTHS_SHORT[forecastPrompt.month]} (jednorazowo)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="radio" name="forecastOption" checked={forecastPromptOption === "remaining"} onChange={() => setForecastPromptOption("remaining")} data-testid="radio-forecast-remaining" />
+                  {MONTHS_SHORT[forecastPrompt.month]} - GRU (pozostale miesiace)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="radio" name="forecastOption" checked={forecastPromptOption === "all"} onChange={() => setForecastPromptOption("all")} data-testid="radio-forecast-all" />
+                  STY - GRU (caly rok)
+                </label>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setForecastPrompt(null)} data-testid="btn-skip-forecast">
+              Pomin
+            </Button>
+            <Button
+              size="sm"
+              disabled={addToForecastMutation.isPending}
+              onClick={() => {
+                if (!forecastPrompt) return;
+                let months: number[];
+                if (forecastPromptOption === "one_time") {
+                  months = [forecastPrompt.month];
+                } else if (forecastPromptOption === "remaining") {
+                  months = Array.from({ length: 12 - forecastPrompt.month }, (_, i) => forecastPrompt.month + i);
+                } else {
+                  months = Array.from({ length: 12 }, (_, i) => i);
+                }
+                addToForecastMutation.mutate({
+                  catId: forecastPrompt.catId,
+                  itemIdx: forecastPrompt.itemIdx,
+                  months,
+                  amount: forecastPrompt.amount,
+                });
+              }}
+              data-testid="btn-confirm-forecast"
+            >
+              {addToForecastMutation.isPending ? "Dodaje..." : "Dodaj do prognozy"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1683,6 +1815,7 @@ function EditableCell({
   onFillHandleMouseDown,
   onCellMouseEnter,
   month,
+  isServerManaged,
 }: {
   cellKey: CellKey;
   value: number;
@@ -1699,6 +1832,7 @@ function EditableCell({
   onFillHandleMouseDown: (e: React.MouseEvent) => void;
   onCellMouseEnter: (month: number) => void;
   month: number;
+  isServerManaged?: boolean;
 }) {
   const isEditing = editingCell === cellKey;
 
@@ -1725,14 +1859,15 @@ function EditableCell({
 
   return (
     <td
-      className={`${className} px-1 py-1 text-right tabular-nums cursor-pointer hover:bg-accent/50 relative select-none ${isSelected ? "ring-2 ring-[#5ADBFA] ring-inset z-10" : ""} ${isInRange ? "bg-[#5ADBFA]/15" : ""}`}
+      className={`${className} px-1 py-1 text-right tabular-nums relative select-none ${isServerManaged ? "cursor-default bg-blue-50/40 dark:bg-blue-950/20" : "cursor-pointer hover:bg-accent/50"} ${isSelected ? "ring-2 ring-[#5ADBFA] ring-inset z-10" : ""} ${isInRange ? "bg-[#5ADBFA]/15" : ""}`}
       onDoubleClick={() => startEditing(cellKey)}
       onClick={() => onCellClick(cellKey)}
       onMouseEnter={() => onCellMouseEnter(month)}
+      title={isServerManaged ? "Wartość z modułu Prognoza" : undefined}
       data-testid={`cell-${cellKey}`}
     >
       {value !== 0 ? value.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
-      {isSelected && value !== 0 && (
+      {isSelected && value !== 0 && !isServerManaged && (
         <span
           onMouseDown={onFillHandleMouseDown}
           className="absolute -bottom-[3px] -right-[3px] w-[7px] h-[7px] bg-[#5ADBFA] border border-white cursor-crosshair z-20"

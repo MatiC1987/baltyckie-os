@@ -1074,6 +1074,15 @@ export async function registerRoutes(
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
+      const existingContracts = await storage.getOwnerContracts();
+      const contractsContext = existingContracts.length > 0
+        ? `\nISNIEJACE UMOWY W SYSTEMIE (uzywaj do identyfikacji lancuchow umow):\n${existingContracts.map(c => {
+            const ownerName = c.ownerId ? `owner_id:${c.ownerId}` : "?";
+            const aptName = c.apartmentId ? `apt_id:${c.apartmentId}` : "?";
+            return `  ID:${c.id} | ${c.contractType} | ${ownerName} | ${aptName} | ${c.startDate} - ${c.endDate || "bezterminowo"} | status:${c.status}${c.parentContractId ? ` | parent:${c.parentContractId}` : ""}`;
+          }).join("\n")}`
+        : "";
+
       const maxPages = Math.min(pageImages.length, 8);
       const content: any[] = [
         {
@@ -1088,17 +1097,25 @@ Jesli dane nie wystepuja w dokumencie, wpisz null.
   "apartmentAddress": "pelny adres wynajmowanej nieruchomosci (ulica, numer, kod pocztowy, miasto)",
   "apartmentName": "nazwa lub numer lokalu/apartamentu",
   "contractType": "UMOWA" lub "ANEKS" - czy to jest umowa glowna czy aneks do umowy,
-  "startDate": "YYYY-MM-DD data rozpoczecia umowy",
+  "parentContractRef": "jesli to ANEKS, podaj numer lub date umowy glownej do ktorej sie odnosi (np. 'Umowa z dnia 2024-01-15' lub 'Umowa nr 5/2024'). Null jesli umowa glowna.",
+  "annexNumber": "numer aneksu jesli to ANEKS (np. '1', '2', '3'). Null jesli umowa glowna.",
+  "changedFields": jesli ANEKS, lista pol ktore zmienia aneks np. ["monthlyRent", "endDate"]. Null jesli umowa glowna.,
+  "startDate": "YYYY-MM-DD data rozpoczecia umowy lub data wejscia aneksu w zycie",
   "endDate": "YYYY-MM-DD data zakonczenia umowy (null jesli nieokreslona)",
   "monthlyRent": kwota miesiecznego czynszu/raty jako liczba (BRUTTO z VAT jesli dotyczy). Jesli kwota podana netto + VAT, oblicz brutto,
   "additionalFees": dodatkowe oplaty miesieczne (media, eksploatacja, administracja itp.) jako liczba lub null,
   "paymentDay": dzien miesiaca do kiedy nalezy zaplacic czynsz (np. 10 jesli do 10-tego kazdego miesiaca),
   "depositAmount": kwota kaucji jako liczba lub null,
   "noticePeriod": "okres wypowiedzenia np. 3 miesiace",
-  "notes": "inne wazne postanowienia umowy (krotki opis)"
+  "notes": "inne wazne postanowienia umowy (krotki opis)",
+  "suggestedParentContractId": null
 }
-WAZNE: Identyfikuj poprawnie strony umowy. Wynajmujacy/Wydzierzawiajacy to WLASCICIEL nieruchomosci. Najemca/Dzierzawca to firma zarzadzajaca apartamentami.
-Wszystkie kwoty musza byc BRUTTO (z VAT). Jesli kwota jest podana jako netto + VAT, oblicz kwote brutto.
+WAZNE: 
+1. Identyfikuj poprawnie strony umowy. Wynajmujacy/Wydzierzawiajacy to WLASCICIEL nieruchomosci. Najemca/Dzierzawca to firma zarzadzajaca apartamentami.
+2. Wszystkie kwoty musza byc BRUTTO (z VAT). Jesli kwota jest podana jako netto + VAT, oblicz kwote brutto.
+3. ROZPOZNAWANIE LANCUCHA UMOW: Jesli dokument to ANEKS, przeanalizuj naglowek - zwykle odnosi sie do umowy glownej (np. "Aneks nr 2 do umowy najmu z dnia..."). Wpisz te informacje w parentContractRef.
+4. Jesli to ANEKS i w systemie istnieja juz umowy, sprobuj dopasowac umowe nadrzedna na podstawie dat, wlasciciela i apartamentu. Wpisz ID dopasowanej umowy w suggestedParentContractId.
+${contractsContext}
 Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       ];
@@ -4944,6 +4961,23 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       if (err.name === "ZodError") {
         return res.status(400).json({ message: "Nieprawidłowe dane", errors: err.errors });
       }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/operational-cost-forecasts/bulk", isAuthenticated, async (req, res) => {
+    try {
+      const { entries } = req.body;
+      if (!Array.isArray(entries)) return res.status(400).json({ message: "Oczekiwano tablicy entries" });
+      const results = [];
+      for (const entry of entries) {
+        const parsed = insertOperationalCostForecastSchema.parse(entry);
+        const result = await storage.upsertOperationalCostForecast(parsed);
+        results.push(result);
+      }
+      res.json({ count: results.length, results });
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "Nieprawidłowe dane", errors: err.errors });
       res.status(500).json({ message: err.message });
     }
   });
