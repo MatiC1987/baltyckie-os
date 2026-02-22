@@ -41,6 +41,7 @@ import {
   notifications, Notification, InsertNotification,
   revenueForecasts, RevenueForecast, InsertRevenueForecast,
   costForecasts, CostForecast, InsertCostForecast,
+  operationalCostForecasts, OperationalCostForecast, InsertOperationalCostForecast,
   companySettings, CompanySettings, InsertCompanySettings,
   accountingNotes, AccountingNote, InsertAccountingNote,
   costInvoices, CostInvoice, InsertCostInvoice,
@@ -297,6 +298,11 @@ export interface IStorage {
   createCostForecastsBulk(data: InsertCostForecast[]): Promise<void>;
   deleteCostForecasts(year?: number): Promise<void>;
   deleteManualCostForecasts(year: number): Promise<void>;
+
+  // Operational Cost Forecasts
+  getOperationalCostForecasts(year?: number): Promise<OperationalCostForecast[]>;
+  upsertOperationalCostForecast(data: InsertOperationalCostForecast): Promise<OperationalCostForecast>;
+  deleteOperationalCostForecasts(year?: number): Promise<void>;
 
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | null>;
@@ -1442,6 +1448,37 @@ export class DatabaseStorage implements IStorage {
         )
       )
     );
+  }
+
+  async getOperationalCostForecasts(year?: number): Promise<OperationalCostForecast[]> {
+    if (year) {
+      return db.select().from(operationalCostForecasts).where(eq(operationalCostForecasts.year, year));
+    }
+    return db.select().from(operationalCostForecasts);
+  }
+
+  async upsertOperationalCostForecast(data: InsertOperationalCostForecast): Promise<OperationalCostForecast> {
+    const conditions = [
+      eq(operationalCostForecasts.year, data.year),
+      eq(operationalCostForecasts.month, data.month),
+      eq(operationalCostForecasts.categoryId, data.categoryId),
+      eq(operationalCostForecasts.itemIndex, data.itemIndex),
+    ];
+    const existing = await db.select().from(operationalCostForecasts).where(and(...conditions)).limit(1);
+    if (existing.length > 0) {
+      const [updated] = await db.update(operationalCostForecasts).set(data).where(eq(operationalCostForecasts.id, existing[0].id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(operationalCostForecasts).values(data).returning();
+    return created;
+  }
+
+  async deleteOperationalCostForecasts(year?: number): Promise<void> {
+    if (year) {
+      await db.delete(operationalCostForecasts).where(eq(operationalCostForecasts.year, year));
+    } else {
+      await db.delete(operationalCostForecasts);
+    }
   }
 
   async getCompanySettings(): Promise<CompanySettings | null> {

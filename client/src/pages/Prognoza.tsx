@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import type { Apartment, Location, RevenueForecast, CostForecast, Owner, OwnerContract } from "@shared/schema";
+import type { Apartment, Location, RevenueForecast, CostForecast, OperationalCostForecast, Owner, OwnerContract } from "@shared/schema";
+import { loadOplatyCategories, type OplatyCostCategory } from "@/lib/oplaty-defaults";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,17 +28,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Respo
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paz", "Lis", "Gru"];
 const MONTHS_FULL = ["Styczen", "Luty", "Marzec", "Kwiecien", "Maj", "Czerwiec", "Lipiec", "Sierpien", "Wrzesien", "Pazdziernik", "Listopad", "Grudzien"];
-const OP_CATEGORIES = [
-  { id: "wynagrodzenia", label: "Wynagrodzenia" },
-  { id: "zus", label: "ZUS" },
-  { id: "podatki", label: "Podatki" },
-  { id: "uslugi", label: "Uslugi" },
-  { id: "reklama", label: "Reklama" },
-  { id: "biuro", label: "Biuro" },
-  { id: "media_wspolne", label: "Media wspolne" },
-  { id: "ubezpieczenia", label: "Ubezpieczenia" },
-  { id: "inne", label: "Inne" },
-];
 
 interface ForecastTemplate {
   id: string;
@@ -114,6 +104,11 @@ export default function Prognoza() {
     queryFn: async () => { const r = await fetch(`/api/cost-forecasts?year=${year}`, { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
   });
   const { data: contracts = [] } = useQuery<OwnerContract[]>({ queryKey: ["/api/owner-contracts"] });
+  const { data: opForecasts = [], isLoading: opLoading } = useQuery<OperationalCostForecast[]>({
+    queryKey: ["/api/operational-cost-forecasts", year],
+    queryFn: async () => { const r = await fetch(`/api/operational-cost-forecasts?year=${year}`, { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
+  });
+  const opCategories = useMemo(() => loadOplatyCategories(), []);
 
   const { data: prevRevForecasts = [] } = useQuery<RevenueForecast[]>({
     queryKey: ["/api/revenue-forecasts", year - 1],
@@ -170,6 +165,15 @@ export default function Prognoza() {
     return m;
   }, [costForecasts]);
 
+  const opLookup = useMemo(() => {
+    const m: Record<string, { forecast: number; actual: number }> = {};
+    for (const f of opForecasts) {
+      const key = `${f.categoryId}-${f.itemIndex}-${f.month}`;
+      m[key] = { forecast: Number(f.forecast) || 0, actual: Number(f.actual) || 0 };
+    }
+    return m;
+  }, [opForecasts]);
+
   const prevRevLookup = useMemo(() => {
     const m: Record<string, number> = {};
     for (const f of prevRevForecasts) {
@@ -192,10 +196,10 @@ export default function Prognoza() {
     if (`${prefix}-${key}` in localEdits) return parseFloat(localEdits[`${prefix}-${key}`]) || 0;
     if (prefix === "rev") return revLookup[key] || 0;
     if (prefix === "cost") return costLookup[`apt-${key}`]?.forecast || 0;
-    if (prefix === "op-f") return costLookup[`cat-${key}`]?.forecast || 0;
-    if (prefix === "op-a") return costLookup[`cat-${key}`]?.actual || 0;
+    if (prefix === "op-f") return opLookup[key]?.forecast || 0;
+    if (prefix === "op-a") return opLookup[key]?.actual || 0;
     return 0;
-  }, [localEdits, revLookup, costLookup]);
+  }, [localEdits, revLookup, costLookup, opLookup]);
 
   const getDisplay = useCallback((prefix: string, key: string): string => {
     const editKey = `${prefix}-${key}`;
@@ -203,10 +207,10 @@ export default function Prognoza() {
     let val = 0;
     if (prefix === "rev") val = revLookup[key] || 0;
     else if (prefix === "cost") val = costLookup[`apt-${key}`]?.forecast || 0;
-    else if (prefix === "op-f") val = costLookup[`cat-${key}`]?.forecast || 0;
-    else if (prefix === "op-a") val = costLookup[`cat-${key}`]?.actual || 0;
+    else if (prefix === "op-f") val = opLookup[key]?.forecast || 0;
+    else if (prefix === "op-a") val = opLookup[key]?.actual || 0;
     return val ? String(val) : "";
-  }, [localEdits, revLookup, costLookup]);
+  }, [localEdits, revLookup, costLookup, opLookup]);
 
   const getPrevYearHint = useCallback((type: "rev" | "cost", aptId: number, month: number): string => {
     if (type === "rev") {
@@ -227,15 +231,21 @@ export default function Prognoza() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/cost-forecasts", year] }),
   });
 
+  const opMutation = useMutation({
+    mutationFn: (d: any) => apiRequest("PUT", "/api/operational-cost-forecasts", d),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts", year] }),
+  });
+
   const handleEdit = useCallback((prefix: string, key: string, value: string, mutData: any) => {
     const editKey = `${prefix}-${key}`;
     setLocalEdits(prev => ({ ...prev, [editKey]: value }));
     if (debounceTimers.current[editKey]) clearTimeout(debounceTimers.current[editKey]);
     debounceTimers.current[editKey] = setTimeout(() => {
       if (prefix === "rev") revMutation.mutate(mutData);
+      else if (prefix === "op-f" || prefix === "op-a") opMutation.mutate(mutData);
       else costMutation.mutate(mutData);
     }, 500);
-  }, [revMutation, costMutation]);
+  }, [revMutation, costMutation, opMutation]);
 
   const fillYear = useCallback((aptId: number, type: "rev" | "cost", value: number) => {
     const prefix = type === "rev" ? "rev" : "cost";
@@ -614,17 +624,40 @@ export default function Prognoza() {
     );
   }
 
+  const [collapsedOpCats, setCollapsedOpCats] = useState<Set<string>>(new Set());
+  const toggleOpCat = (catId: string) => setCollapsedOpCats(prev => {
+    const next = new Set(prev);
+    if (next.has(catId)) next.delete(catId); else next.add(catId);
+    return next;
+  });
+
+  const opGrandTotals = useMemo(() => {
+    const forecast = Array(12).fill(0);
+    const actual = Array(12).fill(0);
+    for (const cat of opCategories) {
+      cat.items.forEach((_, itemIdx) => {
+        for (let m = 0; m < 12; m++) {
+          const key = `${cat.id}-${itemIdx}-${m}`;
+          forecast[m] += getVal("op-f", key);
+          actual[m] += getVal("op-a", key);
+        }
+      });
+    }
+    return { forecast, actual };
+  }, [opCategories, getVal]);
+
   function renderOperationalCosts() {
-    if (costLoading) return <Skeleton className="h-64 w-full" />;
-    let grandForecast = Array(12).fill(0);
-    let grandActual = Array(12).fill(0);
+    if (opLoading) return <Skeleton className="h-64 w-full" />;
+
+    const CAT_COLORS: Record<string, string> = {};
+    for (const cat of opCategories) CAT_COLORS[cat.id] = cat.color.replace(/\s*dark:.*/, "");
 
     return (
       <div className="rounded-md border border-border overflow-x-auto" data-testid="table-operational">
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="bg-muted/50">
-              <th className="sticky left-0 z-10 bg-muted/50 text-left px-3 py-2 border-r border-b border-border min-w-[180px] font-medium text-muted-foreground">Kategoria</th>
+              <th className="sticky left-0 z-10 bg-muted/50 text-left px-3 py-2 border-r border-b border-border min-w-[220px] font-medium text-muted-foreground">Pozycja</th>
               {MONTHS.map((m, i) => (
                 <th key={i} className={`px-2 py-2 border-b border-border text-center font-medium min-w-[85px] ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>{m}</th>
               ))}
@@ -632,74 +665,79 @@ export default function Prognoza() {
             </tr>
           </thead>
           <tbody>
-            {OP_CATEGORIES.map(cat => {
-              const catKey = `operational_${cat.id}`;
-              let fTotal = 0, aTotal = 0;
+            {opCategories.map(cat => {
+              const isCollapsed = collapsedOpCats.has(cat.id);
+              const catForecastTotal = Array(12).fill(0);
+              cat.items.forEach((_, itemIdx) => {
+                for (let m = 0; m < 12; m++) {
+                  catForecastTotal[m] += getVal("op-f", `${cat.id}-${itemIdx}-${m}`);
+                }
+              });
+              const catSum = catForecastTotal.reduce((s, v) => s + v, 0);
+
               return (
                 <Fragment key={cat.id}>
-                  <tr className="bg-muted/20" data-testid={`row-op-header-${cat.id}`}>
-                    <td colSpan={14} className="sticky left-0 z-10 bg-muted/20 px-3 py-1.5 border-b border-border font-semibold text-sm">{cat.label}</td>
+                  <tr
+                    className={`cursor-pointer hover:bg-muted/60 ${cat.color.split(" ")[0]} bg-opacity-20`}
+                    onClick={() => toggleOpCat(cat.id)}
+                    data-testid={`row-op-header-${cat.id}`}
+                  >
+                    <td className="sticky left-0 z-10 px-3 py-2 border-r border-b border-border font-bold text-sm">
+                      <div className="flex items-center gap-1.5">
+                        {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        <span className={`w-2 h-2 rounded-full ${cat.color.split(" ")[0]}`} />
+                        {cat.title}
+                        <Badge variant="outline" className="text-[9px] ml-1">{cat.items.length}</Badge>
+                      </div>
+                    </td>
+                    {catForecastTotal.map((v, i) => (
+                      <td key={i} className={`px-2 py-2 border-b border-border text-right font-semibold tabular-nums ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>{formatNum(v)}</td>
+                    ))}
+                    <td className="px-2 py-2 border-b border-border text-right font-bold tabular-nums bg-muted/30">{formatNum(catSum)}</td>
                   </tr>
-                  <tr data-testid={`row-op-forecast-${cat.id}`}>
-                    <td className="sticky left-0 z-10 bg-card px-3 py-1 border-r border-b border-border text-muted-foreground pl-6">P (prognoza)</td>
-                    {Array.from({ length: 12 }, (_, m) => {
-                      const key = `${catKey}-${m}`;
-                      const val = getVal("op-f", key);
-                      fTotal += val;
-                      grandForecast[m] += val;
-                      return (
-                        <td key={m} className={`px-1 py-1 border-b border-border ${m === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>
-                          <input
-                            type="number"
-                            className="w-full text-right text-[11px] tabular-nums bg-transparent rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            value={getDisplay("op-f", key)}
-                            onChange={e => handleEdit("op-f", key, e.target.value, { year, month: m, category: catKey, forecast: String(parseFloat(e.target.value) || 0) })}
-                            placeholder="0"
-                            data-testid={`input-op-f-${cat.id}-${m}`}
-                          />
+                  {!isCollapsed && cat.items.map((item, itemIdx) => {
+                    let itemTotal = 0;
+                    return (
+                      <tr key={`${cat.id}-${itemIdx}`} className="hover:bg-muted/10" data-testid={`row-op-item-${cat.id}-${itemIdx}`}>
+                        <td className="sticky left-0 z-10 bg-card px-3 py-1 border-r border-b border-border pl-7">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium">{item.name}</span>
+                            {item.subLabel && <span className="text-[10px] text-muted-foreground">{item.subLabel}</span>}
+                          </div>
                         </td>
-                      );
-                    })}
-                    <td className="px-2 py-1 border-b border-border text-right font-semibold tabular-nums bg-muted/10">{formatNum(fTotal)}</td>
-                  </tr>
-                  <tr data-testid={`row-op-actual-${cat.id}`}>
-                    <td className="sticky left-0 z-10 bg-card px-3 py-1 border-r border-b border-border text-muted-foreground pl-6">R (rzeczywiste)</td>
-                    {Array.from({ length: 12 }, (_, m) => {
-                      const key = `${catKey}-${m}`;
-                      const val = getVal("op-a", key);
-                      aTotal += val;
-                      grandActual[m] += val;
-                      return (
-                        <td key={m} className={`px-1 py-1 border-b border-border ${m === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>
-                          <input
-                            type="number"
-                            className="w-full text-right text-[11px] tabular-nums bg-transparent rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            value={getDisplay("op-a", key)}
-                            onChange={e => handleEdit("op-a", key, e.target.value, { year, month: m, category: catKey, actual: String(parseFloat(e.target.value) || 0) })}
-                            placeholder="0"
-                            data-testid={`input-op-a-${cat.id}-${m}`}
-                          />
-                        </td>
-                      );
-                    })}
-                    <td className="px-2 py-1 border-b border-border text-right font-semibold tabular-nums bg-muted/10">{formatNum(aTotal)}</td>
-                  </tr>
+                        {Array.from({ length: 12 }, (_, m) => {
+                          const key = `${cat.id}-${itemIdx}-${m}`;
+                          const val = getVal("op-f", key);
+                          itemTotal += val;
+                          return (
+                            <td key={m} className={`px-1 py-1 border-b border-border ${m === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>
+                              <input
+                                type="number"
+                                className="w-full text-right text-[11px] tabular-nums bg-transparent rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                value={getDisplay("op-f", key)}
+                                onChange={e => handleEdit("op-f", key, e.target.value, {
+                                  year, month: m, categoryId: cat.id, itemIndex: itemIdx,
+                                  forecast: String(parseFloat(e.target.value) || 0),
+                                })}
+                                placeholder="0"
+                                data-testid={`input-op-f-${cat.id}-${itemIdx}-${m}`}
+                              />
+                            </td>
+                          );
+                        })}
+                        <td className="px-2 py-1 border-b border-border text-right font-semibold tabular-nums bg-muted/10">{formatNum(itemTotal)}</td>
+                      </tr>
+                    );
+                  })}
                 </Fragment>
               );
             })}
             <tr className="bg-muted/60 font-bold" data-testid="row-op-grand-total">
-              <td className="sticky left-0 z-10 bg-muted/60 px-3 py-2 border-r border-border">RAZEM P</td>
-              {grandForecast.map((v, i) => (
+              <td className="sticky left-0 z-10 bg-muted/60 px-3 py-2 border-r border-border">RAZEM</td>
+              {opGrandTotals.forecast.map((v, i) => (
                 <td key={i} className={`px-2 py-2 border-border text-right tabular-nums ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>{formatNum(v)}</td>
               ))}
-              <td className="px-2 py-2 border-border text-right tabular-nums bg-muted/30">{formatNum(grandForecast.reduce((s: number, v: number) => s + v, 0))}</td>
-            </tr>
-            <tr className="bg-muted/40 font-bold" data-testid="row-op-grand-actual">
-              <td className="sticky left-0 z-10 bg-muted/40 px-3 py-2 border-r border-border">RAZEM R</td>
-              {grandActual.map((v, i) => (
-                <td key={i} className={`px-2 py-2 border-border text-right tabular-nums ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>{formatNum(v)}</td>
-              ))}
-              <td className="px-2 py-2 border-border text-right tabular-nums bg-muted/30">{formatNum(grandActual.reduce((s: number, v: number) => s + v, 0))}</td>
+              <td className="px-2 py-2 border-border text-right tabular-nums bg-muted/30">{formatNum(opGrandTotals.forecast.reduce((s: number, v: number) => s + v, 0))}</td>
             </tr>
           </tbody>
         </table>
@@ -708,7 +746,7 @@ export default function Prognoza() {
   }
 
   function renderSummary() {
-    if (revLoading || costLoading) return <Skeleton className="h-64 w-full" />;
+    if (revLoading || costLoading || opLoading) return <Skeleton className="h-64 w-full" />;
 
     const totalRevByMonth = Array(12).fill(0);
     const totalCostByMonth = Array(12).fill(0);
@@ -718,9 +756,7 @@ export default function Prognoza() {
         totalCostByMonth[m] += getVal("cost", `${apt.id}-${m}`);
       }
     });
-    OP_CATEGORIES.forEach(cat => {
-      for (let m = 0; m < 12; m++) totalCostByMonth[m] += getVal("op-f", `operational_${cat.id}-${m}`);
-    });
+    for (let m = 0; m < 12; m++) totalCostByMonth[m] += opGrandTotals.forecast[m];
 
     const totalRev = totalRevByMonth.reduce((s, v) => s + v, 0);
     const totalCost = totalCostByMonth.reduce((s, v) => s + v, 0);
@@ -1183,7 +1219,7 @@ export default function Prognoza() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList data-testid="tabs-forecast">
           <TabsTrigger value="przychody" data-testid="tab-przychody">Przychody</TabsTrigger>
-          <TabsTrigger value="koszty_apt" data-testid="tab-koszty-apt">Koszty apartamentowe</TabsTrigger>
+          <TabsTrigger value="koszty_apt" data-testid="tab-koszty-apt">Koszty (apartamenty)</TabsTrigger>
           <TabsTrigger value="koszty_op" data-testid="tab-koszty-op">Koszty operacyjne</TabsTrigger>
           <TabsTrigger value="podsumowanie" data-testid="tab-podsumowanie">Podsumowanie</TabsTrigger>
         </TabsList>

@@ -1152,6 +1152,20 @@ export const insertTaskChecklistItemSchema = createInsertSchema(taskChecklistIte
 export type TaskChecklistItem = typeof taskChecklistItems.$inferSelect;
 export type InsertTaskChecklistItem = z.infer<typeof insertTaskChecklistItemSchema>;
 
+export const operationalCostForecasts = pgTable("operational_cost_forecasts", {
+  id: serial("id").primaryKey(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  categoryId: text("category_id").notNull(),
+  itemIndex: integer("item_index").notNull(),
+  forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
+  actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
+});
+
+export const insertOperationalCostForecastSchema = createInsertSchema(operationalCostForecasts).omit({ id: true });
+export type OperationalCostForecast = typeof operationalCostForecasts.$inferSelect;
+export type InsertOperationalCostForecast = z.infer<typeof insertOperationalCostForecastSchema>;
+
 export const appConfig = pgTable("app_config", {
   id: serial("id").primaryKey(),
   key: text("key").notNull().unique(),
