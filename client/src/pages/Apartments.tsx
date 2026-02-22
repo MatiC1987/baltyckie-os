@@ -937,7 +937,10 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
     );
   };
 
-  const contracts = useMemo(() => allContracts.filter(c => c.apartmentId === apartment.id), [allContracts, apartment.id]);
+  const contracts = useMemo(() => allContracts.filter(c =>
+    c.apartmentId === apartment.id ||
+    ((c as any).allocations || []).some((a: any) => a.apartmentId === apartment.id)
+  ), [allContracts, apartment.id]);
   const activeContracts = contracts.filter(c => c.status === "AKTYWNA");
   const archivedContracts = contracts.filter(c => c.status === "ZAKONCZONA" || c.status === "ROZWIAZANA");
 
@@ -1651,17 +1654,47 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
                   ) : null;
                 })}
               </div>
-              <Select onValueChange={v => {
-                const id = Number(v);
-                if (!formApartmentIds.includes(id)) setFormApartmentIds(prev => [...prev, id]);
-              }}>
-                <SelectTrigger className="mt-1" data-testid="select-add-apartment"><SelectValue placeholder="Dodaj apartament..." /></SelectTrigger>
-                <SelectContent>
-                  {allApartments.filter(a => !formApartmentIds.includes(a.id)).map(a => (
-                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-1 mt-1">
+                <Select onValueChange={v => {
+                  const id = Number(v);
+                  if (!formApartmentIds.includes(id)) setFormApartmentIds(prev => [...prev, id]);
+                }}>
+                  <SelectTrigger className="flex-1" data-testid="select-add-apartment"><SelectValue placeholder="Dodaj apartament..." /></SelectTrigger>
+                  <SelectContent>
+                    {allApartments.filter(a => !formApartmentIds.includes(a.id)).map(a => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(() => {
+                  const currentApt = allApartments.find(a => a.id === apartment.id);
+                  const currentLocKey = currentApt?.location ? normalizeKey(currentApt.location) : "";
+                  const sameLocApts = currentLocKey
+                    ? allApartments.filter(a => a.location && normalizeKey(a.location) === currentLocKey && !formApartmentIds.includes(a.id))
+                    : [];
+                  return sameLocApts.length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="whitespace-nowrap"
+                      onClick={() => {
+                        const newIds = sameLocApts.map(a => a.id);
+                        setFormApartmentIds(prev => [...prev, ...newIds]);
+                        const rent = parseFloat((document.querySelector('[name="monthlyRent"]') as HTMLInputElement)?.value || '0');
+                        if (rent > 0) {
+                          const allIds = [...formApartmentIds, ...newIds];
+                          const perApt = Math.round((rent / allIds.length) * 100) / 100;
+                          setAllocations(allIds.map(id => ({ apartmentId: id, rentAmount: String(perApt) })));
+                        }
+                      }}
+                      data-testid="btn-add-all-location"
+                    >
+                      <Building2 className="h-4 w-4 mr-1" />
+                      + cała lokalizacja ({currentApt?.location})
+                    </Button>
+                  ) : null;
+                })()}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
