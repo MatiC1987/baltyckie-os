@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, costForecasts, revenueForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -259,6 +259,43 @@ async function syncContractPaymentSchedule(contract: any) {
   }
 }
 
+async function syncContractPaymentScheduleForApartment(contract: any, alloc: any) {
+  try {
+    if (!alloc.apartmentId || !alloc.rentAmount || !contract.startDate) return;
+
+    const startDate = new Date(contract.startDate);
+    const endDate = contract.endDate ? new Date(contract.endDate) : new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate());
+
+    const existingPayments = await storage.getOwnerPayments(alloc.apartmentId);
+    const contractPayments = existingPayments.filter(p => p.title?.includes(`Umowa #${contract.id}`));
+    if (contractPayments.length > 0) return;
+
+    const payments: any[] = [];
+    const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const payDay = contract.paymentDay || 10;
+
+    while (current <= endDate) {
+      const paymentDate = new Date(current.getFullYear(), current.getMonth(), Math.min(payDay, 28));
+      if (paymentDate >= startDate && paymentDate <= endDate) {
+        payments.push({
+          apartmentId: alloc.apartmentId,
+          title: `Czynsz - Umowa #${contract.id}`,
+          category: 'czynsz_wlasciciel',
+          amount: String(alloc.rentAmount),
+          paymentDate: paymentDate.toISOString().split('T')[0],
+        });
+      }
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    for (const p of payments) {
+      await storage.createOwnerPayment(p);
+    }
+  } catch (err) {
+    console.error('Error syncing contract payment schedule for apartment:', err);
+  }
+}
+
 function checkContractOverlap(contracts: any[], newContract: any): { overlap: boolean; conflicting?: any } {
   if (!newContract.startDate) return { overlap: false };
   const newStart = new Date(newContract.startDate);
@@ -339,6 +376,29 @@ async function syncContractCostForecasts(contract: any) {
   }
 }
 
+async function backfillContractAllocations() {
+  try {
+    const contracts = await storage.getOwnerContracts();
+    for (const contract of contracts) {
+      if (!contract.apartmentId) continue;
+      const existing = await storage.getOwnerContractApartments(contract.id);
+      if (existing.length === 0) {
+        await storage.createOwnerContractApartment({
+          contractId: contract.id,
+          apartmentId: contract.apartmentId,
+          rentAmount: contract.monthlyRent || '0',
+          additionalFeesAmount: contract.additionalFees || '0',
+        });
+      }
+    }
+    if (contracts.length > 0) {
+      console.log(`Backfilled allocations for ${contracts.length} contracts`);
+    }
+  } catch (err) {
+    console.error('Error backfilling contract allocations:', err);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -350,6 +410,7 @@ export async function registerRoutes(
   seedLocations().catch(console.error);
   seedServiceContractCategories().catch(console.error);
   seedAccounts().catch(console.error);
+  backfillContractAllocations().catch(console.error);
 
   app.get("/api/user-preferences", isAuthenticated, async (req: any, res) => {
     try {
@@ -1156,7 +1217,17 @@ export async function registerRoutes(
       if (req.query.apartmentId) filters.apartmentId = Number(req.query.apartmentId);
       if (req.query.status) filters.status = String(req.query.status);
       const contracts = await storage.getOwnerContracts(filters);
-      res.json(contracts);
+      const allAllocations = await db.select().from(ownerContractApartments);
+      const allocMap = new Map<number, typeof allAllocations>();
+      for (const a of allAllocations) {
+        if (!allocMap.has(a.contractId)) allocMap.set(a.contractId, []);
+        allocMap.get(a.contractId)!.push(a);
+      }
+      const enriched = contracts.map(c => ({
+        ...c,
+        allocations: allocMap.get(c.id) || [],
+      }));
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1165,7 +1236,8 @@ export async function registerRoutes(
   app.get('/api/owner-contracts/:id', isAuthenticated, async (req, res) => {
     const contract = await storage.getOwnerContract(Number(req.params.id));
     if (!contract) return res.status(404).json({ message: "Umowa nie znaleziona" });
-    res.json(contract);
+    const allocations = await storage.getOwnerContractApartments(contract.id);
+    res.json({ ...contract, allocations });
   });
 
   app.get('/api/apartments/:id/dashboard-stats', isAuthenticated, async (req, res) => {
@@ -1215,20 +1287,27 @@ export async function registerRoutes(
       }, 0);
       const occupancyRate = Math.min(100, Math.round((occupiedDays / daysInYear) * 100));
 
-      const contracts = await storage.getOwnerContracts({ apartmentId: aptId });
+      const directContracts = await storage.getOwnerContracts({ apartmentId: aptId });
+      const aptAllocations = await storage.getOwnerContractApartmentsByApartment(aptId);
+      const allocContractIds = aptAllocations.map(a => a.contractId);
+      const allContracts = allocContractIds.length > 0 ? await storage.getOwnerContracts() : [];
+      const allocContracts = allContracts.filter(c => allocContractIds.includes(c.id) && !directContracts.some(dc => dc.id === c.id));
+      const contracts = [...directContracts, ...allocContracts];
+
       const activeContract = contracts.find(c => c.status === 'AKTYWNA' && c.contractType === 'UMOWA');
+      const activeAlloc = activeContract ? aptAllocations.find(a => a.contractId === activeContract.id) : null;
 
       const unpaidReservations = currentYearRes.filter(r => r.status === 'DO_OPLACENIA');
 
       const rentHistory = contracts
-        .filter(c => c.monthlyRent && c.startDate)
+        .filter(c => c.startDate)
         .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
-        .map(c => ({
-          date: c.startDate,
-          rent: Number(c.monthlyRent),
-          type: c.contractType,
-          id: c.id,
-        }));
+        .map(c => {
+          const alloc = aptAllocations.find(a => a.contractId === c.id);
+          const rent = alloc ? Number(alloc.rentAmount || 0) : Number(c.monthlyRent || 0);
+          return { date: c.startDate, rent, type: c.contractType, id: c.id };
+        })
+        .filter(r => r.rent > 0);
 
       res.json({
         revenueCurrentYear,
@@ -1244,7 +1323,7 @@ export async function registerRoutes(
         occupancyRate,
         monthlyData,
         activeContract: activeContract ? {
-          monthlyRent: activeContract.monthlyRent,
+          monthlyRent: activeAlloc ? activeAlloc.rentAmount : activeContract.monthlyRent,
           startDate: activeContract.startDate,
           endDate: activeContract.endDate,
           status: activeContract.status,
@@ -1263,22 +1342,55 @@ export async function registerRoutes(
   app.post('/api/owner-contracts', isAuthenticated, async (req, res) => {
     try {
       const body = { ...req.body };
+      const allocationsInput = body.allocations || [];
+      delete body.allocations;
       if (body.monthlyRent !== null && body.monthlyRent !== undefined) body.monthlyRent = String(body.monthlyRent);
       if (body.additionalFees !== null && body.additionalFees !== undefined) body.additionalFees = String(body.additionalFees);
       const parsed = insertOwnerContractSchema.parse(body);
       const contract = await storage.createOwnerContract(parsed);
 
-      const allContracts = await storage.getOwnerContracts();
-      const aptContracts = allContracts.filter(c => c.apartmentId === contract.apartmentId);
-      const overlapResult = checkContractOverlap(aptContracts, contract);
-
-      if (contract.apartmentId && contract.status === 'AKTYWNA') {
-        await syncApartmentLeaseDates(contract.apartmentId);
-        await syncContractCostForecasts(contract);
-        await syncContractPaymentSchedule(contract);
+      let allocations: any[] = [];
+      if (allocationsInput.length > 0) {
+        const allocs = allocationsInput.map((a: any) => ({
+          contractId: contract.id,
+          apartmentId: Number(a.apartmentId),
+          rentAmount: a.rentAmount != null ? String(a.rentAmount) : null,
+          additionalFeesAmount: a.additionalFeesAmount != null ? String(a.additionalFeesAmount) : null,
+        }));
+        allocations = await storage.setOwnerContractApartments(contract.id, allocs);
+      } else if (contract.apartmentId) {
+        allocations = await storage.setOwnerContractApartments(contract.id, [{
+          contractId: contract.id,
+          apartmentId: contract.apartmentId,
+          rentAmount: contract.monthlyRent,
+          additionalFeesAmount: contract.additionalFees,
+        }]);
       }
 
-      res.status(201).json({ ...contract, overlapWarning: overlapResult.overlap ? `Uwaga: umowa pokrywa się z umową #${overlapResult.conflicting?.id} (${overlapResult.conflicting?.startDate} - ${overlapResult.conflicting?.endDate || 'bezterminowo'})` : null });
+      let overlapWarning: string | null = null;
+      const allContracts = await storage.getOwnerContracts();
+      const aptIds = allocations.length > 0 ? allocations.map(a => a.apartmentId) : (contract.apartmentId ? [contract.apartmentId] : []);
+      for (const aptId of aptIds) {
+        const aptContracts = allContracts.filter(c => c.apartmentId === aptId || allocations.some((al: any) => al.apartmentId === aptId && al.contractId === c.id));
+        const result = checkContractOverlap(aptContracts, contract);
+        if (result.overlap) {
+          overlapWarning = `Uwaga: umowa pokrywa się z umową #${result.conflicting?.id} (${result.conflicting?.startDate} - ${result.conflicting?.endDate || 'bezterminowo'})`;
+          break;
+        }
+      }
+
+      if (contract.status === 'AKTYWNA') {
+        for (const alloc of allocations) {
+          await syncApartmentLeaseDates(alloc.apartmentId);
+          await syncContractPaymentScheduleForApartment(contract, alloc);
+        }
+        if (allocations.length === 0 && contract.apartmentId) {
+          await syncApartmentLeaseDates(contract.apartmentId);
+          await syncContractPaymentSchedule(contract);
+        }
+      }
+
+      res.status(201).json({ ...contract, allocations, overlapWarning });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: err.message });
@@ -1288,23 +1400,44 @@ export async function registerRoutes(
   app.put('/api/owner-contracts/:id', isAuthenticated, async (req, res) => {
     try {
       const body = { ...req.body };
+      const allocationsInput = body.allocations;
+      delete body.allocations;
       if (body.monthlyRent !== null && body.monthlyRent !== undefined) body.monthlyRent = String(body.monthlyRent);
       if (body.additionalFees !== null && body.additionalFees !== undefined) body.additionalFees = String(body.additionalFees);
       const contract = await storage.updateOwnerContract(Number(req.params.id), body);
 
-      if (contract.apartmentId) {
-        await syncApartmentLeaseDates(contract.apartmentId);
-        if (contract.status === 'AKTYWNA') {
-          await syncContractCostForecasts(contract);
-          await syncContractPaymentSchedule(contract);
+      let allocations: any[] = [];
+      if (allocationsInput && Array.isArray(allocationsInput)) {
+        const allocs = allocationsInput.map((a: any) => ({
+          contractId: contract.id,
+          apartmentId: Number(a.apartmentId),
+          rentAmount: a.rentAmount != null ? String(a.rentAmount) : null,
+          additionalFeesAmount: a.additionalFeesAmount != null ? String(a.additionalFeesAmount) : null,
+        }));
+        allocations = await storage.setOwnerContractApartments(contract.id, allocs);
+      } else {
+        allocations = await storage.getOwnerContractApartments(contract.id);
+      }
+
+      if (contract.status === 'AKTYWNA') {
+        for (const alloc of allocations) {
+          await syncApartmentLeaseDates(alloc.apartmentId);
+          await syncContractPaymentScheduleForApartment(contract, alloc);
         }
       }
 
+      let overlapWarning: string | null = null;
       const allContracts = await storage.getOwnerContracts();
-      const aptContracts = allContracts.filter(c => c.apartmentId === contract.apartmentId);
-      const overlapResult = checkContractOverlap(aptContracts, contract);
+      for (const alloc of allocations) {
+        const aptContracts = allContracts.filter(c => c.apartmentId === alloc.apartmentId);
+        const result = checkContractOverlap(aptContracts, contract);
+        if (result.overlap) {
+          overlapWarning = `Uwaga: umowa pokrywa się z umową #${result.conflicting?.id}`;
+          break;
+        }
+      }
 
-      res.json({ ...contract, overlapWarning: overlapResult.overlap ? `Uwaga: umowa pokrywa się z umową #${overlapResult.conflicting?.id} (${overlapResult.conflicting?.startDate} - ${overlapResult.conflicting?.endDate || 'bezterminowo'})` : null });
+      res.json({ ...contract, allocations, overlapWarning });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1391,7 +1524,8 @@ Jesli dane nie wystepuja w dokumencie, wpisz null.
   "ownerPhone": "telefon wlasciciela",
   "ownerEmail": "email wlasciciela",
   "apartmentAddress": "pelny adres wynajmowanej nieruchomosci (ulica, numer, kod pocztowy, miasto)",
-  "apartmentName": "nazwa lub numer lokalu/apartamentu",
+  "apartmentName": "nazwa lub numer lokalu/apartamentu (jesli jeden lokal) lub lista nazw oddzielonych przecinkami (jesli wiele lokali, np. '101, 102, 103')",
+  "apartmentNames": ["lista nazw/numerow wszystkich apartamentow wymienionych w umowie, np. ['101', '102', '103']. Jesli jest jeden apartament, lista jednoelementowa. Null jesli nie mozna okreslic."],
   "contractType": "UMOWA" lub "ANEKS" - czy to jest umowa glowna czy aneks do umowy,
   "parentContractRef": "jesli to ANEKS, podaj numer lub date umowy glownej do ktorej sie odnosi (np. 'Umowa z dnia 2024-01-15' lub 'Umowa nr 5/2024'). Null jesli umowa glowna.",
   "annexNumber": "numer aneksu jesli to ANEKS (np. '1', '2', '3'). Null jesli umowa glowna.",
@@ -1538,7 +1672,8 @@ Odpowiedz w formacie JSON - TABLICA obiektow, jeden na kazdy dokument:
     "ownerName": "imie i nazwisko lub nazwa firmy wlasciciela nieruchomosci",
     "ownerNip": "NIP wlasciciela jesli firma",
     "apartmentAddress": "pelny adres nieruchomosci",
-    "apartmentName": "nazwa lub numer lokalu",
+    "apartmentName": "nazwa lub numer lokalu (jesli jeden) lub lista oddzielona przecinkami (jesli wiele)",
+    "apartmentNames": ["lista nazw/numerow wszystkich apartamentow z umowy, np. ['101', '102']. Null jesli nie mozna okreslic."],
     "contractType": "UMOWA" lub "ANEKS",
     "parentContractRef": "jesli ANEKS - referencja do umowy glownej (np. 'Umowa z dnia 2024-01-15')",
     "parentDocumentIndex": null lub numer indeksu dokumentu glownego z tej paczki (np. 0 jesli aneks odnosi sie do pierwszego dokumentu),

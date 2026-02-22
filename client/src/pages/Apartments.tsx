@@ -1492,6 +1492,10 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   const [formContractType, setFormContractType] = useState("UMOWA");
   const [formStatus, setFormStatus] = useState("AKTYWNA");
   const [formParentContractId, setFormParentContractId] = useState("");
+  const [formApartmentIds, setFormApartmentIds] = useState<number[]>([apartment.id]);
+  const [allocations, setAllocations] = useState<{apartmentId: number; rentAmount: string}[]>([]);
+
+  const { data: allApartments = [] } = useQuery<Apartment[]>({ queryKey: ['/api/apartments'] });
 
   const [batchPreviewOpen, setBatchPreviewOpen] = useState(false);
   const [batchContracts, setBatchContracts] = useState<any[]>([]);
@@ -1571,6 +1575,31 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
     setFormContractType(contract?.contractType || parsed?.contractType || "UMOWA");
     setFormStatus(contract?.status || "AKTYWNA");
     setFormParentContractId(String(contract?.parentContractId || parsed?.parentContractId || ""));
+
+    if (contract && (contract as any).allocations?.length > 0) {
+      const allocs = (contract as any).allocations;
+      setFormApartmentIds(allocs.map((a: any) => a.apartmentId));
+      setAllocations(allocs.map((a: any) => ({ apartmentId: a.apartmentId, rentAmount: String(a.rentAmount || '') })));
+    } else if (parsed?.apartmentNames?.length > 0 && allApartments) {
+      const matchedIds: number[] = [];
+      for (const name of parsed.apartmentNames) {
+        const found = allApartments.find((a: any) => a.name?.toLowerCase().includes(String(name).toLowerCase()));
+        if (found) matchedIds.push(found.id);
+      }
+      if (matchedIds.length === 0) matchedIds.push(apartment.id);
+      setFormApartmentIds(matchedIds);
+      const totalRent = parseFloat(parsed?.monthlyRent || '0');
+      if (matchedIds.length > 1 && totalRent > 0) {
+        const perApt = Math.round((totalRent / matchedIds.length) * 100) / 100;
+        setAllocations(matchedIds.map(id => ({ apartmentId: id, rentAmount: String(perApt) })));
+      } else {
+        setAllocations([]);
+      }
+    } else {
+      setFormApartmentIds([apartment.id]);
+      setAllocations([]);
+    }
+
     setContractFormOpen(true);
   }
 
@@ -1611,7 +1640,7 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
     const fd = new FormData(e.currentTarget);
     const body: any = {
       ownerId: formOwnerId ? Number(formOwnerId) : null,
-      apartmentId: apartment.id,
+      apartmentId: formApartmentIds[0] || apartment.id,
       monthlyRent: fd.get("monthlyRent") || null,
       additionalFees: fd.get("additionalFees") || null,
       startDate: fd.get("startDate") || null,
@@ -1621,6 +1650,26 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
       notes: fd.get("notes") || null,
       status: formStatus,
     };
+    if (formApartmentIds.length > 1) {
+      const totalRent = parseFloat(String(body.monthlyRent) || '0');
+      const totalFees = parseFloat(String(body.additionalFees) || '0');
+      const equalRent = Math.round((totalRent / formApartmentIds.length) * 100) / 100;
+      const equalFees = Math.round((totalFees / formApartmentIds.length) * 100) / 100;
+      body.allocations = formApartmentIds.map(aptId => {
+        const alloc = allocations.find(a => a.apartmentId === aptId);
+        return {
+          apartmentId: aptId,
+          rentAmount: alloc?.rentAmount || String(equalRent),
+          additionalFeesAmount: String(equalFees),
+        };
+      });
+    } else {
+      body.allocations = [{
+        apartmentId: formApartmentIds[0] || apartment.id,
+        rentAmount: body.monthlyRent,
+        additionalFeesAmount: body.additionalFees || '0',
+      }];
+    }
     if (editingContract) {
       contractMutation.mutate({ method: "PUT", url: `/api/owner-contracts/${editingContract.id}`, body, isNew: false });
     } else {
@@ -2130,6 +2179,9 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                         <span>{c.startDate || "\u2014"} &rarr; {c.endDate || "bezterminowo"}</span>
                         <Badge variant={c.status === "AKTYWNA" ? "default" : "secondary"} className="text-[10px]">{c.status}</Badge>
                         <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">{c.contractType}</Badge>
+                        {(c as any).allocations?.length > 1 && (
+                          <Badge variant="outline" className="text-[10px]">{(c as any).allocations.length} apt.</Badge>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -2383,6 +2435,36 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Apartamenty objęte umową</Label>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {formApartmentIds.map(aptId => {
+                  const apt = allApartments.find(a => a.id === aptId);
+                  return apt ? (
+                    <Badge key={aptId} variant="secondary" className="gap-1">
+                      {apt.name}
+                      {formApartmentIds.length > 1 && (
+                        <button type="button" onClick={() => {
+                          setFormApartmentIds(prev => prev.filter(id => id !== aptId));
+                          setAllocations(prev => prev.filter(a => a.apartmentId !== aptId));
+                        }} className="ml-1 text-muted-foreground hover:text-foreground">×</button>
+                      )}
+                    </Badge>
+                  ) : null;
+                })}
+              </div>
+              <Select onValueChange={v => {
+                const id = Number(v);
+                if (!formApartmentIds.includes(id)) setFormApartmentIds(prev => [...prev, id]);
+              }}>
+                <SelectTrigger className="mt-1" data-testid="select-add-apartment"><SelectValue placeholder="Dodaj apartament..." /></SelectTrigger>
+                <SelectContent>
+                  {allApartments.filter(a => !formApartmentIds.includes(a.id)).map(a => (
+                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Czynsz miesiecznie</Label>
@@ -2393,6 +2475,45 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                 <Input name="additionalFees" type="number" step="0.01" defaultValue={editingContract?.additionalFees || pdfParsedData?.additionalFees || ""} data-testid="input-apt-contract-fees" />
               </div>
             </div>
+            {formApartmentIds.length > 1 && (
+              <div className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <Label className="text-xs font-medium">Podział czynszu na apartamenty</Label>
+                  <Button type="button" variant="ghost" size="sm" className="text-xs" onClick={() => {
+                    const rent = parseFloat((document.querySelector('[name="monthlyRent"]') as HTMLInputElement)?.value || '0');
+                    const perApt = Math.round((rent / formApartmentIds.length) * 100) / 100;
+                    setAllocations(formApartmentIds.map(id => ({ apartmentId: id, rentAmount: String(perApt) })));
+                  }} data-testid="btn-equal-split">
+                    Podziel równo
+                  </Button>
+                </div>
+                {formApartmentIds.map(aptId => {
+                  const apt = allApartments.find(a => a.id === aptId);
+                  const alloc = allocations.find(a => a.apartmentId === aptId);
+                  return (
+                    <div key={aptId} className="flex items-center gap-2">
+                      <span className="text-xs flex-1 truncate">{apt?.name}</span>
+                      <Input
+                        type="number" step="0.01" className="w-28 text-xs"
+                        value={alloc?.rentAmount || ''}
+                        onChange={e => {
+                          setAllocations(prev => {
+                            const exists = prev.find(a => a.apartmentId === aptId);
+                            if (exists) return prev.map(a => a.apartmentId === aptId ? { ...a, rentAmount: e.target.value } : a);
+                            return [...prev, { apartmentId: aptId, rentAmount: e.target.value }];
+                          });
+                        }}
+                        data-testid={`input-alloc-rent-${aptId}`}
+                      />
+                      <span className="text-xs text-muted-foreground">zł</span>
+                    </div>
+                  );
+                })}
+                <div className="text-[10px] text-muted-foreground text-right">
+                  Suma: {allocations.reduce((s, a) => s + parseFloat(a.rentAmount || '0'), 0).toLocaleString('pl-PL')} zł
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Data od</Label>

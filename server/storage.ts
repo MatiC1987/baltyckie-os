@@ -12,6 +12,7 @@ import {
   medicalExams, MedicalExam, InsertMedicalExam,
   ownerPayments, OwnerPayment, InsertOwnerPayment,
   ownerContracts, OwnerContract, InsertOwnerContract,
+  ownerContractApartments, OwnerContractApartment, InsertOwnerContractApartment,
   blockades, Blockade, InsertBlockade,
   locations, Location, InsertLocation,
   serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
@@ -136,6 +137,9 @@ export interface IStorage {
   createOwnerContract(data: InsertOwnerContract): Promise<OwnerContract>;
   updateOwnerContract(id: number, data: Partial<InsertOwnerContract>): Promise<OwnerContract>;
   deleteOwnerContract(id: number): Promise<void>;
+  getOwnerContractApartments(contractId: number): Promise<OwnerContractApartment[]>;
+  getOwnerContractApartmentsByApartment(apartmentId: number): Promise<OwnerContractApartment[]>;
+  setOwnerContractApartments(contractId: number, allocations: InsertOwnerContractApartment[]): Promise<OwnerContractApartment[]>;
 
   // Blockades
   getBlockades(): Promise<Blockade[]>;
@@ -703,7 +707,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOwnerContract(id: number): Promise<void> {
+    await db.delete(ownerContractApartments).where(eq(ownerContractApartments.contractId, id));
     await db.delete(ownerContracts).where(eq(ownerContracts.id, id));
+  }
+
+  async getOwnerContractApartments(contractId: number): Promise<OwnerContractApartment[]> {
+    return await db.select().from(ownerContractApartments).where(eq(ownerContractApartments.contractId, contractId));
+  }
+
+  async getOwnerContractApartmentsByApartment(apartmentId: number): Promise<OwnerContractApartment[]> {
+    return await db.select().from(ownerContractApartments).where(eq(ownerContractApartments.apartmentId, apartmentId));
+  }
+
+  async setOwnerContractApartments(contractId: number, allocations: InsertOwnerContractApartment[]): Promise<OwnerContractApartment[]> {
+    await db.delete(ownerContractApartments).where(eq(ownerContractApartments.contractId, contractId));
+    if (allocations.length === 0) return [];
+    const rows = allocations.map(a => ({ ...a, contractId }));
+    return await db.insert(ownerContractApartments).values(rows).returning();
   }
 
   // Blockades

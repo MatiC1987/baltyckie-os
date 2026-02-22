@@ -159,6 +159,14 @@ export const ownerContracts = pgTable("owner_contracts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const ownerContractApartments = pgTable("owner_contract_apartments", {
+  id: serial("id").primaryKey(),
+  contractId: integer("contract_id").references(() => ownerContracts.id, { onDelete: 'cascade' }).notNull(),
+  apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  rentAmount: decimal("rent_amount", { precision: 12, scale: 2 }),
+  additionalFeesAmount: decimal("additional_fees_amount", { precision: 12, scale: 2 }),
+});
+
 export const blockades = pgTable("blockades", {
   id: serial("id").primaryKey(),
   apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
@@ -328,6 +336,7 @@ export const insertServiceContractCategorySchema = createInsertSchema(serviceCon
 export const insertServiceContractSchema = createInsertSchema(serviceContracts).omit({ id: true, createdAt: true });
 export const insertServiceContractAttachmentSchema = createInsertSchema(serviceContractAttachments).omit({ id: true, uploadedAt: true });
 export const insertOwnerContractSchema = createInsertSchema(ownerContracts).omit({ id: true, createdAt: true });
+export const insertOwnerContractApartmentSchema = createInsertSchema(ownerContractApartments).omit({ id: true });
 
 // Types
 export type Owner = typeof owners.$inferSelect;
@@ -364,6 +373,8 @@ export type ServiceContractAttachment = typeof serviceContractAttachments.$infer
 export type InsertServiceContractAttachment = z.infer<typeof insertServiceContractAttachmentSchema>;
 export type OwnerContract = typeof ownerContracts.$inferSelect;
 export type InsertOwnerContract = z.infer<typeof insertOwnerContractSchema>;
+export type OwnerContractApartment = typeof ownerContractApartments.$inferSelect;
+export type InsertOwnerContractApartment = z.infer<typeof insertOwnerContractApartmentSchema>;
 
 export const saldoEntries = pgTable("saldo_entries", {
   id: serial("id").primaryKey(),
