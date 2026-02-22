@@ -141,6 +141,23 @@ export const ownerPayments = pgTable("owner_payments", {
   paymentDate: date("payment_date").notNull(),
 });
 
+export const ownerContracts = pgTable("owner_contracts", {
+  id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").references(() => owners.id),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  monthlyRent: decimal("monthly_rent", { precision: 12, scale: 2 }),
+  additionalFees: decimal("additional_fees", { precision: 12, scale: 2 }),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  contractType: text("contract_type").default("UMOWA"),
+  parentContractId: integer("parent_contract_id"),
+  pdfPath: text("pdf_path"),
+  extractedData: text("extracted_data"),
+  status: text("status").default("AKTYWNA"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const blockades = pgTable("blockades", {
   id: serial("id").primaryKey(),
   apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
@@ -252,6 +269,11 @@ export const ownerPaymentsRelations = relations(ownerPayments, ({ one }) => ({
   }),
 }));
 
+export const ownerContractsRelations = relations(ownerContracts, ({ one }) => ({
+  owner: one(owners, { fields: [ownerContracts.ownerId], references: [owners.id] }),
+  apartment: one(apartments, { fields: [ownerContracts.apartmentId], references: [apartments.id] }),
+}));
+
 export const blockadesRelations = relations(blockades, ({ one }) => ({
   apartment: one(apartments, {
     fields: [blockades.apartmentId],
@@ -304,6 +326,7 @@ export const insertLocationSchema = createInsertSchema(locations).omit({ id: tru
 export const insertServiceContractCategorySchema = createInsertSchema(serviceContractCategories).omit({ id: true, createdAt: true });
 export const insertServiceContractSchema = createInsertSchema(serviceContracts).omit({ id: true, createdAt: true });
 export const insertServiceContractAttachmentSchema = createInsertSchema(serviceContractAttachments).omit({ id: true, uploadedAt: true });
+export const insertOwnerContractSchema = createInsertSchema(ownerContracts).omit({ id: true, createdAt: true });
 
 // Types
 export type Owner = typeof owners.$inferSelect;
@@ -338,6 +361,8 @@ export type ServiceContract = typeof serviceContracts.$inferSelect;
 export type InsertServiceContract = z.infer<typeof insertServiceContractSchema>;
 export type ServiceContractAttachment = typeof serviceContractAttachments.$inferSelect;
 export type InsertServiceContractAttachment = z.infer<typeof insertServiceContractAttachmentSchema>;
+export type OwnerContract = typeof ownerContracts.$inferSelect;
+export type InsertOwnerContract = z.infer<typeof insertOwnerContractSchema>;
 
 export const saldoEntries = pgTable("saldo_entries", {
   id: serial("id").primaryKey(),
@@ -791,6 +816,9 @@ export const costForecasts = pgTable("cost_forecasts", {
   category: text("category"),
   forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
   actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
+  sourceType: text("source_type").default("manual"),
+  sourceContractId: integer("source_contract_id"),
+  locationName: text("location_name"),
 });
 
 export const insertCostForecastSchema = createInsertSchema(costForecasts).omit({ id: true });

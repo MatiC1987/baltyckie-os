@@ -26,6 +26,7 @@ import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
 import Revenue from "@/pages/Revenue";
 import FinanceForecast from "@/pages/FinanceForecast";
+import Prognoza from "@/pages/Prognoza";
 import ApartmentSchedule from "@/pages/ApartmentSchedule";
 import ActivityLog from "@/pages/ActivityLog";
 import PlaceholderPage from "@/pages/Placeholder";
@@ -113,7 +114,7 @@ function AuthenticatedRouter() {
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
 
       <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
-      <Route path="/finance-forecast" component={() => <AuthenticatedRoute component={FinanceForecast} />} />
+      <Route path="/finance-forecast" component={() => <AuthenticatedRoute component={Prognoza} />} />
       <Route path="/koszty" component={() => <AuthenticatedRoute component={Koszty} />} />
       <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
       <Route path="/apartment-schedule" component={() => <AuthenticatedRoute component={ApartmentSchedule} />} />

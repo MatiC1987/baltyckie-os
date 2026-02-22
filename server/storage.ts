@@ -11,6 +11,7 @@ import {
   employees, Employee, InsertEmployee,
   medicalExams, MedicalExam, InsertMedicalExam,
   ownerPayments, OwnerPayment, InsertOwnerPayment,
+  ownerContracts, OwnerContract, InsertOwnerContract,
   blockades, Blockade, InsertBlockade,
   locations, Location, InsertLocation,
   serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
@@ -127,6 +128,13 @@ export interface IStorage {
   getOwnerPayments(apartmentId: number): Promise<OwnerPayment[]>;
   createOwnerPayment(payment: InsertOwnerPayment): Promise<OwnerPayment>;
   deleteOwnerPayment(id: number): Promise<void>;
+
+  // Owner Contracts
+  getOwnerContracts(filters?: { ownerId?: number; apartmentId?: number; status?: string }): Promise<OwnerContract[]>;
+  getOwnerContract(id: number): Promise<OwnerContract | undefined>;
+  createOwnerContract(data: InsertOwnerContract): Promise<OwnerContract>;
+  updateOwnerContract(id: number, data: Partial<InsertOwnerContract>): Promise<OwnerContract>;
+  deleteOwnerContract(id: number): Promise<void>;
 
   // Blockades
   getBlockades(): Promise<Blockade[]>;
@@ -286,6 +294,9 @@ export interface IStorage {
   // Cost Forecasts
   getCostForecasts(year?: number): Promise<CostForecast[]>;
   upsertCostForecast(data: InsertCostForecast): Promise<CostForecast>;
+  createCostForecastsBulk(data: InsertCostForecast[]): Promise<void>;
+  deleteCostForecasts(year?: number): Promise<void>;
+  deleteManualCostForecasts(year: number): Promise<void>;
 
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | null>;
@@ -654,6 +665,38 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOwnerPayment(id: number): Promise<void> {
     await db.delete(ownerPayments).where(eq(ownerPayments.id, id));
+  }
+
+  // Owner Contracts
+  async getOwnerContracts(filters?: { ownerId?: number; apartmentId?: number; status?: string }): Promise<OwnerContract[]> {
+    let query = db.select().from(ownerContracts);
+    const conditions = [];
+    if (filters?.ownerId) conditions.push(eq(ownerContracts.ownerId, filters.ownerId));
+    if (filters?.apartmentId) conditions.push(eq(ownerContracts.apartmentId, filters.apartmentId));
+    if (filters?.status) conditions.push(eq(ownerContracts.status, filters.status));
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions));
+    }
+    return await query;
+  }
+
+  async getOwnerContract(id: number): Promise<OwnerContract | undefined> {
+    const [contract] = await db.select().from(ownerContracts).where(eq(ownerContracts.id, id));
+    return contract;
+  }
+
+  async createOwnerContract(data: InsertOwnerContract): Promise<OwnerContract> {
+    const [contract] = await db.insert(ownerContracts).values(data).returning();
+    return contract;
+  }
+
+  async updateOwnerContract(id: number, data: Partial<InsertOwnerContract>): Promise<OwnerContract> {
+    const [contract] = await db.update(ownerContracts).set(data).where(eq(ownerContracts.id, id)).returning();
+    return contract;
+  }
+
+  async deleteOwnerContract(id: number): Promise<void> {
+    await db.delete(ownerContracts).where(eq(ownerContracts.id, id));
   }
 
   // Blockades
@@ -1374,6 +1417,31 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(costForecasts).values(data).returning();
     return created;
+  }
+
+  async createCostForecastsBulk(data: InsertCostForecast[]): Promise<void> {
+    if (data.length === 0) return;
+    await db.insert(costForecasts).values(data);
+  }
+
+  async deleteCostForecasts(year?: number): Promise<void> {
+    if (year) {
+      await db.delete(costForecasts).where(eq(costForecasts.year, year));
+    } else {
+      await db.delete(costForecasts);
+    }
+  }
+
+  async deleteManualCostForecasts(year: number): Promise<void> {
+    await db.delete(costForecasts).where(
+      and(
+        eq(costForecasts.year, year),
+        or(
+          eq(costForecasts.sourceType, "manual"),
+          isNull(costForecasts.sourceType)
+        )
+      )
+    );
   }
 
   async getCompanySettings(): Promise<CompanySettings | null> {

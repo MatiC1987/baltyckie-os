@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, costForecasts, revenueForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import os from "os";
 import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const contractUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 function generateRecurrenceDates(startDate: string, endDate: string, recurrenceType: string): string[] {
   const VALID_TYPES = ["MIESIECZNIE", "KWARTALNIE", "ROCZNIE"];
@@ -971,6 +972,467 @@ export async function registerRoutes(
   app.delete('/api/owner-payments/:id', isAuthenticated, async (req, res) => {
     await storage.deleteOwnerPayment(Number(req.params.id));
     res.status(204).send();
+  });
+
+  // Owner Contracts
+  app.get('/api/owner-contracts', isAuthenticated, async (req, res) => {
+    try {
+      const filters: { ownerId?: number; apartmentId?: number; status?: string } = {};
+      if (req.query.ownerId) filters.ownerId = Number(req.query.ownerId);
+      if (req.query.apartmentId) filters.apartmentId = Number(req.query.apartmentId);
+      if (req.query.status) filters.status = String(req.query.status);
+      const contracts = await storage.getOwnerContracts(filters);
+      res.json(contracts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/owner-contracts/:id', isAuthenticated, async (req, res) => {
+    const contract = await storage.getOwnerContract(Number(req.params.id));
+    if (!contract) return res.status(404).json({ message: "Umowa nie znaleziona" });
+    res.json(contract);
+  });
+
+  app.post('/api/owner-contracts', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertOwnerContractSchema.parse(req.body);
+      const contract = await storage.createOwnerContract(parsed);
+      res.status(201).json(contract);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/owner-contracts/:id', isAuthenticated, async (req, res) => {
+    try {
+      const contract = await storage.updateOwnerContract(Number(req.params.id), req.body);
+      res.json(contract);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/owner-contracts/:id', isAuthenticated, async (req, res) => {
+    await storage.deleteOwnerContract(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.post('/api/parse-owner-contract-pdf', isAuthenticated, contractUpload.array('files', 20), async (req, res) => {
+    const tmpFiles: string[] = [];
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "Brak plików" });
+      }
+
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+      for (const file of files) {
+        const ext = file.originalname.toLowerCase();
+        const isAllowed = allowedTypes.includes(file.mimetype) ||
+          ext.endsWith('.pdf') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') ||
+          ext.endsWith('.png') || ext.endsWith('.webp') || ext.endsWith('.heic');
+        if (!isAllowed) {
+          return res.status(400).json({ message: `Nieobsługiwany format pliku: ${file.originalname}. Dozwolone: PDF, JPG, PNG, WEBP` });
+        }
+      }
+
+      const tmpDir = os.tmpdir();
+      const pageImages: string[] = [];
+
+      for (const file of files) {
+        if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+          const pdfPath = path.join(tmpDir, `owner_contract_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+          fs.writeFileSync(pdfPath, file.buffer);
+          tmpFiles.push(pdfPath);
+
+          const prefix = path.join(tmpDir, `owner_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+          execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+
+          const pageFiles = fs.readdirSync(tmpDir)
+            .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+            .sort();
+
+          for (const pageFile of pageFiles) {
+            const pagePath = path.join(tmpDir, pageFile);
+            tmpFiles.push(pagePath);
+            const imgBuffer = fs.readFileSync(pagePath);
+            pageImages.push(imgBuffer.toString('base64'));
+          }
+        } else {
+          pageImages.push(file.buffer.toString('base64'));
+        }
+      }
+
+      if (pageImages.length === 0) {
+        return res.status(400).json({ message: "Nie udało się odczytać plików" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const maxPages = Math.min(pageImages.length, 8);
+      const content: any[] = [
+        {
+          type: 'text',
+          text: `Przeanalizuj te zdjecia/strony umowy najmu/dzierzawy apartamentu zawartej pomiedzy wlascicielem nieruchomosci a firma zarzadzajaca. Wyciagnij nastepujace dane w formacie JSON.
+Jesli dane nie wystepuja w dokumencie, wpisz null.
+{
+  "ownerName": "imie i nazwisko lub nazwa firmy wlasciciela nieruchomosci (wynajmujacy/wydzierzawiajacy)",
+  "ownerNip": "NIP wlasciciela jesli firma",
+  "ownerPhone": "telefon wlasciciela",
+  "ownerEmail": "email wlasciciela",
+  "apartmentAddress": "pelny adres wynajmowanej nieruchomosci (ulica, numer, kod pocztowy, miasto)",
+  "apartmentName": "nazwa lub numer lokalu/apartamentu",
+  "contractType": "UMOWA" lub "ANEKS" - czy to jest umowa glowna czy aneks do umowy,
+  "startDate": "YYYY-MM-DD data rozpoczecia umowy",
+  "endDate": "YYYY-MM-DD data zakonczenia umowy (null jesli nieokreslona)",
+  "monthlyRent": kwota miesiecznego czynszu/raty jako liczba (BRUTTO z VAT jesli dotyczy). Jesli kwota podana netto + VAT, oblicz brutto,
+  "additionalFees": dodatkowe oplaty miesieczne (media, eksploatacja, administracja itp.) jako liczba lub null,
+  "paymentDay": dzien miesiaca do kiedy nalezy zaplacic czynsz (np. 10 jesli do 10-tego kazdego miesiaca),
+  "depositAmount": kwota kaucji jako liczba lub null,
+  "noticePeriod": "okres wypowiedzenia np. 3 miesiace",
+  "notes": "inne wazne postanowienia umowy (krotki opis)"
+}
+WAZNE: Identyfikuj poprawnie strony umowy. Wynajmujacy/Wydzierzawiajacy to WLASCICIEL nieruchomosci. Najemca/Dzierzawca to firma zarzadzajaca apartamentami.
+Wszystkie kwoty musza byc BRUTTO (z VAT). Jesli kwota jest podana jako netto + VAT, oblicz kwote brutto.
+Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
+        }
+      ];
+
+      for (let i = 0; i < maxPages; i++) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:image/png;base64,${pageImages[i]}` }
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content }],
+        max_tokens: 4000,
+      });
+
+      const rawText = response.choices[0]?.message?.content || '';
+      let parsed;
+      try {
+        const cleaned = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        parsed = JSON.parse(cleaned);
+      } catch {
+        return res.status(422).json({ message: "Nie udało się odczytać danych z dokumentu", raw: rawText });
+      }
+
+      res.json(parsed);
+    } catch (err: any) {
+      console.error("Owner contract PDF parse error:", err);
+      res.status(500).json({ message: "Błąd analizy dokumentu: " + (err.message || "Nieznany błąd") });
+    } finally {
+      for (const f of tmpFiles) {
+        try { fs.unlinkSync(f); } catch {}
+      }
+    }
+  });
+
+  // Cost forecasts bulk operations
+  app.post('/api/cost-forecasts/bulk', isAuthenticated, async (req, res) => {
+    try {
+      const { data } = req.body;
+      if (!Array.isArray(data)) return res.status(400).json({ message: "Oczekiwano tablicy danych" });
+      const parsed = data.map((d: any) => insertCostForecastSchema.parse(d));
+      await storage.createCostForecastsBulk(parsed);
+      res.json({ message: `Zaimportowano ${parsed.length} rekordów` });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/cost-forecasts', isAuthenticated, async (req, res) => {
+    try {
+      const year = req.query.year ? Number(req.query.year) : undefined;
+      await storage.deleteCostForecasts(year);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Revenue forecasts bulk delete
+  app.delete('/api/revenue-forecasts', isAuthenticated, async (req, res) => {
+    try {
+      const year = req.query.year ? Number(req.query.year) : undefined;
+      await storage.deleteRevenueForecasts(year);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Copy forecasts from one year to another
+  app.post('/api/forecasts/copy', isAuthenticated, async (req, res) => {
+    try {
+      const { sourceYear, targetYear, copyRevenue, copyCosts } = req.body;
+      if (!sourceYear || !targetYear) return res.status(400).json({ message: "Podaj rok źródłowy i docelowy" });
+      let revenueCount = 0;
+      let costCount = 0;
+
+      if (copyRevenue) {
+        const sourceForecasts = await storage.getRevenueForecasts(sourceYear);
+        const targetData = sourceForecasts.map(f => ({
+          year: targetYear,
+          month: f.month,
+          locationName: f.locationName,
+          apartmentId: f.apartmentId,
+          forecast: f.forecast,
+          actual: "0",
+        }));
+        if (targetData.length > 0) {
+          await storage.deleteRevenueForecasts(targetYear);
+          await storage.createRevenueForecastsBulk(targetData);
+          revenueCount = targetData.length;
+        }
+      }
+
+      if (copyCosts) {
+        const sourceCosts = await storage.getCostForecasts(sourceYear);
+        const targetData = sourceCosts.map(f => ({
+          year: targetYear,
+          month: f.month,
+          apartmentId: f.apartmentId,
+          category: f.category,
+          forecast: f.forecast,
+          actual: "0",
+          sourceType: f.sourceType,
+          sourceContractId: f.sourceContractId,
+          locationName: f.locationName,
+        }));
+        if (targetData.length > 0) {
+          await storage.deleteCostForecasts(targetYear);
+          await storage.createCostForecastsBulk(targetData);
+          costCount = targetData.length;
+        }
+      }
+
+      res.json({ message: `Skopiowano prognozy z ${sourceYear} na ${targetYear}: ${revenueCount} przychodów, ${costCount} kosztów` });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Generate cost forecasts from owner contracts
+  app.post('/api/owner-contracts/generate-costs', isAuthenticated, async (req, res) => {
+    try {
+      const { year } = req.body;
+      if (!year) return res.status(400).json({ message: "Podaj rok" });
+
+      const contracts = await storage.getOwnerContracts({ status: 'AKTYWNA' });
+      const costsToCreate: any[] = [];
+
+      for (const contract of contracts) {
+        if (!contract.apartmentId) continue;
+
+        const apt = await storage.getApartment(contract.apartmentId);
+        const startDate = contract.startDate ? new Date(contract.startDate) : null;
+        const endDate = contract.endDate ? new Date(contract.endDate) : null;
+
+        for (let month = 1; month <= 12; month++) {
+          const checkDate = new Date(year, month - 1, 15);
+          if (startDate && checkDate < startDate) continue;
+          if (endDate && checkDate > endDate) continue;
+
+          if (contract.monthlyRent) {
+            costsToCreate.push({
+              year,
+              month,
+              apartmentId: contract.apartmentId,
+              category: 'czynsz_wlasciciel',
+              forecast: contract.monthlyRent,
+              actual: "0",
+              sourceType: 'owner_contract',
+              sourceContractId: contract.id,
+              locationName: apt?.location || null,
+            });
+          }
+
+          if (contract.additionalFees) {
+            costsToCreate.push({
+              year,
+              month,
+              apartmentId: contract.apartmentId,
+              category: 'oplaty_dodatkowe_wlasciciel',
+              forecast: contract.additionalFees,
+              actual: "0",
+              sourceType: 'owner_contract',
+              sourceContractId: contract.id,
+              locationName: apt?.location || null,
+            });
+          }
+        }
+      }
+
+      // Remove old contract-generated costs for this year
+      await db.delete(costForecasts).where(
+        and(
+          eq(costForecasts.year, year),
+          eq(costForecasts.sourceType, 'owner_contract')
+        )
+      );
+
+      if (costsToCreate.length > 0) {
+        await storage.createCostForecastsBulk(costsToCreate);
+      }
+
+      res.json({ message: `Wygenerowano ${costsToCreate.length} rekordów kosztów z ${contracts.length} umów na rok ${year}` });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Excel export endpoint
+  app.get('/api/forecasts/export-excel', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const revForecasts = await storage.getRevenueForecasts(year);
+      const costForecasts = await storage.getCostForecasts(year);
+      const allApartments = await storage.getApartments();
+      
+      const wb = XLSX.utils.book_new();
+      
+      // Revenue sheet
+      const revRows: any[] = [];
+      const aptMap = new Map(allApartments.map(a => [a.id, a]));
+      const revByApt = new Map<number, Record<number, number>>();
+      for (const f of revForecasts) {
+        if (!f.apartmentId) continue;
+        if (!revByApt.has(f.apartmentId)) revByApt.set(f.apartmentId, {});
+        revByApt.get(f.apartmentId)![f.month] = Number(f.forecast) || 0;
+      }
+      for (const [aptId, months] of revByApt) {
+        const apt = aptMap.get(aptId);
+        const row: any = { Apartament: apt?.name || `ID:${aptId}`, Lokalizacja: apt?.location || "" };
+        for (let m = 0; m < 12; m++) row[`M${m + 1}`] = months[m] || 0;
+        revRows.push(row);
+      }
+      const revWs = XLSX.utils.json_to_sheet(revRows);
+      XLSX.utils.book_append_sheet(wb, revWs, "Przychody");
+      
+      // Costs sheet
+      const costRows: any[] = [];
+      const costByApt = new Map<number, Record<number, number>>();
+      for (const f of costForecasts) {
+        if (!f.apartmentId) continue;
+        if (!costByApt.has(f.apartmentId)) costByApt.set(f.apartmentId, {});
+        const existing = costByApt.get(f.apartmentId)![f.month] || 0;
+        costByApt.get(f.apartmentId)![f.month] = existing + (Number(f.forecast) || 0);
+      }
+      for (const [aptId, months] of costByApt) {
+        const apt = aptMap.get(aptId);
+        const row: any = { Apartament: apt?.name || `ID:${aptId}`, Lokalizacja: apt?.location || "" };
+        for (let m = 0; m < 12; m++) row[`M${m + 1}`] = months[m] || 0;
+        costRows.push(row);
+      }
+      const costWs = XLSX.utils.json_to_sheet(costRows);
+      XLSX.utils.book_append_sheet(wb, costWs, "Koszty");
+      
+      // Operational costs sheet
+      const opRows: any[] = [];
+      const opByCategory = new Map<string, Record<number, { forecast: number; actual: number }>>();
+      for (const f of costForecasts) {
+        if (f.apartmentId) continue;
+        const cat = f.category || "inne";
+        if (!opByCategory.has(cat)) opByCategory.set(cat, {});
+        if (!opByCategory.get(cat)![f.month]) opByCategory.get(cat)![f.month] = { forecast: 0, actual: 0 };
+        opByCategory.get(cat)![f.month].forecast += Number(f.forecast) || 0;
+        opByCategory.get(cat)![f.month].actual += Number(f.actual) || 0;
+      }
+      for (const [cat, months] of opByCategory) {
+        const rowF: any = { Kategoria: cat, Typ: "Prognoza" };
+        const rowA: any = { Kategoria: cat, Typ: "Rzeczywiste" };
+        for (let m = 0; m < 12; m++) {
+          rowF[`M${m + 1}`] = months[m]?.forecast || 0;
+          rowA[`M${m + 1}`] = months[m]?.actual || 0;
+        }
+        opRows.push(rowF, rowA);
+      }
+      const opWs = XLSX.utils.json_to_sheet(opRows);
+      XLSX.utils.book_append_sheet(wb, opWs, "Koszty operacyjne");
+      
+      const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
+      res.setHeader("Content-Disposition", `attachment; filename=prognoza_${year}.xlsx`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Excel import endpoint
+  app.post('/api/forecasts/import-excel', isAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ message: "Brak pliku" });
+      
+      const year = Number(req.body.year) || new Date().getFullYear();
+      const wb = XLSX.read(file.buffer);
+      const allApartments = await storage.getApartments();
+      const aptNameMap = new Map(allApartments.map(a => [a.name.toLowerCase().trim(), a]));
+      
+      let revCount = 0;
+      let costCount = 0;
+      
+      // Process Przychody sheet
+      const revSheet = wb.Sheets["Przychody"];
+      if (revSheet) {
+        const rows = XLSX.utils.sheet_to_json<any>(revSheet);
+        const revData: any[] = [];
+        for (const row of rows) {
+          const aptName = String(row.Apartament || "").toLowerCase().trim();
+          const apt = aptNameMap.get(aptName);
+          if (!apt) continue;
+          for (let m = 0; m < 12; m++) {
+            const val = Number(row[`M${m + 1}`]) || 0;
+            if (val > 0) {
+              revData.push({ year, month: m, apartmentId: apt.id, forecast: String(val), locationName: apt.location });
+              revCount++;
+            }
+          }
+        }
+        if (revData.length > 0) {
+          await storage.deleteRevenueForecasts(year);
+          await storage.createRevenueForecastsBulk(revData);
+        }
+      }
+      
+      // Process Koszty sheet
+      const costSheet = wb.Sheets["Koszty"];
+      if (costSheet) {
+        const rows = XLSX.utils.sheet_to_json<any>(costSheet);
+        const costData: any[] = [];
+        for (const row of rows) {
+          const aptName = String(row.Apartament || "").toLowerCase().trim();
+          const apt = aptNameMap.get(aptName);
+          if (!apt) continue;
+          for (let m = 0; m < 12; m++) {
+            const val = Number(row[`M${m + 1}`]) || 0;
+            if (val > 0) {
+              costData.push({ year, month: m, apartmentId: apt.id, category: "czynsz_wlasciciel", forecast: String(val), sourceType: "manual", locationName: apt.location });
+              costCount++;
+            }
+          }
+        }
+        if (costData.length > 0) {
+          await storage.deleteManualCostForecasts(year);
+          await storage.createCostForecastsBulk(costData);
+        }
+      }
+      
+      res.json({ message: `Zaimportowano: ${revCount} prognoz przychod\u00F3w, ${costCount} prognoz koszt\u00F3w` });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // Blockades
@@ -4746,7 +5208,6 @@ export async function registerRoutes(
     }
   });
 
-  const contractUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
   app.post('/api/parse-sublease-pdf', isAuthenticated, contractUpload.array('files', 20), async (req, res) => {
     const tmpFiles: string[] = [];
     try {
