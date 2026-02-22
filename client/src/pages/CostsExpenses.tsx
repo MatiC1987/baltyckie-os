@@ -524,6 +524,11 @@ export default function CostsExpenses() {
     return cellData[key] || 0;
   }, [cellData, scheduleOverlay, serverForecastLookup]);
 
+  const parseCellKey = useCallback((key: CellKey) => {
+    const parts = key.split("__");
+    return { catId: parts[0], itemIdx: parseInt(parts[1]), month: parseInt(parts[2]), field: parts[3] as "prognoza" | "rzeczywiste" };
+  }, []);
+
   const startEditing = useCallback((key: CellKey) => {
     if (key.endsWith("__prognoza") && key in serverForecastLookup) {
       return;
@@ -568,11 +573,6 @@ export default function CostsExpenses() {
 
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
-  }, []);
-
-  const parseCellKey = useCallback((key: CellKey) => {
-    const parts = key.split("__");
-    return { catId: parts[0], itemIdx: parseInt(parts[1]), month: parseInt(parts[2]), field: parts[3] as "prognoza" | "rzeczywiste" };
   }, []);
 
   const handleCellClick = useCallback((key: CellKey) => {
