@@ -127,12 +127,14 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "customers": { id: "customers", href: "/customers", label: "Klienci", iconName: "Users" },
   "tasks": { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },
   "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
+  "apartments": { id: "apartments", href: "/apartments", label: "Apartamenty", iconName: "Building2" },
+  "owners": { id: "owners", href: "/owners", label: "Właściciele", iconName: "Users" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["tasks"], color: "violet" },
+  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks"], color: "violet" },
   { id: "finanse", title: "FINANSE", itemIds: ["analizy", "source-comparison", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
 ];
 
@@ -270,9 +272,9 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
     description: "Uproszczony układ z najważniejszymi elementami w jednej sekcji",
     sections: [
       { id: "main", itemIds: ["kokpit"] },
-      { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "tasks", "analizy", "revenue", "koszty", "invoices"], color: "cyan" },
+      { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "apartments", "tasks", "analizy", "revenue", "koszty", "invoices"], color: "cyan" },
     ],
-    hiddenItems: ["source-comparison", "apartment-schedule", "salda", "dokumenty-ksiegowe", "contracts-services", "przeglady", "finance-forecast", "customers"],
+    hiddenItems: ["source-comparison", "apartment-schedule", "salda", "dokumenty-ksiegowe", "contracts-services", "przeglady", "finance-forecast", "customers", "owners"],
   },
   {
     id: "full",
@@ -281,7 +283,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
     sections: [
       { id: "main", itemIds: ["kokpit"] },
       { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "podnajem", "customers"], color: "cyan" },
-      { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["tasks", "contracts-services", "przeglady"], color: "violet" },
+      { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "contracts-services", "przeglady"], color: "violet" },
       { id: "finanse", title: "FINANSE", itemIds: ["analizy", "source-comparison", "finance-forecast", "revenue", "koszty", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe"], color: "emerald" },
     ],
   },
@@ -293,7 +295,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
       { id: "main", itemIds: ["kokpit"] },
       { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations"], color: "cyan" },
       { id: "finanse", title: "FINANSE", itemIds: ["revenue", "koszty", "analizy", "source-comparison", "finance-forecast", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services"], color: "emerald" },
-      { id: "inne", title: "INNE", itemIds: ["podnajem", "customers", "tasks", "przeglady"], color: "violet" },
+      { id: "inne", title: "INNE", itemIds: ["apartments", "owners", "podnajem", "customers", "tasks", "przeglady"], color: "violet" },
     ],
   },
 ];
