@@ -25,7 +25,6 @@ import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
 import Revenue from "@/pages/Revenue";
-import FinanceForecast from "@/pages/FinanceForecast";
 import Prognoza from "@/pages/Prognoza";
 import ApartmentSchedule from "@/pages/ApartmentSchedule";
 import ActivityLog from "@/pages/ActivityLog";
