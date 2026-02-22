@@ -1,10 +1,12 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useApartments, useCreateApartment, useUpdateApartment, useDeleteApartment } from "@/hooks/use-apartments";
 import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, Loader2, FileCheck, ArrowDown, Check, Files } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, Loader2, FileCheck, ArrowDown, Check, Files, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
@@ -534,13 +536,16 @@ export default function Apartments() {
       })()}
 
       <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edytuj apartament — {editingApartment?.name}</DialogTitle>
+            <DialogTitle className="text-lg">Apartament — {editingApartment?.name}</DialogTitle>
           </DialogHeader>
           {editingApartment && (
-            <Tabs defaultValue="details">
-              <TabsList className="w-full">
+            <Tabs defaultValue="dashboard">
+              <TabsList className="w-full flex-wrap">
+                <TabsTrigger value="dashboard" className="flex-1" data-testid="tab-edit-dashboard">
+                  <BarChart3 className="h-4 w-4 mr-1" /> Dashboard
+                </TabsTrigger>
                 <TabsTrigger value="details" className="flex-1" data-testid="tab-edit-details">Dane</TabsTrigger>
                 <TabsTrigger value="payments" className="flex-1" data-testid="tab-edit-payments">
                   <Wallet className="h-4 w-4 mr-1" /> Raty
@@ -552,6 +557,9 @@ export default function Apartments() {
                   <FileText className="h-4 w-4 mr-1" /> Umowy
                 </TabsTrigger>
               </TabsList>
+              <TabsContent value="dashboard">
+                <ApartmentDashboard apartment={editingApartment} />
+              </TabsContent>
               <TabsContent value="details">
                 <EditApartmentForm
                   apartment={editingApartment}
@@ -655,6 +663,215 @@ function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+const MONTH_NAMES_SHORT = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+
+function ApartmentDashboard({ apartment }: { apartment: Apartment }) {
+  const { data: stats, isLoading } = useQuery<{
+    revenueCurrentYear: number;
+    revenuePrevYear: number;
+    forecastRevenue: number;
+    actualRevenue: number;
+    forecastRealization: number;
+    costsCurrent: number;
+    costsPrev: number;
+    profitCurrent: number;
+    profitPrev: number;
+    profitMargin: number;
+    occupancyRate: number;
+    monthlyData: { month: number; revenue: number; costs: number }[];
+    activeContract: { monthlyRent: string; startDate: string; endDate: string | null; status: string } | null;
+    unpaidCount: number;
+    unpaidAmount: number;
+    currentYear: number;
+    rentHistory: { date: string; rent: number; type: string; id: number }[];
+  }>({
+    queryKey: [`/api/apartments/${apartment.id}/dashboard-stats`],
+  });
+
+  if (isLoading) {
+    return (
+      <div className="py-8 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!stats) return null;
+
+  const fmtPLN = (v: number) => v.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " zł";
+  const yrChange = (curr: number, prev: number) => {
+    if (prev === 0) return null;
+    const pct = Math.round(((curr - prev) / prev) * 100);
+    return pct;
+  };
+
+  const revChange = yrChange(stats.revenueCurrentYear, stats.revenuePrevYear);
+  const costChange = yrChange(stats.costsCurrent, stats.costsPrev);
+  const profitChange = yrChange(stats.profitCurrent, stats.profitPrev);
+
+  const chartData = stats.monthlyData.map((d) => ({
+    name: MONTH_NAMES_SHORT[d.month - 1],
+    Przychody: d.revenue,
+    Koszty: d.costs,
+  }));
+
+  return (
+    <div className="space-y-4 py-4" data-testid="apartment-dashboard">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Card data-testid="kpi-card-revenue">
+          <CardContent className="pt-3 pb-3 px-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <DollarSign className="h-3.5 w-3.5 text-green-500" /> Przychody {stats.currentYear}
+            </div>
+            <p className="text-lg font-bold" data-testid="stat-revenue">{fmtPLN(stats.revenueCurrentYear)}</p>
+            {revChange !== null && (
+              <div className={`flex items-center gap-1 text-[10px] ${revChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {revChange >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                {revChange > 0 ? '+' : ''}{revChange}% r/r
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="kpi-card-forecast">
+          <CardContent className="pt-3 pb-3 px-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Percent className="h-3.5 w-3.5 text-blue-500" /> Realizacja prognozy
+            </div>
+            <p className="text-lg font-bold" data-testid="stat-forecast">{stats.forecastRealization}%</p>
+            <Progress value={Math.min(stats.forecastRealization, 100)} className="h-1.5 mt-1" />
+          </CardContent>
+        </Card>
+
+        <Card data-testid="kpi-card-costs">
+          <CardContent className="pt-3 pb-3 px-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <TrendingDown className="h-3.5 w-3.5 text-orange-500" /> Koszty {stats.currentYear}
+            </div>
+            <p className="text-lg font-bold" data-testid="stat-costs">{fmtPLN(stats.costsCurrent)}</p>
+            {costChange !== null && (
+              <div className={`flex items-center gap-1 text-[10px] ${costChange <= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {costChange <= 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                {costChange > 0 ? '+' : ''}{costChange}% r/r
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="kpi-card-profit">
+          <CardContent className="pt-3 pb-3 px-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <BarChart3 className="h-3.5 w-3.5 text-purple-500" /> Rentowność
+            </div>
+            <p className="text-lg font-bold" data-testid="stat-profit">{fmtPLN(stats.profitCurrent)}</p>
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span>Marża: {stats.profitMargin}%</span>
+              {profitChange !== null && (
+                <span className={profitChange >= 0 ? 'text-green-600' : 'text-red-500'}>
+                  {profitChange > 0 ? '+' : ''}{profitChange}% r/r
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="kpi-card-occupancy">
+          <CardContent className="pt-3 pb-3 px-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <BedDouble className="h-3.5 w-3.5 text-cyan-500" /> Obłożenie
+            </div>
+            <p className="text-lg font-bold" data-testid="stat-occupancy">{stats.occupancyRate}%</p>
+            <Progress value={stats.occupancyRate} className="h-1.5 mt-1" />
+          </CardContent>
+        </Card>
+
+        {stats.activeContract && (
+          <Card data-testid="kpi-card-contract">
+            <CardContent className="pt-3 pb-3 px-4">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                <FileText className="h-3.5 w-3.5" /> Umowa
+              </div>
+              <p className="text-sm font-semibold">{fmtPLN(Number(stats.activeContract.monthlyRent || 0))}/mies</p>
+              <p className="text-[10px] text-muted-foreground">
+                {stats.activeContract.startDate?.split('-').reverse().join('.')} → {stats.activeContract.endDate?.split('-').reverse().join('.') || "bezterminowo"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {stats.unpaidCount > 0 && (
+        <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/30">
+          <CardContent className="py-2 px-4">
+            <div className="flex items-center gap-2 text-sm text-orange-700 dark:text-orange-400">
+              <AlertCircle className="h-4 w-4" />
+              <span>{stats.unpaidCount} nieopłaconych rezerwacji</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm font-medium">Przychody vs Koszty — {stats.currentYear}</CardTitle>
+        </CardHeader>
+        <CardContent className="px-2 pb-3">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+              <Tooltip formatter={(v: number) => fmtPLN(v)} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="Przychody" fill="#22c55e" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Koszty" fill="#f97316" radius={[2, 2, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {stats.rentHistory && stats.rentHistory.length > 1 && (
+        <Card>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Historia zmian czynszu</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <div className="space-y-1" data-testid="rent-history-timeline">
+              {stats.rentHistory.map((entry, idx) => {
+                const prevRent = idx > 0 ? stats.rentHistory[idx - 1].rent : null;
+                const change = prevRent !== null ? entry.rent - prevRent : null;
+                const changePct = prevRent && prevRent > 0 ? Math.round(((entry.rent - prevRent) / prevRent) * 100) : null;
+                return (
+                  <div key={entry.id} className="flex items-center gap-3 py-1.5">
+                    <div className="flex flex-col items-center shrink-0 w-4">
+                      <div className={`w-2.5 h-2.5 rounded-full border-2 ${entry.type === 'ANEKS' ? 'bg-amber-400 border-amber-500' : 'bg-indigo-500 border-indigo-600'}`} />
+                      {idx < stats.rentHistory.length - 1 && <div className="w-px h-5 bg-border" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium">{fmtPLN(entry.rent)}</span>
+                        <Badge variant="outline" className={`text-[9px] ${entry.type === 'ANEKS' ? 'bg-amber-50 dark:bg-amber-950' : ''}`}>
+                          {entry.type}
+                        </Badge>
+                        {change !== null && (
+                          <span className={`text-[10px] ${change >= 0 ? 'text-red-500' : 'text-green-600'}`}>
+                            {change >= 0 ? '+' : ''}{fmtPLN(change)} ({changePct !== null ? `${changePct > 0 ? '+' : ''}${changePct}%` : ''})
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground" data-testid={`rent-history-date-${entry.id}`}>od {entry.date?.split('-').reverse().join('.')}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -1282,6 +1499,9 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   const [batchParsing, setBatchParsing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [expandedAttachments, setExpandedAttachments] = useState<Set<number>>(new Set());
+  const [showCostsDialog, setShowCostsDialog] = useState(false);
+  const [showRevenueDialog, setShowRevenueDialog] = useState(false);
+  const [savedContractData, setSavedContractData] = useState<any>(null);
 
   const contracts = useMemo(() => allContracts.filter(c => c.apartmentId === apartment.id), [allContracts, apartment.id]);
 
@@ -1355,13 +1575,25 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
   }
 
   const contractMutation = useMutation({
-    mutationFn: (d: { method: string; url: string; body?: any }) => apiRequest(d.method, d.url, d.body),
-    onSuccess: () => {
+    mutationFn: async (d: { method: string; url: string; body?: any; isNew?: boolean }) => {
+      const res = await apiRequest(d.method, d.url, d.body);
+      const data = await res.json();
+      return { data, isNew: d.isNew };
+    },
+    onSuccess: (result: { data: any; isNew?: boolean }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/owner-contracts"] });
       setContractFormOpen(false);
-      setEditingContract(null);
-      setPdfParsedData(null);
       toast({ title: "Zapisano" });
+      if (result.data?.overlapWarning) {
+        toast({ title: "Uwaga", description: result.data.overlapWarning, variant: "destructive" });
+      }
+      if (result.isNew && result.data?.id) {
+        setSavedContractData(result.data);
+        setShowCostsDialog(true);
+      } else {
+        setEditingContract(null);
+        setPdfParsedData(null);
+      }
     },
     onError: (e: Error) => toast({ title: "Blad", description: e.message, variant: "destructive" }),
   });
@@ -1390,9 +1622,9 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
       status: formStatus,
     };
     if (editingContract) {
-      contractMutation.mutate({ method: "PUT", url: `/api/owner-contracts/${editingContract.id}`, body });
+      contractMutation.mutate({ method: "PUT", url: `/api/owner-contracts/${editingContract.id}`, body, isNew: false });
     } else {
-      contractMutation.mutate({ method: "POST", url: "/api/owner-contracts", body });
+      contractMutation.mutate({ method: "POST", url: "/api/owner-contracts", body, isNew: true });
     }
   }
 
@@ -1521,6 +1753,285 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
     setBatchContracts(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
   }
 
+  const MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+  const DEFAULT_COST_CATEGORIES = [
+    { key: "media", label: "Media", amount: "" },
+    { key: "ubezpieczenie", label: "Ubezpieczenie", amount: "" },
+    { key: "podatek_nieruchomosci", label: "Podatek od nieruchomości", amount: "" },
+    { key: "sprzatanie", label: "Sprzątanie", amount: "" },
+    { key: "administracja", label: "Administracja", amount: "" },
+    { key: "inne", label: "Inne", amount: "" },
+  ];
+
+  function RecurringCostsDialog() {
+    const [costCategories, setCostCategories] = useState(DEFAULT_COST_CATEGORIES.map(c => ({ ...c })));
+    const [customCategoryName, setCustomCategoryName] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [copyMode, setCopyMode] = useState<"year" | "contract" | null>(null);
+
+    const updateAmount = (idx: number, val: string) => {
+      setCostCategories(prev => prev.map((c, i) => i === idx ? { ...c, amount: val } : c));
+    };
+
+    const addCategory = () => {
+      if (!customCategoryName.trim()) return;
+      const key = customCategoryName.trim().toLowerCase().replace(/\s+/g, '_');
+      setCostCategories(prev => [...prev, { key, label: customCategoryName.trim(), amount: "" }]);
+      setCustomCategoryName("");
+    };
+
+    const removeCategory = (idx: number) => {
+      setCostCategories(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    function getMonthsForMode(mode: "year" | "contract"): { year: number; month: number }[] {
+      const months: { year: number; month: number }[] = [];
+      if (mode === "year") {
+        const currentYear = new Date().getFullYear();
+        for (let m = 1; m <= 12; m++) months.push({ year: currentYear, month: m });
+      } else if (mode === "contract" && savedContractData) {
+        const start = savedContractData.startDate ? new Date(savedContractData.startDate) : new Date();
+        const end = savedContractData.endDate ? new Date(savedContractData.endDate) : new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+        const current = new Date(start.getFullYear(), start.getMonth(), 1);
+        while (current <= end) {
+          months.push({ year: current.getFullYear(), month: current.getMonth() + 1 });
+          current.setMonth(current.getMonth() + 1);
+        }
+      }
+      return months;
+    }
+
+    const handleSave = async (mode: "year" | "contract") => {
+      const months = getMonthsForMode(mode);
+      const filledCategories = costCategories.filter(c => c.amount && Number(c.amount) > 0);
+      if (filledCategories.length === 0 || months.length === 0) {
+        setShowCostsDialog(false);
+        setShowRevenueDialog(true);
+        return;
+      }
+      setSaving(true);
+      try {
+        const data: any[] = [];
+        for (const { year, month } of months) {
+          for (const cat of filledCategories) {
+            data.push({
+              year,
+              month,
+              apartmentId: savedContractData?.apartmentId || apartment.id,
+              category: cat.key,
+              forecast: cat.amount,
+              sourceType: "contract",
+              sourceContractId: savedContractData?.id,
+            });
+          }
+        }
+        await apiRequest("POST", "/api/cost-forecasts/bulk", { data });
+        toast({ title: "Sukces", description: `Zapisano ${data.length} prognoz kosztów` });
+      } catch {
+        toast({ title: "Błąd", description: "Nie udało się zapisać kosztów", variant: "destructive" });
+      } finally {
+        setSaving(false);
+        setShowCostsDialog(false);
+        setShowRevenueDialog(true);
+      }
+    };
+
+    return (
+      <Dialog open={showCostsDialog} onOpenChange={(v) => { if (!v) { setShowCostsDialog(false); setShowRevenueDialog(true); } }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-costs-dialog-title">Dodatkowe koszty cykliczne</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Zdefiniuj miesięczne koszty stałe dla tego apartamentu. Wartości zostaną skopiowane na wybrany okres.
+            </p>
+            <div className="space-y-3">
+              {costCategories.map((cat, idx) => (
+                <div key={cat.key + idx} className="flex items-center gap-3">
+                  <Label className="w-48 text-sm shrink-0">{cat.label}</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={cat.amount}
+                    onChange={(e) => updateAmount(idx, e.target.value)}
+                    data-testid={`input-cost-${cat.key}`}
+                  />
+                  {idx >= DEFAULT_COST_CATEGORIES.length && (
+                    <Button size="icon" variant="ghost" onClick={() => removeCategory(idx)} data-testid={`btn-remove-cost-${idx}`}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Nazwa kategorii"
+                value={customCategoryName}
+                onChange={(e) => setCustomCategoryName(e.target.value)}
+                className="w-48"
+                data-testid="input-custom-cost-category"
+              />
+              <Button variant="outline" size="sm" onClick={addCategory} data-testid="btn-add-cost-category">
+                <Plus className="h-4 w-4 mr-1" /> Dodaj kategorię
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setCopyMode("year"); handleSave("year"); }}
+                disabled={saving}
+                data-testid="btn-costs-copy-year"
+              >
+                Kopiuj na cały rok
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setCopyMode("contract"); handleSave("contract"); }}
+                disabled={saving}
+                data-testid="btn-costs-copy-contract"
+              >
+                Kopiuj na okres umowy
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setShowCostsDialog(false); setShowRevenueDialog(true); }}
+                data-testid="btn-costs-skip"
+              >
+                Pomiń
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  function RevenueForecastDialog() {
+    const [forecasts, setForecasts] = useState<Record<string, string>>({});
+    const [saving, setSaving] = useState(false);
+    const currentYear = new Date().getFullYear();
+
+    const updateForecast = (key: string, val: string) => {
+      setForecasts(prev => ({ ...prev, [key]: val }));
+    };
+
+    const copyToYear = () => {
+      const firstVal = Object.values(forecasts).find(v => v && Number(v) > 0);
+      if (!firstVal) return;
+      const updated: Record<string, string> = {};
+      for (let m = 1; m <= 12; m++) {
+        updated[`${currentYear}-${String(m).padStart(2, '0')}`] = firstVal;
+      }
+      setForecasts(updated);
+    };
+
+    const copyToContract = () => {
+      const firstVal = Object.values(forecasts).find(v => v && Number(v) > 0);
+      if (!firstVal || !savedContractData) return;
+      const start = savedContractData.startDate ? new Date(savedContractData.startDate) : new Date();
+      const end = savedContractData.endDate ? new Date(savedContractData.endDate) : new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+      const updated: Record<string, string> = {};
+      const current = new Date(start.getFullYear(), start.getMonth(), 1);
+      while (current <= end) {
+        const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+        updated[key] = firstVal;
+        current.setMonth(current.getMonth() + 1);
+      }
+      setForecasts(updated);
+    };
+
+    const closeAll = () => {
+      setShowRevenueDialog(false);
+      setShowCostsDialog(false);
+      setSavedContractData(null);
+      setEditingContract(null);
+      setPdfParsedData(null);
+    };
+
+    const handleSave = async () => {
+      const entries = Object.entries(forecasts).filter(([_, v]) => v && Number(v) > 0);
+      if (entries.length === 0) { closeAll(); return; }
+      setSaving(true);
+      try {
+        for (const [key, amount] of entries) {
+          const [yearStr, monthStr] = key.split('-');
+          await apiRequest("PUT", "/api/revenue-forecasts", {
+            year: Number(yearStr),
+            month: Number(monthStr),
+            apartmentId: savedContractData?.apartmentId || apartment.id,
+            locationName: apartment.location || "",
+            forecast: amount,
+          });
+        }
+        toast({ title: "Sukces", description: `Zapisano ${entries.length} prognoz przychodów` });
+      } catch {
+        toast({ title: "Błąd", description: "Nie udało się zapisać prognoz", variant: "destructive" });
+      } finally {
+        setSaving(false);
+        closeAll();
+      }
+    };
+
+    return (
+      <Dialog open={showRevenueDialog} onOpenChange={(v) => { if (!v) closeAll(); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-revenue-dialog-title">Prognoza przychodów</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Wprowadź prognozowane przychody miesięczne dla tego apartamentu.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {MONTH_NAMES.map((name, idx) => {
+                const key = `${currentYear}-${String(idx + 1).padStart(2, '0')}`;
+                return (
+                  <div key={key} className="space-y-1">
+                    <Label className="text-xs">{name}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={forecasts[key] || ""}
+                      onChange={(e) => updateForecast(key, e.target.value)}
+                      data-testid={`input-revenue-${idx + 1}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={copyToYear} data-testid="btn-revenue-copy-year">
+                Kopiuj na cały rok
+              </Button>
+              <Button variant="outline" size="sm" onClick={copyToContract} data-testid="btn-revenue-copy-contract">
+                Kopiuj na okres umowy
+              </Button>
+              <Button variant="ghost" size="sm" onClick={closeAll} data-testid="btn-revenue-skip">
+                Pomiń
+              </Button>
+            </div>
+            <Button onClick={handleSave} disabled={saving} data-testid="btn-revenue-save">
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Zapisz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   const rootContracts = contracts.filter(c => !c.parentContractId);
   const annexesMap = new Map<number, OwnerContract[]>();
   contracts.forEach(c => {
@@ -1555,7 +2066,14 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
             .then(res => { if (!res.ok) throw new Error("Blad"); return res.json(); })
             .then(data => {
               data.apartmentId = apartment.id;
-              if (data.ownerName) { const m = matchOwner(data.ownerName); if (m) data.ownerId = m; }
+              if (data.ownerName) {
+                const m = matchOwner(data.ownerName);
+                if (m) {
+                  data.ownerId = m;
+                } else {
+                  data._ownerNotFound = true;
+                }
+              }
               if (!data.ownerId && apartment.ownerId) data.ownerId = apartment.ownerId;
               if (data.suggestedParentContractId) data.parentContractId = data.suggestedParentContractId;
               openContractForm(null, data);
@@ -1658,9 +2176,20 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                               <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                               <span className="truncate">{att.fileName}</span>
                             </a>
-                            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => deleteAttachmentMutation.mutate(att.id)} data-testid={`btn-delete-contract-att-${att.id}`}>
-                              <X className="h-3 w-3" />
-                            </Button>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                                if (att.fileName?.toLowerCase().endsWith('.pdf')) {
+                                  window.open(att.objectPath, '_blank', 'width=800,height=600,scrollbars=yes');
+                                } else {
+                                  window.open(att.objectPath, '_blank');
+                                }
+                              }} data-testid={`btn-preview-contract-att-${att.id}`}>
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => deleteAttachmentMutation.mutate(att.id)} data-testid={`btn-delete-contract-att-${att.id}`}>
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
                         ))
                       )}
@@ -1730,9 +2259,20 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
                                   <a href={att.objectPath} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 min-w-0 hover:underline truncate">
                                     <FileText className="h-3 w-3 shrink-0" /> <span className="truncate">{att.fileName}</span>
                                   </a>
-                                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => deleteAttachmentMutation.mutate(att.id)}>
-                                    <X className="h-2.5 w-2.5" />
-                                  </Button>
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                                      if (att.fileName?.toLowerCase().endsWith('.pdf')) {
+                                        window.open(att.objectPath, '_blank', 'width=800,height=600,scrollbars=yes');
+                                      } else {
+                                        window.open(att.objectPath, '_blank');
+                                      }
+                                    }} data-testid={`btn-preview-annex-att-${att.id}`}>
+                                      <Eye className="h-2.5 w-2.5" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => deleteAttachmentMutation.mutate(att.id)}>
+                                      <X className="h-2.5 w-2.5" />
+                                    </Button>
+                                  </div>
                                 </div>
                               ))
                             )}
@@ -1804,6 +2344,33 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
               {pdfParsedData.changedFields && pdfParsedData.changedFields.length > 0 && (
                 <p>Zmienione pola: {pdfParsedData.changedFields.join(", ")}</p>
               )}
+            </div>
+          )}
+          {pdfParsedData?._ownerNotFound && pdfParsedData.ownerName && (
+            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-3 text-xs space-y-2">
+              <p className="text-yellow-800 dark:text-yellow-200">
+                Nie znaleziono właściciela '{pdfParsedData.ownerName}' w systemie.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                data-testid="btn-create-owner-from-pdf"
+                onClick={async () => {
+                  try {
+                    const res = await apiRequest("POST", "/api/owners", { name: pdfParsedData.ownerName, ownerType: "osoba_fizyczna" });
+                    const newOwner = await res.json();
+                    queryClient.invalidateQueries({ queryKey: ["/api/owners"] });
+                    setFormOwnerId(String(newOwner.id));
+                    setPdfParsedData((prev: any) => ({ ...prev, _ownerNotFound: false, ownerId: newOwner.id }));
+                    toast({ title: "Sukces", description: `Utworzono właściciela: ${pdfParsedData.ownerName}` });
+                  } catch {
+                    toast({ title: "Błąd", description: "Nie udało się utworzyć właściciela", variant: "destructive" });
+                  }
+                }}
+              >
+                Utwórz właściciela
+              </Button>
             </div>
           )}
           <form onSubmit={handleContractSubmit} className="space-y-3">
@@ -1892,6 +2459,9 @@ function ContractsSection({ apartment }: { apartment: Apartment }) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <RecurringCostsDialog />
+      <RevenueForecastDialog />
 
       <Dialog open={batchPreviewOpen} onOpenChange={v => { setBatchPreviewOpen(v); if (!v) setBatchContracts([]); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

@@ -183,6 +183,102 @@ async function syncApartmentLeaseDates(apartmentId: number) {
   }
 }
 
+async function syncApartmentAddressAndLocation(apartmentId: number, parsedData: any) {
+  try {
+    if (!parsedData) return;
+    const apt = await storage.getApartment(apartmentId);
+    if (!apt) return;
+
+    const updates: any = {};
+
+    if (parsedData.apartmentAddress && (!apt.address || apt.address.trim() === '')) {
+      updates.address = parsedData.apartmentAddress;
+    }
+
+    if (parsedData.locationHint && (!apt.location || apt.location.trim() === '' || apt.location === 'INNE')) {
+      const locationMap: Record<string, string> = {
+        'grand baltic': 'GRAND BALTIC',
+        'bulwar portowy': 'BULWAR PORTOWY',
+        'na wydmie': 'NA WYDMIE',
+        'wczasowa': 'WCZASOWA',
+        'luxuro park': 'LUXURO PARK',
+        'przewloka': 'PRZEWŁOKA',
+        'przewłoka': 'PRZEWŁOKA',
+      };
+      const hint = parsedData.locationHint.toLowerCase().trim();
+      for (const [key, val] of Object.entries(locationMap)) {
+        if (hint.includes(key)) {
+          updates.location = val;
+          break;
+        }
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await db.update(apartments).set(updates).where(eq(apartments.id, apartmentId));
+    }
+  } catch (err) {
+    console.error('Error syncing apartment address/location:', err);
+  }
+}
+
+async function syncContractPaymentSchedule(contract: any) {
+  try {
+    if (!contract.apartmentId || !contract.monthlyRent || !contract.startDate) return;
+
+    const startDate = new Date(contract.startDate);
+    const endDate = contract.endDate ? new Date(contract.endDate) : new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate());
+
+    const existingPayments = await storage.getOwnerPayments(contract.apartmentId);
+    const contractPayments = existingPayments.filter(p => p.title?.includes(`Umowa #${contract.id}`));
+    if (contractPayments.length > 0) return;
+
+    const payments: any[] = [];
+    const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const payDay = contract.paymentDay || 10;
+
+    while (current <= endDate) {
+      const paymentDate = new Date(current.getFullYear(), current.getMonth(), Math.min(payDay, 28));
+      if (paymentDate >= startDate && paymentDate <= endDate) {
+        payments.push({
+          apartmentId: contract.apartmentId,
+          title: `Czynsz - Umowa #${contract.id}`,
+          category: 'czynsz_wlasciciel',
+          amount: String(contract.monthlyRent),
+          paymentDate: paymentDate.toISOString().split('T')[0],
+        });
+      }
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    for (const p of payments) {
+      await storage.createOwnerPayment(p);
+    }
+  } catch (err) {
+    console.error('Error syncing contract payment schedule:', err);
+  }
+}
+
+function checkContractOverlap(contracts: any[], newContract: any): { overlap: boolean; conflicting?: any } {
+  if (!newContract.startDate) return { overlap: false };
+  const newStart = new Date(newContract.startDate);
+  const newEnd = newContract.endDate ? new Date(newContract.endDate) : new Date(9999, 11, 31);
+
+  for (const c of contracts) {
+    if (c.id === newContract.id) continue;
+    if (c.status !== 'AKTYWNA') continue;
+    if (c.contractType === 'ANEKS') continue;
+
+    const cStart = c.startDate ? new Date(c.startDate) : new Date(0);
+    const cEnd = c.endDate ? new Date(c.endDate) : new Date(9999, 11, 31);
+
+    if (newStart <= cEnd && newEnd >= cStart) {
+      return { overlap: true, conflicting: c };
+    }
+  }
+  return { overlap: false };
+}
+
 async function syncContractCostForecasts(contract: any) {
   try {
     if (!contract.apartmentId || !contract.monthlyRent) return;
@@ -1072,6 +1168,98 @@ export async function registerRoutes(
     res.json(contract);
   });
 
+  app.get('/api/apartments/:id/dashboard-stats', isAuthenticated, async (req, res) => {
+    try {
+      const aptId = Number(req.params.id);
+      const currentYear = new Date().getFullYear();
+      const prevYear = currentYear - 1;
+
+      const allReservations = await storage.getReservations({ apartmentId: aptId });
+      const currentYearRes = allReservations.filter(r => r.startDate?.startsWith(String(currentYear)) && r.status !== 'ANULOWANA');
+      const prevYearRes = allReservations.filter(r => r.startDate?.startsWith(String(prevYear)) && r.status !== 'ANULOWANA');
+
+      const sumPaid = (list: any[]) => list.reduce((s, r) => s + Number(r.paidAmount || 0), 0);
+      const revenueCurrentYear = sumPaid(currentYearRes);
+      const revenuePrevYear = sumPaid(prevYearRes);
+
+      const allRevForecasts = await storage.getRevenueForecasts();
+      const aptRevForecasts = allRevForecasts.filter(f => f.apartmentId === aptId && f.year === currentYear);
+      const forecastRevenue = aptRevForecasts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+      const actualRevenue = aptRevForecasts.reduce((s, f) => s + Number(f.actual || 0), 0);
+
+      const allCostForecasts = await storage.getCostForecasts();
+      const aptCostsCurrent = allCostForecasts.filter(f => f.apartmentId === aptId && f.year === currentYear);
+      const aptCostsPrev = allCostForecasts.filter(f => f.apartmentId === aptId && f.year === prevYear);
+      const costsCurrent = aptCostsCurrent.reduce((s, f) => s + Number(f.forecast || 0), 0);
+      const costsPrev = aptCostsPrev.reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+      const monthlyData: { month: number; revenue: number; costs: number }[] = [];
+      for (let m = 0; m < 12; m++) {
+        const monthRes = currentYearRes.filter(r => {
+          const d = r.startDate ? new Date(r.startDate) : null;
+          return d && d.getMonth() === m;
+        });
+        const monthCosts = aptCostsCurrent.filter(f => f.month === m + 1);
+        monthlyData.push({
+          month: m + 1,
+          revenue: sumPaid(monthRes),
+          costs: monthCosts.reduce((s, f) => s + Number(f.forecast || 0), 0),
+        });
+      }
+
+      const daysInYear = 365;
+      const occupiedDays = currentYearRes.reduce((total, r) => {
+        const start = new Date(r.startDate);
+        const end = new Date(r.endDate);
+        return total + Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      }, 0);
+      const occupancyRate = Math.min(100, Math.round((occupiedDays / daysInYear) * 100));
+
+      const contracts = await storage.getOwnerContracts({ apartmentId: aptId });
+      const activeContract = contracts.find(c => c.status === 'AKTYWNA' && c.contractType === 'UMOWA');
+
+      const unpaidReservations = currentYearRes.filter(r => r.status === 'DO_OPLACENIA');
+
+      const rentHistory = contracts
+        .filter(c => c.monthlyRent && c.startDate)
+        .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
+        .map(c => ({
+          date: c.startDate,
+          rent: Number(c.monthlyRent),
+          type: c.contractType,
+          id: c.id,
+        }));
+
+      res.json({
+        revenueCurrentYear,
+        revenuePrevYear,
+        forecastRevenue,
+        actualRevenue,
+        forecastRealization: forecastRevenue > 0 ? Math.round((revenueCurrentYear / forecastRevenue) * 100) : 0,
+        costsCurrent,
+        costsPrev,
+        profitCurrent: revenueCurrentYear - costsCurrent,
+        profitPrev: revenuePrevYear - costsPrev,
+        profitMargin: revenueCurrentYear > 0 ? Math.round(((revenueCurrentYear - costsCurrent) / revenueCurrentYear) * 100) : 0,
+        occupancyRate,
+        monthlyData,
+        activeContract: activeContract ? {
+          monthlyRent: activeContract.monthlyRent,
+          startDate: activeContract.startDate,
+          endDate: activeContract.endDate,
+          status: activeContract.status,
+        } : null,
+        unpaidCount: unpaidReservations.length,
+        unpaidAmount: sumPaid(unpaidReservations.filter(r => Number(r.paidAmount) < Number(r.price))),
+        currentYear,
+        rentHistory,
+      });
+    } catch (err: any) {
+      console.error('Dashboard stats error:', err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/owner-contracts', isAuthenticated, async (req, res) => {
     try {
       const body = { ...req.body };
@@ -1080,12 +1268,17 @@ export async function registerRoutes(
       const parsed = insertOwnerContractSchema.parse(body);
       const contract = await storage.createOwnerContract(parsed);
 
+      const allContracts = await storage.getOwnerContracts();
+      const aptContracts = allContracts.filter(c => c.apartmentId === contract.apartmentId);
+      const overlapResult = checkContractOverlap(aptContracts, contract);
+
       if (contract.apartmentId && contract.status === 'AKTYWNA') {
         await syncApartmentLeaseDates(contract.apartmentId);
         await syncContractCostForecasts(contract);
+        await syncContractPaymentSchedule(contract);
       }
 
-      res.status(201).json(contract);
+      res.status(201).json({ ...contract, overlapWarning: overlapResult.overlap ? `Uwaga: umowa pokrywa się z umową #${overlapResult.conflicting?.id} (${overlapResult.conflicting?.startDate} - ${overlapResult.conflicting?.endDate || 'bezterminowo'})` : null });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: err.message });
@@ -1103,10 +1296,15 @@ export async function registerRoutes(
         await syncApartmentLeaseDates(contract.apartmentId);
         if (contract.status === 'AKTYWNA') {
           await syncContractCostForecasts(contract);
+          await syncContractPaymentSchedule(contract);
         }
       }
 
-      res.json(contract);
+      const allContracts = await storage.getOwnerContracts();
+      const aptContracts = allContracts.filter(c => c.apartmentId === contract.apartmentId);
+      const overlapResult = checkContractOverlap(aptContracts, contract);
+
+      res.json({ ...contract, overlapWarning: overlapResult.overlap ? `Uwaga: umowa pokrywa się z umową #${overlapResult.conflicting?.id} (${overlapResult.conflicting?.startDate} - ${overlapResult.conflicting?.endDate || 'bezterminowo'})` : null });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1205,6 +1403,7 @@ Jesli dane nie wystepuja w dokumencie, wpisz null.
   "paymentDay": dzien miesiaca do kiedy nalezy zaplacic czynsz (np. 10 jesli do 10-tego kazdego miesiaca),
   "depositAmount": kwota kaucji jako liczba lub null,
   "noticePeriod": "okres wypowiedzenia np. 3 miesiace",
+  "locationHint": "nazwa budynku/osiedla/inwestycji z adresu (np. 'Grand Baltic', 'Bulwar Portowy', 'Na Wydmie', 'Wczasowa', 'Luxuro Park', 'Przewloka'). Jesli nie mozna rozpoznac, null",
   "notes": "inne wazne postanowienia umowy (krotki opis)",
   "suggestedParentContractId": null
 }
@@ -1213,6 +1412,7 @@ WAZNE:
 2. Wszystkie kwoty musza byc BRUTTO (z VAT). Jesli kwota jest podana jako netto + VAT, oblicz kwote brutto.
 3. ROZPOZNAWANIE LANCUCHA UMOW: Jesli dokument to ANEKS, przeanalizuj naglowek - zwykle odnosi sie do umowy glownej (np. "Aneks nr 2 do umowy najmu z dnia..."). Wpisz te informacje w parentContractRef.
 4. Jesli to ANEKS i w systemie istnieja juz umowy, sprobuj dopasowac umowe nadrzedna na podstawie dat, wlasciciela i apartamentu. Wpisz ID dopasowanej umowy w suggestedParentContractId.
+5. LOKALIZACJA: Szukaj nazwy budynku/osiedla/inwestycji w adresie lub tresci umowy. Typowe nazwy to: Grand Baltic, Bulwar Portowy, Na Wydmie, Wczasowa, Luxuro Park, Przewloka. Wpisz w locationHint.
 ${contractsContext}
 Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
@@ -1349,6 +1549,7 @@ Odpowiedz w formacie JSON - TABLICA obiektow, jeden na kazdy dokument:
     "monthlyRent": kwota brutto jako liczba,
     "additionalFees": dodatkowe oplaty jako liczba lub null,
     "notes": "wazne postanowienia",
+    "locationHint": "nazwa budynku/osiedla z adresu (np. 'Grand Baltic', 'Bulwar Portowy', 'Na Wydmie', 'Wczasowa', 'Luxuro Park', 'Przewloka') lub null",
     "chainOrder": numer w lancuchu (0 = umowa glowna, 1 = aneks 1, 2 = aneks 2 itd.),
     "suggestedParentContractId": null lub ID istniejącej umowy z systemu
   }
@@ -1361,6 +1562,7 @@ WAZNE:
 4. parentDocumentIndex: KLUCZOWE POLE - indeks (0-based) dokumentu-umowy glownej z tej samej paczki, do ktorej odnosi sie aneks. null jesli to umowa glowna lub nie znaleziono powiazania w paczce.
 5. chainOrder: 0 dla umowy glownej, 1,2,3... dla kolejnych aneksow chronologicznie.
 6. Jesli w systemie istnieja juz umowy pasujace, uzyj suggestedParentContractId.
+7. LOKALIZACJA: Szukaj nazwy budynku/osiedla/inwestycji w adresie lub tresci. Typowe: Grand Baltic, Bulwar Portowy, Na Wydmie, Wczasowa, Luxuro Park, Przewloka.
 ${contractsContext}
 Odpowiedz TYLKO czystym JSON (tablica) bez komentarzy ani markdown.`
         }
@@ -5119,6 +5321,38 @@ Odpowiedz TYLKO czystym JSON (tablica) bez komentarzy ani markdown.`
             entityType: "medical_exam",
             entityId: e.id,
             dueDate: e.validUntil,
+          });
+          created++;
+        }
+      }
+
+      const in90days = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 90).toISOString().split('T')[0];
+      const expiringContracts = await db.select({
+        id: ownerContracts.id,
+        ownerId: ownerContracts.ownerId,
+        apartmentId: ownerContracts.apartmentId,
+        endDate: ownerContracts.endDate,
+        status: ownerContracts.status,
+      })
+        .from(ownerContracts)
+        .where(and(
+          eq(ownerContracts.status, 'AKTYWNA'),
+          lte(ownerContracts.endDate, in90days),
+          gte(ownerContracts.endDate, today)
+        ));
+
+      for (const c of expiringContracts) {
+        if (!existingKeys.has(`owner_contract:${c.id}`)) {
+          const daysLeft = Math.ceil((new Date(c.endDate!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const apt = c.apartmentId ? await storage.getApartment(c.apartmentId) : null;
+          const aptName = apt?.name || `#${c.apartmentId}`;
+          await storage.createNotification({
+            type: "contract_expiring",
+            title: "Wygasająca umowa właścicielska",
+            message: `Umowa dla ${aptName} wygasa za ${daysLeft} dni (${c.endDate})`,
+            entityType: "owner_contract",
+            entityId: c.id,
+            dueDate: c.endDate,
           });
           created++;
         }
