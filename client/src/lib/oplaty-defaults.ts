@@ -1,135 +1,27 @@
-export interface OplatyCostItem {
-  name: string;
-  subLabel?: string;
-}
+import { DEFAULT_OPLATY_CATEGORIES as SHARED_CATEGORIES } from "@shared/oplaty-defaults";
+import type { OplatyCostCategory as SharedCategory, OplatyCostItem } from "@shared/oplaty-defaults";
 
-export interface OplatyCostCategory {
-  id: string;
-  title: string;
+export type { OplatyCostItem };
+
+export interface OplatyCostCategory extends SharedCategory {
   color: string;
-  items: OplatyCostItem[];
 }
 
-export const DEFAULT_OPLATY_CATEGORIES: OplatyCostCategory[] = [
-  {
-    id: "wynagrodzenia",
-    title: "WYNAGRODZENIA",
-    color: "bg-blue-600 dark:bg-blue-700",
-    items: [
-      { name: "MATEUSZ CIEŚLAK" },
-      { name: "KRZYSZTOF CIEŚLAK" },
-      { name: "JOLANTA GŁODKOWSKA" },
-      { name: "MAŁGORZATA LATASIEWICZ" },
-      { name: "MAGDALENA SZYMION", subLabel: "ex. Karolina Łaździn" },
-      { name: "MATEUSZ MADEJ" },
-      { name: "SVIETLANA FEDORCHENKO", subLabel: "ex. Barbara Mazurek" },
-      { name: "PANIE SPRZĄTAJĄCE", subLabel: "Dodatkowe prace" },
-    ],
-  },
-  {
-    id: "zus-podatki",
-    title: "ZUS & PODATKI",
-    color: "bg-red-600 dark:bg-red-700",
-    items: [
-      { name: "ZUS", subLabel: "Apartamenty Bałtyckie" },
-      { name: "VAT-7", subLabel: "Apartamenty Bałtyckie" },
-      { name: "PIT-5L", subLabel: "Apartamenty Bałtyckie" },
-      { name: "PIT-4", subLabel: "Apartamenty Bałtyckie" },
-      { name: "ZUS", subLabel: "Reservon" },
-      { name: "VAT-7", subLabel: "Reservon" },
-      { name: "PIT-5L", subLabel: "Reservon" },
-      { name: "PIT-4", subLabel: "Reservon" },
-    ],
-  },
-  {
-    id: "kredyty",
-    title: "KREDYTY & POŻYCZKI",
-    color: "bg-purple-600 dark:bg-purple-700",
-    items: [
-      { name: "PFP - POŻYCZKA PŁYNNOŚCIOWA", subLabel: "AB" },
-      { name: "PFR - SUBWENCJA", subLabel: "AB" },
-      { name: "LEASING - MAZDA 3", subLabel: "Multirent" },
-      { name: "LEASING - AUDI Q7", subLabel: "VW Leasing" },
-      { name: "LEASING - AUDI A7", subLabel: "VW Leasing" },
-      { name: "LEASING - VW TIGUAN", subLabel: "VW Leasing" },
-      { name: "PFP - POŻYCZKA INWESTYCYJNA", subLabel: "Reservon" },
-      { name: "PFP - POŻYCZKA PŁYNNOŚCIOWA", subLabel: "Reservon" },
-    ],
-  },
-  {
-    id: "nieruchomosci",
-    title: "NIERUCHOMOŚCI",
-    color: "bg-emerald-600 dark:bg-emerald-700",
-    items: [
-      { name: "CZYNSZ - OSiR", subLabel: "Magazyn PKS" },
-      { name: "CZYNSZ - OSiR", subLabel: "Biuro PKS" },
-      { name: "OGRZEWANIE - OSiR" },
-      { name: "ENERGA - OSiR" },
-      { name: "CZYNSZ (GS SAMOPOMOC)" },
-      { name: "ENERGIA+WODA (GS SAMOPOMOC)" },
-      { name: "OGRZEWANIE (GS SAMOPOMOC)" },
-      { name: "WYWÓZ ŚMIECI" },
-      { name: "CZYNSZ DO WSPÓLNOTY" },
-      { name: "ENERGA" },
-    ],
-  },
-  {
-    id: "ksiegowosc",
-    title: "OBSŁUGA PRAWNO-KSIĘGOWA",
-    color: "bg-amber-600 dark:bg-amber-700",
-    items: [
-      { name: "PERFEKT - BIURO KSIĘGOWE", subLabel: "AB" },
-      { name: "ARTUR BARYŁO - OBSŁUGA PRAWNA" },
-      { name: "OPŁATY SĄDOWE" },
-      { name: "KRD - KRAJOWY REJESTR DŁUGÓW" },
-      { name: "PERFEKT - BIURO KSIĘGOWE", subLabel: "Reservon" },
-    ],
-  },
-  {
-    id: "reklama",
-    title: "MARKETING & REKLAMA",
-    color: "bg-pink-600 dark:bg-pink-700",
-    items: [
-      { name: "BOOKING.COM", subLabel: "Grand Baltic (2370107)" },
-      { name: "BOOKING.COM", subLabel: "Bulwar Portowy (822580)" },
-      { name: "BOOKING.COM", subLabel: "Wczasowa (6042647)" },
-      { name: "BOOKING.COM", subLabel: "Na Wydmie (778716)" },
-      { name: "BOOKING.COM", subLabel: "Baltic Park (6248325)" },
-      { name: "BOOKING.COM", subLabel: "Słoneczna Oaza (5184590)" },
-      { name: "BOOKING.COM", subLabel: "Luxuro Park (9874893)" },
-      { name: "PROFITLAB", subLabel: "Kamil Rodziewicz" },
-      { name: "GOOGLE ADS", subLabel: "Adrian Ginda" },
-      { name: "GOOGLE ADS" },
-    ],
-  },
-  {
-    id: "uslugi",
-    title: "USŁUGI",
-    color: "bg-cyan-600 dark:bg-cyan-700",
-    items: [
-      { name: "VECTRA" },
-      { name: "NC+" },
-      { name: "WP TV", subLabel: "Luxuro+Modern" },
-      { name: "INTERARENA", subLabel: "Grand Baltic+Luxuro" },
-      { name: "ORANGE" },
-      { name: "T-MOBILE" },
-      { name: "MICROSOFT OFFICE" },
-      { name: "ORANGE", subLabel: "Reservon" },
-      { name: "T-MOBILE", subLabel: "Reservon" },
-    ],
-  },
-  {
-    id: "pozostale",
-    title: "POZOSTAŁE",
-    color: "bg-slate-600 dark:bg-slate-700",
-    items: [
-      { name: "CHEMIA + BHP" },
-      { name: "DOPOSAŻENIA APARTAMENTÓW" },
-      { name: "REMONTY APARTAMENTÓW" },
-      { name: "POLISY & UBEZPIECZENIA" },
-    ],
-  },
-];
+const CATEGORY_COLORS: Record<string, string> = {
+  "wynagrodzenia": "bg-blue-600 dark:bg-blue-700",
+  "zus-podatki": "bg-red-600 dark:bg-red-700",
+  "kredyty": "bg-purple-600 dark:bg-purple-700",
+  "nieruchomosci": "bg-emerald-600 dark:bg-emerald-700",
+  "ksiegowosc": "bg-amber-600 dark:bg-amber-700",
+  "reklama": "bg-pink-600 dark:bg-pink-700",
+  "uslugi": "bg-cyan-600 dark:bg-cyan-700",
+  "pozostale": "bg-slate-600 dark:bg-slate-700",
+};
+
+export const DEFAULT_OPLATY_CATEGORIES: OplatyCostCategory[] = SHARED_CATEGORIES.map(cat => ({
+  ...cat,
+  color: CATEGORY_COLORS[cat.id] || "bg-slate-600 dark:bg-slate-700",
+}));
 
 export function loadOplatyCategories(): OplatyCostCategory[] {
   try {

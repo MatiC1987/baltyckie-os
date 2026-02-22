@@ -1178,6 +1178,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       if (!sourceYear || !targetYear) return res.status(400).json({ message: "Podaj rok źródłowy i docelowy" });
       let revenueCount = 0;
       let costCount = 0;
+      let opCostCount = 0;
 
       if (copyRevenue) {
         const sourceForecasts = await storage.getRevenueForecasts(sourceYear);
@@ -1214,9 +1215,24 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           await storage.createCostForecastsBulk(targetData);
           costCount = targetData.length;
         }
+
+        const sourceOpCosts = await storage.getOperationalCostForecasts(sourceYear);
+        const opTargetData = sourceOpCosts.map(f => ({
+          year: targetYear,
+          month: f.month,
+          categoryId: f.categoryId,
+          itemIndex: f.itemIndex,
+          forecast: f.forecast || "0",
+          actual: "0",
+        }));
+        if (opTargetData.length > 0) {
+          await storage.deleteOperationalCostForecasts(targetYear);
+          await storage.createOperationalCostForecastsBulk(opTargetData);
+          opCostCount = opTargetData.length;
+        }
       }
 
-      res.json({ message: `Skopiowano prognozy z ${sourceYear} na ${targetYear}: ${revenueCount} przychodów, ${costCount} kosztów` });
+      res.json({ message: `Skopiowano prognozy z ${sourceYear} na ${targetYear}: ${revenueCount} przychodów, ${costCount} kosztów apt., ${opCostCount} kosztów operacyjnych` });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1337,25 +1353,21 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       const costWs = XLSX.utils.json_to_sheet(costRows);
       XLSX.utils.book_append_sheet(wb, costWs, "Koszty");
       
-      // Operational costs sheet
+      // Operational costs sheet - uses new dedicated table with category/item structure
+      const opForecasts = await storage.getOperationalCostForecasts(year);
       const opRows: any[] = [];
-      const opByCategory = new Map<string, Record<number, { forecast: number; actual: number }>>();
-      for (const f of costForecasts) {
-        if (f.apartmentId) continue;
-        const cat = f.category || "inne";
-        if (!opByCategory.has(cat)) opByCategory.set(cat, {});
-        if (!opByCategory.get(cat)![f.month]) opByCategory.get(cat)![f.month] = { forecast: 0, actual: 0 };
-        opByCategory.get(cat)![f.month].forecast += Number(f.forecast) || 0;
-        opByCategory.get(cat)![f.month].actual += Number(f.actual) || 0;
-      }
-      for (const [cat, months] of opByCategory) {
-        const rowF: any = { Kategoria: cat, Typ: "Prognoza" };
-        const rowA: any = { Kategoria: cat, Typ: "Rzeczywiste" };
-        for (let m = 0; m < 12; m++) {
-          rowF[`M${m + 1}`] = months[m]?.forecast || 0;
-          rowA[`M${m + 1}`] = months[m]?.actual || 0;
+      const { DEFAULT_OPLATY_CATEGORIES } = await import("../shared/oplaty-defaults");
+      for (const cat of DEFAULT_OPLATY_CATEGORIES) {
+        for (let itemIdx = 0; itemIdx < cat.items.length; itemIdx++) {
+          const item = cat.items[itemIdx];
+          const itemLabel = item.subLabel ? `${item.name} (${item.subLabel})` : item.name;
+          const row: any = { Kategoria: cat.title, Pozycja: itemLabel, KategoriaId: cat.id, ItemIndex: itemIdx };
+          for (let m = 0; m < 12; m++) {
+            const match = opForecasts.find(f => f.categoryId === cat.id && f.itemIndex === itemIdx && f.month === m);
+            row[`M${m + 1}`] = match ? Number(match.forecast) || 0 : 0;
+          }
+          opRows.push(row);
         }
-        opRows.push(rowF, rowA);
       }
       const opWs = XLSX.utils.json_to_sheet(opRows);
       XLSX.utils.book_append_sheet(wb, opWs, "Koszty operacyjne");
@@ -1429,7 +1441,31 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       }
       
-      res.json({ message: `Zaimportowano: ${revCount} prognoz przychod\u00F3w, ${costCount} prognoz koszt\u00F3w` });
+      // Process Koszty operacyjne sheet
+      let opCount = 0;
+      const opSheet = wb.Sheets["Koszty operacyjne"];
+      if (opSheet) {
+        const rows = XLSX.utils.sheet_to_json<any>(opSheet);
+        const opData: any[] = [];
+        for (const row of rows) {
+          const categoryId = String(row.KategoriaId || "").trim();
+          const itemIndex = Number(row.ItemIndex);
+          if (!categoryId || isNaN(itemIndex)) continue;
+          for (let m = 0; m < 12; m++) {
+            const val = Number(row[`M${m + 1}`]) || 0;
+            if (val > 0) {
+              opData.push({ year, month: m, categoryId, itemIndex, forecast: String(val), actual: "0" });
+              opCount++;
+            }
+          }
+        }
+        if (opData.length > 0) {
+          await storage.deleteOperationalCostForecasts(year);
+          await storage.createOperationalCostForecastsBulk(opData);
+        }
+      }
+
+      res.json({ message: `Zaimportowano: ${revCount} prognoz przychodów, ${costCount} kosztów apt., ${opCount} kosztów operacyjnych` });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

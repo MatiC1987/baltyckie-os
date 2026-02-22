@@ -302,6 +302,7 @@ export interface IStorage {
   // Operational Cost Forecasts
   getOperationalCostForecasts(year?: number): Promise<OperationalCostForecast[]>;
   upsertOperationalCostForecast(data: InsertOperationalCostForecast): Promise<OperationalCostForecast>;
+  createOperationalCostForecastsBulk(data: InsertOperationalCostForecast[]): Promise<void>;
   deleteOperationalCostForecasts(year?: number): Promise<void>;
 
   // Company Settings
@@ -1471,6 +1472,14 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(operationalCostForecasts).values(data).returning();
     return created;
+  }
+
+  async createOperationalCostForecastsBulk(data: InsertOperationalCostForecast[]): Promise<void> {
+    if (data.length === 0) return;
+    const CHUNK = 100;
+    for (let i = 0; i < data.length; i += CHUNK) {
+      await db.insert(operationalCostForecasts).values(data.slice(i, i + CHUNK));
+    }
   }
 
   async deleteOperationalCostForecasts(year?: number): Promise<void> {

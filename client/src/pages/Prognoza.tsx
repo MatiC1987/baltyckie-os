@@ -358,6 +358,7 @@ export default function Prognoza() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/revenue-forecasts", year] });
       queryClient.invalidateQueries({ queryKey: ["/api/cost-forecasts", year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts", year] });
       toast({ title: "Zaimportowano", description: data.message });
     },
     onError: (e: Error) => toast({ title: "Blad importu", description: e.message, variant: "destructive" }),
@@ -367,6 +368,9 @@ export default function Prognoza() {
     mutationFn: () => apiRequest("POST", "/api/forecasts/copy", { sourceYear: year, targetYear: Number(copyTarget), copyRevenue: true, copyCosts: true }),
     onSuccess: () => {
       setCopyDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/revenue-forecasts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-forecasts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
       toast({ title: "Skopiowano", description: `Dane skopiowane do roku ${copyTarget}` });
     },
     onError: (e: Error) => toast({ title: "Blad", description: e.message, variant: "destructive" }),
