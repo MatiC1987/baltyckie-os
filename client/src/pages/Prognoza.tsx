@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Apartment, Location, RevenueForecast, CostForecast, Owner, OwnerContract } from "@shared/schema";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,16 +13,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Calculator, Copy, FileSpreadsheet, Download, FileText,
   ChevronDown, ChevronRight, Plus, Pencil, Trash2, Upload, Loader2,
-  TrendingUp, TrendingDown, DollarSign, BarChart3, ArrowUp, ArrowDown, X
+  TrendingUp, TrendingDown, DollarSign, BarChart3, ArrowUp, ArrowDown, X,
+  CopyPlus, CalendarArrowDown, Rows3, MoreHorizontal, FolderOpen, Save, Lightbulb, ClipboardList
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paz", "Lis", "Gru"];
+const MONTHS_FULL = ["Styczen", "Luty", "Marzec", "Kwiecien", "Maj", "Czerwiec", "Lipiec", "Sierpien", "Wrzesien", "Pazdziernik", "Listopad", "Grudzien"];
 const OP_CATEGORIES = [
   { id: "wynagrodzenia", label: "Wynagrodzenia" },
   { id: "zus", label: "ZUS" },
@@ -34,6 +38,12 @@ const OP_CATEGORIES = [
   { id: "ubezpieczenia", label: "Ubezpieczenia" },
   { id: "inne", label: "Inne" },
 ];
+
+interface ForecastTemplate {
+  id: string;
+  name: string;
+  values: number[];
+}
 
 function formatNum(v: number): string {
   if (v === 0) return "\u2014";
@@ -48,6 +58,15 @@ function saldoColor(v: number): string {
 
 const CUR_MONTH_BG = "bg-cyan-50/60 dark:bg-cyan-950/20";
 
+function loadTemplates(): ForecastTemplate[] {
+  try {
+    return JSON.parse(localStorage.getItem("forecast_templates") || "[]");
+  } catch { return []; }
+}
+function saveTemplates(t: ForecastTemplate[]) {
+  localStorage.setItem("forecast_templates", JSON.stringify(t));
+}
+
 export default function Prognoza() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -55,6 +74,7 @@ export default function Prognoza() {
   const [tab, setTab] = useState("przychody");
   const [collapsedLocs, setCollapsedLocs] = useState<Record<string, boolean>>({});
   const [selectedApt, setSelectedApt] = useState<number | null>(null);
+  const [sidePanelTab, setSidePanelTab] = useState<"formularz" | "historia">("formularz");
   const [contractsOpen, setContractsOpen] = useState(false);
   const [contractFormOpen, setContractFormOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<OwnerContract | null>(null);
@@ -66,6 +86,15 @@ export default function Prognoza() {
   const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
+
+  const [fillYearOpen, setFillYearOpen] = useState<string | null>(null);
+  const [fillYearValue, setFillYearValue] = useState("");
+  const [bulkEditOpen, setBulkEditOpen] = useState<{ locName: string; type: "rev" | "cost" } | null>(null);
+  const [bulkEditValue, setBulkEditValue] = useState("");
+  const [templates, setTemplates] = useState<ForecastTemplate[]>(loadTemplates);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateValues, setNewTemplateValues] = useState<number[]>(Array(12).fill(0));
 
   const yearOptions = useMemo(() => {
     const opts = [];
@@ -85,6 +114,15 @@ export default function Prognoza() {
     queryFn: async () => { const r = await fetch(`/api/cost-forecasts?year=${year}`, { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
   });
   const { data: contracts = [] } = useQuery<OwnerContract[]>({ queryKey: ["/api/owner-contracts"] });
+
+  const { data: prevRevForecasts = [] } = useQuery<RevenueForecast[]>({
+    queryKey: ["/api/revenue-forecasts", year - 1],
+    queryFn: async () => { const r = await fetch(`/api/revenue-forecasts?year=${year - 1}`, { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
+  });
+  const { data: prevCostForecasts = [] } = useQuery<CostForecast[]>({
+    queryKey: ["/api/cost-forecasts", year - 1],
+    queryFn: async () => { const r = await fetch(`/api/cost-forecasts?year=${year - 1}`, { credentials: "include" }); if (!r.ok) throw new Error("Failed"); return r.json(); },
+  });
 
   const { data: allRevForecasts = [], isLoading: allRevLoading } = useQuery<RevenueForecast[]>({
     queryKey: ["/api/revenue-forecasts", "all", selectedApt],
@@ -132,6 +170,22 @@ export default function Prognoza() {
     return m;
   }, [costForecasts]);
 
+  const prevRevLookup = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const f of prevRevForecasts) {
+      if (f.apartmentId) m[`${f.apartmentId}-${f.month}`] = Number(f.forecast) || 0;
+    }
+    return m;
+  }, [prevRevForecasts]);
+
+  const prevCostLookup = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const f of prevCostForecasts) {
+      if (f.apartmentId) m[`apt-${f.apartmentId}-${f.month}`] = Number(f.forecast) || 0;
+    }
+    return m;
+  }, [prevCostForecasts]);
+
   useEffect(() => { setLocalEdits({}); }, [year]);
 
   const getVal = useCallback((prefix: string, key: string): number => {
@@ -154,6 +208,15 @@ export default function Prognoza() {
     return val ? String(val) : "";
   }, [localEdits, revLookup, costLookup]);
 
+  const getPrevYearHint = useCallback((type: "rev" | "cost", aptId: number, month: number): string => {
+    if (type === "rev") {
+      const v = prevRevLookup[`${aptId}-${month}`];
+      return v ? String(v) : "";
+    }
+    const v = prevCostLookup[`apt-${aptId}-${month}`];
+    return v ? String(v) : "";
+  }, [prevRevLookup, prevCostLookup]);
+
   const revMutation = useMutation({
     mutationFn: (d: any) => apiRequest("PUT", "/api/revenue-forecasts", d),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/revenue-forecasts", year] }),
@@ -173,6 +236,92 @@ export default function Prognoza() {
       else costMutation.mutate(mutData);
     }, 500);
   }, [revMutation, costMutation]);
+
+  const fillYear = useCallback((aptId: number, type: "rev" | "cost", value: number) => {
+    const prefix = type === "rev" ? "rev" : "cost";
+    for (let m = 0; m < 12; m++) {
+      const key = `${aptId}-${m}`;
+      const mutData = type === "rev"
+        ? { year, month: m, apartmentId: aptId, forecast: String(value) }
+        : { year, month: m, apartmentId: aptId, category: "czynsz_wlasciciel", forecast: String(value) };
+      handleEdit(prefix, key, String(value), mutData);
+    }
+    toast({ title: "Wypelniono", description: `Wszystkie miesiace ustawione na ${value}` });
+  }, [year, handleEdit, toast]);
+
+  const copyFromPrevMonth = useCallback((aptId: number, month: number, type: "rev" | "cost") => {
+    const prefix = type === "rev" ? "rev" : "cost";
+    let prevVal = 0;
+    if (month > 0) {
+      prevVal = getVal(prefix, `${aptId}-${month - 1}`);
+    } else {
+      if (type === "rev") prevVal = prevRevLookup[`${aptId}-11`] || 0;
+      else prevVal = prevCostLookup[`apt-${aptId}-11`] || 0;
+    }
+    const key = `${aptId}-${month}`;
+    const mutData = type === "rev"
+      ? { year, month, apartmentId: aptId, forecast: String(prevVal) }
+      : { year, month, apartmentId: aptId, category: "czynsz_wlasciciel", forecast: String(prevVal) };
+    handleEdit(prefix, key, String(prevVal), mutData);
+    toast({ title: "Skopiowano", description: `Wartosc ${prevVal} z poprzedniego miesiaca` });
+  }, [year, getVal, prevRevLookup, prevCostLookup, handleEdit, toast]);
+
+  const copyFromLastYear = useCallback((aptId: number, month: number, type: "rev" | "cost") => {
+    const prefix = type === "rev" ? "rev" : "cost";
+    let prevVal = 0;
+    if (type === "rev") prevVal = prevRevLookup[`${aptId}-${month}`] || 0;
+    else prevVal = prevCostLookup[`apt-${aptId}-${month}`] || 0;
+    const key = `${aptId}-${month}`;
+    const mutData = type === "rev"
+      ? { year, month, apartmentId: aptId, forecast: String(prevVal) }
+      : { year, month, apartmentId: aptId, category: "czynsz_wlasciciel", forecast: String(prevVal) };
+    handleEdit(prefix, key, String(prevVal), mutData);
+    toast({ title: "Skopiowano", description: `Wartosc ${prevVal} z ${year - 1}` });
+  }, [year, prevRevLookup, prevCostLookup, handleEdit, toast]);
+
+  const bulkFillLocationRef = useRef<(locName: string, type: "rev" | "cost", value: number) => void>(() => {});
+  useEffect(() => {
+    bulkFillLocationRef.current = (locName: string, type: "rev" | "cost", value: number) => {
+      const locApts = activeApts.filter(a => a.location === locName).sort((a, b) => a.name.localeCompare(b.name, "pl"));
+      const apts = locName === "Bez lokalizacji"
+        ? activeApts.filter(a => !a.location || !sortedLocs.some(l => l.name === a.location))
+        : locApts;
+      apts.forEach(apt => fillYear(apt.id, type, value));
+      toast({ title: "Wypelniono grupowo", description: `${apts.length} apartamentow ustawionych na ${value}` });
+    };
+  }, [activeApts, sortedLocs, fillYear, toast]);
+  const bulkFillLocation = useCallback((locName: string, type: "rev" | "cost", value: number) => {
+    bulkFillLocationRef.current(locName, type, value);
+  }, []);
+
+  const applyTemplate = useCallback((aptId: number, type: "rev" | "cost", template: ForecastTemplate) => {
+    const prefix = type === "rev" ? "rev" : "cost";
+    for (let m = 0; m < 12; m++) {
+      const val = template.values[m] || 0;
+      const key = `${aptId}-${m}`;
+      const mutData = type === "rev"
+        ? { year, month: m, apartmentId: aptId, forecast: String(val) }
+        : { year, month: m, apartmentId: aptId, category: "czynsz_wlasciciel", forecast: String(val) };
+      handleEdit(prefix, key, String(val), mutData);
+    }
+    toast({ title: "Szablon zastosowany", description: `"${template.name}" zastosowany` });
+  }, [year, handleEdit, toast]);
+
+  const saveAsTemplate = useCallback((name: string, values: number[]) => {
+    const id = `tpl_${Date.now()}`;
+    const newTpl: ForecastTemplate = { id, name, values };
+    const updated = [...templates, newTpl];
+    setTemplates(updated);
+    saveTemplates(updated);
+    toast({ title: "Szablon zapisany", description: `"${name}" zapisany` });
+  }, [templates, toast]);
+
+  const deleteTemplate = useCallback((id: string) => {
+    const updated = templates.filter(t => t.id !== id);
+    setTemplates(updated);
+    saveTemplates(updated);
+    toast({ title: "Szablon usuniety" });
+  }, [templates, toast]);
 
   const generateCostsMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/owner-contracts/generate-costs", { year }),
@@ -264,6 +413,7 @@ export default function Prognoza() {
                 <th key={i} className={`px-2 py-2 border-b border-border text-center font-medium min-w-[85px] ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`} data-testid={`th-${type}-month-${i}`}>{m}</th>
               ))}
               <th className="px-2 py-2 border-b border-border text-center font-bold min-w-[90px] bg-muted/30">Razem</th>
+              <th className="px-1 py-2 border-b border-border min-w-[36px] bg-muted/30"></th>
             </tr>
           </thead>
           <tbody>
@@ -277,40 +427,73 @@ export default function Prognoza() {
               const locSum = locTotals.reduce((s, v) => s + v, 0);
 
               return (
-                <tbody key={locName}>
-                  <tr className="bg-muted/40 cursor-pointer hover:bg-muted/60" onClick={() => toggleLoc(locName)} data-testid={`row-loc-${locName}`}>
-                    <td className="sticky left-0 z-10 bg-muted/40 px-3 py-2 border-r border-b border-border font-bold text-sm flex items-center gap-1">
-                      {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                      {locName}
+                <Fragment key={locName}>
+                  <tr className="bg-muted/40 cursor-pointer hover:bg-muted/60" data-testid={`row-loc-${locName}`}>
+                    <td className="sticky left-0 z-10 bg-muted/40 px-3 py-2 border-r border-b border-border font-bold text-sm" onClick={() => toggleLoc(locName)}>
+                      <div className="flex items-center gap-1">
+                        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        {locName}
+                      </div>
                     </td>
                     {locTotals.map((v, i) => (
-                      <td key={i} className={`px-2 py-2 border-b border-border text-right font-semibold tabular-nums ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>{formatNum(v)}</td>
+                      <td key={i} className={`px-2 py-2 border-b border-border text-right font-semibold tabular-nums ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`} onClick={() => toggleLoc(locName)}>{formatNum(v)}</td>
                     ))}
-                    <td className="px-2 py-2 border-b border-border text-right font-bold tabular-nums bg-muted/30">{formatNum(locSum)}</td>
+                    <td className="px-2 py-2 border-b border-border text-right font-bold tabular-nums bg-muted/30" onClick={() => toggleLoc(locName)}>{formatNum(locSum)}</td>
+                    <td className="px-1 py-2 border-b border-border bg-muted/30">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" title="Edycja grupowa" data-testid={`btn-bulk-${locName}`}>
+                            <Rows3 className="h-3.5 w-3.5" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-3" align="end">
+                          <p className="text-xs font-semibold mb-2">Wypelnij cala lokalizacje</p>
+                          <p className="text-[10px] text-muted-foreground mb-2">{locName} ({apts.length} apt.)</p>
+                          <div className="flex gap-2">
+                            <Input
+                              type="number"
+                              placeholder="Kwota"
+                              className="h-8 text-xs"
+                              value={bulkEditOpen?.locName === locName ? bulkEditValue : ""}
+                              onChange={e => { setBulkEditOpen({ locName, type }); setBulkEditValue(e.target.value); }}
+                              data-testid={`input-bulk-${locName}`}
+                            />
+                            <Button size="sm" className="h-8 text-xs shrink-0" onClick={() => {
+                              const val = parseFloat(bulkEditValue) || 0;
+                              bulkFillLocation(locName, type, val);
+                              setBulkEditValue("");
+                            }} data-testid={`btn-bulk-apply-${locName}`}>
+                              OK
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </td>
                   </tr>
                   {!collapsed && apts.map(apt => {
                     let rowTotal = 0;
                     return (
                       <tr key={apt.id} data-testid={`row-${type}-apt-${apt.id}`}>
                         <td className="sticky left-0 z-10 bg-card px-3 py-1.5 border-r border-b border-border">
-                          <button className="text-left text-sm hover:underline" onClick={() => setSelectedApt(apt.id)} data-testid={`btn-apt-${apt.id}`}>{apt.name}</button>
+                          <button className="text-left text-sm hover:underline" onClick={() => { setSelectedApt(apt.id); setSidePanelTab("formularz"); }} data-testid={`btn-apt-${apt.id}`}>{apt.name}</button>
                         </td>
                         {Array.from({ length: 12 }, (_, m) => {
                           const key = `${apt.id}-${m}`;
                           const val = getVal(prefix, key);
                           rowTotal += val;
                           const source = type === "cost" ? costLookup[`apt-${key}`]?.sourceType : null;
+                          const hint = getPrevYearHint(type, apt.id, m);
                           return (
-                            <td key={m} className={`px-1 py-1 border-b border-border ${m === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>
-                              <div className="flex items-center gap-0.5">
+                            <td key={m} className={`px-0 py-0 border-b border-border ${m === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>
+                              <div className="flex items-center group relative">
                                 {type === "cost" && source && (
-                                  <span className="text-[10px] shrink-0" title={source === "contract" ? "Z umowy" : "Reczne"}>
+                                  <span className="text-[10px] shrink-0 ml-0.5" title={source === "contract" ? "Z umowy" : "Reczne"}>
                                     {source === "contract" ? <FileText className="h-3 w-3 text-blue-500" /> : <Pencil className="h-3 w-3 text-muted-foreground" />}
                                   </span>
                                 )}
                                 <input
                                   type="number"
-                                  className="w-full text-right text-[11px] tabular-nums bg-transparent rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  className="w-full text-right text-[11px] tabular-nums bg-transparent rounded px-1 py-1 outline-none focus:ring-1 focus:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                   value={getDisplay(prefix, key)}
                                   onChange={e => {
                                     const mutData = type === "rev"
@@ -318,18 +501,103 @@ export default function Prognoza() {
                                       : { year, month: m, apartmentId: apt.id, category: "czynsz_wlasciciel", forecast: String(parseFloat(e.target.value) || 0) };
                                     handleEdit(prefix, key, e.target.value, mutData);
                                   }}
-                                  placeholder="0"
+                                  placeholder={hint || "0"}
+                                  title={hint ? `${year - 1}: ${hint}` : undefined}
                                   data-testid={`input-${type}-${apt.id}-${m}`}
                                 />
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button className="absolute right-0 top-0 h-full px-0.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity" data-testid={`menu-cell-${type}-${apt.id}-${m}`}>
+                                      <MoreHorizontal className="h-3 w-3" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuItem onClick={() => copyFromPrevMonth(apt.id, m, type)} data-testid={`copy-prev-${type}-${apt.id}-${m}`}>
+                                      <CopyPlus className="h-3.5 w-3.5 mr-2" />
+                                      Z poprzedniego miesiaca
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => copyFromLastYear(apt.id, m, type)} data-testid={`copy-year-${type}-${apt.id}-${m}`}>
+                                      <CalendarArrowDown className="h-3.5 w-3.5 mr-2" />
+                                      Z zeszlego roku ({year - 1})
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             </td>
                           );
                         })}
                         <td className="px-2 py-1.5 border-b border-border text-right font-semibold tabular-nums bg-muted/10">{formatNum(rowTotal)}</td>
+                        <td className="px-1 py-1 border-b border-border bg-muted/10">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" data-testid={`btn-row-menu-${type}-${apt.id}`}>
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuItem className="text-xs font-semibold text-muted-foreground" disabled>{apt.name}</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); }} data-testid={`btn-fill-year-${type}-${apt.id}`}>
+                                <div className="w-full" onClick={e => e.stopPropagation()}>
+                                  <p className="text-xs font-medium mb-1.5 flex items-center gap-1"><Rows3 className="h-3 w-3" /> Wypelnij caly rok</p>
+                                  <div className="flex gap-1.5">
+                                    <Input
+                                      type="number"
+                                      placeholder="Kwota"
+                                      className="h-7 text-xs flex-1"
+                                      value={fillYearOpen === `${type}-${apt.id}` ? fillYearValue : ""}
+                                      onChange={e => { setFillYearOpen(`${type}-${apt.id}`); setFillYearValue(e.target.value); }}
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                    <Button size="sm" className="h-7 text-xs px-2" onClick={e => {
+                                      e.stopPropagation();
+                                      fillYear(apt.id, type, parseFloat(fillYearValue) || 0);
+                                      setFillYearValue("");
+                                      setFillYearOpen(null);
+                                    }}>
+                                      OK
+                                    </Button>
+                                  </div>
+                                </div>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              {templates.length > 0 && (
+                                <>
+                                  {templates.map(tpl => (
+                                    <DropdownMenuItem key={tpl.id} onClick={() => applyTemplate(apt.id, type, tpl)} data-testid={`btn-apply-tpl-${tpl.id}-${apt.id}`}>
+                                      <FolderOpen className="h-3.5 w-3.5 mr-2" />
+                                      Szablon: {tpl.name}
+                                    </DropdownMenuItem>
+                                  ))}
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
+                              <DropdownMenuItem onClick={() => {
+                                const values: number[] = [];
+                                for (let m = 0; m < 12; m++) values.push(getVal(prefix, `${apt.id}-${m}`));
+                                setNewTemplateValues(values);
+                                setNewTemplateName(`${apt.name} - ${type === "rev" ? "przychody" : "koszty"}`);
+                                setTemplateDialogOpen(true);
+                              }} data-testid={`btn-save-as-tpl-${type}-${apt.id}`}>
+                                <Save className="h-3.5 w-3.5 mr-2" />
+                                Zapisz jako szablon
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => { setSelectedApt(apt.id); setSidePanelTab("formularz"); }} data-testid={`btn-form-view-${type}-${apt.id}`}>
+                                <ClipboardList className="h-3.5 w-3.5 mr-2" />
+                                Widok formularza
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setSelectedApt(apt.id); setSidePanelTab("historia"); }} data-testid={`btn-history-${type}-${apt.id}`}>
+                                <BarChart3 className="h-3.5 w-3.5 mr-2" />
+                                Historia i wykresy
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
                       </tr>
                     );
                   })}
-                </tbody>
+                </Fragment>
               );
             })}
             <tr className="bg-muted/60 font-bold" data-testid={`row-${type}-grand-total`}>
@@ -338,6 +606,7 @@ export default function Prognoza() {
                 <td key={i} className={`px-2 py-2 border-border text-right tabular-nums ${i === currentMonth && year === currentYear ? CUR_MONTH_BG : ""}`}>{formatNum(v)}</td>
               ))}
               <td className="px-2 py-2 border-border text-right tabular-nums bg-muted/30">{formatNum(grandTotal.reduce((s: number, v: number) => s + v, 0))}</td>
+              <td className="border-border bg-muted/30"></td>
             </tr>
           </tbody>
         </table>
@@ -367,7 +636,7 @@ export default function Prognoza() {
               const catKey = `operational_${cat.id}`;
               let fTotal = 0, aTotal = 0;
               return (
-                <tbody key={cat.id}>
+                <Fragment key={cat.id}>
                   <tr className="bg-muted/20" data-testid={`row-op-header-${cat.id}`}>
                     <td colSpan={14} className="sticky left-0 z-10 bg-muted/20 px-3 py-1.5 border-b border-border font-semibold text-sm">{cat.label}</td>
                   </tr>
@@ -415,7 +684,7 @@ export default function Prognoza() {
                     })}
                     <td className="px-2 py-1 border-b border-border text-right font-semibold tabular-nums bg-muted/10">{formatNum(aTotal)}</td>
                   </tr>
-                </tbody>
+                </Fragment>
               );
             })}
             <tr className="bg-muted/60 font-bold" data-testid="row-op-grand-total">
@@ -556,6 +825,277 @@ export default function Prognoza() {
     );
   }
 
+  function renderFormView(apt: Apartment) {
+    const currentTab = tab;
+    const type: "rev" | "cost" = currentTab === "przychody" ? "rev" : "cost";
+    const prefix = type === "rev" ? "rev" : "cost";
+    const typeLabel = type === "rev" ? "Przychody" : "Koszty";
+
+    return (
+      <div className="mt-4 space-y-4" data-testid="form-view">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="text-xs">{typeLabel} {year}</Badge>
+          {templates.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 text-xs" data-testid="btn-apply-template-form">
+                  <FolderOpen className="h-3 w-3 mr-1" /> Zastosuj szablon
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {templates.map(tpl => (
+                  <DropdownMenuItem key={tpl.id} onClick={() => applyTemplate(apt.id, type, tpl)}>
+                    {tpl.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {MONTHS_FULL.map((monthName, m) => {
+            const key = `${apt.id}-${m}`;
+            const hint = getPrevYearHint(type, apt.id, m);
+            const isCurrent = m === currentMonth && year === currentYear;
+            return (
+              <div key={m} className={`flex items-center gap-3 px-3 py-2 rounded-md ${isCurrent ? "bg-cyan-50/60 dark:bg-cyan-950/20 ring-1 ring-cyan-200 dark:ring-cyan-800" : "bg-muted/20"}`} data-testid={`form-row-${m}`}>
+                <span className="text-xs font-medium w-24 shrink-0">{monthName}</span>
+                <Input
+                  type="number"
+                  className="h-8 text-sm flex-1 max-w-[160px]"
+                  value={getDisplay(prefix, key)}
+                  onChange={e => {
+                    const mutData = type === "rev"
+                      ? { year, month: m, apartmentId: apt.id, forecast: String(parseFloat(e.target.value) || 0) }
+                      : { year, month: m, apartmentId: apt.id, category: "czynsz_wlasciciel", forecast: String(parseFloat(e.target.value) || 0) };
+                    handleEdit(prefix, key, e.target.value, mutData);
+                  }}
+                  placeholder={hint || "0"}
+                  data-testid={`form-input-${m}`}
+                />
+                <span className="text-[10px] text-muted-foreground shrink-0">PLN</span>
+                {hint && (
+                  <span className="text-[10px] text-muted-foreground shrink-0 flex items-center gap-0.5" title={`Wartosc z ${year - 1}`}>
+                    <Lightbulb className="h-3 w-3 text-amber-500" />
+                    {year - 1}: {hint}
+                  </span>
+                )}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <Button variant="ghost" size="icon" className="h-6 w-6" title="Z poprzedniego miesiaca" onClick={() => copyFromPrevMonth(apt.id, m, type)} data-testid={`form-copy-prev-${m}`}>
+                    <CopyPlus className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" title={`Z ${year - 1}`} onClick={() => copyFromLastYear(apt.id, m, type)} data-testid={`form-copy-year-${m}`}>
+                    <CalendarArrowDown className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 pt-2 border-t">
+          <span className="text-xs font-semibold">Razem:</span>
+          <span className="text-sm font-bold tabular-nums">
+            {formatNum(Array.from({ length: 12 }, (_, m) => getVal(prefix, `${apt.id}-${m}`)).reduce((s, v) => s + v, 0))} PLN
+          </span>
+        </div>
+
+        <div className="border-t pt-3 space-y-2">
+          <p className="text-xs font-semibold">Szybkie wypelnianie</p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              placeholder="Kwota na caly rok"
+              className="h-8 text-xs max-w-[160px]"
+              value={fillYearOpen === `form-${apt.id}` ? fillYearValue : ""}
+              onChange={e => { setFillYearOpen(`form-${apt.id}`); setFillYearValue(e.target.value); }}
+              data-testid="form-fill-year-input"
+            />
+            <Button size="sm" className="h-8 text-xs" onClick={() => {
+              fillYear(apt.id, type, parseFloat(fillYearValue) || 0);
+              setFillYearValue("");
+              setFillYearOpen(null);
+            }} data-testid="form-fill-year-btn">
+              <Rows3 className="h-3 w-3 mr-1" /> Wypelnij wszystkie
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderHistoryView(apt: Apartment) {
+    if (allRevLoading || allCostLoading) return <div className="mt-4 flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Ladowanie danych historycznych...</span></div>;
+    const aptContract = contracts.find(c => c.apartmentId === selectedApt && c.status === "AKTYWNA");
+    const owner = aptContract?.ownerId ? owners.find(o => o.id === aptContract.ownerId) : (apt.ownerId ? owners.find(o => o.id === apt.ownerId) : null);
+
+    const yearlyRevenue: Record<number, number> = {};
+    const yearlyCost: Record<number, number> = {};
+    const monthlyByYear: Record<number, number[]> = {};
+
+    for (const f of allRevForecasts) {
+      yearlyRevenue[f.year] = (yearlyRevenue[f.year] || 0) + (Number(f.forecast) || 0);
+      if (!monthlyByYear[f.year]) monthlyByYear[f.year] = Array(12).fill(0);
+      monthlyByYear[f.year][f.month] += Number(f.forecast) || 0;
+    }
+    for (const f of allCostForecasts) {
+      yearlyCost[f.year] = (yearlyCost[f.year] || 0) + (Number(f.forecast) || 0);
+    }
+
+    const allYears = [...new Set([...Object.keys(yearlyRevenue), ...Object.keys(yearlyCost)].map(Number))].sort();
+    const trendData = allYears.map(y => ({
+      year: String(y),
+      przychod: yearlyRevenue[y] || 0,
+      koszt: yearlyCost[y] || 0,
+      wynik: (yearlyRevenue[y] || 0) - (yearlyCost[y] || 0),
+    }));
+
+    const currentRev = yearlyRevenue[year] || 0;
+    const prevRev = yearlyRevenue[year - 1] || 0;
+    const revChange = prevRev > 0 ? ((currentRev - prevRev) / prevRev * 100) : 0;
+    const avgMonthly = currentRev / 12;
+
+    const monthChartData = MONTHS.map((m, i) => {
+      const entry: any = { month: m };
+      allYears.forEach(y => {
+        entry[String(y)] = monthlyByYear[y]?.[i] || 0;
+      });
+      return entry;
+    });
+
+    const chartColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+
+    return (
+      <div className="mt-4 space-y-5">
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="p-3">
+            <p className="text-[10px] text-muted-foreground font-medium">Przychod {year}</p>
+            <p className="text-sm font-bold tabular-nums">{formatNum(currentRev)} PLN</p>
+          </Card>
+          <Card className="p-3">
+            <p className="text-[10px] text-muted-foreground font-medium">Sr. miesieczna</p>
+            <p className="text-sm font-bold tabular-nums">{formatNum(avgMonthly)} PLN</p>
+          </Card>
+          <Card className="p-3">
+            <p className="text-[10px] text-muted-foreground font-medium">Zmiana r/r</p>
+            <p className={`text-sm font-bold tabular-nums flex items-center gap-1 ${revChange > 0 ? "text-emerald-600" : revChange < 0 ? "text-red-600" : ""}`}>
+              {revChange > 0 ? <ArrowUp className="h-3 w-3" /> : revChange < 0 ? <ArrowDown className="h-3 w-3" /> : null}
+              {revChange !== 0 ? `${revChange > 0 ? "+" : ""}${revChange.toFixed(0)}%` : "\u2014"}
+            </p>
+          </Card>
+        </div>
+
+        {trendData.length > 1 && (
+          <div>
+            <p className="text-xs font-semibold mb-2">Trend roczny</p>
+            <div className="h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="year" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                  <ReTooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} PLN`} />
+                  <Bar dataKey="przychod" fill="#3b82f6" name="Przychod" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="koszt" fill="#ef4444" name="Koszt" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {allYears.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold mb-2">Porownanie miesieczne</p>
+            <div className="h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="month" tick={{ fontSize: 9 }} />
+                  <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                  <ReTooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} PLN`} />
+                  {allYears.map((y, i) => (
+                    <Line key={y} type="monotone" dataKey={String(y)} stroke={chartColors[i % chartColors.length]} strokeWidth={y === year ? 2.5 : 1} dot={false} name={String(y)} />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="text-xs font-semibold mb-2">Zestawienie roczne</p>
+          <div className="rounded-md border border-border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-muted/50">
+                  <th className="text-left px-2 py-1.5 border-b border-border">Rok</th>
+                  <th className="text-right px-2 py-1.5 border-b border-border">Przychod</th>
+                  <th className="text-right px-2 py-1.5 border-b border-border">Koszt</th>
+                  <th className="text-right px-2 py-1.5 border-b border-border">Wynik</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allYears.map(y => {
+                  const rev = yearlyRevenue[y] || 0;
+                  const cost = yearlyCost[y] || 0;
+                  const net = rev - cost;
+                  return (
+                    <tr key={y} className={y === year ? "bg-cyan-50/40 dark:bg-cyan-950/20" : ""}>
+                      <td className="px-2 py-1 border-b border-border font-medium">{y}</td>
+                      <td className="px-2 py-1 border-b border-border text-right tabular-nums">{formatNum(rev)}</td>
+                      <td className="px-2 py-1 border-b border-border text-right tabular-nums text-red-600 dark:text-red-400">{formatNum(cost)}</td>
+                      <td className={`px-2 py-1 border-b border-border text-right tabular-nums font-semibold ${saldoColor(net)}`}>{formatNum(net)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {(aptContract || owner) && (
+          <div>
+            <p className="text-xs font-semibold mb-2">Umowa z wlascicielem</p>
+            <Card className="p-3 space-y-2">
+              {owner && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Wlasciciel:</span>
+                  <span className="text-xs font-medium">{owner.name}</span>
+                </div>
+              )}
+              {aptContract && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Czynsz:</span>
+                    <span className="text-xs font-bold">{formatNum(Number(aptContract.monthlyRent) || 0)} PLN/mies.</span>
+                  </div>
+                  {aptContract.additionalFees && Number(aptContract.additionalFees) > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Oplaty dod.:</span>
+                      <span className="text-xs font-medium">{formatNum(Number(aptContract.additionalFees))} PLN/mies.</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Okres:</span>
+                    <span className="text-xs">{aptContract.startDate} - {aptContract.endDate || "bezterminowo"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Status:</span>
+                    <Badge variant={aptContract.status === "AKTYWNA" ? "default" : "secondary"} className="text-[10px]">{aptContract.status}</Badge>
+                  </div>
+                </>
+              )}
+              {!aptContract && owner && (
+                <p className="text-xs text-muted-foreground italic">Brak aktywnej umowy. Dodaj umowe w sekcji "Umowy z wlascicielami".</p>
+              )}
+            </Card>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function handleContractSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -617,6 +1157,9 @@ export default function Prognoza() {
             <Button variant="outline" size="sm" onClick={() => setCopyDialogOpen(true)} data-testid="btn-copy-year">
               <Copy className="h-4 w-4 mr-1" /> Kopiuj rok
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setTemplateDialogOpen(true)} data-testid="btn-templates">
+              <FolderOpen className="h-4 w-4 mr-1" /> Szablony ({templates.length})
+            </Button>
             <Button variant="outline" size="sm" onClick={() => excelInputRef.current?.click()} data-testid="btn-import-excel">
               {excelImportMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1" />} Import Excel
             </Button>
@@ -668,6 +1211,7 @@ export default function Prognoza() {
         </TabsContent>
       </Tabs>
 
+      {/* Side panel - form view + history */}
       <Sheet open={!!selectedApt} onOpenChange={() => setSelectedApt(null)}>
         <SheetContent className="sm:max-w-lg overflow-y-auto" data-testid="panel-apt-details">
           <SheetHeader>
@@ -679,179 +1223,34 @@ export default function Prognoza() {
           {selectedApt && (() => {
             const apt = apartments.find(a => a.id === selectedApt);
             if (!apt) return null;
-            if (allRevLoading || allCostLoading) return <div className="mt-4 flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Ladowanie danych historycznych...</span></div>;
-            const aptContract = contracts.find(c => c.apartmentId === selectedApt && c.status === "AKTYWNA");
-            const owner = aptContract?.ownerId ? owners.find(o => o.id === aptContract.ownerId) : (apt.ownerId ? owners.find(o => o.id === apt.ownerId) : null);
-
-            const yearlyRevenue: Record<number, number> = {};
-            const yearlyCost: Record<number, number> = {};
-            const monthlyByYear: Record<number, number[]> = {};
-
-            for (const f of allRevForecasts) {
-              yearlyRevenue[f.year] = (yearlyRevenue[f.year] || 0) + (Number(f.forecast) || 0);
-              if (!monthlyByYear[f.year]) monthlyByYear[f.year] = Array(12).fill(0);
-              monthlyByYear[f.year][f.month] += Number(f.forecast) || 0;
-            }
-            for (const f of allCostForecasts) {
-              yearlyCost[f.year] = (yearlyCost[f.year] || 0) + (Number(f.forecast) || 0);
-            }
-
-            const allYears = [...new Set([...Object.keys(yearlyRevenue), ...Object.keys(yearlyCost)].map(Number))].sort();
-            const trendData = allYears.map(y => ({
-              year: String(y),
-              przychod: yearlyRevenue[y] || 0,
-              koszt: yearlyCost[y] || 0,
-              wynik: (yearlyRevenue[y] || 0) - (yearlyCost[y] || 0),
-            }));
-
-            const currentRev = yearlyRevenue[year] || 0;
-            const prevRev = yearlyRevenue[year - 1] || 0;
-            const revChange = prevRev > 0 ? ((currentRev - prevRev) / prevRev * 100) : 0;
-            const avgMonthly = currentRev / 12;
-
-            const monthNames = MONTHS;
-            const monthChartData = monthNames.map((m, i) => {
-              const entry: any = { month: m };
-              allYears.forEach(y => {
-                entry[String(y)] = monthlyByYear[y]?.[i] || 0;
-              });
-              return entry;
-            });
-
-            const chartColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
-
             return (
-              <div className="mt-4 space-y-5">
-                <div className="grid grid-cols-3 gap-3">
-                  <Card className="p-3">
-                    <p className="text-[10px] text-muted-foreground font-medium">Przychod {year}</p>
-                    <p className="text-sm font-bold tabular-nums">{formatNum(currentRev)} PLN</p>
-                  </Card>
-                  <Card className="p-3">
-                    <p className="text-[10px] text-muted-foreground font-medium">Sr. miesieczna</p>
-                    <p className="text-sm font-bold tabular-nums">{formatNum(avgMonthly)} PLN</p>
-                  </Card>
-                  <Card className="p-3">
-                    <p className="text-[10px] text-muted-foreground font-medium">Zmiana r/r</p>
-                    <p className={`text-sm font-bold tabular-nums flex items-center gap-1 ${revChange > 0 ? "text-emerald-600" : revChange < 0 ? "text-red-600" : ""}`}>
-                      {revChange > 0 ? <ArrowUp className="h-3 w-3" /> : revChange < 0 ? <ArrowDown className="h-3 w-3" /> : null}
-                      {revChange !== 0 ? `${revChange > 0 ? "+" : ""}${revChange.toFixed(0)}%` : "\u2014"}
-                    </p>
-                  </Card>
+              <div className="mt-3">
+                <div className="flex gap-1 border-b mb-0">
+                  <button
+                    className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${sidePanelTab === "formularz" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => setSidePanelTab("formularz")}
+                    data-testid="side-tab-form"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5 inline mr-1" />
+                    Formularz
+                  </button>
+                  <button
+                    className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${sidePanelTab === "historia" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => setSidePanelTab("historia")}
+                    data-testid="side-tab-history"
+                  >
+                    <BarChart3 className="h-3.5 w-3.5 inline mr-1" />
+                    Historia
+                  </button>
                 </div>
-
-                {trendData.length > 1 && (
-                  <div>
-                    <p className="text-xs font-semibold mb-2">Trend roczny</p>
-                    <div className="h-40">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={trendData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                          <XAxis dataKey="year" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                          <ReTooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} PLN`} />
-                          <Bar dataKey="przychod" fill="#3b82f6" name="Przychod" radius={[2, 2, 0, 0]} />
-                          <Bar dataKey="koszt" fill="#ef4444" name="Koszt" radius={[2, 2, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {allYears.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold mb-2">Porownanie miesieczne</p>
-                    <div className="h-40">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={monthChartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                          <XAxis dataKey="month" tick={{ fontSize: 9 }} />
-                          <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                          <ReTooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} PLN`} />
-                          {allYears.map((y, i) => (
-                            <Line key={y} type="monotone" dataKey={String(y)} stroke={chartColors[i % chartColors.length]} strokeWidth={y === year ? 2.5 : 1} dot={false} name={String(y)} />
-                          ))}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-xs font-semibold mb-2">Zestawienie roczne</p>
-                  <div className="rounded-md border border-border overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-muted/50">
-                          <th className="text-left px-2 py-1.5 border-b border-border">Rok</th>
-                          <th className="text-right px-2 py-1.5 border-b border-border">Przychod</th>
-                          <th className="text-right px-2 py-1.5 border-b border-border">Koszt</th>
-                          <th className="text-right px-2 py-1.5 border-b border-border">Wynik</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {allYears.map(y => {
-                          const rev = yearlyRevenue[y] || 0;
-                          const cost = yearlyCost[y] || 0;
-                          const net = rev - cost;
-                          return (
-                            <tr key={y} className={y === year ? "bg-cyan-50/40 dark:bg-cyan-950/20" : ""}>
-                              <td className="px-2 py-1 border-b border-border font-medium">{y}</td>
-                              <td className="px-2 py-1 border-b border-border text-right tabular-nums">{formatNum(rev)}</td>
-                              <td className="px-2 py-1 border-b border-border text-right tabular-nums text-red-600 dark:text-red-400">{formatNum(cost)}</td>
-                              <td className={`px-2 py-1 border-b border-border text-right tabular-nums font-semibold ${saldoColor(net)}`}>{formatNum(net)}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {(aptContract || owner) && (
-                  <div>
-                    <p className="text-xs font-semibold mb-2">Umowa z wlascicielem</p>
-                    <Card className="p-3 space-y-2">
-                      {owner && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Wlasciciel:</span>
-                          <span className="text-xs font-medium">{owner.name}</span>
-                        </div>
-                      )}
-                      {aptContract && (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Czynsz:</span>
-                            <span className="text-xs font-bold">{formatNum(Number(aptContract.monthlyRent) || 0)} PLN/mies.</span>
-                          </div>
-                          {aptContract.additionalFees && Number(aptContract.additionalFees) > 0 && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">Oplaty dod.:</span>
-                              <span className="text-xs font-medium">{formatNum(Number(aptContract.additionalFees))} PLN/mies.</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Okres:</span>
-                            <span className="text-xs">{aptContract.startDate} - {aptContract.endDate || "bezterminowo"}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Status:</span>
-                            <Badge variant={aptContract.status === "AKTYWNA" ? "default" : "secondary"} className="text-[10px]">{aptContract.status}</Badge>
-                          </div>
-                        </>
-                      )}
-                      {!aptContract && owner && (
-                        <p className="text-xs text-muted-foreground italic">Brak aktywnej umowy. Dodaj umowe w sekcji "Umowy z wlascicielami".</p>
-                      )}
-                    </Card>
-                  </div>
-                )}
+                {sidePanelTab === "formularz" ? renderFormView(apt) : renderHistoryView(apt)}
               </div>
             );
           })()}
         </SheetContent>
       </Sheet>
 
+      {/* Copy year dialog */}
       <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Kopiuj dane prognozy</DialogTitle></DialogHeader>
@@ -876,6 +1275,87 @@ export default function Prognoza() {
         </DialogContent>
       </Dialog>
 
+      {/* Templates dialog */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Szablony prognoz</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">Zapisane szablony</p>
+              {templates.length === 0 && <p className="text-xs text-muted-foreground italic">Brak zapisanych szablonow. Uzyj menu wiersza, aby zapisac aktualne wartosci jako szablon.</p>}
+              {templates.map(tpl => (
+                <Card key={tpl.id} className="p-3" data-testid={`template-card-${tpl.id}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold">{tpl.name}</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {tpl.values.map((v, i) => (
+                          <span key={i} className="text-[10px] bg-muted px-1.5 py-0.5 rounded tabular-nums">{MONTHS[i]}: {v || "—"}</span>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">Razem: {formatNum(tpl.values.reduce((s, v) => s + v, 0))} PLN</p>
+                    </div>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => deleteTemplate(tpl.id)} data-testid={`btn-delete-tpl-${tpl.id}`}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground">Nowy szablon</p>
+              <div>
+                <Label className="text-xs">Nazwa szablonu</Label>
+                <Input
+                  value={newTemplateName}
+                  onChange={e => setNewTemplateName(e.target.value)}
+                  placeholder="np. Apartament standardowy"
+                  className="h-8 text-xs mt-1"
+                  data-testid="input-template-name"
+                />
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {MONTHS.map((m, i) => (
+                  <div key={i}>
+                    <Label className="text-[10px]">{m}</Label>
+                    <Input
+                      type="number"
+                      className="h-7 text-xs"
+                      value={newTemplateValues[i] || ""}
+                      onChange={e => {
+                        const updated = [...newTemplateValues];
+                        updated[i] = parseFloat(e.target.value) || 0;
+                        setNewTemplateValues(updated);
+                      }}
+                      placeholder="0"
+                      data-testid={`input-tpl-month-${i}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="text-xs"
+                  disabled={!newTemplateName.trim()}
+                  onClick={() => {
+                    saveAsTemplate(newTemplateName, newTemplateValues);
+                    setNewTemplateName("");
+                    setNewTemplateValues(Array(12).fill(0));
+                  }}
+                  data-testid="btn-save-new-template"
+                >
+                  <Save className="h-3.5 w-3.5 mr-1" /> Zapisz szablon
+                </Button>
+                <span className="text-[10px] text-muted-foreground">Razem: {formatNum(newTemplateValues.reduce((s, v) => s + v, 0))} PLN</span>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Contracts sheet */}
       <Sheet open={contractsOpen} onOpenChange={setContractsOpen}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader>
@@ -894,8 +1374,8 @@ export default function Prognoza() {
             <div className="space-y-2">
               {contracts.length === 0 && <p className="text-sm text-muted-foreground">Brak umow</p>}
               {contracts.map(c => {
-                const ownerName = owners.find(o => o.id === c.ownerId)?.name || "—";
-                const aptName = apartments.find(a => a.id === c.apartmentId)?.name || "—";
+                const ownerName = owners.find(o => o.id === c.ownerId)?.name || "\u2014";
+                const aptName = apartments.find(a => a.id === c.apartmentId)?.name || "\u2014";
                 return (
                   <Card key={c.id} data-testid={`card-contract-${c.id}`}>
                     <CardContent className="py-3 px-4">
@@ -903,9 +1383,9 @@ export default function Prognoza() {
                         <div className="space-y-1">
                           <p className="font-semibold text-sm">{ownerName} &mdash; {aptName}</p>
                           <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                            <span>Czynsz: {c.monthlyRent ? `${Number(c.monthlyRent).toLocaleString("pl-PL")} zl` : "—"}</span>
+                            <span>Czynsz: {c.monthlyRent ? `${Number(c.monthlyRent).toLocaleString("pl-PL")} zl` : "\u2014"}</span>
                             {c.additionalFees && Number(c.additionalFees) > 0 && <span>+ {Number(c.additionalFees).toLocaleString("pl-PL")} zl</span>}
-                            <span>{c.startDate || "—"} &rarr; {c.endDate || "bezterminowo"}</span>
+                            <span>{c.startDate || "\u2014"} &rarr; {c.endDate || "bezterminowo"}</span>
                             <Badge variant="outline" className="text-[10px]">{c.status}</Badge>
                             <Badge variant="outline" className="text-[10px]">{c.contractType}</Badge>
                           </div>
@@ -928,6 +1408,7 @@ export default function Prognoza() {
         </SheetContent>
       </Sheet>
 
+      {/* Contract form dialog */}
       <Dialog open={contractFormOpen} onOpenChange={v => { setContractFormOpen(v); if (!v) { setEditingContract(null); setPdfParsedData(null); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingContract ? "Edytuj umowe" : "Dodaj umowe"}</DialogTitle></DialogHeader>
