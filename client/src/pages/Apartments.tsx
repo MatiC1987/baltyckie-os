@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, ChevronLeft, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye, Copy } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, ChevronLeft, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye, Copy, RefreshCw } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -1819,10 +1819,23 @@ const PAYMENT_CATEGORIES = [
   "Inne opłaty",
 ];
 
+const FREQUENCY_OPTIONS = [
+  { value: "MIESIECZNIE", label: "Miesięcznie" },
+  { value: "KWARTALNIE", label: "Kwartalnie" },
+  { value: "POLROCZNIE", label: "Półrocznie" },
+  { value: "ROCZNIE", label: "Rocznie" },
+  { value: "NIEREGULARNE", label: "Nieregularnie" },
+];
+
 function PaymentsSection({ apartmentId }: { apartmentId: number }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurFrequency, setRecurFrequency] = useState("MIESIECZNIE");
+  const [recurStartDate, setRecurStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [recurEndDate, setRecurEndDate] = useState("");
+  const [recurPaymentDay, setRecurPaymentDay] = useState("10");
 
   const { data: payments, isLoading } = useQuery<OwnerPayment[]>({
     queryKey: ['/api/apartments', apartmentId, 'payments'],
@@ -1854,6 +1867,31 @@ function PaymentsSection({ apartmentId }: { apartmentId: number }) {
     },
   });
 
+  const createRecurringPayment = useMutation({
+    mutationFn: async (data: { title: string; category: string; amount: string; frequency: string; startDate: string; endDate: string; paymentDay: number }) => {
+      const res = await fetch(`/api/apartments/${apartmentId}/payments/recurring`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Błąd serwera" }));
+        throw new Error(err.message || "Nie udało się wygenerować opłat");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/apartments', apartmentId, 'payments'] });
+      toast({ title: "Sukces", description: `Wygenerowano ${data.count} opłat cyklicznych` });
+      setShowForm(false);
+      setIsRecurring(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
   const deletePayment = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`/api/owner-payments/${id}`, {
@@ -1878,7 +1916,19 @@ function PaymentsSection({ apartmentId }: { apartmentId: number }) {
   });
 
   const onSubmit = (data: Omit<InsertOwnerPayment, 'apartmentId'>) => {
-    createPayment.mutate(data);
+    if (isRecurring) {
+      createRecurringPayment.mutate({
+        title: data.title,
+        category: data.category,
+        amount: data.amount,
+        frequency: recurFrequency,
+        startDate: recurStartDate,
+        endDate: recurEndDate,
+        paymentDay: Number(recurPaymentDay),
+      });
+    } else {
+      createPayment.mutate(data);
+    }
   };
 
   const groupedPayments = payments?.reduce<Record<string, OwnerPayment[]>>((acc, p) => {
@@ -1909,12 +1959,24 @@ function PaymentsSection({ apartmentId }: { apartmentId: number }) {
         <Card>
           <CardContent className="pt-4">
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+              <div className="flex items-center gap-3 pb-1">
+                <Switch
+                  checked={isRecurring}
+                  onCheckedChange={setIsRecurring}
+                  data-testid="switch-recurring-payment"
+                />
+                <Label className="flex items-center gap-1.5 cursor-pointer text-sm" onClick={() => setIsRecurring(!isRecurring)}>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Opłata cykliczna
+                </Label>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="payment-title">Tytuł</Label>
                 <Input
                   id="payment-title"
                   {...form.register("title", { required: true })}
-                  placeholder="np. Rata za styczeń 2025"
+                  placeholder={isRecurring ? "np. Czynsz do wspólnoty" : "np. Rata za styczeń 2025"}
                   data-testid="input-payment-title"
                 />
               </div>
@@ -1950,21 +2012,79 @@ function PaymentsSection({ apartmentId }: { apartmentId: number }) {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="payment-date">Data płatności</Label>
-                <Input
-                  id="payment-date"
-                  type="date"
-                  {...form.register("paymentDate", { required: true })}
-                  data-testid="input-payment-date"
-                />
-              </div>
+
+              {isRecurring ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Częstotliwość</Label>
+                    <Select value={recurFrequency} onValueChange={setRecurFrequency}>
+                      <SelectTrigger data-testid="select-recurring-frequency">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FREQUENCY_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label>Data rozpoczęcia</Label>
+                      <Input
+                        type="date"
+                        value={recurStartDate}
+                        onChange={e => setRecurStartDate(e.target.value)}
+                        data-testid="input-recurring-start-date"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Data zakończenia</Label>
+                      <Input
+                        type="date"
+                        value={recurEndDate}
+                        onChange={e => setRecurEndDate(e.target.value)}
+                        placeholder="opcjonalna"
+                        data-testid="input-recurring-end-date"
+                      />
+                      <p className="text-[10px] text-muted-foreground">puste = 1 rok</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Dzień płatności</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={recurPaymentDay}
+                        onChange={e => setRecurPaymentDay(e.target.value)}
+                        data-testid="input-recurring-payment-day"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="payment-date">Data płatności</Label>
+                  <Input
+                    id="payment-date"
+                    type="date"
+                    {...form.register("paymentDate", { required: !isRecurring })}
+                    data-testid="input-payment-date"
+                  />
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 flex-wrap">
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowForm(false)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => { setShowForm(false); setIsRecurring(false); }}>
                   Anuluj
                 </Button>
-                <Button type="submit" size="sm" disabled={createPayment.isPending} data-testid="button-submit-payment">
-                  {createPayment.isPending ? "Dodawanie..." : "Dodaj"}
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={createPayment.isPending || createRecurringPayment.isPending}
+                  data-testid="button-submit-payment"
+                >
+                  {(createPayment.isPending || createRecurringPayment.isPending) ? "Dodawanie..." : isRecurring ? "Generuj opłaty" : "Dodaj"}
                 </Button>
               </div>
             </form>

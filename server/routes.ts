@@ -1234,6 +1234,88 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/apartments/:apartmentId/payments/recurring', isAuthenticated, async (req, res) => {
+    try {
+      const apartmentId = Number(req.params.apartmentId);
+      const { title, category, amount, frequency, startDate, endDate, paymentDay } = req.body;
+
+      if (!title || !category || !amount || !frequency || !startDate) {
+        return res.status(400).json({ message: "Brakuje wymaganych pól" });
+      }
+
+      const validFrequencies = ['MIESIECZNIE', 'KWARTALNIE', 'POLROCZNIE', 'ROCZNIE', 'NIEREGULARNE'];
+      if (!validFrequencies.includes(frequency)) {
+        return res.status(400).json({ message: "Nieprawidłowa częstotliwość" });
+      }
+
+      const parsedAmount = Number(amount);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ message: "Kwota musi być liczbą większą od 0" });
+      }
+
+      const day = paymentDay ? Number(paymentDay) : 10;
+      if (isNaN(day) || day < 1 || day > 31) {
+        return res.status(400).json({ message: "Dzień płatności musi być między 1 a 31" });
+      }
+
+      const start = new Date(startDate);
+      if (isNaN(start.getTime())) {
+        return res.status(400).json({ message: "Nieprawidłowa data rozpoczęcia" });
+      }
+
+      const end = endDate && endDate.trim()
+        ? new Date(endDate)
+        : new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+      if (isNaN(end.getTime())) {
+        return res.status(400).json({ message: "Nieprawidłowa data zakończenia" });
+      }
+
+      if (end < start) {
+        return res.status(400).json({ message: "Data zakończenia musi być późniejsza niż data rozpoczęcia" });
+      }
+
+      if (frequency === 'NIEREGULARNE') {
+        const paymentDate = new Date(start.getFullYear(), start.getMonth(), Math.min(day, 28));
+        if (paymentDate < start) paymentDate.setMonth(paymentDate.getMonth() + 1);
+        const payment = await storage.createOwnerPayment({
+          apartmentId,
+          title,
+          category,
+          amount: String(parsedAmount),
+          paymentDate: paymentDate.toISOString().split('T')[0],
+        });
+        return res.status(201).json({ count: 1, payments: [payment] });
+      }
+
+      const dates = getPaymentDatesForFrequency(frequency, start, end, day);
+
+      if (dates.length === 0) {
+        return res.status(400).json({ message: "Nie wygenerowano żadnych opłat w podanym zakresie dat" });
+      }
+
+      if (dates.length > 120) {
+        return res.status(400).json({ message: "Zbyt wiele opłat do wygenerowania (max 120)" });
+      }
+
+      const created = [];
+      for (const d of dates) {
+        const payment = await storage.createOwnerPayment({
+          apartmentId,
+          title,
+          category,
+          amount: String(parsedAmount),
+          paymentDate: d.toISOString().split('T')[0],
+        });
+        created.push(payment);
+      }
+
+      res.status(201).json({ count: created.length, payments: created });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
+  });
+
   app.delete('/api/owner-payments/:id', isAuthenticated, async (req, res) => {
     try {
       const paymentId = Number(req.params.id);
