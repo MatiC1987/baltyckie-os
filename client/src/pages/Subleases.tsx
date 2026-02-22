@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment, SubleaseApartmentChange, DocumentTemplate } from "@shared/schema";
 import { format, addDays, addWeeks, addMonths, addQuarters, isBefore, isEqual } from "date-fns";
 import { pl } from "date-fns/locale";
-import { useMemo } from "react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Plus, Pencil, Trash2, Upload, FileText, X, Search, Check,
   Building2, User, Briefcase, CreditCard, Paperclip, ClipboardCheck,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
-  FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle, Zap, Droplets
+  FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle, Zap, Droplets,
+  ChevronLeft, ChevronRight, TrendingUp
 } from "lucide-react";
 import { HandoverProtocolsTab } from "./HandoverProtocols";
 import { PageHeader } from "@/components/PageHeader";
@@ -1225,6 +1226,34 @@ export default function Subleases() {
     queryKey: ['/api/sublease-apartment-changes/all'],
   });
 
+  const [chartYear, setChartYear] = useState(new Date().getFullYear());
+
+  const { data: revenueData } = useQuery<Record<string, Record<string, { najem: number; podnajem: number; doplaty_najem: number; doplaty_podnajem: number }>>>({
+    queryKey: ['/api/revenue', chartYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/revenue?year=${chartYear}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch revenue');
+      return res.json();
+    },
+  });
+
+  const monthNames = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+
+  const chartData = useMemo(() => {
+    if (!revenueData) return monthNames.map((m, i) => ({ name: m, przychod: 0 }));
+    const monthTotals: number[] = new Array(12).fill(0);
+    for (const aptId of Object.keys(revenueData)) {
+      const months = revenueData[aptId];
+      for (const mStr of Object.keys(months)) {
+        const m = Number(mStr);
+        monthTotals[m] += months[mStr].podnajem || 0;
+      }
+    }
+    return monthNames.map((name, i) => ({ name, przychod: Math.round(monthTotals[i]) }));
+  }, [revenueData]);
+
+  const chartTotal = useMemo(() => chartData.reduce((s, d) => s + d.przychod, 0), [chartData]);
+
   const createMut = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest('POST', '/api/subleases', data);
@@ -1729,6 +1758,41 @@ export default function Subleases() {
         </div>
         <Badge variant="outline">{filtered.length} umów</Badge>
       </div>
+
+      <Card data-testid="module-sublease-revenue-chart">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 pt-4 px-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-emerald-500" />
+            <CardTitle className="text-base">Przychody z podnajmu</CardTitle>
+            <Badge variant="secondary" className="text-xs">{chartTotal.toLocaleString("pl-PL")} PLN</Badge>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setChartYear(y => y - 1)} data-testid="button-chart-prev-year">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-medium min-w-[3rem] text-center" data-testid="text-chart-year">{chartYear}</span>
+            <Button variant="ghost" size="sm" onClick={() => setChartYear(y => y + 1)} data-testid="button-chart-next-year">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pb-3 px-4">
+          <div className="h-[140px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} className="text-muted-foreground" />
+                <Tooltip
+                  formatter={(value: number) => [`${value.toLocaleString("pl-PL")} PLN`, "Przychód"]}
+                  contentStyle={{ borderRadius: '8px', fontSize: '13px' }}
+                />
+                <Bar dataKey="przychod" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground">Ładowanie...</div>
