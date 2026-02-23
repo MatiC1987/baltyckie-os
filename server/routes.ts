@@ -7755,12 +7755,11 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       }
 
-      // Check if any per-apartment forecasts exist for each location
-      const locHasAptForecasts: Record<string, boolean> = {};
+      // Build per-apartment forecast lookup
+      const aptForecastLookup: Record<string, number> = {};
       for (const f of forecasts) {
         if (f.apartmentId) {
-          const apt = allApartments.find(a => a.id === f.apartmentId);
-          if (apt?.location) locHasAptForecasts[apt.location] = true;
+          aptForecastLookup[`${f.apartmentId}-${f.month}`] = Number(f.forecast || 0);
         }
       }
 
@@ -7768,13 +7767,12 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       const aptData = allApartments.map(apt => {
         const monthlyData: Record<number, { forecast: number; actual: number; najem: number; podnajem: number }> = {};
         const locName = apt.location || "";
-        const hasAptData = locHasAptForecasts[locName] || false;
 
         for (let m = 0; m < 12; m++) {
+          const aptKey = `${apt.id}-${m}`;
           let forecastVal = 0;
-          if (hasAptData) {
-            const fc = forecasts.find(f => f.apartmentId === apt.id && f.month === m);
-            forecastVal = Number(fc?.forecast || 0);
+          if (aptKey in aptForecastLookup) {
+            forecastVal = aptForecastLookup[aptKey];
           } else if (locName && locForecastLookup[locName]) {
             const locTotal = locForecastLookup[locName][m] || 0;
             const locApts = allApartments.filter(a => a.location === locName);
