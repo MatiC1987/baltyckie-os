@@ -158,7 +158,7 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const STORAGE_KEY = "sidebar-config-v9";
+const STORAGE_KEY = "sidebar-config-v10";
 
 export function loadConfigFromStorage(): SidebarConfig | null {
   try {
