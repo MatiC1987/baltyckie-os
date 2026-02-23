@@ -85,6 +85,17 @@ export interface IStorage {
 
   // Reservations
   getReservations(filters?: { apartmentId?: number, startDate?: string, endDate?: string }): Promise<Reservation[]>;
+  getReservationsPaginated(params: {
+    page: number;
+    limit: number;
+    sortField?: string;
+    sortDir?: 'asc' | 'desc';
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    source?: string;
+  }): Promise<{ data: Reservation[]; total: number; page: number; totalPages: number }>;
   createReservation(reservation: InsertReservation): Promise<Reservation>;
   updateReservation(id: number, reservation: Partial<InsertReservation>): Promise<Reservation>;
   deleteReservation(id: number): Promise<void>;
@@ -493,6 +504,70 @@ export class DatabaseStorage implements IStorage {
       .from(reservations)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(reservations.startDate));
+  }
+
+  async getReservationsPaginated(params: {
+    page: number;
+    limit: number;
+    sortField?: string;
+    sortDir?: 'asc' | 'desc';
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    source?: string;
+  }): Promise<{ data: Reservation[]; total: number; page: number; totalPages: number }> {
+    const { page, limit, sortField = 'startDate', sortDir: sortDirection = 'desc', status, dateFrom, dateTo, search, source } = params;
+    const conditions: SQL[] = [];
+
+    if (status && status !== 'ALL') conditions.push(eq(reservations.status, status));
+    if (dateFrom) conditions.push(gte(reservations.startDate, dateFrom));
+    if (dateTo) conditions.push(lte(reservations.startDate, dateTo));
+    if (source && source !== 'ALL') conditions.push(eq(reservations.source, source));
+    if (search) {
+      conditions.push(
+        or(
+          sql`${reservations.guestName} ILIKE ${'%' + search + '%'}`,
+          sql`${reservations.reservationNumber} ILIKE ${'%' + search + '%'}`
+        )!
+      );
+    }
+
+    const whereClause = conditions.length ? and(...conditions) : undefined;
+
+    const sortColumnMap: Record<string, any> = {
+      reservationNumber: reservations.reservationNumber,
+      addDate: reservations.addDate,
+      startDate: reservations.startDate,
+      endDate: reservations.endDate,
+      guestName: reservations.guestName,
+      price: reservations.price,
+      prepayment: reservations.prepayment,
+      paidAmount: reservations.paidAmount,
+      status: reservations.status,
+      source: reservations.source,
+    };
+
+    const sortColumn = sortColumnMap[sortField] || reservations.startDate;
+    const orderFn = sortDirection === 'asc' ? sql`${sortColumn} ASC NULLS LAST` : sql`${sortColumn} DESC NULLS LAST`;
+
+    const offset = (page - 1) * limit;
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(reservations)
+      .where(whereClause);
+
+    const total = countResult?.count ?? 0;
+    const totalPages = Math.ceil(total / limit);
+
+    const data = await db.select()
+      .from(reservations)
+      .where(whereClause)
+      .orderBy(orderFn)
+      .limit(limit)
+      .offset(offset);
+
+    return { data, total, page, totalPages };
   }
 
   async createReservation(reservation: InsertReservation): Promise<Reservation> {

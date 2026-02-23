@@ -873,6 +873,26 @@ export async function registerRoutes(
     res.json(reservations);
   });
 
+  app.get("/api/reservations-paginated", isAuthenticated, async (req, res) => {
+    try {
+      const result = await storage.getReservationsPaginated({
+        page: Math.max(1, Number(req.query.page) || 1),
+        limit: Math.min(100, Math.max(1, Number(req.query.limit) || 40)),
+        sortField: (req.query.sortField as string) || 'startDate',
+        sortDir: (req.query.sortDir as 'asc' | 'desc') || 'desc',
+        status: req.query.status as string | undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        search: req.query.search as string | undefined,
+        source: req.query.source as string | undefined,
+      });
+      res.json(result);
+    } catch (err) {
+      console.error("Error fetching paginated reservations:", err);
+      res.status(500).json({ message: "Nie udało się pobrać rezerwacji" });
+    }
+  });
+
   app.post(api.reservations.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.reservations.create.input.parse(req.body);
