@@ -262,8 +262,8 @@ export default function Arrivals() {
                   </TableCell>
                   <TableCell className="py-3">
                     <div className="space-y-1 min-w-[100px]">
-                      <div className="text-sm font-bold">
-                        {price.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-[10px] font-normal text-muted-foreground">PLN</span>
+                      <div className={`text-sm font-bold ${remaining === 0 ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                        {price.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] font-normal text-muted-foreground">PLN</span>
                       </div>
                       {remaining > 0 && (
                         <div className="text-[10px] text-orange-600 dark:text-orange-400">

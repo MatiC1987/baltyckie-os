@@ -4312,6 +4312,7 @@ export async function registerRoutes(
             prepayment: hr.prepayment || "0",
             paidAmount: hr.paidAmount || "0",
             status: hr.status,
+            ...(hr.source && { source: hr.source }),
           });
           updated++;
           continue;
@@ -4330,6 +4331,7 @@ export async function registerRoutes(
           paidAmount: hr.paidAmount || "0",
           surcharge: "0",
           status: hr.status,
+          ...(hr.source && { source: hr.source }),
         });
         imported++;
         if (isGroupReservation) {
@@ -4451,6 +4453,7 @@ export async function registerRoutes(
             prepayment: hr.prepayment || "0",
             paidAmount: hr.paidAmount || "0",
             status: hr.status,
+            ...(hr.source && { source: hr.source }),
           });
           updated++;
           continue;
@@ -4469,6 +4472,7 @@ export async function registerRoutes(
           paidAmount: hr.paidAmount || "0",
           surcharge: "0",
           status: hr.status,
+          ...(hr.source && { source: hr.source }),
         });
         imported++;
       }

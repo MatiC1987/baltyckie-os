@@ -160,6 +160,7 @@ export interface HotResReservation {
   prepayment: string;
   paidAmount: string;
   status: string;
+  source?: string;
 }
 
 function parseReservationsFromResponse(data: any): HotResReservation[] {
@@ -244,6 +245,17 @@ function normalizeDate(val: any): string {
   } catch {}
 
   return str;
+}
+
+function normalizeSource(val: string): string {
+  if (!val) return "";
+  const s = val.trim().toLowerCase();
+  if (s.includes("booking")) return "Booking.com";
+  if (s.includes("airbnb")) return "Airbnb";
+  if (s.includes("recepcja") || s.includes("reception") || s.includes("walk-in") || s.includes("walkin")) return "Recepcja";
+  if (s.includes("hotres")) return "HotRes";
+  if (val.trim()) return "Inne";
+  return "";
 }
 
 function normalizeStatus(val: any): string {
@@ -411,6 +423,7 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
       paid: findCol(rawHeaders, ['paid', 'wpłacona', 'wplacona', 'wpłata', 'wplata', 'zapłacono', 'zaplacono']),
       prepayment: findCol(rawHeaders, ['zaliczka', 'przedpłata', 'przedplata', 'prepayment', 'deposit', 'advance']),
       status: findCol(rawHeaders, ['status', 'stan']),
+      source: findCol(rawHeaders, ['source', 'źródło', 'zrodlo', 'source_portal', 'portal', 'kanał', 'kanal', 'channel']),
     };
 
     const results: HotResReservation[] = [];
@@ -441,17 +454,20 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
         guestName = [firstName, lastName].filter(Boolean).join(" ");
       }
 
+      const sourceVal = getValue(colMap.source);
+
       results.push({
         reservationNumber: resNumber,
         apartmentName: getValue(colMap.apartment),
         addDate: addDate && /^\d{4}-\d{2}-\d{2}$/.test(addDate) ? addDate : "",
         startDate,
         endDate,
-        guestName: guestName || "Nieznany",
+        guestName: (guestName || "Nieznany").toUpperCase(),
         price: isNaN(Number(priceStr)) ? "0" : priceStr,
         prepayment: isNaN(Number(prepaymentStr)) ? "0" : prepaymentStr,
         paidAmount: isNaN(Number(paidStr)) ? "0" : paidStr,
         status: normalizeStatus(getValue(colMap.status)),
+        source: normalizeSource(sourceVal),
       });
     }
 
@@ -475,6 +491,8 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
     LAST_NAME: 9,
     FIRST_NAME: 10,
     ROOMSCODES: 16,
+    SOURCE: 17,
+    SOURCE_PORTAL: 18,
   };
 
   const results: HotResReservation[] = [];
@@ -499,9 +517,10 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
 
     const firstName = getValue(COL.FIRST_NAME);
     const lastName = getValue(COL.LAST_NAME);
-    const guestName = [firstName, lastName].filter(Boolean).join(" ") || "Nieznany";
+    const guestName = ([firstName, lastName].filter(Boolean).join(" ") || "Nieznany").toUpperCase();
 
     const apartmentName = getValue(COL.ROOMSCODES);
+    const sourceVal = getValue(COL.SOURCE_PORTAL) || getValue(COL.SOURCE);
 
     results.push({
       reservationNumber: resNumber,
@@ -514,6 +533,7 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
       prepayment: "0",
       paidAmount: isNaN(Number(paidStr)) ? "0" : paidStr,
       status: normalizeStatus(getValue(COL.STATUS)),
+      source: normalizeSource(sourceVal),
     });
   }
 

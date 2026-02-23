@@ -76,7 +76,8 @@ function calcRemaining(r: Reservation): number {
   const price = Number(r.price) || 0;
   const prepayment = Number(r.prepayment) || 0;
   const paid = Number(r.paidAmount) || 0;
-  return Math.max(0, price - prepayment - paid);
+  const remaining = Math.round((price - prepayment - paid) * 100) / 100;
+  return Math.max(0, remaining);
 }
 
 function calcPaidTotal(r: Reservation): number {
@@ -208,6 +209,7 @@ export default function Reservations() {
   const [filterSource, setFilterSource] = useState("ALL");
   const [searchText, setSearchText] = useState("");
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  const [detailInitialTab, setDetailInitialTab] = useState("preview");
 
   const debouncedSearch = useDebounce(searchText, 400);
   const debouncedDateFrom = useDebounce(filterDateFrom, 400);
@@ -275,7 +277,7 @@ export default function Reservations() {
     URL.revokeObjectURL(url);
   };
 
-  const openDetail = (r: Reservation) => setSelectedReservation(r);
+  const openDetail = (r: Reservation, tab: string = "preview") => { setDetailInitialTab(tab); setSelectedReservation(r); };
 
   if (isLoading && !result) return <TablePageSkeleton />;
 
@@ -436,6 +438,7 @@ export default function Reservations() {
                   reservation={r}
                   apartments={apartments || []}
                   onOpen={openDetail}
+                  onEdit={(res) => openDetail(res, "edit")}
                 />
               ))}
             </TableBody>
@@ -459,6 +462,7 @@ export default function Reservations() {
         onUpdated={() => {
           queryClient.invalidateQueries({ queryKey: ["/api/reservations-paginated"] });
         }}
+        initialTab={detailInitialTab}
       />
     </div>
   );
@@ -548,7 +552,7 @@ function SortableHeader({ field, label, sortField, sortDir, onSort, className }:
   );
 }
 
-function ReservationRow({ reservation: r, apartments, onOpen }: { reservation: Reservation; apartments: any[]; onOpen: (r: Reservation) => void }) {
+function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reservation: Reservation; apartments: any[]; onOpen: (r: Reservation) => void; onEdit: (r: Reservation) => void }) {
   const isCancelled = r.status === "ANULOWANA";
   const remaining = calcRemaining(r);
   const price = Number(r.price) || 0;
@@ -583,8 +587,8 @@ function ReservationRow({ reservation: r, apartments, onOpen }: { reservation: R
       <TableCell className="py-3">
         <div className="space-y-1 min-w-[100px]">
           <div className="flex items-baseline gap-1.5">
-            <span className={`text-sm font-bold ${isCancelled ? 'line-through' : ''}`} data-testid={`text-res-price-${r.id}`}>
-              {price.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-[10px] font-normal text-muted-foreground">PLN</span>
+            <span className={`text-sm font-bold ${isCancelled ? 'line-through' : remaining === 0 && !isCancelled ? 'text-emerald-600 dark:text-emerald-400' : ''}`} data-testid={`text-res-price-${r.id}`}>
+              {price.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] font-normal text-muted-foreground">PLN</span>
             </span>
           </div>
           {remaining > 0 && !isCancelled && (
@@ -602,19 +606,25 @@ function ReservationRow({ reservation: r, apartments, onOpen }: { reservation: R
         </div>
       </TableCell>
       <TableCell className="py-3">
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onOpen(r); }} data-testid={`button-preview-res-${r.id}`}>
-          <Eye className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onOpen(r); }} data-testid={`button-preview-res-${r.id}`}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit(r); }} data-testid={`button-edit-res-${r.id}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );
 }
 
-function ReservationDetailSheet({ reservation, apartments, onClose, onUpdated }: {
+function ReservationDetailSheet({ reservation, apartments, onClose, onUpdated, initialTab = "preview" }: {
   reservation: Reservation | null;
   apartments: any[];
   onClose: () => void;
   onUpdated: () => void;
+  initialTab?: string;
 }) {
   if (!reservation) return null;
 
@@ -627,7 +637,7 @@ function ReservationDetailSheet({ reservation, apartments, onClose, onUpdated }:
             <StatusBadge status={reservation.status} />
           </SheetTitle>
         </SheetHeader>
-        <Tabs defaultValue="preview" className="mt-2">
+        <Tabs defaultValue={initialTab} key={`${reservation.id}-${initialTab}`} className="mt-2">
           <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-6 h-auto gap-0">
             <TabsTrigger value="preview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2.5 text-sm" data-testid="tab-preview">
               PODGLĄD
@@ -1004,12 +1014,12 @@ function EditTab({ reservation, apartments, onClose, onUpdated }: {
             control={form.control}
             name="source"
             render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value || ""}>
+              <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
                 <SelectTrigger data-testid="edit-select-source" className="h-9">
                   <SelectValue placeholder="Wybierz źródło" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Brak</SelectItem>
+                  <SelectItem value="none">Brak</SelectItem>
                   <SelectItem value="Booking.com">Booking.com</SelectItem>
                   <SelectItem value="Airbnb">Airbnb</SelectItem>
                   <SelectItem value="Recepcja">Recepcja</SelectItem>
