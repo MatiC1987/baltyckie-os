@@ -461,11 +461,12 @@ export default function Prognoza() {
               apts.forEach(apt => {
                 for (let m = 0; m < 12; m++) locTotals[m] += getVal(prefix, `${apt.id}-${m}`);
               });
-              const aptDataExists = locTotals.some(v => v > 0);
-              if (!aptDataExists && type === "rev") {
+              if (type === "rev") {
                 for (let m = 0; m < 12; m++) {
-                  const locVal = locRevLookup[`${locName}-${m}`] || 0;
-                  if (locVal > 0) locTotals[m] = locVal;
+                  if (locTotals[m] === 0) {
+                    const locVal = locRevLookup[`${locName}-${m}`] || 0;
+                    if (locVal > 0) locTotals[m] = locVal;
+                  }
                 }
               }
               locTotals.forEach((v, i) => { grandTotal[i] += v; });
@@ -785,18 +786,14 @@ export default function Prognoza() {
 
     const totalRevByMonth = Array(12).fill(0);
     const totalCostByMonth = Array(12).fill(0);
-    const aptRevSum = Array(12).fill(0);
     activeApts.forEach(apt => {
       for (let m = 0; m < 12; m++) {
-        const rv = getVal("rev", `${apt.id}-${m}`);
-        aptRevSum[m] += rv;
-        totalRevByMonth[m] += rv;
+        totalRevByMonth[m] += getVal("rev", `${apt.id}-${m}`);
         totalCostByMonth[m] += getVal("cost", `${apt.id}-${m}`);
       }
     });
-    const hasAptRevData = aptRevSum.some(v => v > 0);
-    if (!hasAptRevData) {
-      for (let m = 0; m < 12; m++) {
+    for (let m = 0; m < 12; m++) {
+      if (totalRevByMonth[m] === 0) {
         totalRevByMonth[m] = razemRevLookup[m] || 0;
       }
     }
@@ -874,19 +871,17 @@ export default function Prognoza() {
             <tbody>
               {Object.entries(aptsByLocation).map(([locName, apts]) => {
                 const netByMonth = Array(12).fill(0);
-                const aptRevByMonth = Array(12).fill(0);
+                const revByMonth = Array(12).fill(0);
+                const costByMonth = Array(12).fill(0);
                 apts.forEach(apt => {
                   for (let m = 0; m < 12; m++) {
-                    const rev = getVal("rev", `${apt.id}-${m}`);
-                    aptRevByMonth[m] += rev;
-                    netByMonth[m] += rev - getVal("cost", `${apt.id}-${m}`);
+                    revByMonth[m] += getVal("rev", `${apt.id}-${m}`);
+                    costByMonth[m] += getVal("cost", `${apt.id}-${m}`);
                   }
                 });
-                const locAptRevExists = aptRevByMonth.some(v => v > 0);
-                if (!locAptRevExists) {
-                  for (let m = 0; m < 12; m++) {
-                    netByMonth[m] = (locRevLookup[`${locName}-${m}`] || 0) - 0;
-                  }
+                for (let m = 0; m < 12; m++) {
+                  const rev = revByMonth[m] === 0 ? (locRevLookup[`${locName}-${m}`] || 0) : revByMonth[m];
+                  netByMonth[m] = rev - costByMonth[m];
                 }
                 const locNet = netByMonth.reduce((s, v) => s + v, 0);
                 return (
