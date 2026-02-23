@@ -111,13 +111,13 @@ export default function ServiceContracts() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Umowy usługi"
-        description="Zarządzanie umowami serwisowymi."
+        title="Umowy"
+        description="Zarządzanie umowami."
         icon={Briefcase}
         actions={
           <>
             <Button variant="outline" onClick={() => setShowReorderCategories(true)} data-testid="button-reorder-categories">
-              <Settings className="mr-2 h-4 w-4" /> Kolejność kategorii
+              <Settings className="mr-2 h-4 w-4" /> Zarządzaj kategoriami
             </Button>
             <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
               <Plus className="mr-2 h-4 w-4" /> Dodaj kategorię
@@ -131,7 +131,7 @@ export default function ServiceContracts() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList data-testid="service-contracts-tabs" className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
+          <TabsTrigger value="all" data-testid="tab-all">Wszystkie</TabsTrigger>
           {categories?.map(cat => (
             <TabsTrigger key={cat.id} value={cat.name} data-testid={`tab-category-${cat.id}`}>
               {cat.name}
@@ -146,6 +146,7 @@ export default function ServiceContracts() {
                 <TableRow>
                   <TableHead>Nazwa</TableHead>
                   <TableHead>Kategoria</TableHead>
+                  <TableHead>Rodzaj</TableHead>
                   <TableHead>Data podpisania</TableHead>
                   <TableHead>Długość umowy</TableHead>
                   <TableHead>Data zakończenia</TableHead>
@@ -160,6 +161,13 @@ export default function ServiceContracts() {
                   <TableRow key={contract.id} data-testid={`row-service-contract-${contract.id}`}>
                     <TableCell className="font-medium">{contract.name}</TableCell>
                     <TableCell className="text-muted-foreground">{getCategoryName(contract.categoryId)}</TableCell>
+                    <TableCell>
+                      {contract.contractType === "OKRESLONY" ? (
+                        <Badge variant="secondary" className="text-xs">Określony</Badge>
+                      ) : contract.contractType === "NIEOKRESLONY" ? (
+                        <Badge variant="outline" className="text-xs">Nieokreślony</Badge>
+                      ) : "—"}
+                    </TableCell>
                     <TableCell>{contract.signDate || "—"}</TableCell>
                     <TableCell>{contract.duration || "—"}</TableCell>
                     <TableCell>{contract.endDate || "—"}</TableCell>
@@ -206,7 +214,7 @@ export default function ServiceContracts() {
                 ))}
                 {filteredContracts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       Brak umów w tej kategorii.
                     </TableCell>
                   </TableRow>
@@ -298,6 +306,7 @@ function AddContractDialog({ open, onClose, onSubmit, isPending, categories }: {
 }) {
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [contractType, setContractType] = useState("");
   const [signDate, setSignDate] = useState("");
   const [duration, setDuration] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -310,6 +319,7 @@ function AddContractDialog({ open, onClose, onSubmit, isPending, categories }: {
     onSubmit({
       name: name.trim(),
       categoryId: categoryId ? Number(categoryId) : null,
+      contractType: contractType || null,
       signDate: signDate || null,
       duration: duration.trim() || null,
       endDate: endDate || null,
@@ -318,6 +328,7 @@ function AddContractDialog({ open, onClose, onSubmit, isPending, categories }: {
     });
     setName("");
     setCategoryId("");
+    setContractType("");
     setSignDate("");
     setDuration("");
     setEndDate("");
@@ -336,18 +347,32 @@ function AddContractDialog({ open, onClose, onSubmit, isPending, categories }: {
             <Label>Nazwa</Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nazwa umowy" data-testid="input-contract-name" />
           </div>
-          <div className="space-y-2">
-            <Label>Kategoria</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger data-testid="select-contract-category">
-                <SelectValue placeholder="Wybierz kategorię" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map(cat => (
-                  <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Kategoria</Label>
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger data-testid="select-contract-category">
+                  <SelectValue placeholder="Wybierz kategorię" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map(cat => (
+                    <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Rodzaj umowy</Label>
+              <Select value={contractType} onValueChange={setContractType}>
+                <SelectTrigger data-testid="select-contract-type">
+                  <SelectValue placeholder="Wybierz rodzaj" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OKRESLONY">Na czas określony</SelectItem>
+                  <SelectItem value="NIEOKRESLONY">Na czas nieokreślony</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -394,6 +419,7 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
 }) {
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [contractType, setContractType] = useState("");
   const [signDate, setSignDate] = useState("");
   const [duration, setDuration] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -404,6 +430,7 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
     if (contract) {
       setName(contract.name);
       setCategoryId(contract.categoryId ? contract.categoryId.toString() : "");
+      setContractType(contract.contractType || "");
       setSignDate(contract.signDate || "");
       setDuration(contract.duration || "");
       setEndDate(contract.endDate || "");
@@ -418,6 +445,7 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
     onSubmit({
       name: name.trim(),
       categoryId: categoryId ? Number(categoryId) : null,
+      contractType: contractType || null,
       signDate: signDate || null,
       duration: duration.trim() || null,
       endDate: endDate || null,
@@ -429,6 +457,7 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
   const handleClose = () => {
     setName("");
     setCategoryId("");
+    setContractType("");
     setSignDate("");
     setDuration("");
     setEndDate("");
@@ -448,18 +477,32 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
             <Label>Nazwa</Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nazwa umowy" data-testid="edit-input-contract-name" />
           </div>
-          <div className="space-y-2">
-            <Label>Kategoria</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger data-testid="edit-select-contract-category">
-                <SelectValue placeholder="Wybierz kategorię" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map(cat => (
-                  <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Kategoria</Label>
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger data-testid="edit-select-contract-category">
+                  <SelectValue placeholder="Wybierz kategorię" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map(cat => (
+                    <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Rodzaj umowy</Label>
+              <Select value={contractType} onValueChange={setContractType}>
+                <SelectTrigger data-testid="edit-select-contract-type">
+                  <SelectValue placeholder="Wybierz rodzaj" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OKRESLONY">Na czas określony</SelectItem>
+                  <SelectItem value="NIEOKRESLONY">Na czas nieokreślony</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -642,6 +685,19 @@ function ReorderCategoriesDialog({ open, onClose, categories }: {
     }
   }, [open, categories]);
 
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/service-contract-categories/${id}`);
+    },
+    onSuccess: (_, deletedId) => {
+      setOrderedCats(prev => prev.filter(c => c.id !== deletedId));
+      queryClient.invalidateQueries({ queryKey: ["/api/service-contract-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/service-contracts"] });
+      toast({ title: "Sukces", description: "Kategoria usunięta" });
+    },
+    onError: () => toast({ title: "Błąd", description: "Nie udało się usunąć kategorii", variant: "destructive" }),
+  });
+
   const moveUp = (idx: number) => {
     if (idx === 0) return;
     setOrderedCats(prev => {
@@ -682,7 +738,7 @@ function ReorderCategoriesDialog({ open, onClose, categories }: {
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Kolejność kategorii</DialogTitle>
+          <DialogTitle>Zarządzanie kategoriami</DialogTitle>
         </DialogHeader>
         <div className="space-y-1 py-2">
           {orderedCats.map((cat, idx) => (
@@ -711,8 +767,23 @@ function ReorderCategoriesDialog({ open, onClose, categories }: {
               >
                 <ArrowDown className="h-4 w-4" />
               </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  if (confirm("Czy na pewno chcesz usunąć tę kategorię?")) {
+                    deleteCategoryMutation.mutate(cat.id);
+                  }
+                }}
+                data-testid={`button-delete-category-${cat.id}`}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
             </div>
           ))}
+          {orderedCats.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">Brak kategorii</p>
+          )}
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>Anuluj</Button>

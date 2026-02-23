@@ -47,7 +47,7 @@ const ZARZADZANIE_ITEMS: SettingsItem[] = [
   { href: "/owners", label: "Właściciele", description: "Lista właścicieli apartamentów", icon: Users },
   { href: "/employees", label: "Pracownicy", description: "Kadra i badania lekarskie", icon: UserCog },
   { href: "/locations", label: "Lokalizacje", description: "Kategorie lokalizacji apartamentów", icon: MapPin },
-  { href: "/contracts-services", label: "Umowy serwisowe", description: "Umowy z dostawcami usług", icon: Briefcase },
+  { href: "/contracts-services", label: "Umowy", description: "Zarządzanie umowami", icon: Briefcase },
   { href: "/document-templates", label: "Szablony dokumentów", description: "Wzory umów i dokumentów", icon: Files },
   { href: "/user-accounts", label: "Konta użytkowników", description: "Zarządzanie dostępem do systemu", icon: ScrollText },
 ];

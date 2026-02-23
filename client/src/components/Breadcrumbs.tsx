@@ -17,7 +17,7 @@ const ROUTE_LABELS: Record<string, { label: string; parent?: string }> = {
   "/salda": { label: "Salda", parent: "/" },
   "/invoices": { label: "Faktury", parent: "/" },
   "/dokumenty-ksiegowe": { label: "Dokumenty księgowe", parent: "/" },
-  "/contracts-services": { label: "Usługi", parent: "/" },
+  "/contracts-services": { label: "Umowy", parent: "/" },
   "/przeglady": { label: "Przeglądy techniczne", parent: "/" },
   "/finance": { label: "Finanse", parent: "/" },
   "/apartments": { label: "Apartamenty", parent: "/" },

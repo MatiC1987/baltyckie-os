@@ -123,7 +123,7 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
   invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
   "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
-  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Usługi", iconName: "Briefcase" },
+  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Umowy", iconName: "Briefcase" },
   "przeglady": { id: "przeglady", href: "/przeglady", label: "Przeglądy", iconName: "Wrench" },
   "customers": { id: "customers", href: "/customers", label: "Klienci", iconName: "Users" },
   "tasks": { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },

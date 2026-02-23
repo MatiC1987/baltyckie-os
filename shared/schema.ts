@@ -198,6 +198,7 @@ export const serviceContracts = pgTable("service_contracts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   categoryId: integer("category_id").references(() => serviceContractCategories.id),
+  contractType: text("contract_type"),
   signDate: date("sign_date"),
   duration: text("duration"),
   endDate: date("end_date"),
