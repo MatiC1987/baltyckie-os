@@ -1181,6 +1181,19 @@ export const insertOperationalCostForecastSchema = createInsertSchema(operationa
 export type OperationalCostForecast = typeof operationalCostForecasts.$inferSelect;
 export type InsertOperationalCostForecast = z.infer<typeof insertOperationalCostForecastSchema>;
 
+export const variableCostForecasts = pgTable("variable_cost_forecasts", {
+  id: serial("id").primaryKey(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  name: text("name").notNull(),
+  forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
+  actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
+});
+
+export const insertVariableCostForecastSchema = createInsertSchema(variableCostForecasts).omit({ id: true });
+export type VariableCostForecast = typeof variableCostForecasts.$inferSelect;
+export type InsertVariableCostForecast = z.infer<typeof insertVariableCostForecastSchema>;
+
 export const appConfig = pgTable("app_config", {
   id: serial("id").primaryKey(),
   key: text("key").notNull().unique(),

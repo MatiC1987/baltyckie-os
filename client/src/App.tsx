@@ -39,6 +39,10 @@ import Ustawienia from "@/pages/Ustawienia";
 import Customers from "@/pages/Customers";
 import Tasks from "@/pages/Tasks";
 import SourceComparison from "@/pages/SourceComparison";
+import V2Przychody from "@/pages/V2Przychody";
+import V2Koszty from "@/pages/V2Koszty";
+import V2Prognoza from "@/pages/V2Prognoza";
+import V2Realizacja from "@/pages/V2Realizacja";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -145,6 +149,10 @@ function AuthenticatedRouter() {
       <Route path="/customers" component={() => <AuthenticatedRoute component={Customers} />} />
       <Route path="/tasks" component={() => <AuthenticatedRoute component={Tasks} />} />
       <Route path="/source-comparison" component={() => <AuthenticatedRoute component={SourceComparison} />} />
+      <Route path="/v2/przychody" component={() => <AuthenticatedRoute component={V2Przychody} />} />
+      <Route path="/v2/koszty" component={() => <AuthenticatedRoute component={V2Koszty} />} />
+      <Route path="/v2/prognoza" component={() => <AuthenticatedRoute component={V2Prognoza} />} />
+      <Route path="/v2/realizacja" component={() => <AuthenticatedRoute component={V2Realizacja} />} />
       <Route path="/ustawienia-menu" component={() => <Redirect to="/ustawienia" />} />
 
       <Route path="/koszty">{() => <Redirect to="/koszty-apartamentowe" />}</Route>

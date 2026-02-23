@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -7179,6 +7179,453 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     } catch (err: any) {
       console.error("GUS lookup error:", err);
       res.status(500).json({ message: "Błąd komunikacji z bazą GUS: " + (err.message || "Nieznany błąd") });
+    }
+  });
+
+  // ========== V2 API ROUTES ==========
+
+  // Variable Cost Forecasts CRUD
+  app.get("/api/variable-cost-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const year = req.query.year ? Number(req.query.year) : undefined;
+      const forecasts = await storage.getVariableCostForecasts(year);
+      res.json(forecasts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/variable-cost-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertVariableCostForecastSchema.parse(req.body);
+      const result = await storage.upsertVariableCostForecast(parsed);
+      res.json(result);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "Nieprawidłowe dane", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/variable-cost-forecasts/:id", isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(variableCostForecasts).where(eq(variableCostForecasts.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // V2 Financial Forecast - comprehensive endpoint
+  const V2_MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+  app.get("/api/v2/financial-forecast", isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0-indexed
+
+      // Get company balance (saldo firmowe)
+      const balance = await storage.getCompanyBalance();
+      const saldoPersonMap: Record<string, string> = {
+        "Saldo - M. Latasiewicz": "Małgorzata Latasiewicz",
+        "Saldo - J. Głodkowska": "Jolanta Głodkowska",
+        "Saldo - M. Cieślak": "Mateusz Cieślak",
+      };
+      for (const acc of balance.accounts) {
+        if (acc.balanceSource === "auto_saldo") {
+          const personName = saldoPersonMap[acc.name];
+          if (personName) {
+            const initialBal = parseFloat(await storage.getSaldoInitialBalance(personName));
+            const entries = await storage.getSaldoEntries({ personName });
+            let running = initialBal;
+            for (const e of entries) {
+              if (e.cashAmount) running += parseFloat(e.cashAmount);
+            }
+            acc.latestBalance = running.toFixed(2);
+          }
+        }
+        if (acc.type === "LOAN") {
+          const loansBalance = await storage.getLoansBalance();
+          acc.latestBalance = loansBalance.toFixed(2);
+          acc.balanceSource = "auto_loans";
+        }
+      }
+      const companyBalance = balance.accounts.reduce((sum, a) => sum + Number(a.latestBalance), 0);
+
+      // Get all revenue forecasts
+      const allRevenueForecasts = await storage.getRevenueForecasts();
+      // Get all cost forecasts (apartment costs)
+      const allCostForecasts = await storage.getCostForecasts();
+      // Get all operational cost forecasts
+      const allOperationalCosts = await storage.getOperationalCostForecasts();
+      // Get all variable cost forecasts
+      const allVariableCosts = await storage.getVariableCostForecasts();
+
+      // Get actual revenue from reservations for current year
+      const allReservations = await storage.getReservations();
+      const allSubleases = await storage.getSubleases();
+      const allExpenses = await storage.getExpenses();
+
+      // Build month-by-month data for 5 years (60 months)
+      const months: any[] = [];
+      let runningBalance = companyBalance;
+
+      for (let i = 0; i < 60; i++) {
+        const targetDate = new Date(currentYear, currentMonth + i, 1);
+        const year = targetDate.getFullYear();
+        const month = targetDate.getMonth(); // 0-indexed
+        const monthNum1 = month + 1; // 1-indexed for date strings
+        const monthStart = `${year}-${String(monthNum1).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, monthNum1, 0).getDate();
+        const monthEnd = `${year}-${String(monthNum1).padStart(2, '0')}-${lastDay}`;
+        const isPast = year < currentYear || (year === currentYear && month < currentMonth);
+        const isCurrent = year === currentYear && month === currentMonth;
+
+        // Revenue forecast for this month
+        const revForecasts = allRevenueForecasts.filter(f => f.year === year && f.month === month);
+        const revenueForecast = revForecasts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+        // Actual revenue from reservations
+        let actualRevenue = 0;
+        let pendingPayments = 0;
+        for (const r of allReservations) {
+          if (!r.startDate || r.status === "ANULOWANA") continue;
+          const d = new Date(r.startDate);
+          if (d.getFullYear() === year && d.getMonth() === month) {
+            const price = Number(r.price) || 0;
+            const paid = Number(r.paidAmount) || 0;
+            actualRevenue += paid;
+            pendingPayments += Math.max(0, price - paid);
+          }
+        }
+
+        // Sublease revenue
+        let subleaseRevenue = 0;
+        for (const s of allSubleases) {
+          if (!s.startDate || !s.endDate) continue;
+          if (s.startDate <= monthEnd && s.endDate >= monthStart) {
+            subleaseRevenue += Number(s.rentAmount || 0);
+          }
+        }
+
+        // Apartment costs (from cost_forecasts)
+        const aptCosts = allCostForecasts.filter(f => f.year === year && f.month === month);
+        const apartmentCostForecast = aptCosts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+        // Operational costs
+        const opCosts = allOperationalCosts.filter(f => f.year === year && f.month === month);
+        const operationalCostForecast = opCosts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+        // Variable costs
+        const varCosts = allVariableCosts.filter(f => f.year === year && f.month === month);
+        const variableCostForecast = varCosts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+        // Actual expenses
+        let actualExpenses = 0;
+        for (const e of allExpenses) {
+          if (!e.date) continue;
+          const d = new Date(e.date);
+          if (d.getFullYear() === year && d.getMonth() === month) {
+            actualExpenses += Number(e.amount || 0);
+          }
+        }
+
+        const totalCostForecast = apartmentCostForecast + operationalCostForecast + variableCostForecast;
+        const totalRevenueForecast = revenueForecast;
+
+        let monthResult: number;
+        if (isCurrent) {
+          const unrealizedRevenue = Math.max(0, revenueForecast - actualRevenue - pendingPayments);
+          const unrealizedCosts = Math.max(0, totalCostForecast - actualExpenses);
+          monthResult = unrealizedRevenue + pendingPayments + subleaseRevenue + actualRevenue - actualExpenses - unrealizedCosts;
+          runningBalance = companyBalance;
+        } else if (isPast) {
+          monthResult = actualRevenue + subleaseRevenue - actualExpenses;
+          runningBalance += monthResult;
+        } else {
+          monthResult = totalRevenueForecast + subleaseRevenue - totalCostForecast;
+          runningBalance += monthResult;
+        }
+
+        months.push({
+          year,
+          month,
+          monthLabel: V2_MONTH_NAMES[month],
+          isPast,
+          isCurrent,
+          revenueForecast: Math.round(revenueForecast * 100) / 100,
+          actualRevenue: Math.round((actualRevenue + pendingPayments) * 100) / 100,
+          subleaseRevenue: Math.round(subleaseRevenue * 100) / 100,
+          apartmentCostForecast: Math.round(apartmentCostForecast * 100) / 100,
+          operationalCostForecast: Math.round(operationalCostForecast * 100) / 100,
+          variableCostForecast: Math.round(variableCostForecast * 100) / 100,
+          totalCostForecast: Math.round(totalCostForecast * 100) / 100,
+          actualExpenses: Math.round(actualExpenses * 100) / 100,
+          pendingPayments: Math.round(pendingPayments * 100) / 100,
+          monthResult: Math.round(monthResult * 100) / 100,
+          cumulativeBalance: Math.round(runningBalance * 100) / 100,
+        });
+      }
+
+      res.json({
+        companyBalance: Math.round(companyBalance * 100) / 100,
+        months,
+      });
+    } catch (err: any) {
+      console.error("V2 Financial forecast error:", err);
+      res.status(500).json({ message: "Failed to compute financial forecast" });
+    }
+  });
+
+  // V2 Revenue summary with actuals per apartment per month
+  app.get("/api/v2/revenue-summary", isAuthenticated, async (req, res) => {
+    try {
+      const yearParam = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+
+      const allApartments = await storage.getApartments();
+      const allLocations = await storage.getLocations();
+      const forecasts = await storage.getRevenueForecasts(yearParam);
+      const allReservations = await storage.getReservations();
+      const allSubleases = await storage.getSubleases();
+      const subleasePaymentsMap: Record<number, any[]> = {};
+      for (const s of allSubleases) {
+        subleasePaymentsMap[s.id] = await storage.getSubleasePayments(s.id);
+      }
+
+      // Compute actuals per apartment per month
+      const actuals: Record<number, Record<number, { najem: number; podnajem: number }>> = {};
+
+      for (const r of allReservations) {
+        if (!r.startDate || r.status === "ANULOWANA") continue;
+        const d = new Date(r.startDate);
+        if (d.getFullYear() !== yearParam) continue;
+        const month = d.getMonth();
+        const price = Number(r.price) || 0;
+        const aptIds = r.apartmentIds && r.apartmentIds.length > 0
+          ? r.apartmentIds : (r.apartmentId ? [r.apartmentId] : []);
+        for (const aptId of aptIds) {
+          if (!aptId) continue;
+          if (!actuals[aptId]) actuals[aptId] = {};
+          if (!actuals[aptId][month]) actuals[aptId][month] = { najem: 0, podnajem: 0 };
+          actuals[aptId][month].najem += aptIds.length > 0 ? price / aptIds.length : price;
+        }
+      }
+
+      // Sublease revenue per apartment per month
+      for (const s of allSubleases) {
+        if (!s.startDate || !s.endDate) continue;
+        const payments = subleasePaymentsMap[s.id] || [];
+        const aptIds = s.apartmentIds && s.apartmentIds.length > 0
+          ? s.apartmentIds : (s.apartmentId ? [s.apartmentId] : []);
+
+        for (const p of payments) {
+          if (!p.dueDate) continue;
+          const d = new Date(p.dueDate);
+          if (d.getFullYear() !== yearParam) continue;
+          const month = d.getMonth();
+          const amount = Number(p.amount || 0);
+          for (const aptId of aptIds) {
+            if (!aptId) continue;
+            if (!actuals[aptId]) actuals[aptId] = {};
+            if (!actuals[aptId][month]) actuals[aptId][month] = { najem: 0, podnajem: 0 };
+            actuals[aptId][month].podnajem += aptIds.length > 0 ? amount / aptIds.length : amount;
+          }
+        }
+      }
+
+      // Build response
+      const aptData = allApartments.map(apt => {
+        const monthlyData: Record<number, { forecast: number; actual: number; najem: number; podnajem: number }> = {};
+        for (let m = 0; m < 12; m++) {
+          const fc = forecasts.find(f => f.apartmentId === apt.id && f.month === m);
+          const act = actuals[apt.id]?.[m];
+          monthlyData[m] = {
+            forecast: Number(fc?.forecast || 0),
+            actual: (act?.najem || 0) + (act?.podnajem || 0),
+            najem: act?.najem || 0,
+            podnajem: act?.podnajem || 0,
+          };
+        }
+        return {
+          apartmentId: apt.id,
+          apartmentName: apt.name,
+          locationId: apt.location ? (allLocations.find(l => l.name === apt.location)?.id || null) : null,
+          months: monthlyData,
+        };
+      });
+
+      res.json({
+        year: yearParam,
+        locations: allLocations,
+        apartments: aptData,
+      });
+    } catch (err: any) {
+      console.error("V2 Revenue summary error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // V2 Costs summary
+  app.get("/api/v2/costs-summary", isAuthenticated, async (req, res) => {
+    try {
+      const yearParam = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+
+      const allApartments = await storage.getApartments();
+      const allLocations = await storage.getLocations();
+      const costFcasts = await storage.getCostForecasts(yearParam);
+      const opCosts = await storage.getOperationalCostForecasts(yearParam);
+      const varCosts = await storage.getVariableCostForecasts(yearParam);
+      const allExpenses = await storage.getExpenses();
+
+      // Apartment costs grouped by apartment
+      const aptCosts: Record<number, Record<number, number>> = {};
+      for (const c of costFcasts) {
+        if (!c.apartmentId) continue;
+        if (!aptCosts[c.apartmentId]) aptCosts[c.apartmentId] = {};
+        aptCosts[c.apartmentId][c.month] = (aptCosts[c.apartmentId][c.month] || 0) + Number(c.forecast || 0);
+      }
+
+      // Operational costs grouped by category
+      const opCostsByCategory: Record<string, Record<number, number>> = {};
+      for (const c of opCosts) {
+        if (!opCostsByCategory[c.categoryId]) opCostsByCategory[c.categoryId] = {};
+        opCostsByCategory[c.categoryId][c.month] = (opCostsByCategory[c.categoryId][c.month] || 0) + Number(c.forecast || 0);
+      }
+
+      // Variable costs
+      const varCostItems: Record<string, Record<number, { forecast: number; actual: number }>> = {};
+      for (const v of varCosts) {
+        if (!varCostItems[v.name]) varCostItems[v.name] = {};
+        varCostItems[v.name][v.month] = {
+          forecast: Number(v.forecast || 0),
+          actual: Number(v.actual || 0),
+        };
+      }
+
+      // Actual expenses by month
+      const actualByMonth: Record<number, number> = {};
+      for (const e of allExpenses) {
+        if (!e.date) continue;
+        const d = new Date(e.date);
+        if (d.getFullYear() !== yearParam) continue;
+        const m = d.getMonth();
+        actualByMonth[m] = (actualByMonth[m] || 0) + Number(e.amount || 0);
+      }
+
+      res.json({
+        year: yearParam,
+        locations: allLocations,
+        apartments: allApartments.map(a => ({ id: a.id, name: a.name, locationId: a.location ? (allLocations.find(l => l.name === a.location)?.id || null) : null })),
+        apartmentCosts: aptCosts,
+        operationalCosts: opCostsByCategory,
+        variableCosts: varCostItems,
+        actualExpensesByMonth: actualByMonth,
+      });
+    } catch (err: any) {
+      console.error("V2 Costs summary error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // V2 Realization (plan vs actual) - per apartment analysis
+  app.get("/api/v2/realization", isAuthenticated, async (req, res) => {
+    try {
+      const yearParam = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+
+      const allApartments = await storage.getApartments();
+      const allLocations = await storage.getLocations();
+      const forecasts = await storage.getRevenueForecasts(yearParam);
+      const costFcasts = await storage.getCostForecasts(yearParam);
+      const opCosts = await storage.getOperationalCostForecasts(yearParam);
+      const varCosts = await storage.getVariableCostForecasts(yearParam);
+      const allReservations = await storage.getReservations();
+      const allExpenses = await storage.getExpenses();
+
+      const now = new Date();
+      const currentMonth = now.getFullYear() === yearParam ? now.getMonth() : (yearParam < now.getFullYear() ? 12 : 0);
+
+      // Per-apartment revenue actuals
+      const aptRevActuals: Record<number, Record<number, number>> = {};
+      for (const r of allReservations) {
+        if (!r.startDate || r.status === "ANULOWANA") continue;
+        const d = new Date(r.startDate);
+        if (d.getFullYear() !== yearParam) continue;
+        const month = d.getMonth();
+        const price = Number(r.price) || 0;
+        const aptIds = r.apartmentIds && r.apartmentIds.length > 0
+          ? r.apartmentIds : (r.apartmentId ? [r.apartmentId] : []);
+        for (const aptId of aptIds) {
+          if (!aptId) continue;
+          if (!aptRevActuals[aptId]) aptRevActuals[aptId] = {};
+          aptRevActuals[aptId][month] = (aptRevActuals[aptId][month] || 0) + (aptIds.length > 0 ? price / aptIds.length : price);
+        }
+      }
+
+      // Monthly totals
+      const monthlyData = [];
+      for (let m = 0; m < 12; m++) {
+        const revFc = forecasts.filter(f => f.month === m).reduce((s, f) => s + Number(f.forecast || 0), 0);
+        const revAct = Object.values(aptRevActuals).reduce((s, aptData) => s + (aptData[m] || 0), 0);
+        const costFc = costFcasts.filter(f => f.month === m).reduce((s, f) => s + Number(f.forecast || 0), 0);
+        const opFc = opCosts.filter(f => f.month === m).reduce((s, f) => s + Number(f.forecast || 0), 0);
+        const varFc = varCosts.filter(f => f.month === m).reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+        let expAct = 0;
+        for (const e of allExpenses) {
+          if (!e.date) continue;
+          const d = new Date(e.date);
+          if (d.getFullYear() === yearParam && d.getMonth() === m) {
+            expAct += Number(e.amount || 0);
+          }
+        }
+
+        monthlyData.push({
+          month: m,
+          revenueForecast: Math.round(revFc * 100) / 100,
+          revenueActual: Math.round(revAct * 100) / 100,
+          revenueDeviation: Math.round((revAct - revFc) * 100) / 100,
+          revenueDeviationPct: revFc > 0 ? Math.round(((revAct - revFc) / revFc) * 10000) / 100 : 0,
+          costForecast: Math.round((costFc + opFc + varFc) * 100) / 100,
+          costActual: Math.round(expAct * 100) / 100,
+          profitForecast: Math.round((revFc - costFc - opFc - varFc) * 100) / 100,
+          profitActual: Math.round((revAct - expAct) * 100) / 100,
+          isRealized: m < currentMonth,
+        });
+      }
+
+      // Per-apartment performance
+      const aptPerformance = allApartments.map(apt => {
+        let totalForecast = 0;
+        let totalActual = 0;
+        for (let m = 0; m < Math.min(currentMonth, 12); m++) {
+          const fc = forecasts.find(f => f.apartmentId === apt.id && f.month === m);
+          totalForecast += Number(fc?.forecast || 0);
+          totalActual += aptRevActuals[apt.id]?.[m] || 0;
+        }
+        const deviation = totalActual - totalForecast;
+        const deviationPct = totalForecast > 0 ? (deviation / totalForecast) * 100 : 0;
+        return {
+          apartmentId: apt.id,
+          apartmentName: apt.name,
+          locationId: apt.location ? (allLocations.find(l => l.name === apt.location)?.id || null) : null,
+          totalForecast: Math.round(totalForecast * 100) / 100,
+          totalActual: Math.round(totalActual * 100) / 100,
+          deviation: Math.round(deviation * 100) / 100,
+          deviationPct: Math.round(deviationPct * 100) / 100,
+          status: deviationPct >= 0 ? "above" : deviationPct > -10 ? "close" : "below",
+        };
+      });
+
+      res.json({
+        year: yearParam,
+        currentMonth,
+        locations: allLocations,
+        monthlyData,
+        apartmentPerformance: aptPerformance,
+      });
+    } catch (err: any) {
+      console.error("V2 Realization error:", err);
+      res.status(500).json({ message: err.message });
     }
   });
 

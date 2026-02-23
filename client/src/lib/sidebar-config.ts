@@ -130,6 +130,10 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
   "apartments": { id: "apartments", href: "/apartments", label: "Apartamenty", iconName: "Building2" },
   "owners": { id: "owners", href: "/owners", label: "Właściciele", iconName: "Users" },
+  "v2-przychody": { id: "v2-przychody", href: "/v2/przychody", label: "Przychody v2", iconName: "Wallet" },
+  "v2-koszty": { id: "v2-koszty", href: "/v2/koszty", label: "Koszty v2", iconName: "Calculator" },
+  "v2-prognoza": { id: "v2-prognoza", href: "/v2/prognoza", label: "Prognoza finansowa v2", iconName: "TrendingUp" },
+  "v2-realizacja": { id: "v2-realizacja", href: "/v2/realizacja", label: "Realizacja v2", iconName: "Target" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
@@ -137,6 +141,7 @@ export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
   { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks"], color: "violet" },
   { id: "finanse", title: "FINANSE", itemIds: ["analizy", "source-comparison", "finance-forecast", "revenue", "koszty-apartamentowe", "koszty-operacyjne", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
+  { id: "finanse-v2", title: "FINANSE v2", itemIds: ["v2-prognoza", "v2-przychody", "v2-koszty", "v2-realizacja"], color: "orange" },
 ];
 
 export const DEFAULT_CONFIG: SidebarConfig = {
@@ -153,7 +158,7 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const STORAGE_KEY = "sidebar-config-v8";
+const STORAGE_KEY = "sidebar-config-v9";
 
 export function loadConfigFromStorage(): SidebarConfig | null {
   try {

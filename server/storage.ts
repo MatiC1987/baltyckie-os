@@ -43,6 +43,7 @@ import {
   revenueForecasts, RevenueForecast, InsertRevenueForecast,
   costForecasts, CostForecast, InsertCostForecast,
   operationalCostForecasts, OperationalCostForecast, InsertOperationalCostForecast,
+  variableCostForecasts, VariableCostForecast, InsertVariableCostForecast,
   companySettings, CompanySettings, InsertCompanySettings,
   accountingNotes, AccountingNote, InsertAccountingNote,
   costInvoices, CostInvoice, InsertCostInvoice,
@@ -319,6 +320,11 @@ export interface IStorage {
   upsertOperationalCostForecast(data: InsertOperationalCostForecast): Promise<OperationalCostForecast>;
   createOperationalCostForecastsBulk(data: InsertOperationalCostForecast[]): Promise<void>;
   deleteOperationalCostForecasts(year?: number): Promise<void>;
+
+  // Variable Cost Forecasts
+  getVariableCostForecasts(year?: number): Promise<VariableCostForecast[]>;
+  upsertVariableCostForecast(data: InsertVariableCostForecast): Promise<VariableCostForecast>;
+  deleteVariableCostForecasts(year?: number): Promise<void>;
 
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | null>;
@@ -1582,6 +1588,36 @@ export class DatabaseStorage implements IStorage {
       await db.delete(operationalCostForecasts).where(eq(operationalCostForecasts.year, year));
     } else {
       await db.delete(operationalCostForecasts);
+    }
+  }
+
+  async getVariableCostForecasts(year?: number): Promise<VariableCostForecast[]> {
+    if (year) {
+      return db.select().from(variableCostForecasts).where(eq(variableCostForecasts.year, year));
+    }
+    return db.select().from(variableCostForecasts);
+  }
+
+  async upsertVariableCostForecast(data: InsertVariableCostForecast): Promise<VariableCostForecast> {
+    const existing = await db.select().from(variableCostForecasts)
+      .where(and(
+        eq(variableCostForecasts.year, data.year),
+        eq(variableCostForecasts.month, data.month),
+        eq(variableCostForecasts.name, data.name),
+      )).limit(1);
+    if (existing.length > 0) {
+      const [updated] = await db.update(variableCostForecasts).set(data).where(eq(variableCostForecasts.id, existing[0].id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(variableCostForecasts).values(data).returning();
+    return created;
+  }
+
+  async deleteVariableCostForecasts(year?: number): Promise<void> {
+    if (year) {
+      await db.delete(variableCostForecasts).where(eq(variableCostForecasts.year, year));
+    } else {
+      await db.delete(variableCostForecasts);
     }
   }
 
