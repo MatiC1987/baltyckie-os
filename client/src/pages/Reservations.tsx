@@ -96,11 +96,11 @@ function statusLabel(status: string): string {
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
     case "PRZYJETA":
-      return <Badge className="text-[10px] whitespace-nowrap bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 border font-semibold">{statusLabel(status)}</Badge>;
+      return <Badge className="text-[10px] whitespace-nowrap bg-green-500 dark:bg-green-600 text-white border-green-600 dark:border-green-500 border font-semibold">{statusLabel(status)}</Badge>;
     case "ANULOWANA":
-      return <Badge variant="destructive" className="text-[10px] whitespace-nowrap font-semibold">{statusLabel(status)}</Badge>;
+      return <Badge className="text-[10px] whitespace-nowrap bg-red-500 dark:bg-red-600 text-white border-red-600 dark:border-red-500 border font-semibold">{statusLabel(status)}</Badge>;
     case "DO_OPLACENIA":
-      return <Badge className="text-[10px] whitespace-nowrap bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 border font-semibold">{statusLabel(status)}</Badge>;
+      return <Badge className="text-[10px] whitespace-nowrap bg-amber-500 dark:bg-amber-600 text-white border-amber-600 dark:border-amber-500 border font-semibold">{statusLabel(status)}</Badge>;
     default:
       return <Badge variant="outline" className="text-[10px] whitespace-nowrap font-semibold">{statusLabel(status)}</Badge>;
   }
@@ -564,7 +564,7 @@ function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reserv
       data-testid={`row-reservation-${r.id}`}
     >
       <TableCell className="py-3">
-        <span className="text-sm font-bold text-primary" data-testid={`text-res-number-${r.id}`}>
+        <span className="text-sm font-bold text-foreground" data-testid={`text-res-number-${r.id}`}>
           {r.reservationNumber}
         </span>
       </TableCell>

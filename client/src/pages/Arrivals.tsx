@@ -70,7 +70,7 @@ function calcRemaining(r: Reservation): number {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <Badge className="text-[10px] whitespace-nowrap bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 border font-semibold">PRZYJĘTA</Badge>;
+  return <Badge className="text-[10px] whitespace-nowrap bg-green-500 dark:bg-green-600 text-white border-green-600 dark:border-green-500 border font-semibold">PRZYJĘTA</Badge>;
 }
 
 function PaymentProgressBar({ reservation }: { reservation: Reservation }) {
@@ -249,7 +249,7 @@ export default function Arrivals() {
                   data-testid={`row-arrival-${r.id}`}
                 >
                   <TableCell className="py-3">
-                    <span className="text-sm font-bold text-primary">{r.reservationNumber}</span>
+                    <span className="text-sm font-bold text-foreground">{r.reservationNumber}</span>
                   </TableCell>
                   <TableCell className="py-3">
                     <SourceBadge source={r.source} />
