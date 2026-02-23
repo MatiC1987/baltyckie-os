@@ -155,6 +155,31 @@ export default function Prognoza() {
     return m;
   }, [revForecasts]);
 
+  const locRevLookup = useMemo(() => {
+    const m: Record<string, number> = {};
+    const locNameMap: Record<string, string> = { "LUXURO PARK": "PRZEWŁOKA" };
+    for (const f of revForecasts) {
+      if (!f.apartmentId && f.locationName && f.locationName !== "RAZEM") {
+        const mappedName = locNameMap[f.locationName] || f.locationName;
+        m[`${mappedName}-${f.month}`] = Number(f.forecast) || 0;
+        if (mappedName !== f.locationName) {
+          m[`${f.locationName}-${f.month}`] = Number(f.forecast) || 0;
+        }
+      }
+    }
+    return m;
+  }, [revForecasts]);
+
+  const razemRevLookup = useMemo(() => {
+    const m: Record<number, number> = {};
+    for (const f of revForecasts) {
+      if (!f.apartmentId && f.locationName === "RAZEM") {
+        m[f.month] = Number(f.forecast) || 0;
+      }
+    }
+    return m;
+  }, [revForecasts]);
+
   const costLookup = useMemo(() => {
     const m: Record<string, { forecast: number; actual: number; sourceType: string | null }> = {};
     for (const f of costForecasts) {
@@ -436,6 +461,13 @@ export default function Prognoza() {
               apts.forEach(apt => {
                 for (let m = 0; m < 12; m++) locTotals[m] += getVal(prefix, `${apt.id}-${m}`);
               });
+              const aptDataExists = locTotals.some(v => v > 0);
+              if (!aptDataExists && type === "rev") {
+                for (let m = 0; m < 12; m++) {
+                  const locVal = locRevLookup[`${locName}-${m}`] || 0;
+                  if (locVal > 0) locTotals[m] = locVal;
+                }
+              }
               locTotals.forEach((v, i) => { grandTotal[i] += v; });
               const locSum = locTotals.reduce((s, v) => s + v, 0);
 
@@ -753,12 +785,21 @@ export default function Prognoza() {
 
     const totalRevByMonth = Array(12).fill(0);
     const totalCostByMonth = Array(12).fill(0);
+    const aptRevSum = Array(12).fill(0);
     activeApts.forEach(apt => {
       for (let m = 0; m < 12; m++) {
-        totalRevByMonth[m] += getVal("rev", `${apt.id}-${m}`);
+        const rv = getVal("rev", `${apt.id}-${m}`);
+        aptRevSum[m] += rv;
+        totalRevByMonth[m] += rv;
         totalCostByMonth[m] += getVal("cost", `${apt.id}-${m}`);
       }
     });
+    const hasAptRevData = aptRevSum.some(v => v > 0);
+    if (!hasAptRevData) {
+      for (let m = 0; m < 12; m++) {
+        totalRevByMonth[m] = razemRevLookup[m] || 0;
+      }
+    }
     for (let m = 0; m < 12; m++) totalCostByMonth[m] += opGrandTotals.forecast[m];
 
     const totalRev = totalRevByMonth.reduce((s, v) => s + v, 0);
@@ -833,11 +874,20 @@ export default function Prognoza() {
             <tbody>
               {Object.entries(aptsByLocation).map(([locName, apts]) => {
                 const netByMonth = Array(12).fill(0);
+                const aptRevByMonth = Array(12).fill(0);
                 apts.forEach(apt => {
                   for (let m = 0; m < 12; m++) {
-                    netByMonth[m] += getVal("rev", `${apt.id}-${m}`) - getVal("cost", `${apt.id}-${m}`);
+                    const rev = getVal("rev", `${apt.id}-${m}`);
+                    aptRevByMonth[m] += rev;
+                    netByMonth[m] += rev - getVal("cost", `${apt.id}-${m}`);
                   }
                 });
+                const locAptRevExists = aptRevByMonth.some(v => v > 0);
+                if (!locAptRevExists) {
+                  for (let m = 0; m < 12; m++) {
+                    netByMonth[m] = (locRevLookup[`${locName}-${m}`] || 0) - 0;
+                  }
+                }
                 const locNet = netByMonth.reduce((s, v) => s + v, 0);
                 return (
                   <tr key={locName} data-testid={`row-summary-${locName}`}>

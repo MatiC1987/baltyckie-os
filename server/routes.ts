@@ -7581,8 +7581,20 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         const isCurrent = year === currentYear && month === currentMonth;
 
         // Revenue forecast for this month
-        const revForecasts = allRevenueForecasts.filter(f => f.year === year && f.month === month);
-        const revenueForecast = revForecasts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+        // Prefer RAZEM (total) records, then sum per-apartment records, then sum per-location records
+        const aptRevForecasts = allRevenueForecasts.filter(f => f.year === year && f.month === month && f.apartmentId);
+        const razemForecast = allRevenueForecasts.find(f => f.year === year && f.month === month && !f.apartmentId && f.locationName === "RAZEM");
+        const locForecasts = allRevenueForecasts.filter(f => f.year === year && f.month === month && !f.apartmentId && f.locationName && f.locationName !== "RAZEM");
+        let revenueForecast: number;
+        if (aptRevForecasts.length > 0) {
+          revenueForecast = aptRevForecasts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+        } else if (razemForecast) {
+          revenueForecast = Number(razemForecast.forecast || 0);
+        } else if (locForecasts.length > 0) {
+          revenueForecast = locForecasts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+        } else {
+          revenueForecast = 0;
+        }
 
         // Actual revenue from reservations
         let actualRevenue = 0;
@@ -7732,14 +7744,45 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       }
 
+      // Build location-level forecast lookup (for when per-apartment data is missing)
+      const locNameMap: Record<string, string> = { "LUXURO PARK": "PRZEWŁOKA" };
+      const locForecastLookup: Record<string, Record<number, number>> = {};
+      for (const f of forecasts) {
+        if (!f.apartmentId && f.locationName && f.locationName !== "RAZEM") {
+          const mappedName = locNameMap[f.locationName] || f.locationName;
+          if (!locForecastLookup[mappedName]) locForecastLookup[mappedName] = {};
+          locForecastLookup[mappedName][f.month] = Number(f.forecast || 0);
+        }
+      }
+
+      // Check if any per-apartment forecasts exist for each location
+      const locHasAptForecasts: Record<string, boolean> = {};
+      for (const f of forecasts) {
+        if (f.apartmentId) {
+          const apt = allApartments.find(a => a.id === f.apartmentId);
+          if (apt?.location) locHasAptForecasts[apt.location] = true;
+        }
+      }
+
       // Build response
       const aptData = allApartments.map(apt => {
         const monthlyData: Record<number, { forecast: number; actual: number; najem: number; podnajem: number }> = {};
+        const locName = apt.location || "";
+        const hasAptData = locHasAptForecasts[locName] || false;
+
         for (let m = 0; m < 12; m++) {
-          const fc = forecasts.find(f => f.apartmentId === apt.id && f.month === m);
+          let forecastVal = 0;
+          if (hasAptData) {
+            const fc = forecasts.find(f => f.apartmentId === apt.id && f.month === m);
+            forecastVal = Number(fc?.forecast || 0);
+          } else if (locName && locForecastLookup[locName]) {
+            const locTotal = locForecastLookup[locName][m] || 0;
+            const locApts = allApartments.filter(a => a.location === locName);
+            forecastVal = locApts.length > 0 ? locTotal / locApts.length : 0;
+          }
           const act = actuals[apt.id]?.[m];
           monthlyData[m] = {
-            forecast: Number(fc?.forecast || 0),
+            forecast: forecastVal,
             actual: (act?.najem || 0) + (act?.podnajem || 0),
             najem: act?.najem || 0,
             podnajem: act?.podnajem || 0,
