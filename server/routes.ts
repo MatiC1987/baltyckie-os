@@ -7047,6 +7047,48 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.post('/api/tasks/batch-reorder', isAuthenticated, async (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) return res.status(400).json({ message: "items must be array" });
+      for (const item of items) {
+        const update: Record<string, unknown> = { sortOrder: item.sortOrder };
+        if (item.sectionId !== undefined) update.sectionId = item.sectionId;
+        if (item.projectId !== undefined) update.projectId = item.projectId;
+        await storage.updateTask(Number(item.id), update);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-sections/batch-reorder', isAuthenticated, async (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) return res.status(400).json({ message: "items must be array" });
+      for (const item of items) {
+        await storage.updateTaskSection(Number(item.id), { sortOrder: item.sortOrder });
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-projects/batch-reorder', isAuthenticated, async (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) return res.status(400).json({ message: "items must be array" });
+      for (const item of items) {
+        await storage.updateTaskProject(Number(item.id), { sortOrder: item.sortOrder });
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/tasks/:id/convert-to-project', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
