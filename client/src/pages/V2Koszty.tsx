@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Calculator, ChevronDown, ChevronRight, Plus, Trash2, Loader2 } from "lucide-react";
+import { Calculator, ChevronDown, ChevronRight, Plus, Trash2, Loader2, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -385,6 +386,7 @@ export default function V2Koszty() {
   const currentMonth = new Date().getMonth();
   const [year, setYear] = useState(currentYear);
   const [tab, setTab] = useState("apartamentowe");
+  const [showCopyDialog, setShowCopyDialog] = useState(false);
 
   const { data, isLoading } = useQuery<CostsSummaryResponse>({
     queryKey: [`/api/v2/costs-summary?year=${year}`],
@@ -430,16 +432,21 @@ export default function V2Koszty() {
         icon={Calculator}
         description="Koszty — apartamentowe, operacyjne, zmienne"
         actions={
-          <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-            <SelectTrigger className="w-[100px]" data-testid="select-year">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {years.map(y => (
-                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
+              <SelectTrigger className="w-[100px]" data-testid="select-year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-costs">
+              <Copy className="h-4 w-4 mr-1" /> Kopiuj
+            </Button>
+          </div>
         }
       />
 
@@ -486,6 +493,8 @@ export default function V2Koszty() {
           {data && <VariableCostsTab data={data} year={year} currentMonth={year === currentYear ? currentMonth : -1} />}
         </TabsContent>
       </Tabs>
+
+      <CopyForecastDialog open={showCopyDialog} onOpenChange={setShowCopyDialog} currentYear={year} defaultTypes={["cost", "operational", "variable"]} />
     </div>
   );
 }

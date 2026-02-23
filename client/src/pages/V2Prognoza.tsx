@@ -5,8 +5,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, Wallet, Calculator, DollarSign, BarChart3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Wallet, Calculator, DollarSign, BarChart3, Copy, Sparkles } from "lucide-react";
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, AreaChart } from "recharts";
+import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
+import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
 
 const MONTHS_SHORT = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -60,8 +63,11 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export default function V2Prognoza() {
+  const currentYear = new Date().getFullYear();
   const [horizon, setHorizon] = useState<string>("12");
   const [viewYear, setViewYear] = useState<string>("all");
+  const [showCopyDialog, setShowCopyDialog] = useState(false);
+  const [showAutoFill, setShowAutoFill] = useState(false);
 
   const { data, isLoading } = useQuery<ForecastResponse>({
     queryKey: ["/api/v2/financial-forecast"],
@@ -157,6 +163,12 @@ export default function V2Prognoza() {
                 </SelectContent>
               </Select>
             )}
+            <Button variant="outline" size="sm" onClick={() => setShowAutoFill(true)} data-testid="button-auto-fill">
+              <Sparkles className="h-4 w-4 mr-1" /> Auto
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-forecasts">
+              <Copy className="h-4 w-4 mr-1" /> Kopiuj
+            </Button>
           </div>
         }
       />
@@ -335,6 +347,9 @@ export default function V2Prognoza() {
           </table>
         </CardContent>
       </Card>
+
+      <CopyForecastDialog open={showCopyDialog} onOpenChange={setShowCopyDialog} currentYear={currentYear} />
+      <AutoFillDialog open={showAutoFill} onOpenChange={setShowAutoFill} currentYear={currentYear} />
     </div>
   );
 }

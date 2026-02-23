@@ -7215,6 +7215,305 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // V2 Copy forecasts between years
+  app.post("/api/v2/copy-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const { sourceYear, targetYear, adjustmentPct, types } = req.body as {
+        sourceYear: number;
+        targetYear: number;
+        adjustmentPct: number;
+        types: string[];
+      };
+      if (!sourceYear || !targetYear || sourceYear === targetYear) {
+        return res.status(400).json({ message: "Nieprawidłowe lata" });
+      }
+      const multiplier = 1 + (adjustmentPct || 0) / 100;
+      let copied = { revenue: 0, cost: 0, operational: 0, variable: 0 };
+
+      if (types.includes("revenue")) {
+        const source = await storage.getRevenueForecasts(sourceYear);
+        for (const f of source) {
+          if (!f.apartmentId) continue;
+          await storage.upsertRevenueForecast({
+            year: targetYear,
+            month: f.month,
+            apartmentId: f.apartmentId,
+            locationName: f.locationName,
+            forecast: String(Math.round(Number(f.forecast || 0) * multiplier * 100) / 100),
+          });
+          copied.revenue++;
+        }
+      }
+
+      if (types.includes("cost")) {
+        const source = await storage.getCostForecasts(sourceYear);
+        const manualOnly = source.filter(c => !c.sourceType || c.sourceType === "manual");
+        for (const f of manualOnly) {
+          await storage.upsertCostForecast({
+            year: targetYear,
+            month: f.month,
+            apartmentId: f.apartmentId,
+            category: f.category,
+            forecast: String(Math.round(Number(f.forecast || 0) * multiplier * 100) / 100),
+            sourceType: "manual",
+          });
+          copied.cost++;
+        }
+      }
+
+      if (types.includes("operational")) {
+        const source = await storage.getOperationalCostForecasts(sourceYear);
+        for (const f of source) {
+          await storage.upsertOperationalCostForecast({
+            year: targetYear,
+            month: f.month,
+            categoryId: f.categoryId,
+            itemIndex: f.itemIndex,
+            forecast: String(Math.round(Number(f.forecast || 0) * multiplier * 100) / 100),
+          });
+          copied.operational++;
+        }
+      }
+
+      if (types.includes("variable")) {
+        const source = await storage.getVariableCostForecasts(sourceYear);
+        for (const f of source) {
+          await storage.upsertVariableCostForecast({
+            year: targetYear,
+            month: f.month,
+            name: f.name,
+            forecast: String(Math.round(Number(f.forecast || 0) * multiplier * 100) / 100),
+            actual: "0",
+          });
+          copied.variable++;
+        }
+      }
+
+      res.json({ success: true, copied });
+    } catch (err: any) {
+      console.error("Copy forecasts error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // V2 Auto-fill forecasts from historical averages
+  app.post("/api/v2/auto-fill-forecasts", isAuthenticated, async (req, res) => {
+    try {
+      const { targetYear, lookbackYears } = req.body as { targetYear: number; lookbackYears: number };
+      if (!targetYear || !lookbackYears) return res.status(400).json({ message: "Nieprawidłowe parametry" });
+
+      const yearsToAverage: number[] = [];
+      for (let i = 1; i <= lookbackYears; i++) yearsToAverage.push(targetYear - i);
+
+      const allApartments = await storage.getApartments();
+      const allForecasts: any[] = [];
+      for (const y of yearsToAverage) {
+        allForecasts.push(...await storage.getRevenueForecasts(y));
+      }
+
+      const allReservations = await storage.getReservations();
+      const proposals: Array<{ apartmentId: number; apartmentName: string; month: number; proposed: number; currentForecast: number; basedOn: string }> = [];
+
+      for (const apt of allApartments) {
+        for (let m = 0; m < 12; m++) {
+          const historicalValues: number[] = [];
+          for (const y of yearsToAverage) {
+            let actualRevenue = 0;
+            for (const r of allReservations) {
+              if (!r.startDate || r.status === "ANULOWANA") continue;
+              const d = new Date(r.startDate);
+              if (d.getFullYear() !== y || d.getMonth() !== m) continue;
+              const aptIds = r.apartmentIds && r.apartmentIds.length > 0 ? r.apartmentIds : (r.apartmentId ? [r.apartmentId] : []);
+              if (aptIds.includes(apt.id)) {
+                actualRevenue += (Number(r.price) || 0) / Math.max(aptIds.length, 1);
+              }
+            }
+            const fc = allForecasts.find(f => f.year === y && f.month === m && f.apartmentId === apt.id);
+            const value = actualRevenue > 0 ? actualRevenue : Number(fc?.forecast || 0);
+            if (value > 0) historicalValues.push(value);
+          }
+
+          if (historicalValues.length > 0) {
+            const avg = Math.round(historicalValues.reduce((s, v) => s + v, 0) / historicalValues.length);
+            const existing = await storage.getRevenueForecasts(targetYear);
+            const currentFc = existing.find(f => f.apartmentId === apt.id && f.month === m);
+            proposals.push({
+              apartmentId: apt.id,
+              apartmentName: apt.name,
+              month: m,
+              proposed: avg,
+              currentForecast: Number(currentFc?.forecast || 0),
+              basedOn: `Średnia z ${historicalValues.length} lat`,
+            });
+          }
+        }
+      }
+
+      res.json({ proposals, targetYear, lookbackYears });
+    } catch (err: any) {
+      console.error("Auto-fill error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // V2 Apply auto-fill proposals
+  app.post("/api/v2/apply-auto-fill", isAuthenticated, async (req, res) => {
+    try {
+      const { targetYear, items } = req.body as {
+        targetYear: number;
+        items: Array<{ apartmentId: number; month: number; forecast: number }>;
+      };
+      let applied = 0;
+      for (const item of items) {
+        await storage.upsertRevenueForecast({
+          year: targetYear,
+          month: item.month,
+          apartmentId: item.apartmentId,
+          forecast: String(item.forecast),
+        });
+        applied++;
+      }
+      res.json({ success: true, applied });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // V2 Apartment trend data (historical revenue per apartment)
+  app.get("/api/v2/apartment-trend/:id", isAuthenticated, async (req, res) => {
+    try {
+      const aptId = Number(req.params.id);
+      const apt = (await storage.getApartments()).find(a => a.id === aptId);
+      if (!apt) return res.status(404).json({ message: "Nie znaleziono apartamentu" });
+
+      const currentYear = new Date().getFullYear();
+      const yearsRange = [currentYear - 3, currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
+
+      const allReservations = await storage.getReservations();
+      const allForecasts = await storage.getRevenueForecasts();
+      const allCostForecasts = await storage.getCostForecasts();
+
+      const yearlyData: Record<number, { months: Record<number, { actual: number; forecast: number; cost: number }>; totalActual: number; totalForecast: number; totalCost: number }> = {};
+
+      for (const y of yearsRange) {
+        const months: Record<number, { actual: number; forecast: number; cost: number }> = {};
+        let totalActual = 0, totalForecast = 0, totalCost = 0;
+
+        for (let m = 0; m < 12; m++) {
+          let actual = 0;
+          for (const r of allReservations) {
+            if (!r.startDate || r.status === "ANULOWANA") continue;
+            const d = new Date(r.startDate);
+            if (d.getFullYear() !== y || d.getMonth() !== m) continue;
+            const aptIds = r.apartmentIds?.length ? r.apartmentIds : (r.apartmentId ? [r.apartmentId] : []);
+            if (aptIds.includes(aptId)) {
+              actual += (Number(r.price) || 0) / Math.max(aptIds.length, 1);
+            }
+          }
+          const fc = allForecasts.find(f => f.year === y && f.month === m && f.apartmentId === aptId);
+          const cost = allCostForecasts.filter(f => f.year === y && f.month === m && f.apartmentId === aptId)
+            .reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+          months[m] = { actual: Math.round(actual), forecast: Number(fc?.forecast || 0), cost: Math.round(cost) };
+          totalActual += actual;
+          totalForecast += Number(fc?.forecast || 0);
+          totalCost += cost;
+        }
+
+        yearlyData[y] = { months, totalActual: Math.round(totalActual), totalForecast: Math.round(totalForecast), totalCost: Math.round(totalCost) };
+      }
+
+      res.json({
+        apartment: { id: apt.id, name: apt.name, location: apt.location },
+        years: yearsRange,
+        yearlyData,
+      });
+    } catch (err: any) {
+      console.error("Apartment trend error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // V2 Year comparison
+  app.get("/api/v2/year-comparison", isAuthenticated, async (req, res) => {
+    try {
+      const yearA = Number(req.query.yearA) || new Date().getFullYear() - 1;
+      const yearB = Number(req.query.yearB) || new Date().getFullYear();
+
+      const allApartments = await storage.getApartments();
+      const allLocations = await storage.getLocations();
+      const allReservations = await storage.getReservations();
+      const forecastsA = await storage.getRevenueForecasts(yearA);
+      const forecastsB = await storage.getRevenueForecasts(yearB);
+      const allExpenses = await storage.getExpenses();
+
+      const buildYearData = (year: number, forecasts: any[]) => {
+        const monthlyRevenue: number[] = new Array(12).fill(0);
+        const monthlyExpenses: number[] = new Array(12).fill(0);
+        const monthlyForecast: number[] = new Array(12).fill(0);
+
+        for (const r of allReservations) {
+          if (!r.startDate || r.status === "ANULOWANA") continue;
+          const d = new Date(r.startDate);
+          if (d.getFullYear() !== year) continue;
+          monthlyRevenue[d.getMonth()] += Number(r.price || 0);
+        }
+
+        for (const e of allExpenses) {
+          if (!e.date) continue;
+          const d = new Date(e.date);
+          if (d.getFullYear() !== year) continue;
+          monthlyExpenses[d.getMonth()] += Number(e.amount || 0);
+        }
+
+        for (const f of forecasts) {
+          monthlyForecast[f.month] += Number(f.forecast || 0);
+        }
+
+        return { monthlyRevenue, monthlyExpenses, monthlyForecast };
+      };
+
+      const dataA = buildYearData(yearA, forecastsA);
+      const dataB = buildYearData(yearB, forecastsB);
+
+      const months = [];
+      for (let m = 0; m < 12; m++) {
+        months.push({
+          month: m,
+          revenueA: Math.round(dataA.monthlyRevenue[m]),
+          revenueB: Math.round(dataB.monthlyRevenue[m]),
+          revenueDiff: Math.round(dataB.monthlyRevenue[m] - dataA.monthlyRevenue[m]),
+          revenueDiffPct: dataA.monthlyRevenue[m] > 0
+            ? Math.round(((dataB.monthlyRevenue[m] - dataA.monthlyRevenue[m]) / dataA.monthlyRevenue[m]) * 10000) / 100
+            : 0,
+          expensesA: Math.round(dataA.monthlyExpenses[m]),
+          expensesB: Math.round(dataB.monthlyExpenses[m]),
+          forecastA: Math.round(dataA.monthlyForecast[m]),
+          forecastB: Math.round(dataB.monthlyForecast[m]),
+          profitA: Math.round(dataA.monthlyRevenue[m] - dataA.monthlyExpenses[m]),
+          profitB: Math.round(dataB.monthlyRevenue[m] - dataB.monthlyExpenses[m]),
+        });
+      }
+
+      res.json({
+        yearA,
+        yearB,
+        months,
+        totals: {
+          revenueA: Math.round(dataA.monthlyRevenue.reduce((s, v) => s + v, 0)),
+          revenueB: Math.round(dataB.monthlyRevenue.reduce((s, v) => s + v, 0)),
+          expensesA: Math.round(dataA.monthlyExpenses.reduce((s, v) => s + v, 0)),
+          expensesB: Math.round(dataB.monthlyExpenses.reduce((s, v) => s + v, 0)),
+          forecastA: Math.round(dataA.monthlyForecast.reduce((s, v) => s + v, 0)),
+          forecastB: Math.round(dataB.monthlyForecast.reduce((s, v) => s + v, 0)),
+        },
+      });
+    } catch (err: any) {
+      console.error("Year comparison error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // V2 Financial Forecast - comprehensive endpoint
   const V2_MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 

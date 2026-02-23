@@ -4,10 +4,14 @@ import type { Location } from "@shared/schema";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Wallet, ChevronDown, ChevronRight, TrendingUp, TrendingDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Wallet, ChevronDown, ChevronRight, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Copy, Sparkles } from "lucide-react";
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
+import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
+import { ApartmentTrendSheet } from "@/components/v2/ApartmentTrendSheet";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -41,10 +45,11 @@ function pctStr(actual: number, forecast: number): string {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
 }
 
-function LocationGroup({ locationName, apartments, currentMonth }: {
+function LocationGroup({ locationName, apartments, currentMonth, onApartmentClick }: {
   locationName: string;
   apartments: AptRevenueData[];
   currentMonth: number;
+  onApartmentClick?: (id: number) => void;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -99,7 +104,11 @@ function LocationGroup({ locationName, apartments, currentMonth }: {
                 const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
                 return [
                   <tr key={`${apt.apartmentId}-plan`} className="border-b border-dashed" data-testid={`apt-row-plan-${apt.apartmentId}`}>
-                    <td className="p-2 font-medium" rowSpan={3}>{apt.apartmentName}</td>
+                    <td className="p-2 font-medium" rowSpan={3}>
+                      <button className="text-left hover:text-[#5ADBFA] hover:underline transition-colors" onClick={() => onApartmentClick?.(apt.apartmentId)} data-testid={`apt-trend-link-${apt.apartmentId}`}>
+                        {apt.apartmentName}
+                      </button>
+                    </td>
                     <td className="p-2 text-muted-foreground">Plan</td>
                     {MONTHS.map((_, i) => (
                       <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
@@ -169,6 +178,9 @@ export default function V2Przychody() {
   const currentMonth = new Date().getMonth();
   const [year, setYear] = useState(currentYear);
   const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [showCopyDialog, setShowCopyDialog] = useState(false);
+  const [showAutoFill, setShowAutoFill] = useState(false);
+  const [trendAptId, setTrendAptId] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery<RevenueSummaryResponse>({
     queryKey: [`/api/v2/revenue-summary?year=${year}`],
@@ -255,6 +267,12 @@ export default function V2Przychody() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={() => setShowAutoFill(true)} data-testid="button-auto-fill">
+              <Sparkles className="h-4 w-4 mr-1" /> Auto-uzup.
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-forecasts">
+              <Copy className="h-4 w-4 mr-1" /> Kopiuj
+            </Button>
           </div>
         }
       />
@@ -308,10 +326,15 @@ export default function V2Przychody() {
               locationName={locName}
               apartments={apts}
               currentMonth={year === currentYear ? currentMonth : -1}
+              onApartmentClick={(id) => setTrendAptId(id)}
             />
           </CardContent>
         </Card>
       ))}
+
+      <CopyForecastDialog open={showCopyDialog} onOpenChange={setShowCopyDialog} currentYear={year} defaultTypes={["revenue"]} />
+      <AutoFillDialog open={showAutoFill} onOpenChange={setShowAutoFill} currentYear={year} />
+      <ApartmentTrendSheet apartmentId={trendAptId} open={!!trendAptId} onOpenChange={(o) => { if (!o) setTrendAptId(null); }} />
     </div>
   );
 }

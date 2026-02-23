@@ -4,11 +4,13 @@ import type { Location } from "@shared/schema";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Target, TrendingUp, TrendingDown, ArrowUp, ArrowDown, AlertCircle, CheckCircle } from "lucide-react";
+import { Target, TrendingUp, TrendingDown, ArrowUp, ArrowDown, AlertCircle, CheckCircle, GitCompare } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, ComposedChart, Line, ReferenceLine } from "recharts";
 import { Progress } from "@/components/ui/progress";
+import { ApartmentTrendSheet } from "@/components/v2/ApartmentTrendSheet";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -82,14 +84,45 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+type YearComparisonData = {
+  yearA: number;
+  yearB: number;
+  months: Array<{
+    month: number;
+    revenueA: number;
+    revenueB: number;
+    revenueDiff: number;
+    revenueDiffPct: number;
+    expensesA: number;
+    expensesB: number;
+    profitA: number;
+    profitB: number;
+  }>;
+  totals: {
+    revenueA: number;
+    revenueB: number;
+    expensesA: number;
+    expensesB: number;
+  };
+};
+
 export default function V2Realizacja() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [sortBy, setSortBy] = useState<string>("deviation");
   const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [trendAptId, setTrendAptId] = useState<number | null>(null);
+  const [showYearComparison, setShowYearComparison] = useState(false);
+  const [compareYearA, setCompareYearA] = useState(currentYear - 1);
+  const [compareYearB, setCompareYearB] = useState(currentYear);
 
   const { data, isLoading } = useQuery<RealizationResponse>({
     queryKey: [`/api/v2/realization?year=${year}`],
+  });
+
+  const { data: comparisonData, isLoading: comparisonLoading } = useQuery<YearComparisonData>({
+    queryKey: [`/api/v2/year-comparison?yearA=${compareYearA}&yearB=${compareYearB}`],
+    enabled: showYearComparison,
   });
 
   const years = useMemo(() => {
@@ -183,6 +216,9 @@ export default function V2Realizacja() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={() => setShowYearComparison(!showYearComparison)} data-testid="button-year-comparison">
+              <GitCompare className="h-4 w-4 mr-1" /> Porównanie lat
+            </Button>
           </div>
         }
       />
@@ -359,7 +395,7 @@ export default function V2Realizacja() {
               return (
                 <div key={apt.apartmentId} className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors" data-testid={`apt-perf-${apt.apartmentId}`}>
                   <div className="min-w-[140px]">
-                    <p className="text-sm font-medium">{apt.apartmentName}</p>
+                    <button className="text-sm font-medium text-left hover:text-[#5ADBFA] hover:underline transition-colors" onClick={() => setTrendAptId(apt.apartmentId)} data-testid={`apt-trend-btn-${apt.apartmentId}`}>{apt.apartmentName}</button>
                     {statusBadge(apt.status)}
                   </div>
                   <div className="flex-1 min-w-[200px]">
@@ -386,6 +422,115 @@ export default function V2Realizacja() {
           </div>
         </CardContent>
       </Card>
+
+      {showYearComparison && (
+        <Card data-testid="year-comparison-section">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <GitCompare className="h-4 w-4" /> Porównanie rok do roku
+              </h3>
+              <div className="flex items-center gap-2">
+                <Select value={String(compareYearA)} onValueChange={v => setCompareYearA(Number(v))}>
+                  <SelectTrigger className="w-[90px]" data-testid="select-compare-year-a">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {years.map(y => (
+                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">vs</span>
+                <Select value={String(compareYearB)} onValueChange={v => setCompareYearB(Number(v))}>
+                  <SelectTrigger className="w-[90px]" data-testid="select-compare-year-b">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {years.map(y => (
+                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {comparisonLoading && (
+              <div className="flex items-center justify-center py-12">
+                <Skeleton className="h-[300px] w-full" />
+              </div>
+            )}
+
+            {comparisonData && !comparisonLoading && (
+              <>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={comparisonData.months.map(m => ({
+                    month: MONTHS[m.month],
+                    [String(compareYearA)]: m.revenueA,
+                    [String(compareYearB)]: m.revenueB,
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="month" className="text-xs" />
+                    <YAxis className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(v: number) => `${formatNum(v)} PLN`} />
+                    <Legend />
+                    <Bar dataKey={String(compareYearA)} fill="hsl(var(--chart-1))" opacity={0.6} radius={[3, 3, 0, 0]} />
+                    <Bar dataKey={String(compareYearB)} fill="hsl(var(--chart-2))" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-xs border-collapse" data-testid="comparison-table">
+                    <thead>
+                      <tr className="border-b bg-muted/30">
+                        <th className="text-left p-2 font-medium">Miesiąc</th>
+                        <th className="text-right p-2 font-medium">Przychód {compareYearA}</th>
+                        <th className="text-right p-2 font-medium">Przychód {compareYearB}</th>
+                        <th className="text-right p-2 font-medium">Różnica</th>
+                        <th className="text-right p-2 font-medium">%</th>
+                        <th className="text-right p-2 font-medium">Zysk {compareYearA}</th>
+                        <th className="text-right p-2 font-medium">Zysk {compareYearB}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparisonData.months.map(m => (
+                        <tr key={m.month} className="border-b" data-testid={`comparison-row-${m.month}`}>
+                          <td className="p-2">{MONTHS[m.month]}</td>
+                          <td className="p-2 text-right tabular-nums">{formatNum(m.revenueA)}</td>
+                          <td className="p-2 text-right tabular-nums font-medium">{formatNum(m.revenueB)}</td>
+                          <td className={`p-2 text-right tabular-nums ${m.revenueDiff >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                            {m.revenueDiff >= 0 ? "+" : ""}{formatNum(m.revenueDiff)}
+                          </td>
+                          <td className={`p-2 text-right tabular-nums ${m.revenueDiffPct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                            {m.revenueDiffPct !== 0 ? `${m.revenueDiffPct >= 0 ? "+" : ""}${m.revenueDiffPct.toFixed(1)}%` : "—"}
+                          </td>
+                          <td className={`p-2 text-right tabular-nums ${m.profitA >= 0 ? "" : "text-red-600 dark:text-red-400"}`}>{formatNum(m.profitA)}</td>
+                          <td className={`p-2 text-right tabular-nums font-medium ${m.profitB >= 0 ? "" : "text-red-600 dark:text-red-400"}`}>{formatNum(m.profitB)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 font-bold bg-muted/20">
+                        <td className="p-2">Razem</td>
+                        <td className="p-2 text-right tabular-nums">{formatNum(comparisonData.totals.revenueA)}</td>
+                        <td className="p-2 text-right tabular-nums">{formatNum(comparisonData.totals.revenueB)}</td>
+                        <td className={`p-2 text-right tabular-nums ${comparisonData.totals.revenueB - comparisonData.totals.revenueA >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                          {comparisonData.totals.revenueB - comparisonData.totals.revenueA >= 0 ? "+" : ""}{formatNum(comparisonData.totals.revenueB - comparisonData.totals.revenueA)}
+                        </td>
+                        <td className={`p-2 text-right tabular-nums ${comparisonData.totals.revenueA > 0 && comparisonData.totals.revenueB - comparisonData.totals.revenueA >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                          {comparisonData.totals.revenueA > 0 ? `${((comparisonData.totals.revenueB - comparisonData.totals.revenueA) / comparisonData.totals.revenueA * 100).toFixed(1)}%` : "—"}
+                        </td>
+                        <td className="p-2 text-right tabular-nums">{formatNum(comparisonData.totals.revenueA - comparisonData.totals.expensesA)}</td>
+                        <td className="p-2 text-right tabular-nums">{formatNum(comparisonData.totals.revenueB - comparisonData.totals.expensesB)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <ApartmentTrendSheet apartmentId={trendAptId} open={!!trendAptId} onOpenChange={(o) => { if (!o) setTrendAptId(null); }} />
     </div>
   );
 }
