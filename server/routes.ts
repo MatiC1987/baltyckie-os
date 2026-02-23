@@ -1027,13 +1027,15 @@ export async function registerRoutes(
       if (acc.balanceSource === "auto_saldo") {
         const personName = saldoPersonMap[acc.name];
         if (personName) {
-          const initialBal = parseFloat(await storage.getSaldoInitialBalance(personName));
           const entries = await storage.getSaldoEntries({ personName });
-          let running = initialBal;
-          for (const e of entries) {
-            if (e.cashAmount) running += parseFloat(e.cashAmount);
+          if (entries.length > 0) {
+            const initialBal = parseFloat(await storage.getSaldoInitialBalance(personName));
+            let running = initialBal;
+            for (const e of entries) {
+              if (e.cashAmount) running += parseFloat(e.cashAmount);
+            }
+            acc.latestBalance = running.toFixed(2);
           }
-          acc.latestBalance = running.toFixed(2);
         }
       }
       if (acc.type === "LOAN") {
