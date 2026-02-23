@@ -124,6 +124,7 @@ type ForecastMonth = {
   year: number;
   month: number;
   actual: number;
+  forecast: number;
   reservationRevenue: number;
   subleaseRevenue: number;
   daysInMonth: number;
@@ -176,25 +177,6 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 
 const MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 
-function forecastStorageKey(year: number) { return `forecast-data-${year}`; }
-
-function loadForecastData(year: number): Record<string, Record<number, { p: number; r: number }>> {
-  try {
-    const raw = localStorage.getItem(forecastStorageKey(year));
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-}
-
-function getForecastForMonth(year: number, month: number): number {
-  const data = loadForecastData(year);
-  let total = 0;
-  for (const aptKey of Object.keys(data)) {
-    const monthData = data[aptKey]?.[month];
-    if (monthData) total += monthData.p || 0;
-  }
-  return total;
-}
 
 function QuickActions() {
   const [, navigate] = useLocation();
@@ -1736,7 +1718,7 @@ function ExpiringLeasesTab({ leases, apartments }: { leases: Lease[]; apartments
 function RevenueForecastSection({ forecastData }: { forecastData: ForecastMonth[] }) {
   const cards = useMemo(() => {
     return forecastData.map(m => {
-      const forecast = getForecastForMonth(m.year, m.month);
+      const forecast = m.forecast || 0;
       const pct = forecast > 0 ? m.actual / forecast : 0;
       const remaining = Math.max(0, forecast - m.actual);
       const dailyNeeded = m.daysRemaining > 0 ? remaining / m.daysRemaining : 0;

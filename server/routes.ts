@@ -3788,6 +3788,22 @@ export async function registerRoutes(
       allSubleasePayments.push(...payments.filter(p => (p.category || '').toLowerCase() !== 'kaucja').map(p => ({ dueDate: p.dueDate, amount: p.amount, status: p.status })));
     }
 
+    const revForecasts = await storage.getRevenueForecasts(currentYear);
+    const forecastByMonth: Record<number, number> = {};
+    for (const f of revForecasts) {
+      if (f.apartmentId) {
+        forecastByMonth[f.month] = (forecastByMonth[f.month] || 0) + (Number(f.forecast) || 0);
+      }
+    }
+    const hasApartmentForecasts = Object.keys(forecastByMonth).length > 0;
+    if (!hasApartmentForecasts) {
+      for (const f of revForecasts) {
+        if (!f.apartmentId && f.locationName === "RAZEM") {
+          forecastByMonth[f.month] = (forecastByMonth[f.month] || 0) + (Number(f.forecast) || 0);
+        }
+      }
+    }
+
     const months: { year: number; month: number; label: string }[] = [];
     for (let i = 0; i < 12; i++) {
       months.push({ year: currentYear, month: i, label: "" });
@@ -3818,11 +3834,13 @@ export async function registerRoutes(
       }
 
       const actual = reservationRevenue + subleaseRevenue;
+      const forecast = forecastByMonth[m.month] || 0;
 
       return {
         year: m.year,
         month: m.month,
         actual,
+        forecast,
         reservationRevenue,
         subleaseRevenue,
         daysInMonth,
