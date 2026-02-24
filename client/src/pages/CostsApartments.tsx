@@ -259,7 +259,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [editEntryColor, setEditEntryColor] = useState("");
 
   const [locationTab, setLocationTab] = useState<string>(() => {
-    try { return localStorage.getItem("costs-apartments-location-tab") || "all"; } catch { return "all"; }
+    try { return localStorage.getItem("costs-apartments-location-tab") || "GRAND BALTIC"; } catch { return "GRAND BALTIC"; }
   });
 
   const dragCatRef = useRef<{ entryId: string; category: string } | null>(null);
@@ -919,15 +919,6 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
 
       {locationTabNames.length > 1 && (
         <div className="flex items-center gap-1 overflow-x-auto pb-1" data-testid="location-tabs">
-          <Button
-            variant={validLocationTab === "all" ? "default" : "outline"}
-            size="sm"
-            className="text-xs whitespace-nowrap"
-            onClick={() => handleLocationTabChange("all")}
-            data-testid="tab-all"
-          >
-            Wszystkie
-          </Button>
           {locationTabNames.map(name => (
             <Button
               key={name}
@@ -940,6 +931,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
               {name}
             </Button>
           ))}
+          <Button
+            variant={validLocationTab === "all" ? "default" : "outline"}
+            size="sm"
+            className="text-xs whitespace-nowrap"
+            onClick={() => handleLocationTabChange("all")}
+            data-testid="tab-all"
+          >
+            Wszystkie
+          </Button>
         </div>
       )}
 

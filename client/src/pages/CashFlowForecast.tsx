@@ -31,7 +31,6 @@ type CashFlowMonth = {
   expectedIncome: number;
   expectedSubleaseIncome: number;
   expectedExpenses: number;
-  expectedInstallments: number;
   netCashFlow: number;
 };
 
@@ -64,8 +63,7 @@ export default function CashFlowForecast() {
       month: m.monthName.substring(0, 3),
       "Przychody rezerwacje": m.expectedIncome,
       "Przychody podnajmy": m.expectedSubleaseIncome,
-      "Koszty stałe": m.expectedExpenses,
-      Raty: m.expectedInstallments,
+      "Koszty": m.expectedExpenses,
       "Przepływ netto": m.netCashFlow,
     }));
   }, [months]);
@@ -141,15 +139,9 @@ export default function CashFlowForecast() {
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
-                    dataKey="Koszty stałe"
+                    dataKey="Koszty"
                     stackId="expenses"
                     fill="hsl(142, 71%, 45%)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="Raty"
-                    stackId="expenses"
-                    fill="#f59e0b"
                     radius={[4, 4, 0, 0]}
                   />
                   <Line
@@ -218,12 +210,6 @@ export default function CashFlowForecast() {
                     Koszty
                   </TableHead>
                   <TableHead
-                    className="text-right px-3 py-2 min-w-[100px]"
-                    data-testid="th-cashflow-installments"
-                  >
-                    Raty
-                  </TableHead>
-                  <TableHead
                     className="text-right px-3 py-2 min-w-[120px]"
                     data-testid="th-cashflow-net"
                   >
@@ -233,10 +219,6 @@ export default function CashFlowForecast() {
               </TableHeader>
               <TableBody>
                 {months.map((month, idx) => {
-                  const totalIncome =
-                    month.expectedIncome + month.expectedSubleaseIncome;
-                  const totalExpenses =
-                    month.expectedExpenses + month.expectedInstallments;
                   return (
                     <TableRow
                       key={idx}
@@ -265,12 +247,6 @@ export default function CashFlowForecast() {
                         data-testid={`cell-costs-${idx}`}
                       >
                         {formatNum(month.expectedExpenses)} PLN
-                      </TableCell>
-                      <TableCell
-                        className="text-right px-3 py-2 tabular-nums text-red-600 dark:text-red-400"
-                        data-testid={`cell-installments-${idx}`}
-                      >
-                        {formatNum(month.expectedInstallments)} PLN
                       </TableCell>
                       <TableCell
                         className={`text-right px-3 py-2 tabular-nums font-bold ${netCashFlowColor(month.netCashFlow)}`}

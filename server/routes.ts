@@ -659,14 +659,51 @@ export async function registerRoutes(
           ne(reservations.status, "ANULOWANA"),
         ));
 
+      const activeSubleases = await db.select({
+        apartmentId: subleases.apartmentId,
+        apartmentIds: subleases.apartmentIds,
+        startDate: subleases.startDate,
+        endDate: subleases.endDate,
+      })
+        .from(subleases)
+        .where(and(
+          lte(subleases.startDate, endDate),
+          gte(subleases.endDate, startDate),
+          ne(subleases.status, "ANULOWANA"),
+        ));
+
+      const periodStart = new Date(startDate).getTime();
+
       const result = allApartments.map(apt => {
+        const occupiedDaySet = new Set<number>();
+
         const aptReservations = allReservations.filter(r => r.apartmentId === apt.id);
-        let occupiedDays = 0;
         for (const r of aptReservations) {
           const rStart = new Date(Math.max(new Date(r.startDate).getTime(), new Date(startDate).getTime()));
           const rEnd = new Date(Math.min(new Date(r.endDate).getTime(), new Date(endDate).getTime()));
-          occupiedDays += Math.max(0, Math.ceil((rEnd.getTime() - rStart.getTime()) / 86400000));
+          const days = Math.max(0, Math.ceil((rEnd.getTime() - rStart.getTime()) / 86400000));
+          for (let d = 0; d < days; d++) {
+            const dayNum = Math.floor((rStart.getTime() + d * 86400000 - periodStart) / 86400000);
+            occupiedDaySet.add(dayNum);
+          }
         }
+
+        const aptSubleases = activeSubleases.filter(s => {
+          if (s.apartmentId === apt.id) return true;
+          if (s.apartmentIds && Array.isArray(s.apartmentIds) && s.apartmentIds.includes(apt.id)) return true;
+          return false;
+        });
+        for (const s of aptSubleases) {
+          const sStart = new Date(Math.max(new Date(s.startDate).getTime(), new Date(startDate).getTime()));
+          const sEnd = new Date(Math.min(new Date(s.endDate).getTime(), new Date(endDate).getTime()));
+          const days = Math.max(0, Math.ceil((sEnd.getTime() - sStart.getTime()) / 86400000));
+          for (let d = 0; d < days; d++) {
+            const dayNum = Math.floor((sStart.getTime() + d * 86400000 - periodStart) / 86400000);
+            occupiedDaySet.add(dayNum);
+          }
+        }
+
+        const occupiedDays = occupiedDaySet.size;
         return {
           apartmentId: apt.id,
           apartmentName: apt.name,
@@ -699,7 +736,7 @@ export async function registerRoutes(
       const startDate = `${year}-01-01`;
       const endDate = `${year}-12-31`;
 
-      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name, location: apartments.location }).from(apartments);
 
       const yearReservations = await db.select({
         apartmentId: reservations.apartmentId,
@@ -712,22 +749,110 @@ export async function registerRoutes(
           ne(reservations.status, "ANULOWANA"),
         ));
 
-      const result = allApartments.map(apt => {
+      const yearSubleases = await db.select().from(subleases).where(and(
+        lte(subleases.startDate, endDate),
+        gte(subleases.endDate, startDate),
+        ne(subleases.status, "ZAKONCZONA"),
+      ));
+
+      const yearCosts = await db.select({
+        apartmentId: costForecasts.apartmentId,
+        forecast: costForecasts.forecast,
+        actual: costForecasts.actual,
+      })
+        .from(costForecasts)
+        .where(eq(costForecasts.year, year));
+
+      const subleaseRevenueByApt: Record<number, number> = {};
+      const yearStartDate = new Date(startDate);
+      const yearEndDate = new Date(endDate);
+
+      for (const sub of yearSubleases) {
+        const subStart = new Date(sub.startDate);
+        const subEnd = new Date(sub.endDate);
+        const effStart = subStart > yearStartDate ? subStart : yearStartDate;
+        const effEnd = subEnd < yearEndDate ? subEnd : yearEndDate;
+        const totalDays = Math.max(0, Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1);
+        const overlapDays = Math.max(0, Math.floor((effEnd.getTime() - effStart.getTime()) / 86400000) + 1);
+        if (totalDays === 0 || overlapDays === 0) continue;
+
+        const totalRent = Number(sub.rentAmount || 0);
+        const monthlyRent = totalRent;
+        const months = totalDays / 30.44;
+        const totalSubleaseValue = monthlyRent * months;
+        const proportionalRevenue = (overlapDays / totalDays) * totalSubleaseValue;
+
+        const aptIds: number[] = [];
+        if (sub.apartmentIds && sub.apartmentIds.length > 0) {
+          aptIds.push(...sub.apartmentIds);
+        } else if (sub.apartmentId) {
+          aptIds.push(sub.apartmentId);
+        }
+
+        const perAptRevenue = aptIds.length > 0 ? proportionalRevenue / aptIds.length : 0;
+        for (const aptId of aptIds) {
+          subleaseRevenueByApt[aptId] = (subleaseRevenueByApt[aptId] || 0) + perAptRevenue;
+        }
+      }
+
+      const costByApt: Record<number, number> = {};
+      for (const c of yearCosts) {
+        if (!c.apartmentId) continue;
+        const val = Number(c.actual || 0) > 0 ? Number(c.actual) : Number(c.forecast || 0);
+        costByApt[c.apartmentId] = (costByApt[c.apartmentId] || 0) + val;
+      }
+
+      const perAptData = allApartments.map(apt => {
         const aptReservations = yearReservations.filter(r => r.apartmentId === apt.id);
-        const revenue = aptReservations.reduce((s, r) => s + Number(r.price || 0), 0);
+        const reservationRevenue = aptReservations.reduce((s, r) => s + Number(r.price || 0), 0);
+        const subleaseRevenue = subleaseRevenueByApt[apt.id] || 0;
+        const totalRevenue = reservationRevenue + subleaseRevenue;
+        const cost = costByApt[apt.id] || 0;
+        const rentownosc = totalRevenue - cost;
         return {
           apartmentId: apt.id,
           apartmentName: apt.name,
-          revenue,
+          location: apt.location || '',
+          reservationRevenue,
+          subleaseRevenue: Math.round(subleaseRevenue * 100) / 100,
+          totalRevenue: Math.round(totalRevenue * 100) / 100,
+          cost: Math.round(cost * 100) / 100,
+          rentownosc: Math.round(rentownosc * 100) / 100,
           reservationCount: aptReservations.length,
         };
       });
 
-      result.sort((a, b) => b.revenue - a.revenue);
+      const grandBalticApts = perAptData.filter(a => a.location === 'GRAND BALTIC');
+      const otherApts = perAptData.filter(a => a.location !== 'GRAND BALTIC');
+
+      const result: any[] = [...otherApts];
+
+      if (grandBalticApts.length > 0) {
+        const grouped = {
+          apartmentId: -1,
+          apartmentName: `GRAND BALTIC (${grandBalticApts.length} lokali)`,
+          location: 'GRAND BALTIC',
+          reservationRevenue: grandBalticApts.reduce((s, a) => s + a.reservationRevenue, 0),
+          subleaseRevenue: Math.round(grandBalticApts.reduce((s, a) => s + a.subleaseRevenue, 0) * 100) / 100,
+          totalRevenue: Math.round(grandBalticApts.reduce((s, a) => s + a.totalRevenue, 0) * 100) / 100,
+          cost: Math.round(grandBalticApts.reduce((s, a) => s + a.cost, 0) * 100) / 100,
+          rentownosc: Math.round(grandBalticApts.reduce((s, a) => s + a.rentownosc, 0) * 100) / 100,
+          reservationCount: grandBalticApts.reduce((s, a) => s + a.reservationCount, 0),
+        };
+        result.push(grouped);
+      }
+
+      result.sort((a, b) => b.rentownosc - a.rentownosc);
+
+      const totalRevenue = result.reduce((s, r) => s + r.totalRevenue, 0);
+      const totalCost = result.reduce((s, r) => s + r.cost, 0);
+      const totalProfit = result.reduce((s, r) => s + r.rentownosc, 0);
 
       res.json({
         apartments: result,
-        totalRevenue: result.reduce((s, r) => s + r.revenue, 0),
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        totalCost: Math.round(totalCost * 100) / 100,
+        totalProfit: Math.round(totalProfit * 100) / 100,
       });
     } catch (err) {
       console.error("Profitability error:", err);
@@ -759,6 +884,40 @@ export async function registerRoutes(
         for (const r of yearReservations) {
           const month = new Date(r.startDate).getMonth();
           monthlyRevenue[month] += Number(r.price || 0);
+        }
+
+        const yearSubleases = await db.select({
+          startDate: subleases.startDate,
+          endDate: subleases.endDate,
+          rentAmount: subleases.rentAmount,
+        })
+          .from(subleases)
+          .where(and(
+            lte(subleases.startDate, `${year}-12-31`),
+            gte(subleases.endDate, `${year}-01-01`),
+            ne(subleases.status, "ZAKONCZONA"),
+          ));
+
+        for (const sub of yearSubleases) {
+          const monthlyRent = Number(sub.rentAmount || 0);
+          if (monthlyRent <= 0) continue;
+          const subStart = new Date(sub.startDate);
+          const subEnd = new Date(sub.endDate);
+
+          for (let m = 0; m < 12; m++) {
+            const monthStart = new Date(year, m, 1);
+            const monthEnd = new Date(year, m + 1, 0);
+            const daysInMonth = monthEnd.getDate();
+
+            const overlapStart = subStart > monthStart ? subStart : monthStart;
+            const overlapEnd = subEnd < monthEnd ? subEnd : monthEnd;
+
+            if (overlapStart <= overlapEnd) {
+              const overlapDays = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / 86400000) + 1;
+              const proportionalRent = (monthlyRent / daysInMonth) * overlapDays;
+              monthlyRevenue[m] += proportionalRent;
+            }
+          }
         }
 
         result[year] = monthlyRevenue;
@@ -4729,21 +4888,68 @@ export async function registerRoutes(
           ne(reservations.status, "ANULOWANA"),
         ));
 
-      const yearExpenses = await db.select({
-        apartmentId: expenses.apartmentId,
-        amount: expenses.amount,
+      const yearCostForecasts = await db.select({
+        apartmentId: costForecasts.apartmentId,
+        forecast: costForecasts.forecast,
+        actual: costForecasts.actual,
       })
-        .from(expenses)
+        .from(costForecasts)
+        .where(eq(costForecasts.year, year));
+
+      const yearSubleases = await db.select({
+        id: subleases.id,
+        apartmentId: subleases.apartmentId,
+        apartmentIds: subleases.apartmentIds,
+        startDate: subleases.startDate,
+        endDate: subleases.endDate,
+        rentAmount: subleases.rentAmount,
+        status: subleases.status,
+      })
+        .from(subleases)
         .where(and(
-          gte(expenses.date, startDate),
-          lte(expenses.date, endDate),
+          lte(subleases.startDate, endDate),
+          gte(subleases.endDate, startDate),
+          ne(subleases.status, "ZAKONCZONA"),
         ));
 
       const result = allApartments.map(apt => {
         const aptReservations = yearReservations.filter(r => r.apartmentId === apt.id);
-        const revenue = aptReservations.reduce((s, r) => s + Number(r.price || 0), 0);
-        const aptExpenses = yearExpenses.filter(e => e.apartmentId === apt.id);
-        const expenseTotal = aptExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+        const reservationRevenue = aptReservations.reduce((s, r) => s + Number(r.price || 0), 0);
+
+        let subleaseRevenue = 0;
+        for (const sub of yearSubleases) {
+          const aptIds: number[] = [];
+          if (sub.apartmentId) aptIds.push(sub.apartmentId);
+          if (sub.apartmentIds) {
+            for (const aid of sub.apartmentIds) {
+              if (aid && !aptIds.includes(aid)) aptIds.push(aid);
+            }
+          }
+          if (!aptIds.includes(apt.id)) continue;
+
+          const subStart = new Date(Math.max(new Date(sub.startDate).getTime(), new Date(startDate).getTime()));
+          const subEnd = new Date(Math.min(new Date(sub.endDate).getTime(), new Date(endDate).getTime()));
+          const totalSubDays = Math.max(0, Math.ceil((new Date(sub.endDate).getTime() - new Date(sub.startDate).getTime()) / 86400000));
+          const overlapDays = Math.max(0, Math.ceil((subEnd.getTime() - subStart.getTime()) / 86400000));
+
+          if (totalSubDays > 0 && overlapDays > 0) {
+            const monthlyRent = Number(sub.rentAmount || 0);
+            const totalMonths = totalSubDays / 30.44;
+            const totalRent = monthlyRent * totalMonths;
+            const proportionalRent = totalRent * (overlapDays / totalSubDays);
+            const perApartment = proportionalRent / aptIds.length;
+            subleaseRevenue += perApartment;
+          }
+        }
+
+        const totalRevenue = reservationRevenue + subleaseRevenue;
+
+        const aptCosts = yearCostForecasts.filter(c => c.apartmentId === apt.id);
+        const expenseTotal = aptCosts.reduce((s, c) => {
+          const actual = Number(c.actual || 0);
+          const forecast = Number(c.forecast || 0);
+          return s + (actual > 0 ? actual : forecast);
+        }, 0);
 
         let occupiedDays = 0;
         for (const r of aptReservations) {
@@ -4755,11 +4961,13 @@ export async function registerRoutes(
         return {
           apartmentId: apt.id,
           apartmentName: apt.name,
-          revenue: Math.round(revenue * 100) / 100,
+          revenue: Math.round(totalRevenue * 100) / 100,
+          reservationRevenue: Math.round(reservationRevenue * 100) / 100,
+          subleaseRevenue: Math.round(subleaseRevenue * 100) / 100,
           expenses: Math.round(expenseTotal * 100) / 100,
           reservationCount: aptReservations.length,
           occupancyRate: Math.round((occupiedDays / daysInYear) * 100 * 100) / 100,
-          netProfit: Math.round((revenue - expenseTotal) * 100) / 100,
+          netProfit: Math.round((totalRevenue - expenseTotal) * 100) / 100,
         };
       });
 
@@ -4942,23 +5150,42 @@ export async function registerRoutes(
           ));
         const expectedSubleaseIncome = activeSubleases.reduce((s, sl) => s + Number(sl.rentAmount || 0), 0);
 
-        const costPayments = await db.select({ amount: costSchedulePayments.amount })
-          .from(costSchedulePayments)
+        const monthIdx = month - 1;
+        const costForecastRows = await db.select({ forecast: costForecasts.forecast, actual: costForecasts.actual })
+          .from(costForecasts)
           .where(and(
-            gte(costSchedulePayments.dueDate, monthStart),
-            lte(costSchedulePayments.dueDate, monthEnd),
-            eq(costSchedulePayments.status, "NIEOPLACONE"),
+            eq(costForecasts.year, year),
+            eq(costForecasts.month, monthIdx),
           ));
-        const expectedExpenses = costPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+        const costForecastTotal = costForecastRows.reduce((s, r) => {
+          const act = Number(r.actual || 0);
+          return s + (act > 0 ? act : Number(r.forecast || 0));
+        }, 0);
 
-        const instPayments = await db.select({ amount: installmentPayments.amount })
-          .from(installmentPayments)
+        const opCostRows = await db.select({ forecast: operationalCostForecasts.forecast, actual: operationalCostForecasts.actual })
+          .from(operationalCostForecasts)
           .where(and(
-            gte(installmentPayments.dueDate, monthStart),
-            lte(installmentPayments.dueDate, monthEnd),
-            eq(installmentPayments.status, "NIEOPLACONE"),
+            eq(operationalCostForecasts.year, year),
+            eq(operationalCostForecasts.month, monthIdx),
+            eq(operationalCostForecasts.archived, false),
           ));
-        const expectedInstallments = instPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+        const opCostTotal = opCostRows.reduce((s, r) => {
+          const act = Number(r.actual || 0);
+          return s + (act > 0 ? act : Number(r.forecast || 0));
+        }, 0);
+
+        const varCostRows = await db.select({ forecast: variableCostForecasts.forecast, actual: variableCostForecasts.actual })
+          .from(variableCostForecasts)
+          .where(and(
+            eq(variableCostForecasts.year, year),
+            eq(variableCostForecasts.month, monthIdx),
+          ));
+        const varCostTotal = varCostRows.reduce((s, r) => {
+          const act = Number(r.actual || 0);
+          return s + (act > 0 ? act : Number(r.forecast || 0));
+        }, 0);
+
+        const expectedExpenses = costForecastTotal + opCostTotal + varCostTotal;
 
         months.push({
           year,
@@ -4967,8 +5194,7 @@ export async function registerRoutes(
           expectedIncome: Math.round(expectedIncome * 100) / 100,
           expectedSubleaseIncome: Math.round(expectedSubleaseIncome * 100) / 100,
           expectedExpenses: Math.round(expectedExpenses * 100) / 100,
-          expectedInstallments: Math.round(expectedInstallments * 100) / 100,
-          netCashFlow: Math.round((expectedIncome + expectedSubleaseIncome - expectedExpenses - expectedInstallments) * 100) / 100,
+          netCashFlow: Math.round((expectedIncome + expectedSubleaseIncome - expectedExpenses) * 100) / 100,
         });
       }
 
