@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { CostsExpensesContent } from "@/pages/CostsExpenses";
+import { CostsApartmentsContent } from "@/pages/CostsApartments";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -33,97 +34,6 @@ type CostsSummaryResponse = {
 function formatNum(v: number): string {
   if (v === 0) return "—";
   return v.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
-
-function ApartmentCostsTab({ data, currentMonth }: { data: CostsSummaryResponse; currentMonth: number }) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
-  const locMap = useMemo(() => {
-    const map = new Map<string, typeof data.apartments>();
-    for (const apt of data.apartments) {
-      const loc = data.locations.find(l => l.id === apt.locationId);
-      const name = loc?.name || "Bez lokalizacji";
-      if (!map.has(name)) map.set(name, []);
-      map.get(name)!.push(apt);
-    }
-    return map;
-  }, [data]);
-
-  return (
-    <div className="space-y-4">
-      {Array.from(locMap.entries()).map(([locName, apts]) => {
-        const isCollapsed = collapsed[locName] ?? false;
-        const locTotals: Record<number, number> = {};
-        for (let m = 0; m < 12; m++) {
-          locTotals[m] = apts.reduce((s, a) => s + (data.apartmentCosts[a.id]?.[m] || 0), 0);
-        }
-        const yearTotal = Object.values(locTotals).reduce((s, v) => s + v, 0);
-
-        return (
-          <Card key={locName} data-testid={`apt-costs-${locName}`}>
-            <CardContent className="pt-4">
-              <button
-                className="flex items-center gap-2 w-full text-left py-2 font-semibold text-sm"
-                onClick={() => setCollapsed(p => ({ ...p, [locName]: !p[locName] }))}
-                data-testid={`toggle-loc-costs-${locName}`}
-              >
-                {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                {locName}
-                <Badge variant="secondary" className="ml-2">{apts.length}</Badge>
-                <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                  Razem: {formatNum(yearTotal)} PLN
-                </span>
-              </button>
-
-              {!isCollapsed && (
-                <div className="overflow-x-auto mt-2">
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b bg-muted/30 sticky top-0 z-10">
-                        <th className="text-left p-2 min-w-[160px] font-medium">Apartament</th>
-                        {MONTHS.map((m, i) => (
-                          <th key={i} className={`text-right p-2 min-w-[75px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                            {m}
-                          </th>
-                        ))}
-                        <th className="text-right p-2 min-w-[90px] font-bold">Razem</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {apts.map(apt => {
-                        const costs = data.apartmentCosts[apt.id] || {};
-                        const total = Object.values(costs).reduce((s, v) => s + v, 0);
-                        return (
-                          <tr key={apt.id} className="border-b" data-testid={`apt-cost-row-${apt.id}`}>
-                            <td className="p-2 font-medium">{apt.name}</td>
-                            {MONTHS.map((_, i) => (
-                              <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                                {formatNum(costs[i] || 0)}
-                              </td>
-                            ))}
-                            <td className="p-2 text-right font-bold tabular-nums">{formatNum(total)}</td>
-                          </tr>
-                        );
-                      })}
-                      <tr className="border-t-2 font-bold bg-muted/20">
-                        <td className="p-2">Razem {locName}</td>
-                        {MONTHS.map((_, i) => (
-                          <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                            {formatNum(locTotals[i] || 0)}
-                          </td>
-                        ))}
-                        <td className="p-2 text-right tabular-nums">{formatNum(yearTotal)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
-  );
 }
 
 function VariableCostsTab({ data, year, currentMonth }: { data: CostsSummaryResponse; year: number; currentMonth: number }) {
@@ -426,7 +336,7 @@ export default function V2Koszty() {
           <TabsTrigger value="zmienne" data-testid="tab-var-costs">Zmienne</TabsTrigger>
         </TabsList>
         <TabsContent value="apartamentowe">
-          {data && <ApartmentCostsTab data={data} currentMonth={year === currentYear ? currentMonth : -1} />}
+          <CostsApartmentsContent embedded externalYear={year} />
         </TabsContent>
         <TabsContent value="operacyjne">
           <CostsExpensesContent embedded externalYear={year} />

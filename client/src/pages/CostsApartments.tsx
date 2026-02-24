@@ -1,11 +1,11 @@
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Apartment, Location } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, Calculator, BarChart3 } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, FileDown, Calculator, BarChart3, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
@@ -95,19 +95,37 @@ interface CostEntry {
   apartmentIds: number[];
 }
 
-export default function CostsApartments() {
+type ContractCostItem = { name: string; monthlyAmount: number; contractId: number };
+type ContractCostData = Record<string, { apartmentId: number; apartmentName: string; location: string; items: ContractCostItem[] }>;
+type ConflictEntry = { entryId: string; category: string; existingValue: number; contractValue: number; contractName: string };
+
+export function CostsApartmentsContent({ embedded = false, externalYear }: { embedded?: boolean; externalYear?: number }) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
-  const [year, setYear] = useState(currentYear);
-  const [data, setData] = useState(() => loadData(year));
+  const [year, setYear] = useState(externalYear ?? currentYear);
+  const [data, setData] = useState(() => loadData(externalYear ?? currentYear));
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [categoriesMap, setCategoriesMap] = useState<CategoriesMap>(() => loadCategories());
   const [editingEntry, setEditingEntry] = useState<CostEntry | null>(null);
   const [editCategories, setEditCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [isImportingContracts, setIsImportingContracts] = useState(false);
   const [compareYear, setCompareYear] = useState<number | null>(null);
+  const [conflicts, setConflicts] = useState<ConflictEntry[]>([]);
+  const [pendingContractData, setPendingContractData] = useState<{ entries: { key: string; month: number; value: number }[] } | null>(null);
+  const [conflictResolutions, setConflictResolutions] = useState<Record<string, "existing" | "contract">>({});
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (externalYear !== undefined && externalYear !== year) {
+      setYear(externalYear);
+      setData(loadData(externalYear));
+      if (compareYear === externalYear) {
+        setCompareYear(null);
+      }
+    }
+  }, [externalYear]);
 
   const handleImportFromExcel = async () => {
     setIsImporting(true);
@@ -139,6 +157,120 @@ export default function CostsApartments() {
     } finally {
       setIsImporting(false);
     }
+  };
+
+  const handleImportFromContracts = async () => {
+    setIsImportingContracts(true);
+    try {
+      const res = await fetch(`/api/apartment-contract-costs?year=${year}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Brak danych');
+      const contractData: ContractCostData = await res.json();
+
+      if (Object.keys(contractData).length === 0) {
+        toast({ title: "Brak danych", description: "Nie znaleziono aktywnych umów z właścicielami na ten rok" });
+        setIsImportingContracts(false);
+        return;
+      }
+
+      const freshData = loadData(year);
+      const newCats = { ...categoriesMap };
+      const entriesToApply: { key: string; month: number; value: number }[] = [];
+      const foundConflicts: ConflictEntry[] = [];
+      const seenConflictKeys = new Set<string>();
+
+      for (const [entryId, contractEntry] of Object.entries(contractData)) {
+        const existingCats = newCats[entryId] || (entryId === "gb-all" ? [...DEFAULT_CATEGORIES_GRAND_BALTIC] : [...DEFAULT_CATEGORIES_INDIVIDUAL]);
+        const updatedCats = [...existingCats];
+
+        for (const item of contractEntry.items) {
+          if (!updatedCats.includes(item.name)) {
+            updatedCats.push(item.name);
+          }
+          const key = `${entryId}__${item.name}`;
+          const conflictKey = `${entryId}||${item.name}`;
+          let hasConflict = false;
+          let conflictExistingValue = 0;
+
+          for (let m = 0; m < 12; m++) {
+            const existingCell = freshData[key]?.[m];
+            const existingP = existingCell?.p || 0;
+
+            if (existingP > 0 && existingP !== item.monthlyAmount) {
+              hasConflict = true;
+              conflictExistingValue = existingP;
+            }
+          }
+
+          if (hasConflict && !seenConflictKeys.has(conflictKey)) {
+            seenConflictKeys.add(conflictKey);
+            foundConflicts.push({
+              entryId,
+              category: item.name,
+              existingValue: conflictExistingValue,
+              contractValue: item.monthlyAmount,
+              contractName: contractEntry.apartmentName,
+            });
+          } else if (!hasConflict) {
+            for (let m = 0; m < 12; m++) {
+              entriesToApply.push({ key, month: m, value: item.monthlyAmount });
+            }
+          }
+        }
+
+        newCats[entryId] = updatedCats;
+      }
+
+      if (foundConflicts.length > 0) {
+        setConflicts(foundConflicts);
+        setPendingContractData({ entries: entriesToApply });
+        setCategoriesMap(newCats);
+        saveCategories(newCats);
+        const defaultResolutions: Record<string, "existing" | "contract"> = {};
+        foundConflicts.forEach(c => { defaultResolutions[`${c.entryId}||${c.category}`] = "contract"; });
+        setConflictResolutions(defaultResolutions);
+      } else {
+        setCategoriesMap(newCats);
+        saveCategories(newCats);
+        applyContractEntries(entriesToApply);
+        toast({ title: "Import zakończony", description: `Zaimportowano koszty z ${Object.keys(contractData).length} pozycji umów` });
+      }
+    } catch (err) {
+      toast({ title: "Błąd importu", description: "Nie udało się zaimportować danych z umów", variant: "destructive" });
+    } finally {
+      setIsImportingContracts(false);
+    }
+  };
+
+  const applyContractEntries = (entries: { key: string; month: number; value: number }[]) => {
+    const freshData = loadData(year);
+    const next = { ...freshData };
+    for (const e of entries) {
+      if (!next[e.key]) next[e.key] = {};
+      if (!next[e.key][e.month]) next[e.key][e.month] = { p: 0, r: 0 };
+      next[e.key][e.month] = { ...next[e.key][e.month], p: e.value };
+    }
+    saveData(year, next);
+    setData(next);
+  };
+
+  const resolveConflicts = () => {
+    const allEntries = [...(pendingContractData?.entries || [])];
+
+    conflicts.forEach(c => {
+      const resKey = `${c.entryId}||${c.category}`;
+      const resolution = conflictResolutions[resKey] || "contract";
+      if (resolution === "contract") {
+        const key = `${c.entryId}__${c.category}`;
+        for (let m = 0; m < 12; m++) {
+          allEntries.push({ key, month: m, value: c.contractValue });
+        }
+      }
+    });
+
+    applyContractEntries(allEntries);
+    setConflicts([]);
+    setPendingContractData(null);
+    toast({ title: "Import zakończony", description: "Koszty z umów zostały zaimportowane" });
   };
 
   const { data: apartments = [] } = useQuery<Apartment[]>({ queryKey: ["/api/apartments"] });
@@ -323,47 +455,59 @@ export default function CostsApartments() {
   const fullscreen = useFullscreen();
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <PageHeader title="Koszty apartamentów" description="Analiza kosztów w podziale na apartamenty." icon={Calculator} />
-        <div className="flex items-center gap-2 flex-wrap">
-          <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
-          <Button
-            variant="outline"
-            onClick={handleImportFromExcel}
-            disabled={isImporting}
-            data-testid="button-import-costs"
-          >
-            <FolderInput className="h-4 w-4 mr-1" />
-            {isImporting ? "Importowanie..." : "Import z Excel"}
-          </Button>
-          <Select value={String(year)} onValueChange={handleYearChange}>
-            <SelectTrigger className="w-[100px]" data-testid="select-year">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).map(y => (
-                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={compareYear !== null ? String(compareYear) : "none"} onValueChange={(v) => setCompareYear(v === "none" ? null : Number(v))}>
-            <SelectTrigger className="w-[140px]" data-testid="select-compare-year">
-              <SelectValue placeholder="Porównaj z..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">— Brak —</SelectItem>
-              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).filter(y => y !== year).map(y => (
-                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <div className={embedded ? "space-y-4" : "p-6 space-y-4"}>
+      {!embedded && (
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <PageHeader title="Koszty apartamentów" description="Analiza kosztów w podziale na apartamenty." icon={Calculator} />
+          <div className="flex items-center gap-2 flex-wrap">
+            <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
+            <Button
+              variant="outline"
+              onClick={handleImportFromExcel}
+              disabled={isImporting}
+              data-testid="button-import-costs"
+            >
+              <FolderInput className="h-4 w-4 mr-1" />
+              {isImporting ? "Importowanie..." : "Import z Excel"}
+            </Button>
+            <Select value={String(year)} onValueChange={handleYearChange}>
+              <SelectTrigger className="w-[100px]" data-testid="select-year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={compareYear !== null ? String(compareYear) : "none"} onValueChange={(v) => setCompareYear(v === "none" ? null : Number(v))}>
+              <SelectTrigger className="w-[140px]" data-testid="select-compare-year">
+                <SelectValue placeholder="Porównaj z..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Brak —</SelectItem>
+                {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).filter(y => y !== year).map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex items-center gap-2 mb-2">
         <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart-costs">
           <BarChart3 className="mr-1 h-3 w-3" /> {showChart ? "Ukryj wykres" : "Pokaż wykres"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleImportFromContracts}
+          disabled={isImportingContracts}
+          data-testid="button-import-from-contracts"
+        >
+          <FileDown className="mr-1 h-3 w-3" />
+          {isImportingContracts ? "Importowanie..." : "Import z umów"}
         </Button>
       </div>
 
@@ -720,6 +864,60 @@ export default function CostsApartments() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={conflicts.length > 0} onOpenChange={(open) => { if (!open) { setConflicts([]); setPendingContractData(null); } }}>
+        <DialogContent className="sm:max-w-[600px]" aria-describedby="conflict-dialog-desc">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Wykryto konflikty wartości
+            </DialogTitle>
+          </DialogHeader>
+          <p id="conflict-dialog-desc" className="text-sm text-muted-foreground">
+            Dla poniższych pozycji wartości prognozowane w arkuszu różnią się od wartości w umowach. Wybierz, którą wartość zachować:
+          </p>
+          <div className="max-h-[400px] overflow-y-auto space-y-2">
+            {conflicts.map(c => {
+              const resKey = `${c.entryId}||${c.category}`;
+              return (
+                <div key={resKey} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">{c.contractName} — {c.category}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`conflict-${resKey}`}
+                        checked={conflictResolutions[resKey] === "existing"}
+                        onChange={() => setConflictResolutions(p => ({ ...p, [resKey]: "existing" }))}
+                      />
+                      <span>Obecna: <strong>{c.existingValue.toLocaleString("pl-PL")} zł</strong></span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`conflict-${resKey}`}
+                        checked={conflictResolutions[resKey] === "contract"}
+                        onChange={() => setConflictResolutions(p => ({ ...p, [resKey]: "contract" }))}
+                      />
+                      <span>Z umowy: <strong>{c.contractValue.toLocaleString("pl-PL")} zł</strong></span>
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConflicts([]); setPendingContractData(null); }} data-testid="button-cancel-conflicts">Anuluj</Button>
+            <Button onClick={resolveConflicts} data-testid="button-resolve-conflicts">Zastosuj</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+export default function CostsApartments() {
+  return <CostsApartmentsContent />;
 }

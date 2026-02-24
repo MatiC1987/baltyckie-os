@@ -1780,6 +1780,77 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/apartment-contract-costs', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const contracts = await storage.getOwnerContracts({ status: 'AKTYWNA' });
+      const allAllocations = await db.select().from(ownerContractApartments);
+      const allApartments = await storage.getApartments();
+      const allLocations = await storage.getLocations();
+
+      const result: Record<string, { apartmentId: number; apartmentName: string; location: string; items: { name: string; monthlyAmount: number; contractId: number }[] }> = {};
+
+      for (const contract of contracts) {
+        const startDate = contract.startDate ? new Date(contract.startDate) : null;
+        const endDate = contract.endDate ? new Date(contract.endDate) : null;
+
+        const yearStart = new Date(year, 0, 1);
+        const yearEnd = new Date(year, 11, 31);
+        if (startDate && startDate > yearEnd) continue;
+        if (endDate && endDate < yearStart) continue;
+
+        const contractAllocations = allAllocations.filter(a => a.contractId === contract.id);
+        const aptEntries: { aptId: number; rent: number; fees: number }[] = [];
+
+        if (contractAllocations.length > 0) {
+          for (const alloc of contractAllocations) {
+            aptEntries.push({
+              aptId: alloc.apartmentId,
+              rent: Number(alloc.rentAmount || contract.monthlyRent || 0),
+              fees: Number(alloc.additionalFeesAmount || contract.additionalFees || 0),
+            });
+          }
+        } else if (contract.apartmentId) {
+          aptEntries.push({
+            aptId: contract.apartmentId,
+            rent: Number(contract.monthlyRent || 0),
+            fees: Number(contract.additionalFees || 0),
+          });
+        }
+
+        for (const entry of aptEntries) {
+          const apt = allApartments.find(a => a.id === entry.aptId);
+          if (!apt || apt.active === false) continue;
+
+          const loc = allLocations.find(l => l.name === apt.location);
+          const locName = apt.location || "Inne";
+          const isGB = locName === "GRAND BALTIC";
+          const key = isGB ? "gb-all" : `apt-${apt.id}`;
+
+          if (!result[key]) {
+            result[key] = {
+              apartmentId: apt.id,
+              apartmentName: isGB ? "GRAND BALTIC" : apt.name,
+              location: locName,
+              items: [],
+            };
+          }
+
+          if (entry.rent > 0) {
+            result[key].items.push({ name: "RATA DLA WŁAŚCICIELA", monthlyAmount: entry.rent, contractId: contract.id });
+          }
+          if (entry.fees > 0) {
+            result[key].items.push({ name: "OPŁATY DODATKOWE", monthlyAmount: entry.fees, contractId: contract.id });
+          }
+        }
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Excel export endpoint
   app.get('/api/forecasts/export-excel', isAuthenticated, async (req, res) => {
     try {
