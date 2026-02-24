@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 import {
   ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight,
-  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3,
+  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3, Archive, RotateCcw,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
@@ -282,6 +282,11 @@ export default function CostsExpenses() {
     [costSchedules, costSchedulePayments, selectedYear]
   );
 
+  const [showArchived, setShowArchived] = useState(false);
+
+  const activeCategories = useMemo(() => categories.filter(c => !c.archived), [categories]);
+  const archivedCategories = useMemo(() => categories.filter(c => c.archived), [categories]);
+
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -447,6 +452,18 @@ export default function CostsExpenses() {
     setCategories(newCats);
     saveCategories(newCats);
   }, []);
+
+  const handleArchiveCategory = useCallback((catId: string) => {
+    const newCats = categories.map(c => c.id === catId ? { ...c, archived: true } : c);
+    updateCategories(newCats);
+    toast({ title: "Zarchiwizowano kategorię" });
+  }, [categories, updateCategories, toast]);
+
+  const handleRestoreCategory = useCallback((catId: string) => {
+    const newCats = categories.map(c => c.id === catId ? { ...c, archived: false } : c);
+    updateCategories(newCats);
+    toast({ title: "Przywrócono kategorię" });
+  }, [categories, updateCategories, toast]);
 
   const handleCatDragStart = useCallback((catId: string) => {
     dragCatRef.current = catId;
@@ -786,17 +803,17 @@ export default function CostsExpenses() {
   const grandTotal = useMemo(() => {
     let prognoza = 0;
     let rzeczywiste = 0;
-    categories.forEach(cat => {
+    activeCategories.forEach(cat => {
       const s = getCategoryAnnualSummary(cat);
       prognoza += s.prognoza;
       rzeczywiste += s.rzeczywiste;
     });
     return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
-  }, [categories, getCategoryAnnualSummary]);
+  }, [activeCategories, getCategoryAnnualSummary]);
 
   const expenseHeatMax = useMemo(() => {
     let max = 0;
-    categories.forEach(cat => {
+    activeCategories.forEach(cat => {
       cat.items.forEach((_, idx) => {
         for (let m = 0; m < 12; m++) {
           const rVal = getCellValue(makeCellKey(cat.id, idx, m, "rzeczywiste"));
@@ -805,7 +822,7 @@ export default function CostsExpenses() {
       });
     });
     return max;
-  }, [categories, getCellValue]);
+  }, [activeCategories, getCellValue]);
 
   const getItemSparklineData = useCallback((catId: string, itemIdx: number): number[] => {
     return Array.from({ length: 12 }, (_, m) => getCellValue(makeCellKey(catId, itemIdx, m, "rzeczywiste")));
@@ -816,14 +833,14 @@ export default function CostsExpenses() {
     return Array.from({ length: 12 }, (_, m) => {
       let prognoza = 0;
       let rzeczywiste = 0;
-      categories.forEach(cat => {
+      activeCategories.forEach(cat => {
         const s = getCategorySummary(cat, m);
         prognoza += s.prognoza;
         rzeczywiste += s.rzeczywiste;
       });
       return { name: MONTHS_SHORT_CHART[m], Prognoza: Math.round(prognoza), Rzeczywiste: Math.round(rzeczywiste) };
     });
-  }, [categories, getCategorySummary]);
+  }, [activeCategories, getCategorySummary]);
 
   const [showChart, setShowChart] = useState(false);
   const fullscreen = useFullscreen();
@@ -855,7 +872,7 @@ export default function CostsExpenses() {
     if (compareYear === null) return Array(12).fill(0) as number[];
     return Array.from({ length: 12 }, (_, m) => {
       let total = 0;
-      categories.forEach(cat => {
+      activeCategories.forEach(cat => {
         cat.items.forEach((_, idx) => {
           const key = makeCellKey(cat.id, idx, m, "rzeczywiste");
           if (key in compareScheduleOverlay) {
@@ -867,18 +884,18 @@ export default function CostsExpenses() {
       });
       return total;
     });
-  }, [compareYear, categories, compareCellData, compareScheduleOverlay]);
+  }, [compareYear, activeCategories, compareCellData, compareScheduleOverlay]);
 
   const currentMonthlyTotals = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
       let total = 0;
-      categories.forEach(cat => {
+      activeCategories.forEach(cat => {
         const s = getCategorySummary(cat, m);
         total += s.rzeczywiste;
       });
       return total;
     });
-  }, [categories, getCategorySummary]);
+  }, [activeCategories, getCategorySummary]);
 
   const yoyChartData = useMemo(() => {
     if (compareYear === null) return [];
@@ -1168,7 +1185,7 @@ export default function CostsExpenses() {
             </tr>
           </thead>
           <tbody>
-            {categories.map(cat => {
+            {activeCategories.map(cat => {
               const isCollapsed = collapsedCategories.has(cat.id);
               const annualCat = getCategoryAnnualSummary(cat);
               const isDraggingCat = dragCatId === cat.id;
@@ -1209,6 +1226,14 @@ export default function CostsExpenses() {
                           data-testid={`button-add-item-${cat.id}`}
                         >
                           <Plus className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleArchiveCategory(cat.id); }}
+                          className="opacity-40 hover:opacity-100 p-0.5 rounded shrink-0"
+                          title="Archiwizuj kategorię"
+                          data-testid={`btn-archive-${cat.id}`}
+                        >
+                          <Archive className="h-3 w-3" />
                         </button>
                         <button
                           onClick={(e) => {
@@ -1385,7 +1410,7 @@ export default function CostsExpenses() {
               {Array.from({ length: 12 }, (_, m) => {
                 let prognoza = 0;
                 let rzeczywiste = 0;
-                categories.forEach(cat => {
+                activeCategories.forEach(cat => {
                   const s = getCategorySummary(cat, m);
                   prognoza += s.prognoza;
                   rzeczywiste += s.rzeczywiste;
@@ -1407,6 +1432,120 @@ export default function CostsExpenses() {
         </table>
       </div>
       </FullscreenWrapper>
+
+      {archivedCategories.length > 0 && (
+        <div className="mt-4" data-testid="archived-operational-costs">
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-2"
+            data-testid="toggle-archive"
+          >
+            {showArchived ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            <Archive className="h-4 w-4" />
+            ARCHIWUM
+            <Badge variant="secondary" className="text-xs">{archivedCategories.length}</Badge>
+          </button>
+          {showArchived && (
+            <div className="rounded-md border border-border bg-card overflow-x-auto opacity-60">
+              <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-muted/80 dark:bg-muted/50">
+                    <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+                      Pozycja
+                    </th>
+                    {MONTHS_SHORT.map((m, i) => (
+                      <th key={i} colSpan={3} className="border-b border-r-2 border-border px-1 py-1 text-center font-bold">
+                        {m}
+                      </th>
+                    ))}
+                    <th colSpan={3} className="border-b border-border px-1 py-1 text-center font-bold bg-muted dark:bg-muted/70">
+                      ROCZNIE
+                    </th>
+                  </tr>
+                  <tr className="bg-muted/60 dark:bg-muted/40">
+                    {[...Array(13)].map((_, mi) => (
+                      <Fragment key={mi}>
+                        <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">P</th>
+                        <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">R</th>
+                        <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
+                      </Fragment>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedCategories.map(cat => {
+                    const isCollapsed = collapsedCategories.has(cat.id);
+                    const annualCat = getCategoryAnnualSummary(cat);
+                    return (
+                      <Fragment key={cat.id}>
+                        <tr className={`${cat.color} text-white select-none`} data-testid={`row-archived-category-${cat.id}`}>
+                          <td className={`sticky left-0 z-20 ${cat.color} border-b border-r border-border/30 px-1 py-1 font-bold`}>
+                            <div className="flex items-center gap-0.5">
+                              <span className="cursor-pointer shrink-0" onClick={() => toggleCategory(cat.id)}>
+                                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                              </span>
+                              <span className="truncate flex-1 min-w-0">{cat.title}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRestoreCategory(cat.id); }}
+                                className="opacity-60 hover:opacity-100 p-0.5 rounded shrink-0"
+                                title="Przywróć kategorię"
+                                data-testid={`btn-restore-${cat.id}`}
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </td>
+                          {Array.from({ length: 12 }, (_, m) => {
+                            const s = getCategorySummary(cat, m);
+                            return (
+                              <Fragment key={m}>
+                                <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
+                                <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.rzeczywiste)}</td>
+                                <td className={`border-b border-r-2 border-border/30 px-1 py-1 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
+                              </Fragment>
+                            );
+                          })}
+                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.prognoza)}</td>
+                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.rzeczywiste)}</td>
+                          <td className={`border-b border-border/30 px-1 py-1 text-right font-bold tabular-nums ${annualCat.saldo > 0 ? "text-green-200" : annualCat.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(annualCat.saldo)}</td>
+                        </tr>
+                        {!isCollapsed && cat.items.map((item, idx) => {
+                          const annualItem = getItemAnnualSummary(cat.id, idx);
+                          return (
+                            <tr key={idx} className="hover:bg-muted/30 dark:hover:bg-muted/20" data-testid={`row-archived-item-${cat.id}-${idx}`}>
+                              <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1 text-right">
+                                <div className="flex items-center gap-0.5 pl-4">
+                                  <span className="font-medium truncate">{item.name}</span>
+                                  {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
+                                </div>
+                              </td>
+                              {Array.from({ length: 12 }, (_, m) => {
+                                const pVal = getCellValue(makeCellKey(cat.id, idx, m, "prognoza"));
+                                const rVal = getCellValue(makeCellKey(cat.id, idx, m, "rzeczywiste"));
+                                const saldo = pVal - rVal;
+                                return (
+                                  <Fragment key={m}>
+                                    <td className="border-b border-r border-border bg-muted/20 dark:bg-muted/10 px-1 py-1 text-right tabular-nums text-[10px]">{formatNum(pVal)}</td>
+                                    <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rVal)}</td>
+                                    <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                                  </Fragment>
+                                );
+                              })}
+                              <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums bg-muted/30 dark:bg-muted/20 text-[10px]">{formatNum(annualItem.prognoza)}</td>
+                              <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.rzeczywiste)}</td>
+                              <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(annualItem.saldo)}`}>{formatNum(annualItem.saldo)}</td>
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <Sheet open={!!sheetItem} onOpenChange={(open) => { if (!open) setSheetItem(null); }}>
         <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-cost-detail">

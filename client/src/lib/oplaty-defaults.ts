@@ -5,6 +5,7 @@ export type { OplatyCostItem };
 
 export interface OplatyCostCategory extends SharedCategory {
   color: string;
+  archived?: boolean;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
