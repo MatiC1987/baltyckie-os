@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Calculator, ChevronDown, ChevronRight, Plus, Trash2, Loader2, Copy } from "lucide-react";
+import { Calculator, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, Loader2, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
@@ -369,6 +369,9 @@ export default function V2Koszty() {
         description="Koszty — apartamentowe, operacyjne, zmienne"
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" className="h-9 w-9" disabled={year <= years[0]} onClick={() => setYear(y => y - 1)} data-testid="button-prev-year">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
             <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
               <SelectTrigger className="w-[100px]" data-testid="select-year">
                 <SelectValue />
@@ -379,6 +382,9 @@ export default function V2Koszty() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="icon" className="h-9 w-9" disabled={year >= years[years.length - 1]} onClick={() => setYear(y => y + 1)} data-testid="button-next-year">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-costs">
               <Copy className="h-4 w-4 mr-1" /> Kopiuj
             </Button>
