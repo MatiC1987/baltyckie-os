@@ -11,24 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Calculator, ChevronDown, ChevronRight, Plus, Trash2, Loader2, Copy, Archive, RotateCcw } from "lucide-react";
+import { Calculator, ChevronDown, ChevronRight, Plus, Trash2, Loader2, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
+import { CostsExpensesContent } from "@/pages/CostsExpenses";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
-
-const OP_CATEGORIES: Record<string, string> = {
-  wynagrodzenia: "Wynagrodzenia",
-  zus: "ZUS",
-  podatki: "Podatki",
-  uslugi: "Usługi",
-  reklama: "Reklama",
-  biuro: "Biuro",
-  media_wspolne: "Media wspólne",
-  ubezpieczenia: "Ubezpieczenia",
-  inne: "Inne",
-};
 
 type CostsSummaryResponse = {
   year: number;
@@ -133,134 +122,6 @@ function ApartmentCostsTab({ data, currentMonth }: { data: CostsSummaryResponse;
           </Card>
         );
       })}
-    </div>
-  );
-}
-
-function OpCostTable({
-  categories,
-  currentMonth,
-  isArchive,
-  year,
-}: {
-  categories: [string, Record<number, number>][];
-  currentMonth: number;
-  isArchive: boolean;
-  year: number;
-}) {
-  const { toast } = useToast();
-  const archiveMutation = useMutation({
-    mutationFn: (body: { categoryId: string; year: number; archived: boolean }) =>
-      apiRequest("PATCH", "/api/operational-cost-forecasts/archive", body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/v2/costs-summary") });
-      toast({ title: isArchive ? "Przywrócono pozycję" : "Zarchiwizowano pozycję" });
-    },
-  });
-
-  const grandTotal = categories.reduce((s, [, months]) =>
-    s + Object.values(months).reduce((ms, v) => ms + v, 0), 0);
-
-  if (categories.length === 0) return null;
-
-  return (
-    <table className="w-full text-xs border-collapse">
-      <thead>
-        <tr className="border-b bg-muted/30 sticky top-0 z-10">
-          <th className="text-left p-2 min-w-[160px] font-medium">Kategoria</th>
-          {MONTHS.map((m, i) => (
-            <th key={i} className={`text-right p-2 min-w-[75px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-              {m}
-            </th>
-          ))}
-          <th className="text-right p-2 min-w-[90px] font-bold">Razem</th>
-          <th className="w-[40px]"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {categories.map(([catId, months]) => {
-          const total = Object.values(months).reduce((s, v) => s + v, 0);
-          return (
-            <tr key={catId} className={`border-b ${isArchive ? "opacity-60" : ""}`} data-testid={`op-cost-row-${catId}`}>
-              <td className="p-2 font-medium">{OP_CATEGORIES[catId] || catId}</td>
-              {MONTHS.map((_, i) => (
-                <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                  {formatNum(months[i] || 0)}
-                </td>
-              ))}
-              <td className="p-2 text-right font-bold tabular-nums">{formatNum(total)}</td>
-              <td className="p-1 text-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  title={isArchive ? "Przywróć" : "Archiwizuj"}
-                  disabled={archiveMutation.isPending}
-                  onClick={() => archiveMutation.mutate({ categoryId: catId, year, archived: !isArchive })}
-                  data-testid={`btn-archive-${catId}`}
-                >
-                  {isArchive ? <RotateCcw className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                </Button>
-              </td>
-            </tr>
-          );
-        })}
-        <tr className="border-t-2 font-bold bg-muted/20">
-          <td className="p-2">Razem</td>
-          {MONTHS.map((_, i) => {
-            const mTotal = categories.reduce((s, [, months]) => s + (months[i] || 0), 0);
-            return (
-              <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                {formatNum(mTotal)}
-              </td>
-            );
-          })}
-          <td className="p-2 text-right tabular-nums">{formatNum(grandTotal)}</td>
-          <td></td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-function OperationalCostsTab({ data, currentMonth, year }: { data: CostsSummaryResponse; currentMonth: number; year: number }) {
-  const [showArchive, setShowArchive] = useState(false);
-  const activeCategories = Object.entries(data.operationalCosts);
-  const archivedCategories = Object.entries(data.archivedOperationalCosts || {});
-
-  return (
-    <div className="space-y-4">
-      <Card data-testid="operational-costs-table">
-        <CardContent className="pt-4 overflow-x-auto">
-          {activeCategories.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Brak aktywnych pozycji kosztów operacyjnych</p>
-          ) : (
-            <OpCostTable categories={activeCategories} currentMonth={currentMonth} isArchive={false} year={year} />
-          )}
-        </CardContent>
-      </Card>
-
-      {archivedCategories.length > 0 && (
-        <Card data-testid="archived-operational-costs">
-          <CardContent className="pt-4">
-            <button
-              className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors w-full"
-              onClick={() => setShowArchive(!showArchive)}
-              data-testid="toggle-archive"
-            >
-              {showArchive ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              <Archive className="h-4 w-4" />
-              ARCHIWUM
-              <Badge variant="secondary" className="ml-1">{archivedCategories.length}</Badge>
-            </button>
-            {showArchive && (
-              <div className="mt-3 overflow-x-auto">
-                <OpCostTable categories={archivedCategories} currentMonth={currentMonth} isArchive={true} year={year} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
@@ -562,7 +423,7 @@ export default function V2Koszty() {
           {data && <ApartmentCostsTab data={data} currentMonth={year === currentYear ? currentMonth : -1} />}
         </TabsContent>
         <TabsContent value="operacyjne">
-          {data && <OperationalCostsTab data={data} currentMonth={year === currentYear ? currentMonth : -1} year={year} />}
+          <CostsExpensesContent embedded externalYear={year} />
         </TabsContent>
         <TabsContent value="zmienne">
           {data && <VariableCostsTab data={data} year={year} currentMonth={year === currentYear ? currentMonth : -1} />}

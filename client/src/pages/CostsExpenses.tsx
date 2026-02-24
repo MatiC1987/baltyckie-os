@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { CostSchedule, CostSchedulePayment, OperationalCostForecast } from "@shared/schema";
@@ -238,14 +238,24 @@ function costChangeColor(current: number, previous: number): string {
   return "text-muted-foreground";
 }
 
-export default function CostsExpenses() {
+export function CostsExpensesContent({ embedded = false, externalYear }: { embedded?: boolean; externalYear?: number }) {
   const { toast } = useToast();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedYear, setSelectedYear] = useState(externalYear ?? currentYear);
   const [compareYear, setCompareYear] = useState<number | null>(null);
-  const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(currentYear));
+  const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(externalYear ?? currentYear));
   const [categories, setCategories] = useState<CostCategory[]>(() => loadCategories());
+
+  useEffect(() => {
+    if (externalYear !== undefined && externalYear !== selectedYear) {
+      setSelectedYear(externalYear);
+      setCellData(loadData(externalYear));
+      if (compareYear === externalYear) {
+        setCompareYear(null);
+      }
+    }
+  }, [externalYear]);
 
   const { data: costSchedules = [] } = useQuery<CostSchedule[]>({
     queryKey: ["/api/cost-schedules"],
@@ -967,46 +977,74 @@ export default function CostsExpenses() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Opłaty"
-        description="Zarządzanie kosztami i wydatkami."
-        icon={Receipt}
-        actions={
-          <>
-            <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
-            <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
-              <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
-            </Button>
-            <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
-              <Plus className="mr-1 h-4 w-4" /> Kategoria
-            </Button>
-            <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
-              <SelectTrigger className="w-[120px]" data-testid="select-year">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map(y => (
-                  <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={compareYear !== null ? compareYear.toString() : "none"}
-              onValueChange={(v) => setCompareYear(v === "none" ? null : parseInt(v))}
-            >
-              <SelectTrigger className="w-[160px]" data-testid="select-compare-year">
-                <SelectValue placeholder="Porównaj z..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Brak —</SelectItem>
-                {years.filter(y => y !== selectedYear).map(y => (
-                  <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title="Opłaty"
+          description="Zarządzanie kosztami i wydatkami."
+          icon={Receipt}
+          actions={
+            <>
+              <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
+              <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
+                <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
+              </Button>
+              <Button variant="outline" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
+                <Plus className="mr-1 h-4 w-4" /> Kategoria
+              </Button>
+              <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
+                <SelectTrigger className="w-[120px]" data-testid="select-year">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map(y => (
+                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={compareYear !== null ? compareYear.toString() : "none"}
+                onValueChange={(v) => setCompareYear(v === "none" ? null : parseInt(v))}
+              >
+                <SelectTrigger className="w-[160px]" data-testid="select-compare-year">
+                  <SelectValue placeholder="Porównaj z..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Brak —</SelectItem>
+                  {years.filter(y => y !== selectedYear).map(y => (
+                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
+      )}
+
+      {embedded && (
+        <div className="flex flex-wrap items-center gap-2">
+          <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
+          <Button variant="outline" size="sm" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
+            <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowAddCategory(true)} data-testid="button-add-category">
+            <Plus className="mr-1 h-4 w-4" /> Kategoria
+          </Button>
+          <Select
+            value={compareYear !== null ? compareYear.toString() : "none"}
+            onValueChange={(v) => setCompareYear(v === "none" ? null : parseInt(v))}
+          >
+            <SelectTrigger className="w-[160px]" data-testid="select-compare-year">
+              <SelectValue placeholder="Porównaj z..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Brak —</SelectItem>
+              {years.filter(y => y !== selectedYear).map(y => (
+                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card>
@@ -1932,6 +1970,10 @@ export default function CostsExpenses() {
       </Dialog>
     </div>
   );
+}
+
+export default function CostsExpenses() {
+  return <CostsExpensesContent />;
 }
 
 function Fragment({ children }: { children: React.ReactNode }) {
