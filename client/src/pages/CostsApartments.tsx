@@ -119,6 +119,19 @@ function saveColorMap(m: ColorMap) {
   localStorage.setItem(colorStorageKey(), JSON.stringify(m));
 }
 
+type EntryColorMap = Record<string, string>;
+function entryColorStorageKey() { return `costs-apartments-entry-colors`; }
+function loadEntryColorMap(): EntryColorMap {
+  try {
+    const raw = localStorage.getItem(entryColorStorageKey());
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+function saveEntryColorMap(m: EntryColorMap) {
+  localStorage.setItem(entryColorStorageKey(), JSON.stringify(m));
+}
+
 type SortOrderMap = Record<string, string[]>;
 function sortOrderKey() { return `costs-apartments-sort-order`; }
 function loadSortOrder(): SortOrderMap {
@@ -210,6 +223,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [categoriesMap, setCategoriesMap] = useState<CategoriesMap>(() => loadCategories());
   const [colorMap, setColorMap] = useState<ColorMap>(() => loadColorMap());
+  const [entryColorMap, setEntryColorMap] = useState<EntryColorMap>(() => loadEntryColorMap());
   const [sortOrderMap, setSortOrderMap] = useState<SortOrderMap>(() => loadSortOrder());
   const [isImporting, setIsImporting] = useState(false);
   const [isImportingContracts, setIsImportingContracts] = useState(false);
@@ -240,6 +254,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
 
   const [showCopyToNextYear, setShowCopyToNextYear] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+
+  const [editEntryColorDialog, setEditEntryColorDialog] = useState<string | null>(null);
+  const [editEntryColor, setEditEntryColor] = useState("");
 
   const dragCatRef = useRef<{ entryId: string; category: string } | null>(null);
   const dragOverCatRef = useRef<{ entryId: string; category: string } | null>(null);
@@ -411,6 +428,24 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     if (colors[category]?.color) return colors[category].color;
     return CATEGORY_COLORS[defaultIdx % CATEGORY_COLORS.length].value;
   }, [colorMap]);
+
+  const getEntryColor = useCallback((entryId: string, defaultIdx: number): string => {
+    if (entryColorMap[entryId]) return entryColorMap[entryId];
+    return CATEGORY_COLORS[defaultIdx % CATEGORY_COLORS.length].value;
+  }, [entryColorMap]);
+
+  const openEntryColorDialog = useCallback((entryId: string, defaultIdx: number) => {
+    setEditEntryColorDialog(entryId);
+    setEditEntryColor(getEntryColor(entryId, defaultIdx));
+  }, [getEntryColor]);
+
+  const handleSaveEntryColor = useCallback(() => {
+    if (!editEntryColorDialog) return;
+    const next = { ...entryColorMap, [editEntryColorDialog]: editEntryColor };
+    setEntryColorMap(next);
+    saveEntryColorMap(next);
+    setEditEntryColorDialog(null);
+  }, [editEntryColorDialog, editEntryColor, entryColorMap]);
 
   const costEntries = useMemo(() => {
     const entries: { location: string; items: CostEntry[] }[] = [];
@@ -988,19 +1023,27 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                     <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-bold bg-muted dark:bg-muted/70 ${saldoColor(locYearS)}`}>{formatNum(locYearS)}</td>
                   </tr>
 
-                  {!isCollapsed && group.items.map(entry => {
+                  {!isCollapsed && group.items.map((entry, entryIdx) => {
                     const entryYear = getEntryYearTotal(entry);
                     const entryYearS = entryYear.p - entryYear.r;
+                    const entryColor = getEntryColor(entry.id, entryIdx);
                     return (
                       <Fragment key={entry.id}>
-                        <tr className="bg-muted/30 dark:bg-muted/20 select-none">
-                          <td className="sticky left-0 z-20 bg-muted/30 dark:bg-muted/20 px-2 py-1 border-r border-b border-border font-semibold pl-6">
+                        <tr className={`${entryColor} text-white select-none group`} data-testid={`entry-row-${entry.id}`}>
+                          <td className={`sticky left-0 z-20 ${entryColor} px-2 py-1.5 border-r border-b border-border/30 font-bold pl-6`}>
                             <div className="flex items-center gap-1.5">
-                              <span className="flex-1 min-w-0 truncate">{entry.name}</span>
-                              <Sparkline data={getEntrySparklineData(entry)} width={50} height={14} color="rgb(239, 68, 68)" />
+                              <span
+                                className="flex-1 min-w-0 truncate cursor-pointer hover:underline"
+                                onClick={() => openEntryColorDialog(entry.id, entryIdx)}
+                                title="Kliknij aby zmienić kolor"
+                                data-testid={`entry-name-${entry.id}`}
+                              >
+                                {entry.name}
+                              </span>
+                              <Sparkline data={getEntrySparklineData(entry)} width={50} height={14} color="rgba(255,255,255,0.7)" />
                               <button
                                 onClick={() => openCategoryEditor(entry)}
-                                className="opacity-40 hover:opacity-100 transition-opacity p-0.5 shrink-0"
+                                className="opacity-60 hover:opacity-100 transition-opacity p-0.5 shrink-0"
                                 title="Zarządzaj kategoriami"
                                 data-testid={`button-edit-categories-${entry.id}`}
                               >
@@ -1008,7 +1051,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                               </button>
                               <button
                                 onClick={() => { setAddCatEntryId(entry.id); setShowAddCategory(true); }}
-                                className="opacity-40 hover:opacity-100 transition-opacity p-0.5 shrink-0"
+                                className="opacity-60 hover:opacity-100 transition-opacity p-0.5 shrink-0"
                                 title="Dodaj kategorię"
                                 data-testid={`button-add-cat-${entry.id}`}
                               >
@@ -1021,19 +1064,18 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                             const saldo = s.p - s.r;
                             return (
                               <Fragment key={mi}>
-                                <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10 ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(s.p)}</td>
-                                <td className={`border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""} ${getHeatMapBg(s.r, costsHeatMax, "expense")}`}>{formatNum(s.r)}</td>
-                                <td className={`border-r-2 border-b border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)} ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(saldo)}</td>
+                                <td className={`border-r border-b border-border/30 px-1 py-1 text-right tabular-nums text-[10px] ${mi === currentMonth && year === currentYear ? "bg-white/10" : ""}`}>{formatNum(s.p)}</td>
+                                <td className={`border-r border-b border-border/30 px-1 py-1 text-right tabular-nums font-semibold ${mi === currentMonth && year === currentYear ? "bg-white/10" : ""}`}>{formatNum(s.r)}</td>
+                                <td className={`border-r-2 border-b border-border/30 px-1 py-1 text-right tabular-nums font-semibold ${saldo > 0 ? "text-green-200" : saldo < 0 ? "text-red-200" : ""} ${mi === currentMonth && year === currentYear ? "bg-white/10" : ""}`}>{formatNum(saldo)}</td>
                               </Fragment>
                             );
                           })}
-                          <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/30 dark:bg-muted/20 font-semibold">{formatNum(entryYear.p)}</td>
-                          <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(entryYear.r)}</td>
-                          <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(entryYearS)}`}>{formatNum(entryYearS)}</td>
+                          <td className="border-r border-b border-border/30 px-1 py-1 text-right tabular-nums text-[10px] font-bold">{formatNum(entryYear.p)}</td>
+                          <td className="border-r border-b border-border/30 px-1 py-1 text-right tabular-nums font-bold">{formatNum(entryYear.r)}</td>
+                          <td className={`border-b border-border/30 px-1 py-1 text-right tabular-nums font-bold ${entryYearS > 0 ? "text-green-200" : entryYearS < 0 ? "text-red-200" : ""}`}>{formatNum(entryYearS)}</td>
                         </tr>
 
                         {entry.categories.map((cat, catIdx) => {
-                          const catColor = getCategoryColor(entry.id, cat, catIdx);
                           let catYearP = 0, catYearR = 0;
                           for (let m = 0; m < 12; m++) {
                             catYearP += getCellValue(entry.id, cat, m, "p");
@@ -1044,34 +1086,34 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                           return (
                             <tr
                               key={cat}
-                              className={`${catColor} text-white select-none group ${isDragging ? "opacity-40" : ""}`}
+                              className={`hover:bg-muted/30 dark:hover:bg-muted/20 select-none group ${isDragging ? "opacity-40" : ""}`}
                               data-testid={`row-category-${entry.id}-${cat}`}
                               onDragOver={(e) => handleCatDragOver(e, entry.id, cat)}
                               onDrop={handleCatDragEnd}
                             >
-                              <td className={`sticky left-0 z-20 ${catColor} border-b border-r border-border/30 px-1 py-1 font-bold`}>
-                                <div className="flex items-center gap-0.5">
+                              <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1">
+                                <div className="flex items-center gap-0.5 pl-8">
                                   <span
                                     draggable
                                     onDragStart={() => handleCatDragStart(entry.id, cat)}
                                     onDragEnd={handleCatDragEnd}
-                                    className="cursor-grab active:cursor-grabbing opacity-60 hover:opacity-100 shrink-0"
+                                    className="cursor-grab active:cursor-grabbing text-muted-foreground opacity-40 hover:opacity-100 shrink-0"
                                     data-testid={`drag-category-${entry.id}-${cat}`}
                                   >
                                     <GripVertical className="h-3 w-3" />
                                   </span>
                                   <span
-                                    className="truncate flex-1 min-w-0 cursor-pointer hover:underline text-[11px]"
+                                    className="truncate flex-1 min-w-0 cursor-pointer hover:underline text-[11px] font-medium text-foreground"
                                     onClick={() => openEditCatDialog(entry.id, cat)}
                                     title="Kliknij aby edytować"
                                     data-testid={`label-category-${entry.id}-${cat}`}
                                   >
                                     {cat}
                                   </span>
-                                  <Sparkline data={getCatSparklineData(entry.id, cat)} width={40} height={12} color="rgba(255,255,255,0.7)" />
+                                  <Sparkline data={getCatSparklineData(entry.id, cat)} width={40} height={12} color="rgb(239, 68, 68)" />
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleArchiveCategory(entry.id, cat); }}
-                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0"
+                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0 text-muted-foreground"
                                     title="Archiwizuj"
                                     data-testid={`btn-archive-${entry.id}-${cat}`}
                                   >
@@ -1082,7 +1124,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                                       e.stopPropagation();
                                       if (window.confirm(`Usunąć kategorię "${cat}"?`)) handleDeleteCategory(entry.id, cat);
                                     }}
-                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0"
+                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0 text-muted-foreground"
                                     title="Usuń"
                                     data-testid={`btn-delete-${entry.id}-${cat}`}
                                   >
@@ -1107,7 +1149,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                                       startEditing={startEditing}
                                       commitEdit={commitEdit}
                                       cancelEdit={cancelEdit}
-                                      className="border-border/30 bg-transparent text-white text-[10px]"
+                                      className="text-[10px] text-muted-foreground"
                                       isSelected={selectedCell === pKey}
                                       isInRange={isInFillRange(pKey)}
                                       onCellClick={handleCellClick}
@@ -1124,7 +1166,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                                       startEditing={startEditing}
                                       commitEdit={commitEdit}
                                       cancelEdit={cancelEdit}
-                                      className="border-border/30 bg-transparent text-white font-semibold"
+                                      className={`font-semibold ${getHeatMapBg(rVal, costsHeatMax, "expense")}`}
                                       isSelected={selectedCell === rKey}
                                       isInRange={isInFillRange(rKey)}
                                       onCellClick={handleCellClick}
@@ -1132,15 +1174,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                                       onCellMouseEnter={handleCellMouseEnter}
                                       month={mi}
                                     />
-                                    <td className={`border-b border-r-2 border-border/30 px-1 py-1 text-right tabular-nums font-semibold ${saldo > 0 ? "text-green-200" : saldo < 0 ? "text-red-200" : ""}`}>
+                                    <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>
                                       {formatNum(saldo)}
                                     </td>
                                   </Fragment>
                                 );
                               })}
-                              <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums text-[10px]">{formatNum(catYearP)}</td>
-                              <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(catYearR)}</td>
-                              <td className={`border-b border-border/30 px-1 py-1 text-right font-bold tabular-nums ${catYearS > 0 ? "text-green-200" : catYearS < 0 ? "text-red-200" : ""}`}>{formatNum(catYearS)}</td>
+                              <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/10 dark:bg-muted/5">{formatNum(catYearP)}</td>
+                              <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/10 dark:bg-muted/5">{formatNum(catYearR)}</td>
+                              <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/10 dark:bg-muted/5 ${saldoColor(catYearS)}`}>{formatNum(catYearS)}</td>
                             </tr>
                           );
                         })}
@@ -1420,6 +1462,32 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditCatDialog(null)}>Anuluj</Button>
             <Button onClick={handleSaveEditCat} data-testid="button-save-edit-cat">Zapisz</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editEntryColorDialog} onOpenChange={(open) => { if (!open) setEditEntryColorDialog(null); }}>
+        <DialogContent className="sm:max-w-[380px]">
+          <DialogHeader>
+            <DialogTitle>Kolor apartamentu</DialogTitle>
+          </DialogHeader>
+          <div>
+            <label className="text-sm font-medium">Wybierz kolor</label>
+            <div className="grid grid-cols-5 gap-2 mt-3">
+              {CATEGORY_COLORS.map(c => (
+                <button
+                  key={c.value}
+                  className={`h-10 rounded-md ${c.value} ${editEntryColor === c.value ? "ring-2 ring-primary ring-offset-2" : ""} transition-all`}
+                  onClick={() => setEditEntryColor(c.value)}
+                  title={c.label}
+                  data-testid={`entry-color-${c.label}`}
+                />
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditEntryColorDialog(null)}>Anuluj</Button>
+            <Button onClick={handleSaveEntryColor} data-testid="button-save-entry-color">Zapisz</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
