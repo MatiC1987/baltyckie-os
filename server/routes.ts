@@ -8238,6 +8238,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
 
         for (const p of payments) {
           if (!p.dueDate) continue;
+          if ((p.category || '').toLowerCase() === 'kaucja') continue;
           const d = new Date(p.dueDate);
           if (d.getFullYear() !== yearParam) continue;
           const month = d.getMonth();

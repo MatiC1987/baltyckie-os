@@ -62,6 +62,24 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+function readLocalAptCosts(years: number[]): Record<string, number> {
+  const aptCostsByYM: Record<string, number> = {};
+  for (const year of years) {
+    try {
+      const raw = localStorage.getItem(`costs-apartments-data-${year}`);
+      if (!raw) continue;
+      const stored = JSON.parse(raw) as Record<string, Record<string, { p: number; r: number }>>;
+      for (const monthData of Object.values(stored)) {
+        for (const [monthStr, cellData] of Object.entries(monthData)) {
+          const ym = `${year}-${parseInt(monthStr)}`;
+          aptCostsByYM[ym] = (aptCostsByYM[ym] || 0) + (Number(cellData.p) || 0);
+        }
+      }
+    } catch {}
+  }
+  return aptCostsByYM;
+}
+
 export default function V2Prognoza() {
   const currentYear = new Date().getFullYear();
   const [horizon, setHorizon] = useState<string>("12");
@@ -76,11 +94,40 @@ export default function V2Prognoza() {
   const months = data?.months || [];
   const companyBalance = data?.companyBalance || 0;
 
+  const adjustedMonths = useMemo(() => {
+    if (months.length === 0) return months;
+
+    const uniqueYears = [...new Set(months.map(m => m.year))];
+    const aptCostsByYM = readLocalAptCosts(uniqueYears);
+
+    let cumCostOffset = 0;
+    let currentMonthPassed = false;
+
+    return months.map((m) => {
+      const ym = `${m.year}-${m.month}`;
+      const localAptCost = aptCostsByYM[ym] || 0;
+
+      if (m.isCurrent) {
+        currentMonthPassed = true;
+      } else if (currentMonthPassed) {
+        cumCostOffset += localAptCost;
+      }
+
+      return {
+        ...m,
+        apartmentCostForecast: localAptCost > 0 ? localAptCost : m.apartmentCostForecast,
+        totalCostForecast: m.totalCostForecast + localAptCost,
+        monthResult: m.monthResult - localAptCost,
+        cumulativeBalance: m.cumulativeBalance - cumCostOffset,
+      };
+    });
+  }, [months]);
+
   const displayMonths = useMemo(() => {
-    if (viewYear === "all") return months.slice(0, Number(horizon));
+    if (viewYear === "all") return adjustedMonths.slice(0, Number(horizon));
     const y = Number(viewYear);
-    return months.filter(m => m.year === y);
-  }, [months, horizon, viewYear]);
+    return adjustedMonths.filter(m => m.year === y);
+  }, [adjustedMonths, horizon, viewYear]);
 
   const availableYears = useMemo(() => {
     const years = new Set(months.map(m => m.year));
