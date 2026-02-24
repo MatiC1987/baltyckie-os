@@ -1768,6 +1768,98 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Owner contract cost forecasts — view and delete auto-generated entries
+  app.get('/api/owner-contracts/:id/cost-forecasts', isAuthenticated, async (req, res) => {
+    try {
+      const contractId = Number(req.params.id);
+      const entries = await db.select({
+        year: costForecasts.year,
+        month: costForecasts.month,
+        apartmentId: costForecasts.apartmentId,
+        forecast: costForecasts.forecast,
+        actual: costForecasts.actual,
+      })
+        .from(costForecasts)
+        .where(and(
+          eq(costForecasts.sourceType, 'owner_contract'),
+          eq(costForecasts.sourceContractId, contractId)
+        ))
+        .orderBy(costForecasts.year, costForecasts.month);
+
+      const totalByYear: Record<number, number> = {};
+      for (const e of entries) {
+        const val = Number(e.actual && Number(e.actual) > 0 ? e.actual : e.forecast) || 0;
+        totalByYear[e.year] = (totalByYear[e.year] || 0) + val;
+      }
+
+      res.json({ contractId, entries, totalByYear });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/owner-contracts/:id/cost-forecasts', isAuthenticated, async (req, res) => {
+    try {
+      const contractId = Number(req.params.id);
+      const year = req.query.year ? Number(req.query.year) : undefined;
+
+      const conditions = [
+        eq(costForecasts.sourceType, 'owner_contract'),
+        eq(costForecasts.sourceContractId, contractId),
+      ];
+      if (year) conditions.push(eq(costForecasts.year, year));
+
+      const deleted = await db.delete(costForecasts).where(and(...conditions)).returning({ id: costForecasts.id });
+      res.json({ deleted: deleted.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Cost forecasts diagnostics — all auto-generated entries with contract existence check
+  app.get('/api/cost-forecasts/diagnostics', isAuthenticated, async (req, res) => {
+    try {
+      const allEntries = await db.select({
+        contractId: costForecasts.sourceContractId,
+        apartmentId: costForecasts.apartmentId,
+        year: costForecasts.year,
+        forecast: costForecasts.forecast,
+        actual: costForecasts.actual,
+      })
+        .from(costForecasts)
+        .where(eq(costForecasts.sourceType, 'owner_contract'));
+
+      const allContracts = await db.select({ id: ownerContracts.id }).from(ownerContracts);
+      const contractIdSet = new Set(allContracts.map(c => c.id));
+
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+      const aptMap = new Map(allApartments.map(a => [a.id, a.name]));
+
+      // Group by contractId + apartmentId + year
+      const grouped: Record<string, { contractId: number; contractExists: boolean; apartmentId: number; apartmentName: string; year: number; totalForecast: number }> = {};
+      for (const e of allEntries) {
+        if (!e.contractId) continue;
+        const key = `${e.contractId}_${e.apartmentId}_${e.year}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            contractId: e.contractId,
+            contractExists: contractIdSet.has(e.contractId),
+            apartmentId: e.apartmentId,
+            apartmentName: aptMap.get(e.apartmentId) || `#${e.apartmentId}`,
+            year: e.year,
+            totalForecast: 0,
+          };
+        }
+        const val = Number(e.actual && Number(e.actual) > 0 ? e.actual : e.forecast) || 0;
+        grouped[key].totalForecast += val;
+      }
+
+      res.json(Object.values(grouped).sort((a, b) => b.year - a.year || a.apartmentName.localeCompare(b.apartmentName)));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Cost forecasts bulk operations
   app.post('/api/cost-forecasts/bulk', isAuthenticated, async (req, res) => {
     try {

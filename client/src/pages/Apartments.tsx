@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, ChevronLeft, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye, Copy, RefreshCw } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, ChevronLeft, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye, Copy, RefreshCw, Eraser } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -875,6 +875,105 @@ function ApartmentDashboard({ apartment }: { apartment: Apartment }) {
   );
 }
 
+function ContractCard({ contract, ownerName, onEdit, onDelete }: {
+  contract: OwnerContract;
+  ownerName: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: costData } = useQuery<{ contractId: number; entries: any[]; totalByYear: Record<number, number> }>({
+    queryKey: ['/api/owner-contracts', contract.id, 'cost-forecasts'],
+    queryFn: async () => {
+      const r = await fetch(`/api/owner-contracts/${contract.id}/cost-forecasts`, { credentials: 'include' });
+      if (!r.ok) throw new Error('Error');
+      return r.json();
+    },
+  });
+
+  const clearMut = useMutation({
+    mutationFn: async (year: number) => {
+      const r = await fetch(`/api/owner-contracts/${contract.id}/cost-forecasts?year=${year}`, {
+        method: 'DELETE', credentials: 'include',
+      });
+      if (!r.ok) throw new Error('Error');
+      return r.json();
+    },
+    onSuccess: (data: { deleted: number }, year: number) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/owner-contracts', contract.id, 'cost-forecasts'] });
+      toast({ title: "Wyczyszczono", description: `Usunięto ${data.deleted} wpisów kosztów za rok ${year}` });
+    },
+    onError: () => toast({ title: "Błąd", description: "Nie udało się usunąć wpisów", variant: "destructive" }),
+  });
+
+  const yearsWithCosts = costData?.totalByYear
+    ? Object.entries(costData.totalByYear).filter(([, v]) => v > 0).map(([y, v]) => ({ year: Number(y), total: v }))
+    : [];
+
+  return (
+    <Card data-testid={`card-apt-contract-${contract.id}`}>
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="space-y-1 flex-1">
+            <p className="font-semibold text-sm">{ownerName}</p>
+            <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+              <span>Czynsz: {contract.monthlyRent ? `${Number(contract.monthlyRent).toLocaleString("pl-PL")} zł` : "—"}</span>
+              {contract.additionalFees && Number(contract.additionalFees) > 0 && <span>+ {Number(contract.additionalFees).toLocaleString("pl-PL")} zł</span>}
+              <span>{contract.startDate || "—"} &rarr; {contract.endDate || "bezterminowo"}</span>
+              <Badge variant="default" className="text-[10px]">{contract.status}</Badge>
+              <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">{contract.contractType}</Badge>
+              {contract.paymentFrequency && (
+                <Badge variant="outline" className="text-[10px]">{
+                  contract.paymentFrequency === 'MIESIECZNIE' ? 'Miesięcznie' :
+                  contract.paymentFrequency === 'KWARTALNIE' ? 'Kwartalnie' :
+                  contract.paymentFrequency === 'POLROCZNIE' ? 'Półrocznie' :
+                  contract.paymentFrequency === 'ROCZNIE' ? 'Rocznie' :
+                  contract.paymentFrequency === 'NIEREGULARNE' ? 'Nieregularne' : contract.paymentFrequency
+                }</Badge>
+              )}
+            </div>
+            {yearsWithCosts.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap mt-1">
+                {yearsWithCosts.map(({ year, total }) => (
+                  <div key={year} className="flex items-center gap-1">
+                    <Badge variant="outline" className="text-[10px] bg-orange-50 dark:bg-orange-950 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800">
+                      Koszty auto. {year}: {total.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-5 px-1.5 text-[10px] text-orange-600 hover:text-orange-800 hover:bg-orange-100"
+                      disabled={clearMut.isPending}
+                      onClick={() => {
+                        if (confirm(`Usunąć wygenerowane wpisy kosztów za rok ${year} dla tej umowy?`)) {
+                          clearMut.mutate(year);
+                        }
+                      }}
+                      data-testid={`btn-clear-contract-costs-${contract.id}-${year}`}
+                    >
+                      <Eraser className="h-3 w-3 mr-0.5" /> Wyczyść
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button size="icon" variant="ghost" onClick={onEdit} data-testid={`btn-edit-apt-contract-${contract.id}`}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={onDelete} data-testid={`btn-delete-apt-contract-${contract.id}`}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onSuccess: () => void }) {
   const { data: ownersList } = useOwners();
   const { data: allContracts = [] } = useQuery<OwnerContract[]>({ queryKey: ["/api/owner-contracts"] });
@@ -1556,39 +1655,13 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
             {activeContracts.map(c => {
               const ownerName = ownersList?.find(o => o.id === c.ownerId)?.name || "—";
               return (
-                <Card key={c.id} data-testid={`card-apt-contract-${c.id}`}>
-                  <CardContent className="py-3 px-4">
-                    <div className="flex items-start justify-between gap-2 flex-wrap">
-                      <div className="space-y-1">
-                        <p className="font-semibold text-sm">{ownerName}</p>
-                        <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                          <span>Czynsz: {c.monthlyRent ? `${Number(c.monthlyRent).toLocaleString("pl-PL")} zł` : "—"}</span>
-                          {c.additionalFees && Number(c.additionalFees) > 0 && <span>+ {Number(c.additionalFees).toLocaleString("pl-PL")} zł</span>}
-                          <span>{c.startDate || "—"} &rarr; {c.endDate || "bezterminowo"}</span>
-                          <Badge variant="default" className="text-[10px]">{c.status}</Badge>
-                          <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">{c.contractType}</Badge>
-                          {c.paymentFrequency && (
-                            <Badge variant="outline" className="text-[10px]">{
-                              c.paymentFrequency === 'MIESIECZNIE' ? 'Miesięcznie' :
-                              c.paymentFrequency === 'KWARTALNIE' ? 'Kwartalnie' :
-                              c.paymentFrequency === 'POLROCZNIE' ? 'Półrocznie' :
-                              c.paymentFrequency === 'ROCZNIE' ? 'Rocznie' :
-                              c.paymentFrequency === 'NIEREGULARNE' ? 'Nieregularne' : c.paymentFrequency
-                            }</Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button size="icon" variant="ghost" onClick={() => openContractForm(c)} data-testid={`btn-edit-apt-contract-${c.id}`}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => { if (confirm("Usunąć umowę?")) deleteContractMutation.mutate(c.id); }} data-testid={`btn-delete-apt-contract-${c.id}`}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <ContractCard
+                  key={c.id}
+                  contract={c}
+                  ownerName={ownerName}
+                  onEdit={() => openContractForm(c)}
+                  onDelete={() => { if (confirm("Usunąć umowę?")) deleteContractMutation.mutate(c.id); }}
+                />
               );
             })}
           </div>

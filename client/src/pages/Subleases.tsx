@@ -2202,8 +2202,13 @@ export default function Subleases() {
                 <TabsContent value="oplaty" className="flex-1 overflow-y-auto mt-0">
                   <PaymentsTab subleaseId={editId} apartments={
                     (() => {
-                      const ids: number[] = form.apartmentIds || (form.apartmentId ? [form.apartmentId] : []);
-                      return apartments.filter(a => ids.includes(a.id));
+                      const baseIds: number[] = form.apartmentIds || (form.apartmentId ? [form.apartmentId] : []);
+                      const changeIds = allApartmentChanges
+                        .filter(ch => ch.subleaseId === editId)
+                        .map(ch => ch.newApartmentId);
+                      const combined = [...baseIds, ...changeIds];
+                      const allIds = combined.filter((id, idx) => combined.indexOf(id) === idx);
+                      return apartments.filter(a => allIds.includes(a.id));
                     })()
                   } startDate={form.startDate} endDate={form.endDate} />
                 </TabsContent>

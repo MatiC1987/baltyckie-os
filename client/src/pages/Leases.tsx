@@ -15,12 +15,15 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Plus, FileText, Home, Users, Search, FileSignature } from "lucide-react";
+import { Plus, FileText, Home, Users, Search, FileSignature, AlertTriangle, Eraser } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLeaseSchema, type InsertLease, type Apartment, type Owner } from "@shared/schema";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 const LOCATIONS = ["BULWAR PORTOWY", "NA WYDMIE", "WCZASOWA", "GRAND BALTIC", "PRZEWŁOKA", "INNE"];
 
@@ -164,6 +167,9 @@ export default function Leases() {
           </TabsTrigger>
           <TabsTrigger value="tenant-leases" data-testid="tab-tenant-leases">
             <FileText className="mr-2 h-4 w-4" /> Umowy najmu ({leases?.length || 0})
+          </TabsTrigger>
+          <TabsTrigger value="diagnostics" data-testid="tab-cost-diagnostics">
+            <AlertTriangle className="mr-2 h-4 w-4" /> Diagnostyka kosztów
           </TabsTrigger>
         </TabsList>
 
@@ -344,7 +350,150 @@ export default function Leases() {
             Łącznie {leases?.length || 0} umów najmu
           </div>
         </TabsContent>
+
+        <TabsContent value="diagnostics" className="mt-4">
+          <CostDiagnosticsTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+type DiagnosticsEntry = {
+  contractId: number;
+  contractExists: boolean;
+  apartmentId: number;
+  apartmentName: string;
+  year: number;
+  totalForecast: number;
+};
+
+function CostDiagnosticsTab() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const currentYear = new Date().getFullYear();
+
+  const { data: entries = [], isLoading } = useQuery<DiagnosticsEntry[]>({
+    queryKey: ['/api/cost-forecasts/diagnostics'],
+    queryFn: async () => {
+      const r = await fetch('/api/cost-forecasts/diagnostics', { credentials: 'include' });
+      if (!r.ok) throw new Error('Error');
+      return r.json();
+    },
+  });
+
+  const clearMut = useMutation({
+    mutationFn: async ({ contractId, year }: { contractId: number; year: number }) => {
+      const r = await fetch(`/api/owner-contracts/${contractId}/cost-forecasts?year=${year}`, {
+        method: 'DELETE', credentials: 'include',
+      });
+      if (!r.ok) throw new Error('Error');
+      return r.json();
+    },
+    onSuccess: (data: { deleted: number }) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cost-forecasts/diagnostics'] });
+      toast({ title: "Wyczyszczono", description: `Usunięto ${data.deleted} wpisów kosztów` });
+    },
+    onError: () => toast({ title: "Błąd", description: "Nie udało się usunąć wpisów", variant: "destructive" }),
+  });
+
+  const orphaned = entries.filter(e => !e.contractExists);
+  const currentYearEntries = entries.filter(e => e.year === currentYear);
+  const totalCurrentYear = currentYearEntries.reduce((s, e) => s + e.totalForecast, 0);
+  const uniqueApts = new Set(currentYearEntries.map(e => e.apartmentId)).size;
+
+  if (isLoading) return <div className="text-sm text-muted-foreground py-8 text-center">Ładowanie...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="text-xl font-bold">{totalCurrentYear.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł</div>
+            <div className="text-xs text-muted-foreground">Auto-koszty umowne {currentYear}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="text-xl font-bold">{uniqueApts}</div>
+            <div className="text-xs text-muted-foreground">Apartamentów z auto-kosztami</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className={`text-xl font-bold ${orphaned.length > 0 ? 'text-red-600' : 'text-green-600'}`}>{orphaned.length}</div>
+            <div className="text-xs text-muted-foreground">Osieroconych wpisów (bez umowy)</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {orphaned.length > 0 && (
+        <div className="flex items-start gap-2 p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 text-sm">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>Znaleziono <strong>{orphaned.length}</strong> wpisów kosztów powiązanych z usuniętymi umowami właścicielskimi. Usuń je, aby wyczyścić dane.</span>
+        </div>
+      )}
+
+      {entries.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
+            <AlertTriangle className="h-10 w-10 text-muted-foreground/40" />
+            <p className="text-muted-foreground text-sm">Brak automatycznie wygenerowanych kosztów umownych.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="text-xs font-semibold">Apartament</TableHead>
+                <TableHead className="text-xs font-semibold">Rok</TableHead>
+                <TableHead className="text-xs font-semibold text-right">Suma kosztów auto.</TableHead>
+                <TableHead className="text-xs font-semibold">Status umowy</TableHead>
+                <TableHead className="text-xs font-semibold w-[100px]">Akcja</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((e, i) => (
+                <TableRow
+                  key={i}
+                  className={!e.contractExists ? 'bg-red-50 dark:bg-red-950/40' : ''}
+                  data-testid={`row-diagnostics-${e.contractId}-${e.apartmentId}-${e.year}`}
+                >
+                  <TableCell className="font-medium text-sm">{e.apartmentName}</TableCell>
+                  <TableCell className="text-sm">{e.year}</TableCell>
+                  <TableCell className="text-right font-semibold text-sm">
+                    {e.totalForecast.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+                  </TableCell>
+                  <TableCell>
+                    {e.contractExists ? (
+                      <Badge variant="outline" className="text-[10px] bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200">Aktywna umowa</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-red-200">Umowa usunięta</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={clearMut.isPending}
+                      onClick={() => {
+                        if (confirm(`Usunąć wygenerowane wpisy kosztów dla umowy #${e.contractId} za rok ${e.year}?`)) {
+                          clearMut.mutate({ contractId: e.contractId, year: e.year });
+                        }
+                      }}
+                      data-testid={`btn-clear-diagnostics-${e.contractId}-${e.year}`}
+                    >
+                      <Eraser className="h-3 w-3 mr-1" /> Wyczyść
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }
