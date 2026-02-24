@@ -310,7 +310,7 @@ export default function V2Przychody() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Przychody v2" icon={Wallet} description="Przychody — prognoza vs realizacja" />
+        <PageHeader title="Przychody" icon={Wallet} description="Przychody — prognoza vs realizacja" />
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -319,7 +319,7 @@ export default function V2Przychody() {
   return (
     <div className="space-y-4" data-testid="v2-przychody-page">
       <PageHeader
-        title="Przychody v2"
+        title="Przychody"
         icon={Wallet}
         description="Przychody — prognoza vs realizacja"
         actions={

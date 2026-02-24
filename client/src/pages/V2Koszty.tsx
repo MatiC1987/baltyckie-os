@@ -265,7 +265,7 @@ export default function V2Koszty() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Koszty v2" icon={Calculator} description="Koszty — apartamentowe, operacyjne, zmienne" />
+        <PageHeader title="Koszty" icon={Calculator} description="Koszty — apartamentowe, operacyjne, zmienne" />
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -274,7 +274,7 @@ export default function V2Koszty() {
   return (
     <div className="space-y-4" data-testid="v2-koszty-page">
       <PageHeader
-        title="Koszty v2"
+        title="Koszty"
         icon={Calculator}
         description="Koszty — apartamentowe, operacyjne, zmienne"
         actions={

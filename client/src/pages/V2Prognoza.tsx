@@ -123,7 +123,7 @@ export default function V2Prognoza() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Prognoza finansowa v2" icon={TrendingUp} description="Kompleksowa prognoza finansowa" />
+        <PageHeader title="Prognoza finansowa" icon={TrendingUp} description="Kompleksowa prognoza finansowa" />
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -132,7 +132,7 @@ export default function V2Prognoza() {
   return (
     <div className="space-y-4" data-testid="v2-prognoza-page">
       <PageHeader
-        title="Prognoza finansowa v2"
+        title="Prognoza finansowa"
         icon={TrendingUp}
         description="Kompleksowa prognoza finansowa — wynik na koniec każdego miesiąca"
         actions={

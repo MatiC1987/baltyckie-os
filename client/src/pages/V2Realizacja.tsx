@@ -181,7 +181,7 @@ export default function V2Realizacja() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Realizacja v2" icon={Target} description="Analiza odchyleń plan vs rzeczywistość" />
+        <PageHeader title="Realizacja" icon={Target} description="Analiza odchyleń plan vs rzeczywistość" />
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -190,7 +190,7 @@ export default function V2Realizacja() {
   return (
     <div className="space-y-4" data-testid="v2-realizacja-page">
       <PageHeader
-        title="Realizacja v2"
+        title="Realizacja"
         icon={Target}
         description="Analiza odchyleń plan vs rzeczywistość"
         actions={
