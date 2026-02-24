@@ -1,11 +1,17 @@
-import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
+import { useState, useMemo, useCallback, useEffect, Fragment, useRef } from "react";
+import type React from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Apartment, Location } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ChevronDown, ChevronRight, Settings, Plus, X, FolderInput, FileDown, Calculator, BarChart3, AlertTriangle } from "lucide-react";
+import {
+  ChevronDown, ChevronRight, Plus, X, FolderInput, FileDown, Calculator,
+  BarChart3, AlertTriangle, GripVertical, Trash2, Pencil, Archive, RotateCcw,
+  Copy, ArrowRight,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
@@ -14,6 +20,19 @@ import { useToast } from "@/hooks/use-toast";
 import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+
+const CATEGORY_COLORS = [
+  { label: "Niebieski", value: "bg-blue-600 dark:bg-blue-700" },
+  { label: "Czerwony", value: "bg-red-600 dark:bg-red-700" },
+  { label: "Fioletowy", value: "bg-purple-600 dark:bg-purple-700" },
+  { label: "Zielony", value: "bg-emerald-600 dark:bg-emerald-700" },
+  { label: "Bursztynowy", value: "bg-amber-600 dark:bg-amber-700" },
+  { label: "Różowy", value: "bg-pink-600 dark:bg-pink-700" },
+  { label: "Błękitny", value: "bg-cyan-600 dark:bg-cyan-700" },
+  { label: "Szary", value: "bg-slate-600 dark:bg-slate-700" },
+  { label: "Indygo", value: "bg-indigo-600 dark:bg-indigo-700" },
+  { label: "Pomarańczowy", value: "bg-orange-600 dark:bg-orange-700" },
+];
 
 const DEFAULT_CATEGORIES_INDIVIDUAL = [
   "RATA DLA WŁAŚCICIELA",
@@ -38,8 +57,8 @@ function formatNum(v: number): string {
 }
 
 function saldoColor(v: number): string {
-  if (v > 0) return "text-emerald-600 dark:text-emerald-400 font-semibold";
-  if (v < 0) return "text-red-600 dark:text-red-400 font-semibold";
+  if (v > 0) return "text-emerald-600 dark:text-emerald-400";
+  if (v < 0) return "text-red-600 dark:text-red-400";
   return "";
 }
 
@@ -87,6 +106,32 @@ function saveCategories(cats: CategoriesMap) {
   localStorage.setItem(categoriesStorageKey(), JSON.stringify(cats));
 }
 
+type ColorMap = Record<string, Record<string, { color: string; archived?: boolean }>>;
+function colorStorageKey() { return `costs-apartments-colors`; }
+function loadColorMap(): ColorMap {
+  try {
+    const raw = localStorage.getItem(colorStorageKey());
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+function saveColorMap(m: ColorMap) {
+  localStorage.setItem(colorStorageKey(), JSON.stringify(m));
+}
+
+type SortOrderMap = Record<string, string[]>;
+function sortOrderKey() { return `costs-apartments-sort-order`; }
+function loadSortOrder(): SortOrderMap {
+  try {
+    const raw = localStorage.getItem(sortOrderKey());
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+function saveSortOrder(m: SortOrderMap) {
+  localStorage.setItem(sortOrderKey(), JSON.stringify(m));
+}
+
 interface CostEntry {
   id: string;
   name: string;
@@ -99,6 +144,64 @@ type ContractCostItem = { name: string; monthlyAmount: number; contractId: numbe
 type ContractCostData = Record<string, { apartmentId: number; apartmentName: string; location: string; items: ContractCostItem[] }>;
 type ConflictEntry = { entryId: string; category: string; existingValue: number; contractValue: number; contractName: string };
 
+type CellKey = string;
+function makeCellKey(entryId: string, category: string, month: number, field: "p" | "r"): CellKey {
+  return `${entryId}__${category}__${month}__${field}`;
+}
+
+function parseCellKey(key: CellKey) {
+  const parts = key.split("__");
+  return { entryId: parts[0], category: parts[1], month: parseInt(parts[2]), field: parts[3] as "p" | "r" };
+}
+
+function EditableCell({
+  cellKey, value, editingCell, editValue, setEditValue, startEditing, commitEdit, cancelEdit,
+  className = "", isSelected, isInRange, onCellClick, onFillHandleMouseDown, onCellMouseEnter, month,
+}: {
+  cellKey: CellKey; value: number; editingCell: CellKey | null; editValue: string;
+  setEditValue: (v: string) => void; startEditing: (key: CellKey) => void;
+  commitEdit: () => void; cancelEdit: () => void;
+  className?: string; isSelected?: boolean; isInRange?: boolean;
+  onCellClick?: (key: CellKey) => void; onFillHandleMouseDown?: (e: React.MouseEvent) => void;
+  onCellMouseEnter?: (month: number) => void; month: number;
+}) {
+  const isEditing = editingCell === cellKey;
+  return (
+    <td
+      className={`border-b border-r border-border px-0 py-0 text-right tabular-nums relative select-none ${className} ${isSelected ? "ring-2 ring-primary ring-inset" : ""} ${isInRange ? "bg-primary/10" : ""}`}
+      onDoubleClick={() => startEditing(cellKey)}
+      onClick={() => onCellClick?.(cellKey)}
+      onMouseEnter={() => onCellMouseEnter?.(month)}
+      data-testid={`cell-${cellKey}`}
+    >
+      {isEditing ? (
+        <input
+          type="number"
+          autoFocus
+          className="w-full h-full px-1 py-0.5 text-right text-[11px] tabular-nums bg-primary/5 outline-none border-0"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitEdit();
+            if (e.key === "Escape") cancelEdit();
+          }}
+        />
+      ) : (
+        <span className="block px-1 py-0.5 text-[11px] cursor-cell min-h-[20px]">
+          {formatNum(value)}
+        </span>
+      )}
+      {isSelected && !isEditing && onFillHandleMouseDown && (
+        <div
+          className="absolute bottom-0 right-0 w-2 h-2 bg-primary cursor-crosshair z-10"
+          onMouseDown={onFillHandleMouseDown}
+        />
+      )}
+    </td>
+  );
+}
+
 export function CostsApartmentsContent({ embedded = false, externalYear }: { embedded?: boolean; externalYear?: number }) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -106,9 +209,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [data, setData] = useState(() => loadData(externalYear ?? currentYear));
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [categoriesMap, setCategoriesMap] = useState<CategoriesMap>(() => loadCategories());
-  const [editingEntry, setEditingEntry] = useState<CostEntry | null>(null);
-  const [editCategories, setEditCategories] = useState<string[]>([]);
-  const [newCategory, setNewCategory] = useState("");
+  const [colorMap, setColorMap] = useState<ColorMap>(() => loadColorMap());
+  const [sortOrderMap, setSortOrderMap] = useState<SortOrderMap>(() => loadSortOrder());
   const [isImporting, setIsImporting] = useState(false);
   const [isImportingContracts, setIsImportingContracts] = useState(false);
   const [compareYear, setCompareYear] = useState<number | null>(null);
@@ -116,6 +218,32 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [pendingContractData, setPendingContractData] = useState<{ entries: { key: string; month: number; value: number }[] } | null>(null);
   const [conflictResolutions, setConflictResolutions] = useState<Record<string, "existing" | "contract">>({});
   const { toast } = useToast();
+
+  const [editingCell, setEditingCell] = useState<CellKey | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [selectedCell, setSelectedCell] = useState<CellKey | null>(null);
+  const [fillRangeEnd, setFillRangeEnd] = useState<number | null>(null);
+  const fillDragging = useRef(false);
+
+  const [editingEntry, setEditingEntry] = useState<CostEntry | null>(null);
+  const [editCategories, setEditCategories] = useState<string[]>([]);
+  const [newCategory, setNewCategory] = useState("");
+
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [addCatEntryId, setAddCatEntryId] = useState<string | null>(null);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatColor, setNewCatColor] = useState(CATEGORY_COLORS[0].value);
+
+  const [editCatDialog, setEditCatDialog] = useState<{ entryId: string; category: string } | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+  const [editCatColor, setEditCatColor] = useState("");
+
+  const [showCopyToNextYear, setShowCopyToNextYear] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const dragCatRef = useRef<{ entryId: string; category: string } | null>(null);
+  const dragOverCatRef = useRef<{ entryId: string; category: string } | null>(null);
+  const [dragCatKey, setDragCatKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (externalYear !== undefined && externalYear !== year) {
@@ -134,7 +262,6 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       if (!res.ok) throw new Error('Brak danych');
       const importData = await res.json();
       const { data: yearlyData, categories } = importData;
-
       let totalEntries = 0;
       for (const [yr, entries] of Object.entries(yearlyData as Record<string, DataMap>)) {
         const existing = loadData(Number(yr));
@@ -142,17 +269,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         saveData(Number(yr), merged);
         totalEntries += Object.keys(entries).length;
       }
-
       if (categories) {
         const existingCats = loadCategories();
         const mergedCats = { ...existingCats, ...categories };
         saveCategories(mergedCats);
         setCategoriesMap(mergedCats);
       }
-
       setData(loadData(year));
       toast({ title: "Import zakończony", description: `Zaimportowano dane dla ${Object.keys(yearlyData).length} lat (${totalEntries} pozycji)` });
-    } catch (err) {
+    } catch {
       toast({ title: "Błąd importu", description: "Nie udało się zaimportować danych", variant: "destructive" });
     } finally {
       setIsImporting(false);
@@ -165,61 +290,42 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       const res = await fetch(`/api/apartment-contract-costs?year=${year}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Brak danych');
       const contractData: ContractCostData = await res.json();
-
       if (Object.keys(contractData).length === 0) {
         toast({ title: "Brak danych", description: "Nie znaleziono aktywnych umów z właścicielami na ten rok" });
         setIsImportingContracts(false);
         return;
       }
-
       const freshData = loadData(year);
       const newCats = { ...categoriesMap };
       const entriesToApply: { key: string; month: number; value: number }[] = [];
       const foundConflicts: ConflictEntry[] = [];
       const seenConflictKeys = new Set<string>();
-
       for (const [entryId, contractEntry] of Object.entries(contractData)) {
         const existingCats = newCats[entryId] || (entryId === "gb-all" ? [...DEFAULT_CATEGORIES_GRAND_BALTIC] : [...DEFAULT_CATEGORIES_INDIVIDUAL]);
         const updatedCats = [...existingCats];
-
         for (const item of contractEntry.items) {
-          if (!updatedCats.includes(item.name)) {
-            updatedCats.push(item.name);
-          }
+          if (!updatedCats.includes(item.name)) updatedCats.push(item.name);
           const key = `${entryId}__${item.name}`;
           const conflictKey = `${entryId}||${item.name}`;
           let hasConflict = false;
           let conflictExistingValue = 0;
-
           for (let m = 0; m < 12; m++) {
             const existingCell = freshData[key]?.[m];
             const existingP = existingCell?.p || 0;
-
             if (existingP > 0 && existingP !== item.monthlyAmount) {
               hasConflict = true;
               conflictExistingValue = existingP;
             }
           }
-
           if (hasConflict && !seenConflictKeys.has(conflictKey)) {
             seenConflictKeys.add(conflictKey);
-            foundConflicts.push({
-              entryId,
-              category: item.name,
-              existingValue: conflictExistingValue,
-              contractValue: item.monthlyAmount,
-              contractName: contractEntry.apartmentName,
-            });
+            foundConflicts.push({ entryId, category: item.name, existingValue: conflictExistingValue, contractValue: item.monthlyAmount, contractName: contractEntry.apartmentName });
           } else if (!hasConflict) {
-            for (let m = 0; m < 12; m++) {
-              entriesToApply.push({ key, month: m, value: item.monthlyAmount });
-            }
+            for (let m = 0; m < 12; m++) entriesToApply.push({ key, month: m, value: item.monthlyAmount });
           }
         }
-
         newCats[entryId] = updatedCats;
       }
-
       if (foundConflicts.length > 0) {
         setConflicts(foundConflicts);
         setPendingContractData({ entries: entriesToApply });
@@ -234,7 +340,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         applyContractEntries(entriesToApply);
         toast({ title: "Import zakończony", description: `Zaimportowano koszty z ${Object.keys(contractData).length} pozycji umów` });
       }
-    } catch (err) {
+    } catch {
       toast({ title: "Błąd importu", description: "Nie udało się zaimportować danych z umów", variant: "destructive" });
     } finally {
       setIsImportingContracts(false);
@@ -255,18 +361,14 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
 
   const resolveConflicts = () => {
     const allEntries = [...(pendingContractData?.entries || [])];
-
     conflicts.forEach(c => {
       const resKey = `${c.entryId}||${c.category}`;
       const resolution = conflictResolutions[resKey] || "contract";
       if (resolution === "contract") {
         const key = `${c.entryId}__${c.category}`;
-        for (let m = 0; m < 12; m++) {
-          allEntries.push({ key, month: m, value: c.contractValue });
-        }
+        for (let m = 0; m < 12; m++) allEntries.push({ key, month: m, value: c.contractValue });
       }
     });
-
     applyContractEntries(allEntries);
     setConflicts([]);
     setPendingContractData(null);
@@ -281,34 +383,64 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     [locations]
   );
 
+  const getCategoriesForEntry = useCallback((entryId: string, isGrandBaltic: boolean): string[] => {
+    const cats = categoriesMap[entryId] || (isGrandBaltic ? [...DEFAULT_CATEGORIES_GRAND_BALTIC] : [...DEFAULT_CATEGORIES_INDIVIDUAL]);
+    const order = sortOrderMap[entryId];
+    if (order) {
+      const ordered = order.filter(c => cats.includes(c));
+      const remaining = cats.filter(c => !order.includes(c));
+      return [...ordered, ...remaining];
+    }
+    return cats;
+  }, [categoriesMap, sortOrderMap]);
+
+  const getActiveCategories = useCallback((entryId: string, isGrandBaltic: boolean): string[] => {
+    const all = getCategoriesForEntry(entryId, isGrandBaltic);
+    const colors = colorMap[entryId] || {};
+    return all.filter(c => !colors[c]?.archived);
+  }, [getCategoriesForEntry, colorMap]);
+
+  const getArchivedCategories = useCallback((entryId: string, isGrandBaltic: boolean): string[] => {
+    const all = getCategoriesForEntry(entryId, isGrandBaltic);
+    const colors = colorMap[entryId] || {};
+    return all.filter(c => colors[c]?.archived);
+  }, [getCategoriesForEntry, colorMap]);
+
+  const getCategoryColor = useCallback((entryId: string, category: string, defaultIdx: number): string => {
+    const colors = colorMap[entryId] || {};
+    if (colors[category]?.color) return colors[category].color;
+    return CATEGORY_COLORS[defaultIdx % CATEGORY_COLORS.length].value;
+  }, [colorMap]);
+
   const costEntries = useMemo(() => {
     const entries: { location: string; items: CostEntry[] }[] = [];
-
     for (const loc of sortedLocations) {
       const locApts = apartments.filter(a => a.location === loc.name && a.active !== false);
       if (locApts.length === 0) continue;
-
       if (loc.name === GRAND_BALTIC_LOCATION) {
-        const gbEntry: CostEntry = {
-          id: `gb-all`,
-          name: GRAND_BALTIC_LOCATION,
-          isGrandBaltic: true,
-          categories: categoriesMap[`gb-all`] || DEFAULT_CATEGORIES_GRAND_BALTIC,
-          apartmentIds: locApts.map(a => a.id),
-        };
-        entries.push({ location: loc.name, items: [gbEntry] });
+        entries.push({
+          location: loc.name,
+          items: [{
+            id: "gb-all",
+            name: GRAND_BALTIC_LOCATION,
+            isGrandBaltic: true,
+            categories: getActiveCategories("gb-all", true),
+            apartmentIds: locApts.map(a => a.id),
+          }],
+        });
       } else {
-        const items: CostEntry[] = locApts.map(apt => ({
-          id: `apt-${apt.id}`,
-          name: apt.name,
-          isGrandBaltic: false,
-          categories: categoriesMap[`apt-${apt.id}`] || [...DEFAULT_CATEGORIES_INDIVIDUAL],
-          apartmentIds: [apt.id],
-        }));
-        entries.push({ location: loc.name, items });
+        entries.push({
+          location: loc.name,
+          items: locApts.map(apt => ({
+            id: `apt-${apt.id}`,
+            name: apt.name,
+            isGrandBaltic: false,
+            categories: getActiveCategories(`apt-${apt.id}`, false),
+            apartmentIds: [apt.id],
+          })),
+        });
       }
     }
-
     const unassigned = apartments.filter(a => a.active !== false && !sortedLocations.some(l => l.name === a.location));
     if (unassigned.length > 0) {
       entries.push({
@@ -317,20 +449,25 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
           id: `apt-${apt.id}`,
           name: apt.name,
           isGrandBaltic: false,
-          categories: categoriesMap[`apt-${apt.id}`] || [...DEFAULT_CATEGORIES_INDIVIDUAL],
+          categories: getActiveCategories(`apt-${apt.id}`, false),
           apartmentIds: [apt.id],
-        }))
+        })),
       });
     }
-
     return entries;
-  }, [apartments, sortedLocations, categoriesMap]);
+  }, [apartments, sortedLocations, getActiveCategories]);
 
   const compareData = useMemo(() => compareYear !== null ? loadData(compareYear) : {}, [compareYear]);
 
-  const getCellKey = (entryId: string, category: string) => `${entryId}__${category}`;
+  const getCellKeyOld = (entryId: string, category: string) => `${entryId}__${category}`;
 
-  const handleCellChange = useCallback((key: string, month: number, field: "p" | "r", value: string) => {
+  const getCellValue = useCallback((entryId: string, category: string, month: number, field: "p" | "r"): number => {
+    const key = getCellKeyOld(entryId, category);
+    return data[key]?.[month]?.[field] || 0;
+  }, [data]);
+
+  const handleCellChange = useCallback((entryId: string, category: string, month: number, field: "p" | "r", value: string) => {
+    const key = getCellKeyOld(entryId, category);
     setData(prev => {
       const next = { ...prev };
       if (!next[key]) next[key] = {};
@@ -340,6 +477,97 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       return next;
     });
   }, [year]);
+
+  const startEditing = useCallback((cellKey: CellKey) => {
+    const parsed = parseCellKey(cellKey);
+    const val = getCellValue(parsed.entryId, parsed.category, parsed.month, parsed.field);
+    setEditingCell(cellKey);
+    setEditValue(val ? val.toString() : "");
+  }, [getCellValue]);
+
+  const commitEdit = useCallback(() => {
+    if (!editingCell) return;
+    const parsed = parseCellKey(editingCell);
+    handleCellChange(parsed.entryId, parsed.category, parsed.month, parsed.field, editValue);
+    setEditingCell(null);
+  }, [editingCell, editValue, handleCellChange]);
+
+  const cancelEdit = useCallback(() => { setEditingCell(null); }, []);
+
+  const handleCellClick = useCallback((key: CellKey) => {
+    setSelectedCell(key);
+    setFillRangeEnd(null);
+  }, []);
+
+  const handleFillHandleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fillDragging.current = true;
+  }, []);
+
+  const handleCellMouseEnter = useCallback((month: number) => {
+    if (fillDragging.current && selectedCell) setFillRangeEnd(month);
+  }, [selectedCell]);
+
+  const handleMouseUp = useCallback(() => {
+    if (fillDragging.current && selectedCell && fillRangeEnd !== null) {
+      const source = parseCellKey(selectedCell);
+      const sourceVal = getCellValue(source.entryId, source.category, source.month, source.field);
+      const startM = Math.min(source.month, fillRangeEnd);
+      const endM = Math.max(source.month, fillRangeEnd);
+      if (startM !== endM) {
+        for (let m = startM; m <= endM; m++) {
+          handleCellChange(source.entryId, source.category, m, source.field, sourceVal.toString());
+        }
+      }
+    }
+    fillDragging.current = false;
+    setFillRangeEnd(null);
+  }, [selectedCell, fillRangeEnd, getCellValue, handleCellChange]);
+
+  const isInFillRange = useCallback((key: CellKey): boolean => {
+    if (!selectedCell || fillRangeEnd === null) return false;
+    const source = parseCellKey(selectedCell);
+    const target = parseCellKey(key);
+    if (source.entryId !== target.entryId || source.category !== target.category || source.field !== target.field) return false;
+    const startM = Math.min(source.month, fillRangeEnd);
+    const endM = Math.max(source.month, fillRangeEnd);
+    return target.month >= startM && target.month <= endM;
+  }, [selectedCell, fillRangeEnd]);
+
+  const handleFillToEnd = useCallback(() => {
+    if (!selectedCell) return;
+    const source = parseCellKey(selectedCell);
+    const sourceVal = getCellValue(source.entryId, source.category, source.month, source.field);
+    for (let m = source.month; m < 12; m++) {
+      handleCellChange(source.entryId, source.category, m, source.field, sourceVal.toString());
+    }
+    setSelectedCell(null);
+  }, [selectedCell, getCellValue, handleCellChange]);
+
+  const handleCopyForecastToNextYear = useCallback(() => {
+    const nextYear = year + 1;
+    const existingNextYearData = loadData(nextYear);
+    const newNextYearData = { ...existingNextYearData };
+    costEntries.forEach(group => {
+      group.items.forEach(entry => {
+        entry.categories.forEach(cat => {
+          const key = getCellKeyOld(entry.id, cat);
+          for (let m = 0; m < 12; m++) {
+            const val = data[key]?.[m]?.p || 0;
+            if (val !== 0) {
+              if (!newNextYearData[key]) newNextYearData[key] = {};
+              if (!newNextYearData[key][m]) newNextYearData[key][m] = { p: 0, r: 0 };
+              newNextYearData[key][m] = { ...newNextYearData[key][m], p: val };
+            }
+          }
+        });
+      });
+    });
+    saveData(nextYear, newNextYearData);
+    setShowCopyToNextYear(false);
+    toast({ title: "Skopiowano", description: `Prognoza skopiowana na rok ${nextYear}` });
+  }, [year, costEntries, data, toast]);
 
   const toggleLocation = (loc: string) => {
     setCollapsed(prev => {
@@ -358,7 +586,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
 
   const openCategoryEditor = (entry: CostEntry) => {
     setEditingEntry(entry);
-    setEditCategories([...entry.categories]);
+    setEditCategories([...getCategoriesForEntry(entry.id, entry.isGrandBaltic)]);
     setNewCategory("");
   };
 
@@ -382,25 +610,134 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     setEditCategories(editCategories.filter((_, i) => i !== idx));
   };
 
-  const getEntrySums = (entry: CostEntry, month: number): { p: number; r: number } => {
-    let p = 0, r = 0;
-    entry.categories.forEach(cat => {
-      const key = getCellKey(entry.id, cat);
-      const cell = data[key]?.[month];
-      if (cell) { p += cell.p; r += cell.r; }
-    });
-    return { p, r };
+  const handleAddCategoryWithColor = () => {
+    if (!addCatEntryId || !newCatName.trim()) return;
+    const name = newCatName.trim().toUpperCase();
+    const existing = categoriesMap[addCatEntryId] || (addCatEntryId === "gb-all" ? [...DEFAULT_CATEGORIES_GRAND_BALTIC] : [...DEFAULT_CATEGORIES_INDIVIDUAL]);
+    if (!existing.includes(name)) {
+      const next = { ...categoriesMap, [addCatEntryId]: [...existing, name] };
+      setCategoriesMap(next);
+      saveCategories(next);
+    }
+    const newColors = { ...colorMap };
+    if (!newColors[addCatEntryId]) newColors[addCatEntryId] = {};
+    newColors[addCatEntryId][name] = { color: newCatColor };
+    setColorMap(newColors);
+    saveColorMap(newColors);
+    setNewCatName("");
+    setNewCatColor(CATEGORY_COLORS[0].value);
+    setShowAddCategory(false);
+    setAddCatEntryId(null);
   };
 
-  const getEntryYearTotal = (entry: CostEntry): { p: number; r: number } => {
-    let p = 0, r = 0;
-    for (let m = 0; m < 12; m++) {
-      const s = getEntrySums(entry, m);
-      p += s.p;
-      r += s.r;
+  const handleArchiveCategory = useCallback((entryId: string, category: string) => {
+    const newColors = { ...colorMap };
+    if (!newColors[entryId]) newColors[entryId] = {};
+    newColors[entryId][category] = { ...newColors[entryId][category], archived: true };
+    setColorMap(newColors);
+    saveColorMap(newColors);
+    toast({ title: "Zarchiwizowano kategorię" });
+  }, [colorMap, toast]);
+
+  const handleRestoreCategory = useCallback((entryId: string, category: string) => {
+    const newColors = { ...colorMap };
+    if (newColors[entryId]?.[category]) {
+      newColors[entryId][category] = { ...newColors[entryId][category], archived: false };
+      setColorMap(newColors);
+      saveColorMap(newColors);
     }
+    toast({ title: "Przywrócono kategorię" });
+  }, [colorMap, toast]);
+
+  const handleDeleteCategory = useCallback((entryId: string, category: string) => {
+    const existing = categoriesMap[entryId] || [];
+    const next = { ...categoriesMap, [entryId]: existing.filter(c => c !== category) };
+    setCategoriesMap(next);
+    saveCategories(next);
+    toast({ title: "Usunięto kategorię" });
+  }, [categoriesMap, toast]);
+
+  const openEditCatDialog = useCallback((entryId: string, category: string) => {
+    setEditCatDialog({ entryId, category });
+    setEditCatName(category);
+    setEditCatColor(colorMap[entryId]?.[category]?.color || CATEGORY_COLORS[0].value);
+  }, [colorMap]);
+
+  const handleSaveEditCat = useCallback(() => {
+    if (!editCatDialog || !editCatName.trim()) return;
+    const { entryId, category } = editCatDialog;
+    const newName = editCatName.trim().toUpperCase();
+    if (newName !== category) {
+      const existing = categoriesMap[entryId] || [];
+      const next = { ...categoriesMap, [entryId]: existing.map(c => c === category ? newName : c) };
+      setCategoriesMap(next);
+      saveCategories(next);
+      const oldKey = getCellKeyOld(entryId, category);
+      const newKey = getCellKeyOld(entryId, newName);
+      if (data[oldKey]) {
+        const newData = { ...data, [newKey]: data[oldKey] };
+        delete newData[oldKey];
+        setData(newData);
+        saveData(year, newData);
+      }
+    }
+    const newColors = { ...colorMap };
+    if (!newColors[entryId]) newColors[entryId] = {};
+    newColors[entryId][newName] = { ...(newColors[entryId][category] || {}), color: editCatColor };
+    if (newName !== category) delete newColors[entryId][category];
+    setColorMap(newColors);
+    saveColorMap(newColors);
+    setEditCatDialog(null);
+  }, [editCatDialog, editCatName, editCatColor, categoriesMap, colorMap, data, year]);
+
+  const handleCatDragStart = useCallback((entryId: string, category: string) => {
+    dragCatRef.current = { entryId, category };
+    setDragCatKey(`${entryId}__${category}`);
+  }, []);
+
+  const handleCatDragOver = useCallback((e: React.DragEvent, entryId: string, category: string) => {
+    e.preventDefault();
+    dragOverCatRef.current = { entryId, category };
+  }, []);
+
+  const handleCatDragEnd = useCallback(() => {
+    const from = dragCatRef.current;
+    const to = dragOverCatRef.current;
+    setDragCatKey(null);
+    dragCatRef.current = null;
+    dragOverCatRef.current = null;
+    if (!from || !to || from.entryId !== to.entryId || from.category === to.category) return;
+    const entryId = from.entryId;
+    const isGrandBaltic = entryId === "gb-all";
+    const cats = getCategoriesForEntry(entryId, isGrandBaltic);
+    const fromIdx = cats.indexOf(from.category);
+    const toIdx = cats.indexOf(to.category);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const newCats = [...cats];
+    const [moved] = newCats.splice(fromIdx, 1);
+    newCats.splice(toIdx, 0, moved);
+    const nextSort = { ...sortOrderMap, [entryId]: newCats };
+    setSortOrderMap(nextSort);
+    saveSortOrder(nextSort);
+    const nextCats = { ...categoriesMap, [entryId]: newCats };
+    setCategoriesMap(nextCats);
+    saveCategories(nextCats);
+  }, [getCategoriesForEntry, sortOrderMap, categoriesMap]);
+
+  const getEntrySums = useCallback((entry: CostEntry, month: number): { p: number; r: number } => {
+    let p = 0, r = 0;
+    entry.categories.forEach(cat => {
+      p += getCellValue(entry.id, cat, month, "p");
+      r += getCellValue(entry.id, cat, month, "r");
+    });
     return { p, r };
-  };
+  }, [getCellValue]);
+
+  const getEntryYearTotal = useCallback((entry: CostEntry): { p: number; r: number } => {
+    let p = 0, r = 0;
+    for (let m = 0; m < 12; m++) { const s = getEntrySums(entry, m); p += s.p; r += s.r; }
+    return { p, r };
+  }, [getEntrySums]);
 
   const costsHeatMax = useMemo(() => {
     let max = 0;
@@ -413,67 +750,80 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       });
     });
     return max;
-  }, [costEntries, data]);
+  }, [costEntries, getEntrySums]);
 
   const getEntrySparklineData = useCallback((entry: CostEntry): number[] => {
     return Array.from({ length: 12 }, (_, m) => getEntrySums(entry, m).r);
-  }, [data]);
+  }, [getEntrySums]);
 
-  const getLocationSums = (items: CostEntry[], month: number): { p: number; r: number } => {
-    let p = 0, r = 0;
-    items.forEach(entry => {
-      const s = getEntrySums(entry, month);
-      p += s.p;
-      r += s.r;
-    });
-    return { p, r };
-  };
+  const getCatSparklineData = useCallback((entryId: string, category: string): number[] => {
+    return Array.from({ length: 12 }, (_, m) => getCellValue(entryId, category, m, "r"));
+  }, [getCellValue]);
 
-  const getLocationYearTotal = (items: CostEntry[]): { p: number; r: number } => {
+  const getLocationSums = useCallback((items: CostEntry[], month: number): { p: number; r: number } => {
     let p = 0, r = 0;
-    for (let m = 0; m < 12; m++) {
-      const s = getLocationSums(items, m);
-      p += s.p;
-      r += s.r;
-    }
+    items.forEach(entry => { const s = getEntrySums(entry, month); p += s.p; r += s.r; });
     return { p, r };
-  };
+  }, [getEntrySums]);
+
+  const getLocationYearTotal = useCallback((items: CostEntry[]): { p: number; r: number } => {
+    let p = 0, r = 0;
+    for (let m = 0; m < 12; m++) { const s = getLocationSums(items, m); p += s.p; r += s.r; }
+    return { p, r };
+  }, [getLocationSums]);
+
+  const grandTotal = useMemo(() => {
+    let p = 0, r = 0;
+    costEntries.forEach(group => { const s = getLocationYearTotal(group.items); p += s.p; r += s.r; });
+    return { p, r, s: p - r };
+  }, [costEntries, getLocationYearTotal]);
 
   const monthlyCostChart = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
       let p = 0, r = 0;
-      costEntries.forEach(group => {
-        const s = getLocationSums(group.items, m);
-        p += s.p;
-        r += s.r;
-      });
+      costEntries.forEach(group => { const s = getLocationSums(group.items, m); p += s.p; r += s.r; });
       return { name: MONTHS[m], Prognoza: Math.round(p), Rzeczywiste: Math.round(r) };
     });
-  }, [costEntries, data]);
+  }, [costEntries, getLocationSums]);
+
+  const archivedEntries = useMemo(() => {
+    const result: { entryId: string; entryName: string; categories: string[] }[] = [];
+    costEntries.forEach(group => {
+      group.items.forEach(entry => {
+        const archived = getArchivedCategories(entry.id, entry.isGrandBaltic);
+        if (archived.length > 0) {
+          result.push({ entryId: entry.id, entryName: entry.name, categories: archived });
+        }
+      });
+    });
+    return result;
+  }, [costEntries, getArchivedCategories]);
 
   const [showChart, setShowChart] = useState(false);
   const fullscreen = useFullscreen();
 
+  const selectedCellValue = useMemo(() => {
+    if (!selectedCell) return 0;
+    const parsed = parseCellKey(selectedCell);
+    return getCellValue(parsed.entryId, parsed.category, parsed.month, parsed.field);
+  }, [selectedCell, getCellValue]);
+
   return (
-    <div className={embedded ? "space-y-4" : "p-6 space-y-4"}>
+    <div className={embedded ? "space-y-4" : "p-6 space-y-4"} onMouseUp={handleMouseUp}>
       {!embedded && (
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <PageHeader title="Koszty apartamentów" description="Analiza kosztów w podziale na apartamenty." icon={Calculator} />
           <div className="flex items-center gap-2 flex-wrap">
             <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
-            <Button
-              variant="outline"
-              onClick={handleImportFromExcel}
-              disabled={isImporting}
-              data-testid="button-import-costs"
-            >
+            <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
+              <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj na {year + 1}
+            </Button>
+            <Button variant="outline" onClick={handleImportFromExcel} disabled={isImporting} data-testid="button-import-costs">
               <FolderInput className="h-4 w-4 mr-1" />
               {isImporting ? "Importowanie..." : "Import z Excel"}
             </Button>
             <Select value={String(year)} onValueChange={handleYearChange}>
-              <SelectTrigger className="w-[100px]" data-testid="select-year">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-[100px]" data-testid="select-year"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).map(y => (
                   <SelectItem key={y} value={String(y)}>{y}</SelectItem>
@@ -481,9 +831,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
               </SelectContent>
             </Select>
             <Select value={compareYear !== null ? String(compareYear) : "none"} onValueChange={(v) => setCompareYear(v === "none" ? null : Number(v))}>
-              <SelectTrigger className="w-[140px]" data-testid="select-compare-year">
-                <SelectValue placeholder="Porównaj z..." />
-              </SelectTrigger>
+              <SelectTrigger className="w-[140px]" data-testid="select-compare-year"><SelectValue placeholder="Porównaj z..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">— Brak —</SelectItem>
                 {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).filter(y => y !== year).map(y => (
@@ -495,17 +843,58 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         </div>
       )}
 
+      {embedded && (
+        <div className="flex flex-wrap items-center gap-2">
+          <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
+          <Button variant="outline" size="sm" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
+            <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj na {year + 1}
+          </Button>
+          <Select value={compareYear !== null ? String(compareYear) : "none"} onValueChange={(v) => setCompareYear(v === "none" ? null : Number(v))}>
+            <SelectTrigger className="w-[160px]" data-testid="select-compare-year"><SelectValue placeholder="Porównaj z..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Brak —</SelectItem>
+              {Array.from({ length: currentYear - 2022 + 2 }, (_, i) => 2022 + i).filter(y => y !== year).map(y => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Prognoza roczna</p>
+            <p className="text-xl font-bold mt-1" data-testid="text-total-prognoza">{grandTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Rzeczywiste roczne</p>
+            <p className="text-xl font-bold mt-1" data-testid="text-total-rzeczywiste">{grandTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Saldo</p>
+            <p className={`text-xl font-bold mt-1 ${saldoColor(grandTotal.s)}`} data-testid="text-total-saldo">
+              {grandTotal.s >= 0 ? "+" : ""}{grandTotal.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Lokalizacje / Apartamenty</p>
+            <p className="text-xl font-bold mt-1" data-testid="text-total-entries">{costEntries.length} / {costEntries.reduce((s, g) => s + g.items.length, 0)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="flex items-center gap-2 mb-2">
         <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart-costs">
           <BarChart3 className="mr-1 h-3 w-3" /> {showChart ? "Ukryj wykres" : "Pokaż wykres"}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleImportFromContracts}
-          disabled={isImportingContracts}
-          data-testid="button-import-from-contracts"
-        >
+        <Button variant="outline" size="sm" onClick={handleImportFromContracts} disabled={isImportingContracts} data-testid="button-import-from-contracts">
           <FileDown className="mr-1 h-3 w-3" />
           {isImportingContracts ? "Importowanie..." : "Import z umów"}
         </Button>
@@ -532,29 +921,37 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         </Card>
       )}
 
+      {selectedCell && selectedCellValue !== 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Zaznaczona komórka: <strong>{selectedCellValue.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</strong> zł</span>
+          <Button variant="outline" size="sm" onClick={handleFillToEnd} data-testid="button-fill-to-end">
+            <Copy className="mr-1 h-3 w-3" /> Wypełnij do grudnia
+          </Button>
+          <span className="text-muted-foreground/60">lub przeciągnij kwadracik w rogu komórki</span>
+        </div>
+      )}
+
       <FullscreenWrapper title={`Koszty apartamentów ${year}`} isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
         <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="bg-muted/30">
-              <th className="sticky left-0 z-10 bg-muted/30 text-left px-2 py-1 border-r-2 border-b border-border min-w-[220px]"></th>
+        <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-muted/80 dark:bg-muted/50">
+              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+                Pozycja
+              </th>
               {MONTHS.map((m, i) => (
-                <th key={i} colSpan={3} className={`px-1 py-1 border-r-2 border-b border-border text-center font-bold text-muted-foreground text-[10px] ${i === currentMonth && year === currentYear ? "bg-primary/10" : ""}`}>{m}</th>
+                <th key={i} colSpan={3} className={`border-b border-r-2 border-border px-1 py-1 text-center font-bold ${i === currentMonth && year === currentYear ? "bg-primary/10" : ""}`}>{m}</th>
               ))}
-              <th colSpan={3} className="px-1 py-1 border-b border-border text-center font-bold text-muted-foreground text-[10px]">RAZEM</th>
+              <th colSpan={3} className="border-b border-border px-1 py-1 text-center font-bold bg-muted dark:bg-muted/70">ROCZNIE</th>
             </tr>
-            <tr className="bg-muted/50">
-              <th className="sticky left-0 z-10 bg-muted/50 text-left px-2 py-1 border-r-2 border-b border-border min-w-[220px]">Pozycja</th>
-              {MONTHS.map((_, i) => (
-                <Fragment key={i}>
-                  <th className={`px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] text-[10px] bg-muted/20 dark:bg-muted/10 ${i === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>P</th>
-                  <th className={`px-1 py-1 border-r border-b border-border text-center w-[55px] min-w-[55px] ${i === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>R</th>
-                  <th className={`px-1 py-1 border-r-2 border-b border-border text-center w-[55px] min-w-[55px] ${i === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>S</th>
+            <tr className="bg-muted/60 dark:bg-muted/40">
+              {[...Array(13)].map((_, mi) => (
+                <Fragment key={mi}>
+                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">P</th>
+                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">R</th>
+                  <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
                 </Fragment>
               ))}
-              <th className="px-1 py-1 border-r border-b border-border text-center w-[60px] min-w-[60px] text-[10px] bg-muted/20 dark:bg-muted/10">P</th>
-              <th className="px-1 py-1 border-r border-b border-border text-center w-[60px] min-w-[60px]">R</th>
-              <th className="px-1 py-1 border-b border-border text-center w-[60px] min-w-[60px]">S</th>
             </tr>
           </thead>
           <tbody>
@@ -564,9 +961,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
               const locYearS = locYear.p - locYear.r;
               return (
                 <Fragment key={group.location}>
-                  <tr className="bg-muted/40">
+                  <tr className="bg-muted/60 dark:bg-muted/40 select-none">
                     <td
-                      className="sticky left-0 z-10 bg-muted/40 px-2 py-1.5 border-r-2 border-b border-border font-bold text-muted-foreground uppercase tracking-wide cursor-pointer"
+                      className="sticky left-0 z-20 bg-muted/60 dark:bg-muted/40 px-2 py-1.5 border-r border-b border-border font-bold text-muted-foreground uppercase tracking-wide cursor-pointer"
                       onClick={() => toggleLocation(group.location)}
                       data-testid={`location-header-${group.location}`}
                     >
@@ -586,9 +983,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                         </Fragment>
                       );
                     })}
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10 font-bold">{formatNum(locYear.p)}</td>
-                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-bold">{formatNum(locYear.r)}</td>
-                    <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-bold ${saldoColor(locYearS)}`}>{formatNum(locYearS)}</td>
+                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted dark:bg-muted/70 font-bold">{formatNum(locYear.p)}</td>
+                    <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-bold bg-muted dark:bg-muted/70">{formatNum(locYear.r)}</td>
+                    <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-bold bg-muted dark:bg-muted/70 ${saldoColor(locYearS)}`}>{formatNum(locYearS)}</td>
                   </tr>
 
                   {!isCollapsed && group.items.map(entry => {
@@ -596,20 +993,28 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                     const entryYearS = entryYear.p - entryYear.r;
                     return (
                       <Fragment key={entry.id}>
-                        <tr className="bg-muted/20">
-                          <td className="sticky left-0 z-10 bg-muted/20 px-2 py-1 border-r-2 border-b border-border font-semibold pl-6">
-                            <span className="flex items-center gap-1.5">
+                        <tr className="bg-muted/30 dark:bg-muted/20 select-none">
+                          <td className="sticky left-0 z-20 bg-muted/30 dark:bg-muted/20 px-2 py-1 border-r border-b border-border font-semibold pl-6">
+                            <div className="flex items-center gap-1.5">
                               <span className="flex-1 min-w-0 truncate">{entry.name}</span>
                               <Sparkline data={getEntrySparklineData(entry)} width={50} height={14} color="rgb(239, 68, 68)" />
                               <button
                                 onClick={() => openCategoryEditor(entry)}
-                                className="opacity-40 hover:opacity-100 transition-opacity"
-                                title="Edytuj kategorie kosztów"
+                                className="opacity-40 hover:opacity-100 transition-opacity p-0.5 shrink-0"
+                                title="Zarządzaj kategoriami"
                                 data-testid={`button-edit-categories-${entry.id}`}
                               >
-                                <Settings className="h-3 w-3" />
+                                <Pencil className="h-3 w-3" />
                               </button>
-                            </span>
+                              <button
+                                onClick={() => { setAddCatEntryId(entry.id); setShowAddCategory(true); }}
+                                className="opacity-40 hover:opacity-100 transition-opacity p-0.5 shrink-0"
+                                title="Dodaj kategorię"
+                                data-testid={`button-add-cat-${entry.id}`}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                            </div>
                           </td>
                           {MONTHS.map((_, mi) => {
                             const s = getEntrySums(entry, mi);
@@ -622,54 +1027,120 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                               </Fragment>
                             );
                           })}
-                          <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10 font-semibold">{formatNum(entryYear.p)}</td>
-                          <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(entryYear.r)}</td>
-                          <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold ${saldoColor(entryYearS)}`}>{formatNum(entryYearS)}</td>
+                          <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/30 dark:bg-muted/20 font-semibold">{formatNum(entryYear.p)}</td>
+                          <td className="border-r border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(entryYear.r)}</td>
+                          <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(entryYearS)}`}>{formatNum(entryYearS)}</td>
                         </tr>
 
-                        {entry.categories.map(cat => {
-                          const key = getCellKey(entry.id, cat);
+                        {entry.categories.map((cat, catIdx) => {
+                          const catColor = getCategoryColor(entry.id, cat, catIdx);
                           let catYearP = 0, catYearR = 0;
                           for (let m = 0; m < 12; m++) {
-                            const cell = data[key]?.[m];
-                            if (cell) { catYearP += cell.p; catYearR += cell.r; }
+                            catYearP += getCellValue(entry.id, cat, m, "p");
+                            catYearR += getCellValue(entry.id, cat, m, "r");
                           }
                           const catYearS = catYearP - catYearR;
+                          const isDragging = dragCatKey === `${entry.id}__${cat}`;
                           return (
-                            <tr key={cat}>
-                              <td className="sticky left-0 z-10 bg-card px-2 py-0.5 border-r-2 border-b border-border text-muted-foreground pl-10 text-[11px]" data-testid={`label-category-${entry.id}-${cat}`}>
-                                {cat}
+                            <tr
+                              key={cat}
+                              className={`${catColor} text-white select-none group ${isDragging ? "opacity-40" : ""}`}
+                              data-testid={`row-category-${entry.id}-${cat}`}
+                              onDragOver={(e) => handleCatDragOver(e, entry.id, cat)}
+                              onDrop={handleCatDragEnd}
+                            >
+                              <td className={`sticky left-0 z-20 ${catColor} border-b border-r border-border/30 px-1 py-1 font-bold`}>
+                                <div className="flex items-center gap-0.5">
+                                  <span
+                                    draggable
+                                    onDragStart={() => handleCatDragStart(entry.id, cat)}
+                                    onDragEnd={handleCatDragEnd}
+                                    className="cursor-grab active:cursor-grabbing opacity-60 hover:opacity-100 shrink-0"
+                                    data-testid={`drag-category-${entry.id}-${cat}`}
+                                  >
+                                    <GripVertical className="h-3 w-3" />
+                                  </span>
+                                  <span
+                                    className="truncate flex-1 min-w-0 cursor-pointer hover:underline text-[11px]"
+                                    onClick={() => openEditCatDialog(entry.id, cat)}
+                                    title="Kliknij aby edytować"
+                                    data-testid={`label-category-${entry.id}-${cat}`}
+                                  >
+                                    {cat}
+                                  </span>
+                                  <Sparkline data={getCatSparklineData(entry.id, cat)} width={40} height={12} color="rgba(255,255,255,0.7)" />
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleArchiveCategory(entry.id, cat); }}
+                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0"
+                                    title="Archiwizuj"
+                                    data-testid={`btn-archive-${entry.id}-${cat}`}
+                                  >
+                                    <Archive className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (window.confirm(`Usunąć kategorię "${cat}"?`)) handleDeleteCategory(entry.id, cat);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0"
+                                    title="Usuń"
+                                    data-testid={`btn-delete-${entry.id}-${cat}`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
                               </td>
                               {MONTHS.map((_, mi) => {
-                                const cell = data[key]?.[mi] || { p: 0, r: 0 };
-                                const saldo = cell.p - cell.r;
+                                const pKey = makeCellKey(entry.id, cat, mi, "p");
+                                const rKey = makeCellKey(entry.id, cat, mi, "r");
+                                const pVal = getCellValue(entry.id, cat, mi, "p");
+                                const rVal = getCellValue(entry.id, cat, mi, "r");
+                                const saldo = pVal - rVal;
                                 return (
                                   <Fragment key={mi}>
-                                    <td className={`border-r border-b border-border px-0 py-0 bg-muted/10 dark:bg-muted/5 ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>
-                                      <input
-                                        type="number"
-                                        className="w-full h-full px-1 py-0.5 text-right text-[10px] tabular-nums bg-transparent outline-none focus:bg-primary/5"
-                                        value={cell.p || ""}
-                                        onChange={(e) => handleCellChange(key, mi, "p", e.target.value)}
-                                        data-testid={`input-p-${entry.id}-${cat}-${mi}`}
-                                      />
+                                    <EditableCell
+                                      cellKey={pKey}
+                                      value={pVal}
+                                      editingCell={editingCell}
+                                      editValue={editValue}
+                                      setEditValue={setEditValue}
+                                      startEditing={startEditing}
+                                      commitEdit={commitEdit}
+                                      cancelEdit={cancelEdit}
+                                      className="border-border/30 bg-transparent text-white text-[10px]"
+                                      isSelected={selectedCell === pKey}
+                                      isInRange={isInFillRange(pKey)}
+                                      onCellClick={handleCellClick}
+                                      onFillHandleMouseDown={handleFillHandleMouseDown}
+                                      onCellMouseEnter={handleCellMouseEnter}
+                                      month={mi}
+                                    />
+                                    <EditableCell
+                                      cellKey={rKey}
+                                      value={rVal}
+                                      editingCell={editingCell}
+                                      editValue={editValue}
+                                      setEditValue={setEditValue}
+                                      startEditing={startEditing}
+                                      commitEdit={commitEdit}
+                                      cancelEdit={cancelEdit}
+                                      className="border-border/30 bg-transparent text-white font-semibold"
+                                      isSelected={selectedCell === rKey}
+                                      isInRange={isInFillRange(rKey)}
+                                      onCellClick={handleCellClick}
+                                      onFillHandleMouseDown={handleFillHandleMouseDown}
+                                      onCellMouseEnter={handleCellMouseEnter}
+                                      month={mi}
+                                    />
+                                    <td className={`border-b border-r-2 border-border/30 px-1 py-1 text-right tabular-nums font-semibold ${saldo > 0 ? "text-green-200" : saldo < 0 ? "text-red-200" : ""}`}>
+                                      {formatNum(saldo)}
                                     </td>
-                                    <td className={`border-r border-b border-border px-0 py-0 ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>
-                                      <input
-                                        type="number"
-                                        className="w-full h-full px-1 py-0.5 text-right text-[11px] tabular-nums bg-transparent outline-none focus:bg-primary/5"
-                                        value={cell.r || ""}
-                                        onChange={(e) => handleCellChange(key, mi, "r", e.target.value)}
-                                        data-testid={`input-r-${entry.id}-${cat}-${mi}`}
-                                      />
-                                    </td>
-                                    <td className={`border-r-2 border-b border-border px-1 py-0.5 text-right tabular-nums text-[11px] ${saldoColor(saldo)} ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(saldo)}</td>
                                   </Fragment>
                                 );
                               })}
-                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10">{formatNum(catYearP)}</td>
-                              <td className="border-r border-b border-border px-1 py-0.5 text-right tabular-nums font-semibold">{formatNum(catYearR)}</td>
-                              <td className={`border-b border-border px-1 py-0.5 text-right tabular-nums ${saldoColor(catYearS)}`}>{formatNum(catYearS)}</td>
+                              <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums text-[10px]">{formatNum(catYearP)}</td>
+                              <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(catYearR)}</td>
+                              <td className={`border-b border-border/30 px-1 py-1 text-right font-bold tabular-nums ${catYearS > 0 ? "text-green-200" : catYearS < 0 ? "text-red-200" : ""}`}>{formatNum(catYearS)}</td>
                             </tr>
                           );
                         })}
@@ -680,136 +1151,163 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
               );
             })}
 
-            {(() => {
-              let grandP = 0, grandR = 0;
-              costEntries.forEach(group => {
-                for (let m = 0; m < 12; m++) {
-                  const s = getLocationSums(group.items, m);
-                  grandP += s.p;
-                  grandR += s.r;
-                }
-              });
-              const grandS = grandP - grandR;
-              return (
-                <tr className="bg-muted/50 font-bold border-t-2 border-border">
-                  <td className="sticky left-0 z-10 bg-muted/50 px-2 py-2 border-r-2 border-border uppercase">SUMA ŁĄCZNA</td>
-                  {MONTHS.map((_, mi) => {
-                    let mp = 0, mr = 0;
-                    costEntries.forEach(group => {
-                      const s = getLocationSums(group.items, mi);
-                      mp += s.p;
-                      mr += s.r;
-                    });
-                    const ms = mp - mr;
-                    return (
-                      <Fragment key={mi}>
-                        <td className={`border-r border-border px-1 py-2 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10 ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(mp)}</td>
-                        <td className={`border-r border-border px-1 py-2 text-right tabular-nums ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(mr)}</td>
-                        <td className={`border-r-2 border-border px-1 py-2 text-right tabular-nums ${saldoColor(ms)} ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(ms)}</td>
-                      </Fragment>
-                    );
-                  })}
-                  <td className="border-r border-border px-1 py-2 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10">{formatNum(grandP)}</td>
-                  <td className="border-r border-border px-1 py-2 text-right tabular-nums">{formatNum(grandR)}</td>
-                  <td className={`border-border px-1 py-2 text-right tabular-nums ${saldoColor(grandS)}`}>{formatNum(grandS)}</td>
-                </tr>
-              );
-            })()}
+            <tr className="bg-muted/80 dark:bg-muted/50 font-bold">
+              <td className="sticky left-0 z-20 bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-right uppercase">SUMA</td>
+              {MONTHS.map((_, mi) => {
+                let mp = 0, mr = 0;
+                costEntries.forEach(group => { const s = getLocationSums(group.items, mi); mp += s.p; mr += s.r; });
+                const ms = mp - mr;
+                return (
+                  <Fragment key={mi}>
+                    <td className={`border-t-2 border-r border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10 ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(mp)}</td>
+                    <td className={`border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(mr)}</td>
+                    <td className={`border-t-2 border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(ms)} ${mi === currentMonth && year === currentYear ? "bg-primary/5" : ""}`}>{formatNum(ms)}</td>
+                  </Fragment>
+                );
+              })}
+              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted dark:bg-muted/70">{formatNum(grandTotal.p)}</td>
+              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted dark:bg-muted/70">{formatNum(grandTotal.r)}</td>
+              <td className={`border-t-2 border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70 ${saldoColor(grandTotal.s)}`}>{formatNum(grandTotal.s)}</td>
+            </tr>
           </tbody>
         </table>
         </div>
+      </FullscreenWrapper>
 
-        {compareYear !== null && (() => {
-          const getCompareEntrySumsForYear = (entry: CostEntry, sourceData: DataMap): number => {
-            let total = 0;
-            entry.categories.forEach(cat => {
-              const key = getCellKey(entry.id, cat);
-              for (let m = 0; m < 12; m++) {
-                const cell = sourceData[key]?.[m];
-                if (cell) total += cell.r;
-              }
-            });
-            return total;
-          };
+      {archivedEntries.length > 0 && (
+        <div className="mt-4" data-testid="archived-apartment-costs">
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-2"
+            data-testid="toggle-archive"
+          >
+            {showArchived ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            <Archive className="h-4 w-4" />
+            ARCHIWUM
+            <Badge variant="secondary" className="text-xs">{archivedEntries.reduce((s, e) => s + e.categories.length, 0)}</Badge>
+          </button>
+          {showArchived && (
+            <div className="rounded-md border border-border bg-card overflow-x-auto opacity-60">
+              <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-muted/80 dark:bg-muted/50">
+                    <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>Pozycja</th>
+                    {MONTHS.map((m, i) => (
+                      <th key={i} colSpan={3} className="border-b border-r-2 border-border px-1 py-1 text-center font-bold">{m}</th>
+                    ))}
+                    <th colSpan={3} className="border-b border-border px-1 py-1 text-center font-bold bg-muted dark:bg-muted/70">ROCZNIE</th>
+                  </tr>
+                  <tr className="bg-muted/60 dark:bg-muted/40">
+                    {[...Array(13)].map((_, mi) => (
+                      <Fragment key={mi}>
+                        <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">P</th>
+                        <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">R</th>
+                        <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
+                      </Fragment>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedEntries.map(ae => (
+                    <Fragment key={ae.entryId}>
+                      <tr className="bg-amber-600/80 dark:bg-amber-700/80 text-white select-none">
+                        <td className="sticky left-0 z-20 bg-amber-600/80 dark:bg-amber-700/80 border-b border-r border-border/30 px-1 py-1 font-bold" colSpan={40}>
+                          <div className="flex items-center gap-1.5 pl-1">
+                            <Archive className="h-3.5 w-3.5 shrink-0" />
+                            <span className="text-xs">{ae.entryName}</span>
+                            <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0">{ae.categories.length}</Badge>
+                          </div>
+                        </td>
+                      </tr>
+                      {ae.categories.map(cat => {
+                        let catYP = 0, catYR = 0;
+                        for (let m = 0; m < 12; m++) {
+                          catYP += getCellValue(ae.entryId, cat, m, "p");
+                          catYR += getCellValue(ae.entryId, cat, m, "r");
+                        }
+                        const catYS = catYP - catYR;
+                        return (
+                          <tr key={cat} className="hover:bg-muted/30 dark:hover:bg-muted/20 group">
+                            <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1 text-right">
+                              <div className="flex items-center gap-0.5 pl-4">
+                                <span className="font-medium truncate">{cat}</span>
+                                <button
+                                  onClick={() => handleRestoreCategory(ae.entryId, cat)}
+                                  className="invisible group-hover:visible text-muted-foreground hover:text-emerald-600 p-0.5 shrink-0 ml-auto"
+                                  title="Przywróć"
+                                  data-testid={`btn-restore-${ae.entryId}-${cat}`}
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                            {MONTHS.map((_, mi) => {
+                              const pVal = getCellValue(ae.entryId, cat, mi, "p");
+                              const rVal = getCellValue(ae.entryId, cat, mi, "r");
+                              const saldo = pVal - rVal;
+                              return (
+                                <Fragment key={mi}>
+                                  <td className="border-b border-r border-border bg-muted/20 dark:bg-muted/10 px-1 py-1 text-right tabular-nums text-[10px]">{formatNum(pVal)}</td>
+                                  <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rVal)}</td>
+                                  <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                                </Fragment>
+                              );
+                            })}
+                            <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums bg-muted/30 dark:bg-muted/20 text-[10px]">{formatNum(catYP)}</td>
+                            <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(catYR)}</td>
+                            <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(catYS)}`}>{formatNum(catYS)}</td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
-          const getCompareLocationTotal = (items: CostEntry[], sourceData: DataMap): number => {
-            return items.reduce((sum, entry) => sum + getCompareEntrySumsForYear(entry, sourceData), 0);
-          };
-
-          const yoyChartData = MONTHS.map((name, m) => {
-            let mainR = 0, compR = 0;
-            costEntries.forEach(group => {
-              group.items.forEach(entry => {
-                entry.categories.forEach(cat => {
-                  const key = getCellKey(entry.id, cat);
-                  const mainCell = data[key]?.[m];
-                  if (mainCell) mainR += mainCell.r;
-                  const compCell = compareData[key]?.[m];
-                  if (compCell) compR += compCell.r;
-                });
+      {compareYear !== null && (() => {
+        const yoyChartData = MONTHS.map((name, m) => {
+          let mainR = 0, compR = 0;
+          costEntries.forEach(group => {
+            group.items.forEach(entry => {
+              entry.categories.forEach(cat => {
+                const key = getCellKeyOld(entry.id, cat);
+                const mainCell = data[key]?.[m];
+                if (mainCell) mainR += mainCell.r;
+                const compCell = compareData[key]?.[m];
+                if (compCell) compR += compCell.r;
               });
             });
-            return { name, [String(year)]: Math.round(mainR), [String(compareYear)]: Math.round(compR) };
           });
+          return { name, [String(year)]: Math.round(mainR), [String(compareYear)]: Math.round(compR) };
+        });
 
-          return (
-            <div className="space-y-4 mt-4">
-              <Card data-testid="card-yoy-costs-comparison">
-                <CardHeader className="py-3 px-4">
-                  <CardTitle className="text-sm">{`Porównanie rok do roku: ${year} vs ${compareYear}`}</CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  <div className="rounded-md border border-border overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-muted/30">
-                          <th className="text-left px-3 py-2 border-b border-border">Lokalizacja</th>
-                          <th className="text-right px-3 py-2 border-b border-border">R {year} (PLN)</th>
-                          <th className="text-right px-3 py-2 border-b border-border">R {compareYear} (PLN)</th>
-                          <th className="text-right px-3 py-2 border-b border-border">Zmiana</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {costEntries.map(group => {
-                          const mainTotal = getCompareLocationTotal(group.items, data);
-                          const compTotal = getCompareLocationTotal(group.items, compareData);
-                          return (
-                            <tr key={group.location} className="border-b border-border last:border-b-0">
-                              <td className="px-3 py-2 font-semibold">{group.location}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">{formatNum(mainTotal)}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">{formatNum(compTotal)}</td>
-                              <td className={`px-3 py-2 text-right tabular-nums font-semibold ${costChangeColor(mainTotal, compTotal)}`}>{pctChange(mainTotal, compTotal)}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card data-testid="card-yoy-costs-chart">
-                <CardHeader className="py-3 px-4">
-                  <CardTitle className="text-sm">{`Koszty rzeczywiste: ${year} vs ${compareYear}`}</CardTitle>
-                </CardHeader>
-                <CardContent className="px-2 pb-3">
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={yoyChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
-                      <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
-                      <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Line type="monotone" dataKey={String(year)} stroke="#00CCFF" strokeWidth={2} dot={{ r: 3 }} />
-                      <Line type="monotone" dataKey={String(compareYear)} stroke="hsl(222, 47%, 11%)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-          );
-        })()}
-      </FullscreenWrapper>
+        return (
+          <div className="space-y-4 mt-4">
+            <Card data-testid="card-yoy-costs-chart">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm">{`Koszty rzeczywiste: ${year} vs ${compareYear}`}</CardTitle>
+              </CardHeader>
+              <CardContent className="px-2 pb-3">
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={yoyChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                    <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey={String(year)} stroke="#00CCFF" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey={String(compareYear)} stroke="hsl(222, 47%, 11%)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       <Dialog open={!!editingEntry} onOpenChange={(open) => { if (!open) setEditingEntry(null); }}>
         <DialogContent className="sm:max-w-[420px]">
@@ -821,20 +1319,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
               <div key={idx} className="flex items-center gap-2">
                 <Input
                   value={cat}
-                  onChange={(e) => {
-                    const next = [...editCategories];
-                    next[idx] = e.target.value;
-                    setEditCategories(next);
-                  }}
+                  onChange={(e) => { const next = [...editCategories]; next[idx] = e.target.value; setEditCategories(next); }}
                   className="text-sm"
                   data-testid={`input-edit-category-${idx}`}
                 />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => removeCategory(idx)}
-                  data-testid={`button-remove-category-${idx}`}
-                >
+                <Button size="icon" variant="ghost" onClick={() => removeCategory(idx)} data-testid={`button-remove-category-${idx}`}>
                   <X className="h-4 w-4" />
                 </Button>
               </div>
@@ -848,12 +1337,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                 className="text-sm"
                 data-testid="input-new-category"
               />
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={addCategory}
-                data-testid="button-add-category"
-              >
+              <Button size="icon" variant="ghost" onClick={addCategory} data-testid="button-add-category">
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -861,6 +1345,96 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingEntry(null)} data-testid="button-cancel-categories">Anuluj</Button>
             <Button onClick={saveCategoryEdits} data-testid="button-save-categories">Zapisz</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddCategory} onOpenChange={setShowAddCategory}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Dodaj kategorię kosztów</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Nazwa kategorii</label>
+              <Input
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="np. UBEZPIECZENIE"
+                className="mt-1"
+                data-testid="input-new-cat-name"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Kolor</label>
+              <div className="grid grid-cols-5 gap-2 mt-2">
+                {CATEGORY_COLORS.map(c => (
+                  <button
+                    key={c.value}
+                    className={`h-8 rounded-md ${c.value} ${newCatColor === c.value ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                    onClick={() => setNewCatColor(c.value)}
+                    title={c.label}
+                    data-testid={`color-${c.label}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAddCategory(false); setAddCatEntryId(null); }}>Anuluj</Button>
+            <Button onClick={handleAddCategoryWithColor} data-testid="button-save-new-cat">Dodaj</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editCatDialog} onOpenChange={(open) => { if (!open) setEditCatDialog(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Edytuj kategorię</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Nazwa</label>
+              <Input
+                value={editCatName}
+                onChange={(e) => setEditCatName(e.target.value)}
+                className="mt-1"
+                data-testid="input-edit-cat-name"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Kolor</label>
+              <div className="grid grid-cols-5 gap-2 mt-2">
+                {CATEGORY_COLORS.map(c => (
+                  <button
+                    key={c.value}
+                    className={`h-8 rounded-md ${c.value} ${editCatColor === c.value ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                    onClick={() => setEditCatColor(c.value)}
+                    title={c.label}
+                    data-testid={`edit-color-${c.label}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditCatDialog(null)}>Anuluj</Button>
+            <Button onClick={handleSaveEditCat} data-testid="button-save-edit-cat">Zapisz</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCopyToNextYear} onOpenChange={setShowCopyToNextYear}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Kopiuj prognozę na {year + 1}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Wszystkie wartości prognozowane (P) z roku {year} zostaną skopiowane na rok {year + 1}. Istniejące wartości w roku {year + 1} nie zostaną nadpisane.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCopyToNextYear(false)}>Anuluj</Button>
+            <Button onClick={handleCopyForecastToNextYear} data-testid="button-confirm-copy">Kopiuj</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
