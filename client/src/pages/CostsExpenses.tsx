@@ -475,6 +475,52 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
     toast({ title: "Przywrócono kategorię" });
   }, [categories, updateCategories, toast]);
 
+  const handleArchiveItem = useCallback((catId: string, itemIdx: number) => {
+    const newCats = categories.map(cat => {
+      if (cat.id !== catId) return cat;
+      const newItems = [...cat.items];
+      newItems[itemIdx] = { ...newItems[itemIdx], archived: true };
+      return { ...cat, items: newItems };
+    });
+    updateCategories(newCats);
+    toast({ title: "Zarchiwizowano pozycję" });
+  }, [categories, updateCategories, toast]);
+
+  const handleRestoreItem = useCallback((catId: string, itemIdx: number) => {
+    const newCats = categories.map(cat => {
+      if (cat.id !== catId) return cat;
+      const newItems = [...cat.items];
+      newItems[itemIdx] = { ...newItems[itemIdx], archived: false };
+      return { ...cat, items: newItems };
+    });
+    updateCategories(newCats);
+    toast({ title: "Przywrócono pozycję" });
+  }, [categories, updateCategories, toast]);
+
+  const archivedItems = useMemo(() => {
+    const items: { catId: string; catTitle: string; catColor: string; itemIdx: number; item: CostItem }[] = [];
+    for (const cat of categories) {
+      if (cat.archived) continue;
+      cat.items.forEach((item, idx) => {
+        if (item.archived) {
+          items.push({ catId: cat.id, catTitle: cat.title, catColor: cat.color, itemIdx: idx, item });
+        }
+      });
+    }
+    return items;
+  }, [categories]);
+
+  const archivedItemsByCategory = useMemo(() => {
+    const grouped: Record<string, { catId: string; catTitle: string; catColor: string; items: { itemIdx: number; item: CostItem }[] }> = {};
+    for (const ai of archivedItems) {
+      if (!grouped[ai.catId]) {
+        grouped[ai.catId] = { catId: ai.catId, catTitle: ai.catTitle, catColor: ai.catColor, items: [] };
+      }
+      grouped[ai.catId].items.push({ itemIdx: ai.itemIdx, item: ai.item });
+    }
+    return Object.values(grouped);
+  }, [archivedItems]);
+
   const handleCatDragStart = useCallback((catId: string) => {
     dragCatRef.current = catId;
     setDragCatId(catId);
@@ -709,7 +755,7 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
     const newCats = categories.map(cat => {
       if (cat.id !== catId) return cat;
       const newItems = [...cat.items];
-      newItems[idx] = { name: trimmedName, subLabel: editSubLabelValue.trim() || undefined };
+      newItems[idx] = { ...newItems[idx], name: trimmedName, subLabel: editSubLabelValue.trim() || undefined };
       return { ...cat, items: newItems };
     });
     updateCategories(newCats);
@@ -779,21 +825,22 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
     setEditCatDialog(null);
   }, [editCatDialog, editCatTitle, editCatColor, categories, updateCategories]);
 
-  const getCategorySummary = useCallback((cat: CostCategory, month: number) => {
+  const getCategorySummary = useCallback((cat: CostCategory, month: number, includeArchived = false) => {
     let prognoza = 0;
     let rzeczywiste = 0;
-    cat.items.forEach((_, idx) => {
+    cat.items.forEach((item, idx) => {
+      if (!includeArchived && item.archived) return;
       prognoza += getCellValue(makeCellKey(cat.id, idx, month, "prognoza"));
       rzeczywiste += getCellValue(makeCellKey(cat.id, idx, month, "rzeczywiste"));
     });
     return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
   }, [getCellValue]);
 
-  const getCategoryAnnualSummary = useCallback((cat: CostCategory) => {
+  const getCategoryAnnualSummary = useCallback((cat: CostCategory, includeArchived = false) => {
     let prognoza = 0;
     let rzeczywiste = 0;
     for (let m = 0; m < 12; m++) {
-      const s = getCategorySummary(cat, m);
+      const s = getCategorySummary(cat, m, includeArchived);
       prognoza += s.prognoza;
       rzeczywiste += s.rzeczywiste;
     }
@@ -1303,6 +1350,7 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
                     <td className={`border-b border-border/30 px-1 py-1 text-right font-bold tabular-nums ${annualCat.saldo > 0 ? "text-green-200" : annualCat.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(annualCat.saldo)}</td>
                   </tr>
                   {!isCollapsed && cat.items.map((item, idx) => {
+                    if (item.archived) return null;
                     const annualItem = getItemAnnualSummary(cat.id, idx);
                     const nameKey = `${cat.id}__${idx}`;
                     const isEditingThisName = editingName === nameKey;
@@ -1368,6 +1416,14 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
                                 {hasLinkedSchedule && <Link2 className="inline h-2.5 w-2.5 ml-1 text-muted-foreground" />}
                                 <Sparkline data={getItemSparklineData(cat.id, idx)} width={50} height={14} color="rgb(239, 68, 68)" />
                               </div>
+                              <button
+                                onClick={() => handleArchiveItem(cat.id, idx)}
+                                className="invisible group-hover:visible text-muted-foreground hover:text-amber-600 p-0.5 shrink-0"
+                                title="Archiwizuj pozycję"
+                                data-testid={`button-archive-item-${cat.id}-${idx}`}
+                              >
+                                <Archive className="h-3 w-3" />
+                              </button>
                               <button
                                 onClick={() => {
                                   if (window.confirm(`Usunąć pozycję "${item.name}"?`)) {
@@ -1471,7 +1527,7 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
       </div>
       </FullscreenWrapper>
 
-      {archivedCategories.length > 0 && (
+      {(archivedCategories.length > 0 || archivedItems.length > 0) && (
         <div className="mt-4" data-testid="archived-operational-costs">
           <button
             onClick={() => setShowArchived(!showArchived)}
@@ -1481,7 +1537,7 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
             {showArchived ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             <Archive className="h-4 w-4" />
             ARCHIWUM
-            <Badge variant="secondary" className="text-xs">{archivedCategories.length}</Badge>
+            <Badge variant="secondary" className="text-xs">{archivedCategories.length + archivedItems.length}</Badge>
           </button>
           {showArchived && (
             <div className="rounded-md border border-border bg-card overflow-x-auto opacity-60">
@@ -1513,7 +1569,7 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
                 <tbody>
                   {archivedCategories.map(cat => {
                     const isCollapsed = collapsedCategories.has(cat.id);
-                    const annualCat = getCategoryAnnualSummary(cat);
+                    const annualCat = getCategoryAnnualSummary(cat, true);
                     return (
                       <Fragment key={cat.id}>
                         <tr className={`${cat.color} text-white select-none`} data-testid={`row-archived-category-${cat.id}`}>
@@ -1534,7 +1590,7 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
                             </div>
                           </td>
                           {Array.from({ length: 12 }, (_, m) => {
-                            const s = getCategorySummary(cat, m);
+                            const s = getCategorySummary(cat, m, true);
                             return (
                               <Fragment key={m}>
                                 <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
@@ -1578,6 +1634,56 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
                       </Fragment>
                     );
                   })}
+                  {archivedItemsByCategory.map(group => (
+                    <Fragment key={`archived-items-${group.catId}`}>
+                      <tr className="bg-amber-600/80 dark:bg-amber-700/80 text-white select-none" data-testid={`row-archived-items-group-${group.catId}`}>
+                        <td className="sticky left-0 z-20 bg-amber-600/80 dark:bg-amber-700/80 border-b border-r border-border/30 px-1 py-1 font-bold" colSpan={40}>
+                          <div className="flex items-center gap-1.5 pl-1">
+                            <Archive className="h-3.5 w-3.5 shrink-0" />
+                            <span className="text-xs">Pozycje z:</span>
+                            <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0">{group.catTitle}</Badge>
+                            <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0 ml-1">{group.items.length}</Badge>
+                          </div>
+                        </td>
+                      </tr>
+                      {group.items.map(({ itemIdx, item }) => {
+                        const annualItem = getItemAnnualSummary(group.catId, itemIdx);
+                        return (
+                          <tr key={itemIdx} className="hover:bg-muted/30 dark:hover:bg-muted/20 group" data-testid={`row-archived-single-item-${group.catId}-${itemIdx}`}>
+                            <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1 text-right">
+                              <div className="flex items-center gap-0.5 pl-4">
+                                <span className="font-medium truncate">{item.name}</span>
+                                {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
+                                <button
+                                  onClick={() => handleRestoreItem(group.catId, itemIdx)}
+                                  className="invisible group-hover:visible text-muted-foreground hover:text-emerald-600 p-0.5 shrink-0 ml-auto"
+                                  title="Przywróć pozycję"
+                                  data-testid={`button-restore-item-${group.catId}-${itemIdx}`}
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                            {Array.from({ length: 12 }, (_, m) => {
+                              const pVal = getCellValue(makeCellKey(group.catId, itemIdx, m, "prognoza"));
+                              const rVal = getCellValue(makeCellKey(group.catId, itemIdx, m, "rzeczywiste"));
+                              const saldo = pVal - rVal;
+                              return (
+                                <Fragment key={m}>
+                                  <td className="border-b border-r border-border bg-muted/20 dark:bg-muted/10 px-1 py-1 text-right tabular-nums text-[10px]">{formatNum(pVal)}</td>
+                                  <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rVal)}</td>
+                                  <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
+                                </Fragment>
+                              );
+                            })}
+                            <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums bg-muted/30 dark:bg-muted/20 text-[10px]">{formatNum(annualItem.prognoza)}</td>
+                            <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.rzeczywiste)}</td>
+                            <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(annualItem.saldo)}`}>{formatNum(annualItem.saldo)}</td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>

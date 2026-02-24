@@ -1,6 +1,7 @@
 export interface OplatyCostItem {
   name: string;
   subLabel?: string;
+  archived?: boolean;
 }
 
 export interface OplatyCostCategory {
