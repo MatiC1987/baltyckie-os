@@ -5354,18 +5354,6 @@ export async function registerRoutes(
           return s + (act > 0 ? act : Number(r.forecast || 0));
         }, 0);
 
-        const opCostRows = await db.select({ forecast: operationalCostForecasts.forecast, actual: operationalCostForecasts.actual })
-          .from(operationalCostForecasts)
-          .where(and(
-            eq(operationalCostForecasts.year, year),
-            eq(operationalCostForecasts.month, monthIdx),
-            eq(operationalCostForecasts.archived, false),
-          ));
-        const opCostTotal = opCostRows.reduce((s, r) => {
-          const act = Number(r.actual || 0);
-          return s + (act > 0 ? act : Number(r.forecast || 0));
-        }, 0);
-
         const varCostRows = await db.select({ forecast: variableCostForecasts.forecast, actual: variableCostForecasts.actual })
           .from(variableCostForecasts)
           .where(and(
@@ -5377,7 +5365,9 @@ export async function registerRoutes(
           return s + (act > 0 ? act : Number(r.forecast || 0));
         }, 0);
 
-        const expectedExpenses = costForecastTotal + opCostTotal + varCostTotal;
+        // Operational costs are stored in localStorage (oplaty-data-{year}) on the client side.
+        // They are read and added in the frontend to avoid double-counting with DB entries.
+        const expectedExpenses = costForecastTotal + varCostTotal;
 
         months.push({
           year,

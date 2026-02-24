@@ -69,6 +69,28 @@ function readLocalAptCosts(years: number[]): Record<string, number> {
   return result;
 }
 
+// Reads operational costs from CostsExpenses localStorage (oplaty-data-{year}).
+// Cell key format: "${catId}__${itemIdx}__${monthIdx}__prognoza" (monthIdx 0-based)
+function readLocalOpCosts(years: number[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const year of years) {
+    try {
+      const raw = localStorage.getItem(`oplaty-data-${year}`);
+      if (!raw) continue;
+      const stored = JSON.parse(raw) as Record<string, number>;
+      for (const [key, value] of Object.entries(stored)) {
+        const parts = key.split("__");
+        if (parts.length === 4 && parts[3] === "prognoza") {
+          const monthIdx = parseInt(parts[2]);
+          const ym = `${year}-${monthIdx}`;
+          result[ym] = (result[ym] || 0) + (Number(value) || 0);
+        }
+      }
+    } catch {}
+  }
+  return result;
+}
+
 export default function CashFlowForecast() {
   const { data: response, isLoading } = useQuery<CashFlowResponse>({
     queryKey: ["/api/cash-flow-forecast"],
@@ -80,10 +102,12 @@ export default function CashFlowForecast() {
     if (rawMonths.length === 0) return rawMonths;
     const uniqueYears = [...new Set(rawMonths.map(m => m.year))];
     const aptCosts = readLocalAptCosts(uniqueYears);
+    const opCosts = readLocalOpCosts(uniqueYears);
     return rawMonths.map(m => {
       const ym = `${m.year}-${m.month - 1}`;
       const localAptCost = aptCosts[ym] || 0;
-      const totalExpenses = m.expectedExpenses + localAptCost;
+      const localOpCost = opCosts[ym] || 0;
+      const totalExpenses = m.expectedExpenses + localAptCost + localOpCost;
       return {
         ...m,
         expectedExpenses: Math.round(totalExpenses * 100) / 100,
