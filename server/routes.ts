@@ -5328,8 +5328,8 @@ export async function registerRoutes(
         const monthReservations = await db.select({ price: reservations.price })
           .from(reservations)
           .where(and(
+            gte(reservations.startDate, monthStart),
             lte(reservations.startDate, monthEnd),
-            gte(reservations.endDate, monthStart),
             ne(reservations.status, "ANULOWANA"),
           ));
         const expectedIncome = monthReservations.reduce((s, r) => s + Number(r.price || 0), 0);
