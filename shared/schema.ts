@@ -1175,6 +1175,7 @@ export const operationalCostForecasts = pgTable("operational_cost_forecasts", {
   itemIndex: integer("item_index").notNull(),
   forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
   actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
+  archived: boolean("archived").default(false),
 });
 
 export const insertOperationalCostForecastSchema = createInsertSchema(operationalCostForecasts).omit({ id: true });

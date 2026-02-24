@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -5493,6 +5493,24 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/operational-cost-forecasts/archive", isAuthenticated, async (req, res) => {
+    try {
+      const { categoryId, year, archived } = req.body;
+      if (!categoryId || year === undefined || archived === undefined) {
+        return res.status(400).json({ message: "categoryId, year, and archived are required" });
+      }
+      await db.update(operationalCostForecasts)
+        .set({ archived: !!archived })
+        .where(and(
+          eq(operationalCostForecasts.categoryId, categoryId),
+          eq(operationalCostForecasts.year, Number(year)),
+        ));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/operational-cost-forecasts", isAuthenticated, async (req, res) => {
     try {
       const year = req.query.year ? Number(req.query.year) : undefined;
@@ -7825,11 +7843,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         aptCosts[c.apartmentId][c.month] = (aptCosts[c.apartmentId][c.month] || 0) + Number(c.forecast || 0);
       }
 
-      // Operational costs grouped by category
+      // Operational costs grouped by category (separate active vs archived)
       const opCostsByCategory: Record<string, Record<number, number>> = {};
+      const archivedOpCostsByCategory: Record<string, Record<number, number>> = {};
       for (const c of opCosts) {
-        if (!opCostsByCategory[c.categoryId]) opCostsByCategory[c.categoryId] = {};
-        opCostsByCategory[c.categoryId][c.month] = (opCostsByCategory[c.categoryId][c.month] || 0) + Number(c.forecast || 0);
+        const target = c.archived ? archivedOpCostsByCategory : opCostsByCategory;
+        if (!target[c.categoryId]) target[c.categoryId] = {};
+        target[c.categoryId][c.month] = (target[c.categoryId][c.month] || 0) + Number(c.forecast || 0);
       }
 
       // Variable costs
@@ -7858,6 +7878,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         apartments: allApartments.map(a => ({ id: a.id, name: a.name, locationId: a.location ? (allLocations.find(l => l.name === a.location)?.id || null) : null })),
         apartmentCosts: aptCosts,
         operationalCosts: opCostsByCategory,
+        archivedOperationalCosts: archivedOpCostsByCategory,
         variableCosts: varCostItems,
         actualExpensesByMonth: actualByMonth,
       });
