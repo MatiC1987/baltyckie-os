@@ -18,15 +18,11 @@ import Employees from "@/pages/Employees";
 import Terminarz from "@/pages/Terminarz";
 import Lokalizacje from "@/pages/Lokalizacje";
 import ServiceContracts from "@/pages/ServiceContracts";
-import CostsApartments from "@/pages/CostsApartments";
-import CostsExpenses from "@/pages/CostsExpenses";
 import Podnajem from "@/pages/Podnajem";
 import Analizy from "@/pages/Analizy";
 import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
-import Revenue from "@/pages/Revenue";
-import Prognoza from "@/pages/Prognoza";
 import ApartmentSchedule from "@/pages/ApartmentSchedule";
 import ActivityLog from "@/pages/ActivityLog";
 import PlaceholderPage from "@/pages/Placeholder";
@@ -117,10 +113,6 @@ function AuthenticatedRouter() {
       <Route path="/reservations" component={() => <AuthenticatedRoute component={RezerwacjeAll} />} />
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
 
-      <Route path="/revenue" component={() => <AuthenticatedRoute component={Revenue} />} />
-      <Route path="/finance-forecast" component={() => <AuthenticatedRoute component={Prognoza} />} />
-      <Route path="/koszty-apartamentowe" component={() => <AuthenticatedRoute component={CostsApartments} />} />
-      <Route path="/koszty-operacyjne" component={() => <AuthenticatedRoute component={CostsExpenses} />} />
       <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
       <Route path="/apartment-schedule" component={() => <AuthenticatedRoute component={ApartmentSchedule} />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
@@ -155,9 +147,13 @@ function AuthenticatedRouter() {
       <Route path="/v2/realizacja" component={() => <AuthenticatedRoute component={V2Realizacja} />} />
       <Route path="/ustawienia-menu" component={() => <Redirect to="/ustawienia" />} />
 
-      <Route path="/koszty">{() => <Redirect to="/koszty-apartamentowe" />}</Route>
-      <Route path="/costs-expenses" component={() => <Redirect to="/koszty-operacyjne" />} />
-      <Route path="/costs-apartments" component={() => <Redirect to="/koszty-apartamentowe" />} />
+      <Route path="/koszty">{() => <Redirect to="/v2/koszty" />}</Route>
+      <Route path="/costs-expenses" component={() => <Redirect to="/v2/koszty" />} />
+      <Route path="/costs-apartments" component={() => <Redirect to="/v2/koszty" />} />
+      <Route path="/koszty-apartamentowe" component={() => <Redirect to="/v2/koszty" />} />
+      <Route path="/koszty-operacyjne" component={() => <Redirect to="/v2/koszty" />} />
+      <Route path="/revenue" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/finance-forecast" component={() => <Redirect to="/v2/prognoza" />} />
       <Route path="/contracts-subrent" component={() => <Redirect to="/podnajem" />} />
       <Route path="/subrent-settlement" component={() => <Redirect to="/podnajem?tab=rozliczenia" />} />
       <Route path="/subrent-media" component={() => <Redirect to="/podnajem?tab=media" />} />
