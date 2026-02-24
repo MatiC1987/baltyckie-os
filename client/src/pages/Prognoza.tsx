@@ -1048,7 +1048,7 @@ export default function Prognoza() {
       return entry;
     });
 
-    const chartColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+    const chartColors = ["#00CCFF", "hsl(222, 47%, 11%)", "hsl(142, 71%, 45%)", "#f59e0b", "#ef4444", "#8b5cf6"];
 
     return (
       <div className="mt-4 space-y-5">
@@ -1080,8 +1080,8 @@ export default function Prognoza() {
                   <XAxis dataKey="year" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                   <ReTooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} PLN`} />
-                  <Bar dataKey="przychod" fill="#3b82f6" name="Przychod" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="koszt" fill="#ef4444" name="Koszt" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="przychod" fill="#00CCFF" name="Przychod" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="koszt" fill="hsl(222, 47%, 11%)" name="Koszt" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

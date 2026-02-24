@@ -63,7 +63,7 @@ export function ApartmentTrendSheet({ apartmentId, open, onOpenChange }: {
   const monthlyAvg = currentYearData ? Math.round(currentYearData.totalActual / Math.max(new Date().getMonth() + 1, 1)) : 0;
   const profit = currentYearData ? currentYearData.totalActual - currentYearData.totalCost : 0;
 
-  const colors = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
+  const colors = ["#00CCFF", "hsl(222, 47%, 11%)", "hsl(142, 71%, 45%)", "#f59e0b", "#ef4444"];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -135,9 +135,9 @@ export function ApartmentTrendSheet({ apartmentId, open, onOpenChange }: {
                     <YAxis className="text-[10px]" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                     <Tooltip formatter={(v: number) => `${formatNum(v)} PLN`} />
                     <Legend />
-                    <Bar dataKey="Przychód" fill="hsl(var(--chart-2))" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Prognoza" fill="hsl(var(--chart-1))" opacity={0.4} radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Koszty" fill="hsl(var(--chart-5))" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Przychód" fill="#00CCFF" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" opacity={0.4} radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Koszty" fill="#ef4444" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

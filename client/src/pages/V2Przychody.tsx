@@ -426,7 +426,7 @@ export default function V2Przychody() {
               <Tooltip formatter={(v: number) => `${formatNum(v)} PLN`} />
               <Legend />
               <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Realizacja" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Realizacja" fill="#00CCFF" radius={[4, 4, 0, 0]} />
             </ComposedChart>
           </ResponsiveContainer>
         </CardContent>

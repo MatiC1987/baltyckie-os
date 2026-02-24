@@ -542,9 +542,9 @@ export default function Revenue() {
                 labelStyle={{ fontWeight: 600, marginBottom: 4 }}
               />
               <Legend wrapperStyle={{ fontSize: "12px" }} />
-              <Bar dataKey="najem" name="Najem" stackId="rev" fill="hsl(var(--chart-2))" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="podnajem" name="Podnajem" stackId="rev" fill="hsl(var(--chart-5))" radius={[3, 3, 0, 0]} />
-              <Line type="monotone" dataKey="prognoza" name="Prognoza" stroke="hsl(var(--chart-1))" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Bar dataKey="najem" name="Najem" stackId="rev" fill="#00CCFF" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="podnajem" name="Podnajem" stackId="rev" fill="hsl(222, 47%, 11%)" radius={[3, 3, 0, 0]} />
+              <Line type="monotone" dataKey="prognoza" name="Prognoza" stroke="hsl(142, 71%, 45%)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </CardContent>
@@ -572,9 +572,9 @@ export default function Revenue() {
               <YAxis tickFormatter={(v: number) => v >= 1000 ? (v / 1000).toFixed(0) + "k" : String(v)} tick={{ fontSize: 10 }} className="fill-foreground" />
               <Tooltip formatter={formatTooltip} contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "11px" }} />
               <Legend wrapperStyle={{ fontSize: "11px" }} />
-              <Bar dataKey="najem" name="Najem" stackId="rev" fill="hsl(var(--chart-2))" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="podnajem" name="Podnajem" stackId="rev" fill="hsl(var(--chart-5))" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="prognoza" name="Prognoza" fill="hsl(var(--muted-foreground))" opacity={0.3} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="najem" name="Najem" stackId="rev" fill="#00CCFF" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="podnajem" name="Podnajem" stackId="rev" fill="hsl(222, 47%, 11%)" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="prognoza" name="Prognoza" fill="hsl(142, 71%, 45%)" opacity={0.3} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

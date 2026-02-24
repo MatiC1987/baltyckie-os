@@ -221,7 +221,7 @@ export default function V2Prognoza() {
                 <YAxis className="text-[10px]" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
-                <Bar dataKey="Przychody" fill="hsl(217, 91%, 60%)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Przychody" fill="#00CCFF" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="Koszty" fill="hsl(222, 47%, 11%)" radius={[2, 2, 0, 0]} />
                 <Line type="monotone" dataKey="Wynik netto" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
               </ComposedChart>
@@ -239,7 +239,7 @@ export default function V2Prognoza() {
                 <YAxis className="text-[10px]" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine y={0} stroke="hsl(var(--destructive))" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="Saldo" stroke="hsl(217, 91%, 60%)" fill="hsl(217, 91%, 60%)" fillOpacity={0.15} strokeWidth={2} />
+                <Area type="monotone" dataKey="Saldo" stroke="#00CCFF" fill="#00CCFF" fillOpacity={0.15} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>

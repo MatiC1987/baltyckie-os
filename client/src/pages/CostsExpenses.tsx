@@ -1057,8 +1057,8 @@ export default function CostsExpenses() {
                 <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="Prognoza" fill="hsl(var(--chart-1))" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Rzeczywiste" fill="hsl(var(--chart-2))" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Rzeczywiste" fill="#00CCFF" radius={[2, 2, 0, 0]} />
               </RechartsBarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -1079,8 +1079,8 @@ export default function CostsExpenses() {
                   <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Line type="monotone" dataKey={selectedYear.toString()} stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} name={`${selectedYear}`} />
-                  <Line type="monotone" dataKey={compareYear.toString()} stroke="hsl(var(--chart-2))" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} name={`${compareYear}`} />
+                  <Line type="monotone" dataKey={selectedYear.toString()} stroke="#00CCFF" strokeWidth={2} dot={{ r: 3 }} name={`${selectedYear}`} />
+                  <Line type="monotone" dataKey={compareYear.toString()} stroke="hsl(222, 47%, 11%)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} name={`${compareYear}`} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>

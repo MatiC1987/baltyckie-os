@@ -162,7 +162,7 @@ export default function PriceSeasonality() {
                 yAxisId="left"
                 type="monotone"
                 dataKey="avgNightlyRate"
-                stroke="hsl(var(--chart-1))"
+                stroke="#00CCFF"
                 strokeWidth={2}
                 dot={false}
                 name="Śr. cena za noc"
@@ -172,7 +172,7 @@ export default function PriceSeasonality() {
                 yAxisId="right"
                 type="monotone"
                 dataKey="reservationCount"
-                stroke="hsl(var(--chart-2))"
+                stroke="hsl(222, 47%, 11%)"
                 strokeWidth={2}
                 dot={false}
                 name="Liczba rezerwacji"

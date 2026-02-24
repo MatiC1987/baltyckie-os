@@ -131,31 +131,31 @@ export default function CashFlowForecast() {
                   <Bar
                     dataKey="Przychody rezerwacje"
                     stackId="income"
-                    fill="hsl(var(--chart-1))"
+                    fill="#00CCFF"
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
                     dataKey="Przychody podnajmy"
                     stackId="income"
-                    fill="hsl(var(--chart-2))"
+                    fill="hsl(222, 47%, 11%)"
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
                     dataKey="Koszty stałe"
                     stackId="expenses"
-                    fill="hsl(var(--chart-3))"
+                    fill="hsl(142, 71%, 45%)"
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
                     dataKey="Raty"
                     stackId="expenses"
-                    fill="hsl(var(--chart-4))"
+                    fill="#f59e0b"
                     radius={[4, 4, 0, 0]}
                   />
                   <Line
                     type="monotone"
                     dataKey="Przepływ netto"
-                    stroke="hsl(var(--primary))"
+                    stroke="#00CCFF"
                     strokeWidth={3}
                     yAxisId="right"
                     isAnimationActive={false}

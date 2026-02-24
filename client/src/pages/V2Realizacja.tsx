@@ -285,7 +285,7 @@ export default function V2Realizacja() {
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" opacity={0.4} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Realizacja" fill="hsl(217, 91%, 60%)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Realizacja" fill="#00CCFF" radius={[2, 2, 0, 0]} />
                 <Line type="monotone" dataKey="Odchylenie" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
                 <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="2 2" />
               </ComposedChart>
@@ -304,7 +304,7 @@ export default function V2Realizacja() {
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <Bar dataKey="Zysk plan" fill="hsl(222, 47%, 11%)" opacity={0.4} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Zysk rzeczywisty" fill="hsl(217, 91%, 60%)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Zysk rzeczywisty" fill="#00CCFF" radius={[2, 2, 0, 0]} />
                 <ReferenceLine y={0} stroke="hsl(var(--destructive))" strokeDasharray="2 2" />
               </ComposedChart>
             </ResponsiveContainer>
@@ -475,7 +475,7 @@ export default function V2Realizacja() {
                     <Tooltip formatter={(v: number) => `${formatNum(v)} PLN`} />
                     <Legend />
                     <Bar dataKey={String(compareYearA)} fill="hsl(222, 47%, 11%)" opacity={0.6} radius={[3, 3, 0, 0]} />
-                    <Bar dataKey={String(compareYearB)} fill="hsl(217, 91%, 60%)" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey={String(compareYearB)} fill="#00CCFF" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
 

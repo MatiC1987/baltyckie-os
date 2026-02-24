@@ -132,12 +132,12 @@ export default function ApartmentComparison() {
                   <Legend />
                   <Bar
                     dataKey="przychód"
-                    fill={`hsl(var(--chart-1))`}
+                    fill="#00CCFF"
                     radius={[2, 2, 0, 0]}
                   />
                   <Bar
                     dataKey="koszty"
-                    fill={`hsl(var(--chart-5))`}
+                    fill="hsl(222, 47%, 11%)"
                     radius={[2, 2, 0, 0]}
                   />
                 </BarChart>

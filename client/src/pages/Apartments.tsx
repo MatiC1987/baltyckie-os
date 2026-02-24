@@ -826,8 +826,8 @@ function ApartmentDashboard({ apartment }: { apartment: Apartment }) {
               <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
               <Tooltip formatter={(v: number) => fmtPLN(v)} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="Przychody" fill="#22c55e" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="Koszty" fill="#f97316" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Przychody" fill="#00CCFF" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Koszty" fill="hsl(222, 47%, 11%)" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

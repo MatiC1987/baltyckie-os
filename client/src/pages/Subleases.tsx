@@ -1787,7 +1787,7 @@ export default function Subleases() {
                   formatter={(value: number) => [`${value.toLocaleString("pl-PL")} PLN`, "Przychód"]}
                   contentStyle={{ borderRadius: '8px', fontSize: '13px' }}
                 />
-                <Bar dataKey="przychod" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="przychod" fill="#00CCFF" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
