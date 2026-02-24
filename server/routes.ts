@@ -7901,10 +7901,49 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       }
 
-      // Monthly totals
+      // Build per-apartment forecast lookup (same logic as revenue-summary)
+      const locNameMap: Record<string, string> = { "LUXURO PARK": "PRZEWŁOKA" };
+      const locForecastLookup: Record<string, Record<number, number>> = {};
+      for (const f of forecasts) {
+        if (!f.apartmentId && f.locationName && f.locationName !== "RAZEM") {
+          const mappedName = locNameMap[f.locationName] || f.locationName;
+          if (!locForecastLookup[mappedName]) locForecastLookup[mappedName] = {};
+          locForecastLookup[mappedName][f.month] = Number(f.forecast || 0);
+        }
+      }
+      const aptForecastLookup: Record<string, number> = {};
+      for (const f of forecasts) {
+        if (f.apartmentId) {
+          aptForecastLookup[`${f.apartmentId}-${f.month}`] = Number(f.forecast || 0);
+        }
+      }
+
+      // Compute per-apartment forecasts with fallback
+      const aptForecastResolved: Record<number, Record<number, number>> = {};
+      for (const apt of allApartments) {
+        aptForecastResolved[apt.id] = {};
+        const locName = apt.location || "";
+        for (let m = 0; m < 12; m++) {
+          const aptKey = `${apt.id}-${m}`;
+          if (aptKey in aptForecastLookup) {
+            aptForecastResolved[apt.id][m] = aptForecastLookup[aptKey];
+          } else if (locName && locForecastLookup[locName]) {
+            const locTotal = locForecastLookup[locName][m] || 0;
+            const locApts = allApartments.filter(a => a.location === locName);
+            aptForecastResolved[apt.id][m] = locApts.length > 0 ? locTotal / locApts.length : 0;
+          } else {
+            aptForecastResolved[apt.id][m] = 0;
+          }
+        }
+      }
+
+      // Monthly totals (sum from resolved per-apartment forecasts to avoid double-counting)
       const monthlyData = [];
       for (let m = 0; m < 12; m++) {
-        const revFc = forecasts.filter(f => f.month === m).reduce((s, f) => s + Number(f.forecast || 0), 0);
+        let revFc = 0;
+        for (const apt of allApartments) {
+          revFc += aptForecastResolved[apt.id]?.[m] || 0;
+        }
         const revAct = Object.values(aptRevActuals).reduce((s, aptData) => s + (aptData[m] || 0), 0);
         const costFc = costFcasts.filter(f => f.month === m).reduce((s, f) => s + Number(f.forecast || 0), 0);
         const opFc = opCosts.filter(f => f.month === m).reduce((s, f) => s + Number(f.forecast || 0), 0);
@@ -7933,13 +7972,12 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         });
       }
 
-      // Per-apartment performance
+      // Per-apartment performance (using resolved forecasts with fallback)
       const aptPerformance = allApartments.map(apt => {
         let totalForecast = 0;
         let totalActual = 0;
         for (let m = 0; m < Math.min(currentMonth, 12); m++) {
-          const fc = forecasts.find(f => f.apartmentId === apt.id && f.month === m);
-          totalForecast += Number(fc?.forecast || 0);
+          totalForecast += aptForecastResolved[apt.id]?.[m] || 0;
           totalActual += aptRevActuals[apt.id]?.[m] || 0;
         }
         const deviation = totalActual - totalForecast;

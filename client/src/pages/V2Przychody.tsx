@@ -7,13 +7,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Wallet, ChevronDown, ChevronRight, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Copy, Sparkles } from "lucide-react";
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { Wallet, ChevronDown, ChevronRight, Copy, Sparkles } from "lucide-react";
+import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
 import { ApartmentTrendSheet } from "@/components/v2/ApartmentTrendSheet";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+
+function getGBCategory(name: string): number {
+  const lower = name.toLowerCase();
+  if (lower.includes("superior")) return 0;
+  if (lower.includes("studio mini")) return 2;
+  if (lower.includes("studio")) return 1;
+  if (lower.includes("2os") || lower.includes("2-os") || lower.includes("2-osobowe")) return 3;
+  return 99;
+}
 
 type AptRevenueData = {
   apartmentId: number;
@@ -39,10 +48,29 @@ function deviationColor(v: number): string {
   return "text-muted-foreground";
 }
 
+function deviationBgColor(v: number): string {
+  if (v > 0) return "bg-emerald-500";
+  if (v < 0) return "bg-red-500";
+  return "bg-muted";
+}
+
 function pctStr(actual: number, forecast: number): string {
   if (forecast === 0) return "—";
   const pct = ((actual - forecast) / forecast) * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+}
+
+function pctVal(actual: number, forecast: number): number {
+  if (forecast === 0) return 0;
+  return (actual / forecast) * 100;
+}
+
+function MiniProgress({ value, colorClass }: { value: number; colorClass: string }) {
+  return (
+    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+      <div className={`h-full rounded-full transition-all ${colorClass}`} style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }} />
+    </div>
+  );
 }
 
 function LocationGroup({ locationName, apartments, currentMonth, onApartmentClick }: {
@@ -53,17 +81,29 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
 }) {
   const [open, setOpen] = useState(true);
 
+  const sortedApts = useMemo(() => {
+    if (locationName === "GRAND BALTIC") {
+      return [...apartments].sort((a, b) => {
+        const catA = getGBCategory(a.apartmentName);
+        const catB = getGBCategory(b.apartmentName);
+        if (catA !== catB) return catA - catB;
+        return a.apartmentName.localeCompare(b.apartmentName, "pl");
+      });
+    }
+    return apartments;
+  }, [apartments, locationName]);
+
   const totals = useMemo(() => {
     const t: Record<number, { forecast: number; actual: number }> = {};
     for (let m = 0; m < 12; m++) {
       t[m] = { forecast: 0, actual: 0 };
-      for (const apt of apartments) {
+      for (const apt of sortedApts) {
         t[m].forecast += apt.months[m]?.forecast || 0;
         t[m].actual += apt.months[m]?.actual || 0;
       }
     }
     return t;
-  }, [apartments]);
+  }, [sortedApts]);
 
   const yearTotalFc = Object.values(totals).reduce((s, t) => s + t.forecast, 0);
   const yearTotalAct = Object.values(totals).reduce((s, t) => s + t.actual, 0);
@@ -77,7 +117,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
       >
         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         <span>{locationName}</span>
-        <Badge variant="secondary" className="ml-2">{apartments.length}</Badge>
+        <Badge variant="secondary" className="ml-2">{sortedApts.length}</Badge>
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">
           Plan: {formatNum(yearTotalFc)} PLN | Realizacja: {formatNum(yearTotalAct)} PLN
         </span>
@@ -99,9 +139,11 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
               </tr>
             </thead>
             <tbody>
-              {apartments.map(apt => {
+              {sortedApts.map(apt => {
                 const yearFc = Object.values(apt.months).reduce((s, m) => s + m.forecast, 0);
                 const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
+                const yearDev = yearAct - yearFc;
+                const yearPct = pctVal(yearAct, yearFc);
                 return [
                   <tr key={`${apt.apartmentId}-plan`} className="border-b border-dashed" data-testid={`apt-row-plan-${apt.apartmentId}`}>
                     <td className="p-2 font-medium" rowSpan={3}>
@@ -115,7 +157,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                         {formatNum(apt.months[i]?.forecast || 0)}
                       </td>
                     ))}
-                    <td className="p-2 text-right font-semibold tabular-nums">{formatNum(yearFc)}</td>
+                    <td className="p-2 text-right font-semibold tabular-nums">{formatNum(yearFc)} PLN</td>
                   </tr>,
                   <tr key={`${apt.apartmentId}-actual`} className="border-b border-dashed" data-testid={`apt-row-actual-${apt.apartmentId}`}>
                     <td className="p-2 text-muted-foreground">Rzecz.</td>
@@ -124,7 +166,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                         {formatNum(apt.months[i]?.actual || 0)}
                       </td>
                     ))}
-                    <td className="p-2 text-right font-bold tabular-nums">{formatNum(yearAct)}</td>
+                    <td className="p-2 text-right font-bold tabular-nums">{formatNum(yearAct)} PLN</td>
                   </tr>,
                   <tr key={`${apt.apartmentId}-dev`} className="border-b" data-testid={`apt-row-dev-${apt.apartmentId}`}>
                     <td className="p-2 text-muted-foreground">Odch.</td>
@@ -132,15 +174,35 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                       const fc = apt.months[i]?.forecast || 0;
                       const act = apt.months[i]?.actual || 0;
                       const dev = act - fc;
+                      const mPct = pctVal(act, fc);
                       return (
-                        <td key={i} className={`p-2 text-right tabular-nums text-xs ${deviationColor(dev)} ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                          {fc === 0 && act === 0 ? "—" : `${dev >= 0 ? "+" : ""}${formatNum(dev)}`}
-                          {fc > 0 && <span className="block text-[10px]">{pctStr(act, fc)}</span>}
+                        <td key={i} className={`p-2 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                          {fc === 0 && act === 0 ? "—" : (
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1 justify-end">
+                                <div className="w-12"><MiniProgress value={mPct} colorClass={deviationBgColor(dev)} /></div>
+                                <span className="text-[10px] tabular-nums whitespace-nowrap">{mPct.toFixed(0)}%</span>
+                              </div>
+                              <span className={`block text-[10px] tabular-nums ${deviationColor(dev)}`}>
+                                {dev >= 0 ? "+" : ""}{formatNum(dev)}
+                              </span>
+                            </div>
+                          )}
                         </td>
                       );
                     })}
-                    <td className={`p-2 text-right tabular-nums text-xs font-semibold ${deviationColor(yearAct - yearFc)}`}>
-                      {yearFc === 0 && yearAct === 0 ? "—" : `${yearAct - yearFc >= 0 ? "+" : ""}${formatNum(yearAct - yearFc)}`}
+                    <td className="p-2 text-right">
+                      {yearFc === 0 && yearAct === 0 ? "—" : (
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1 justify-end">
+                            <div className="w-14"><MiniProgress value={yearPct} colorClass={deviationBgColor(yearDev)} /></div>
+                            <span className="text-[10px] tabular-nums font-semibold whitespace-nowrap">{yearPct.toFixed(0)}%</span>
+                          </div>
+                          <span className={`block text-[10px] tabular-nums font-semibold ${deviationColor(yearDev)}`}>
+                            {yearDev >= 0 ? "+" : ""}{formatNum(yearDev)} PLN
+                          </span>
+                        </div>
+                      )}
                     </td>
                   </tr>,
                 ];
@@ -153,7 +215,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                     {formatNum(totals[i]?.forecast || 0)}
                   </td>
                 ))}
-                <td className="p-2 text-right tabular-nums">{formatNum(yearTotalFc)}</td>
+                <td className="p-2 text-right tabular-nums">{formatNum(yearTotalFc)} PLN</td>
               </tr>
               <tr className="font-bold bg-muted/20">
                 <td className="p-2"></td>
@@ -163,7 +225,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                     {formatNum(totals[i]?.actual || 0)}
                   </td>
                 ))}
-                <td className="p-2 text-right tabular-nums">{formatNum(yearTotalAct)}</td>
+                <td className="p-2 text-right tabular-nums">{formatNum(yearTotalAct)} PLN</td>
               </tr>
             </tbody>
           </table>
@@ -228,6 +290,22 @@ export default function V2Przychody() {
     }
     return { forecast: fc, actual: act };
   }, [apartments]);
+
+  const currentMonthByLocation = useMemo(() => {
+    const m = year === currentYear ? currentMonth : -1;
+    if (m < 0) return [];
+    const result: { name: string; forecast: number; actual: number; pct: number }[] = [];
+    for (const loc of locations) {
+      const locApts = apartments.filter(a => a.locationId === loc.id);
+      let fc = 0, act = 0;
+      for (const apt of locApts) {
+        fc += apt.months[m]?.forecast || 0;
+        act += apt.months[m]?.actual || 0;
+      }
+      result.push({ name: loc.name, forecast: fc, actual: act, pct: fc > 0 ? (act / fc) * 100 : 0 });
+    }
+    return result;
+  }, [apartments, locations, currentMonth, currentYear, year]);
 
   if (isLoading) {
     return (
@@ -303,6 +381,41 @@ export default function V2Przychody() {
         </Card>
       </div>
 
+      {currentMonthByLocation.length > 0 && (
+        <Card data-testid="current-month-summary">
+          <CardContent className="pt-4 pb-3">
+            <h3 className="text-sm font-semibold mb-3">
+              {MONTHS[currentMonth]} {year} — zestawienie per lokalizacja
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {currentMonthByLocation.map(loc => {
+                const dev = loc.actual - loc.forecast;
+                return (
+                  <div key={loc.name} className="rounded-lg border p-3 space-y-2" data-testid={`month-loc-${loc.name}`}>
+                    <p className="text-xs font-semibold truncate">{loc.name}</p>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Plan</span>
+                      <span className="tabular-nums font-medium">{formatNum(loc.forecast)} PLN</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Realizacja</span>
+                      <span className="tabular-nums font-medium">{formatNum(loc.actual)} PLN</span>
+                    </div>
+                    <MiniProgress value={loc.pct} colorClass={deviationBgColor(dev)} />
+                    <div className="flex justify-between text-[10px]">
+                      <span className={`tabular-nums font-semibold ${deviationColor(dev)}`}>
+                        {dev >= 0 ? "+" : ""}{formatNum(dev)} PLN
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">{loc.pct.toFixed(0)}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card data-testid="revenue-chart">
         <CardContent className="pt-4">
           <ResponsiveContainer width="100%" height={280}>
@@ -312,8 +425,8 @@ export default function V2Przychody() {
               <YAxis className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
               <Tooltip formatter={(v: number) => `${formatNum(v)} PLN`} />
               <Legend />
-              <Bar dataKey="Prognoza" fill="hsl(var(--chart-1))" opacity={0.5} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Realizacja" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Realizacja" fill="hsl(221, 83%, 53%)" radius={[4, 4, 0, 0]} />
             </ComposedChart>
           </ResponsiveContainer>
         </CardContent>
