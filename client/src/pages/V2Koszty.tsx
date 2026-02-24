@@ -479,7 +479,7 @@ export default function V2Koszty() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList data-testid="costs-tabs">
-          <TabsTrigger value="apartamentowe" data-testid="tab-apt-costs">Apartamentowe</TabsTrigger>
+          <TabsTrigger value="apartamentowe" data-testid="tab-apt-costs">Apartamenty</TabsTrigger>
           <TabsTrigger value="operacyjne" data-testid="tab-op-costs">Operacyjne</TabsTrigger>
           <TabsTrigger value="zmienne" data-testid="tab-var-costs">Zmienne</TabsTrigger>
         </TabsList>
