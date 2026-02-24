@@ -258,6 +258,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [editEntryColorDialog, setEditEntryColorDialog] = useState<string | null>(null);
   const [editEntryColor, setEditEntryColor] = useState("");
 
+  const [resetEntryDialog, setResetEntryDialog] = useState<{ entryId: string; entryName: string } | null>(null);
+
   const [locationTab, setLocationTab] = useState<string>(() => {
     try { return localStorage.getItem("costs-apartments-location-tab") || "GRAND BALTIC"; } catch { return "GRAND BALTIC"; }
   });
@@ -713,6 +715,22 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     toast({ title: "Usunięto kategorię" });
   }, [categoriesMap, toast]);
 
+  const handleResetEntryData = useCallback((entryId: string) => {
+    const current = loadData(year);
+    const next: typeof current = {};
+    for (const key of Object.keys(current)) {
+      if (!key.startsWith(`${entryId}__`)) next[key] = current[key];
+    }
+    saveData(year, next);
+    setData(next);
+    const nextCats = { ...categoriesMap };
+    delete nextCats[entryId];
+    setCategoriesMap(nextCats);
+    saveCategories(nextCats);
+    setResetEntryDialog(null);
+    toast({ title: "Zresetowano dane", description: "Koszty zostały usunięte dla wybranego apartamentu i roku" });
+  }, [year, categoriesMap, toast]);
+
   const openEditCatDialog = useCallback((entryId: string, category: string) => {
     setEditCatDialog({ entryId, category });
     setEditCatName(category);
@@ -1103,6 +1121,14 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                                 data-testid={`button-add-cat-${entry.id}`}
                               >
                                 <Plus className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => setResetEntryDialog({ entryId: entry.id, entryName: entry.name })}
+                                className="opacity-40 hover:opacity-100 hover:text-red-300 transition-opacity p-0.5 shrink-0"
+                                title="Resetuj dane (usuń wszystkie koszty)"
+                                data-testid={`button-reset-entry-${entry.id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
                               </button>
                             </div>
                           </td>
@@ -1535,6 +1561,26 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditEntryColorDialog(null)}>Anuluj</Button>
             <Button onClick={handleSaveEntryColor} data-testid="button-save-entry-color">Zapisz</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resetEntryDialog} onOpenChange={(open) => { if (!open) setResetEntryDialog(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Resetuj dane apartamentu
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Czy na pewno usunąć wszystkie koszty dla <strong>{resetEntryDialog?.entryName}</strong> za rok <strong>{year}</strong>? Tej operacji nie można cofnąć.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetEntryDialog(null)}>Anuluj</Button>
+            <Button variant="destructive" onClick={() => resetEntryDialog && handleResetEntryData(resetEntryDialog.entryId)} data-testid="button-confirm-reset-entry">
+              Usuń dane
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

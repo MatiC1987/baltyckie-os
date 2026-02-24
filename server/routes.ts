@@ -660,6 +660,7 @@ export async function registerRoutes(
         ));
 
       const activeSubleases = await db.select({
+        id: subleases.id,
         apartmentId: subleases.apartmentId,
         apartmentIds: subleases.apartmentIds,
         startDate: subleases.startDate,
@@ -672,7 +673,60 @@ export async function registerRoutes(
           ne(subleases.status, "ANULOWANA"),
         ));
 
-      const periodStart = new Date(startDate).getTime();
+      const allSubChangesOcc = await db.select().from(subleaseApartmentChanges);
+      const changesBySubOcc: Record<number, any[]> = {};
+      for (const ch of allSubChangesOcc) {
+        if (!changesBySubOcc[ch.subleaseId]) changesBySubOcc[ch.subleaseId] = [];
+        changesBySubOcc[ch.subleaseId].push(ch);
+      }
+
+      const occPeriodStart = new Date(startDate);
+      const occPeriodEnd = new Date(endDate);
+      const periodStartMs = occPeriodStart.getTime();
+
+      const subleaseOccByApt: Record<number, Set<number>> = {};
+      for (const s of activeSubleases) {
+        const subStart = new Date(s.startDate);
+        const subEnd = new Date(s.endDate);
+
+        const baseIds: number[] = s.apartmentIds && s.apartmentIds.length > 0
+          ? [...s.apartmentIds]
+          : (s.apartmentId ? [s.apartmentId] : []);
+        if (baseIds.length === 0) continue;
+
+        const changes = (changesBySubOcc[s.id] || [])
+          .slice().sort((a: any, b: any) => a.changeDate.localeCompare(b.changeDate));
+
+        for (const baseId of baseIds) {
+          const segments: { aptId: number; start: Date; end: Date }[] = [];
+          let curId = baseId;
+          let curStart = subStart;
+          for (const ch of changes) {
+            if (ch.oldApartmentId === curId) {
+              const chDate = new Date(ch.changeDate);
+              if (chDate > curStart && chDate <= subEnd) {
+                segments.push({ aptId: curId, start: curStart, end: new Date(chDate.getTime() - 86400000) });
+                curId = ch.newApartmentId;
+                curStart = chDate;
+              }
+            }
+          }
+          segments.push({ aptId: curId, start: curStart, end: subEnd });
+
+          for (const seg of segments) {
+            const segStart = seg.start > occPeriodStart ? seg.start : occPeriodStart;
+            const segEnd = seg.end < occPeriodEnd ? seg.end : occPeriodEnd;
+            const days = Math.max(0, Math.ceil((segEnd.getTime() - segStart.getTime()) / 86400000));
+            if (!subleaseOccByApt[seg.aptId]) subleaseOccByApt[seg.aptId] = new Set<number>();
+            for (let d = 0; d < days; d++) {
+              const dayNum = Math.floor((segStart.getTime() + d * 86400000 - periodStartMs) / 86400000);
+              subleaseOccByApt[seg.aptId].add(dayNum);
+            }
+          }
+        }
+      }
+
+      const periodStart = periodStartMs;
 
       const result = allApartments.map(apt => {
         const occupiedDaySet = new Set<number>();
@@ -688,17 +742,9 @@ export async function registerRoutes(
           }
         }
 
-        const aptSubleases = activeSubleases.filter(s => {
-          if (s.apartmentId === apt.id) return true;
-          if (s.apartmentIds && Array.isArray(s.apartmentIds) && s.apartmentIds.includes(apt.id)) return true;
-          return false;
-        });
-        for (const s of aptSubleases) {
-          const sStart = new Date(Math.max(new Date(s.startDate).getTime(), new Date(startDate).getTime()));
-          const sEnd = new Date(Math.min(new Date(s.endDate).getTime(), new Date(endDate).getTime()));
-          const days = Math.max(0, Math.ceil((sEnd.getTime() - sStart.getTime()) / 86400000));
-          for (let d = 0; d < days; d++) {
-            const dayNum = Math.floor((sStart.getTime() + d * 86400000 - periodStart) / 86400000);
+        const aptSubDays = subleaseOccByApt[apt.id];
+        if (aptSubDays) {
+          for (const dayNum of aptSubDays) {
             occupiedDaySet.add(dayNum);
           }
         }
@@ -763,6 +809,13 @@ export async function registerRoutes(
         .from(costForecasts)
         .where(eq(costForecasts.year, year));
 
+      const allSubChangesProfit = await db.select().from(subleaseApartmentChanges);
+      const changesBySubProfit: Record<number, any[]> = {};
+      for (const ch of allSubChangesProfit) {
+        if (!changesBySubProfit[ch.subleaseId]) changesBySubProfit[ch.subleaseId] = [];
+        changesBySubProfit[ch.subleaseId].push(ch);
+      }
+
       const subleaseRevenueByApt: Record<number, number> = {};
       const yearStartDate = new Date(startDate);
       const yearEndDate = new Date(endDate);
@@ -770,28 +823,44 @@ export async function registerRoutes(
       for (const sub of yearSubleases) {
         const subStart = new Date(sub.startDate);
         const subEnd = new Date(sub.endDate);
-        const effStart = subStart > yearStartDate ? subStart : yearStartDate;
-        const effEnd = subEnd < yearEndDate ? subEnd : yearEndDate;
         const totalDays = Math.max(0, Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1);
-        const overlapDays = Math.max(0, Math.floor((effEnd.getTime() - effStart.getTime()) / 86400000) + 1);
-        if (totalDays === 0 || overlapDays === 0) continue;
+        if (totalDays === 0) continue;
 
-        const totalRent = Number(sub.rentAmount || 0);
-        const monthlyRent = totalRent;
-        const months = totalDays / 30.44;
-        const totalSubleaseValue = monthlyRent * months;
-        const proportionalRevenue = (overlapDays / totalDays) * totalSubleaseValue;
+        const monthlyRent = Number(sub.rentAmount || 0);
+        const totalSubleaseValue = monthlyRent * (totalDays / 30.44);
 
-        const aptIds: number[] = [];
-        if (sub.apartmentIds && sub.apartmentIds.length > 0) {
-          aptIds.push(...sub.apartmentIds);
-        } else if (sub.apartmentId) {
-          aptIds.push(sub.apartmentId);
-        }
+        const baseIds: number[] = sub.apartmentIds && sub.apartmentIds.length > 0
+          ? [...sub.apartmentIds]
+          : (sub.apartmentId ? [sub.apartmentId] : []);
+        if (baseIds.length === 0) continue;
 
-        const perAptRevenue = aptIds.length > 0 ? proportionalRevenue / aptIds.length : 0;
-        for (const aptId of aptIds) {
-          subleaseRevenueByApt[aptId] = (subleaseRevenueByApt[aptId] || 0) + perAptRevenue;
+        const changes = ((changesBySubProfit as any)[sub.id] || [])
+          .slice().sort((a: any, b: any) => a.changeDate.localeCompare(b.changeDate));
+
+        for (const baseId of baseIds) {
+          const segments: { aptId: number; start: Date; end: Date }[] = [];
+          let curId = baseId;
+          let curStart = subStart;
+          for (const ch of changes) {
+            if (ch.oldApartmentId === curId) {
+              const chDate = new Date(ch.changeDate);
+              if (chDate > curStart && chDate <= subEnd) {
+                segments.push({ aptId: curId, start: curStart, end: new Date(chDate.getTime() - 86400000) });
+                curId = ch.newApartmentId;
+                curStart = chDate;
+              }
+            }
+          }
+          segments.push({ aptId: curId, start: curStart, end: subEnd });
+
+          for (const seg of segments) {
+            const segStart = seg.start > yearStartDate ? seg.start : yearStartDate;
+            const segEnd = seg.end < yearEndDate ? seg.end : yearEndDate;
+            const segDays = Math.max(0, Math.floor((segEnd.getTime() - segStart.getTime()) / 86400000) + 1);
+            if (segDays <= 0) continue;
+            const revenue = (segDays / totalDays) * totalSubleaseValue / baseIds.length;
+            subleaseRevenueByApt[seg.aptId] = (subleaseRevenueByApt[seg.aptId] || 0) + revenue;
+          }
         }
       }
 
@@ -5004,35 +5073,66 @@ export async function registerRoutes(
           ne(subleases.status, "ZAKONCZONA"),
         ));
 
+      const allSubChangesComp = await db.select().from(subleaseApartmentChanges);
+      const changesBySubComp: Record<number, any[]> = {};
+      for (const ch of allSubChangesComp) {
+        if (!changesBySubComp[ch.subleaseId]) changesBySubComp[ch.subleaseId] = [];
+        changesBySubComp[ch.subleaseId].push(ch);
+      }
+
+      const subleaseRevenueByAptComp: Record<number, number> = {};
+      const compYearStart = new Date(startDate);
+      const compYearEnd = new Date(endDate);
+
+      for (const sub of yearSubleases) {
+        const subStart = new Date(sub.startDate);
+        const subEnd = new Date(sub.endDate);
+        const totalDays = Math.max(0, Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1);
+        if (totalDays === 0) continue;
+
+        const monthlyRent = Number(sub.rentAmount || 0);
+        const totalSubleaseValue = monthlyRent * (totalDays / 30.44);
+
+        const baseIds: number[] = sub.apartmentIds && sub.apartmentIds.length > 0
+          ? [...sub.apartmentIds]
+          : (sub.apartmentId ? [sub.apartmentId] : []);
+        if (baseIds.length === 0) continue;
+
+        const changes = (changesBySubComp[sub.id] || [])
+          .slice().sort((a: any, b: any) => a.changeDate.localeCompare(b.changeDate));
+
+        for (const baseId of baseIds) {
+          const segments: { aptId: number; start: Date; end: Date }[] = [];
+          let curId = baseId;
+          let curStart = subStart;
+          for (const ch of changes) {
+            if (ch.oldApartmentId === curId) {
+              const chDate = new Date(ch.changeDate);
+              if (chDate > curStart && chDate <= subEnd) {
+                segments.push({ aptId: curId, start: curStart, end: new Date(chDate.getTime() - 86400000) });
+                curId = ch.newApartmentId;
+                curStart = chDate;
+              }
+            }
+          }
+          segments.push({ aptId: curId, start: curStart, end: subEnd });
+
+          for (const seg of segments) {
+            const segStart = seg.start > compYearStart ? seg.start : compYearStart;
+            const segEnd = seg.end < compYearEnd ? seg.end : compYearEnd;
+            const segDays = Math.max(0, Math.floor((segEnd.getTime() - segStart.getTime()) / 86400000) + 1);
+            if (segDays <= 0) continue;
+            const revenue = (segDays / totalDays) * totalSubleaseValue / baseIds.length;
+            subleaseRevenueByAptComp[seg.aptId] = (subleaseRevenueByAptComp[seg.aptId] || 0) + revenue;
+          }
+        }
+      }
+
       const result = allApartments.map(apt => {
         const aptReservations = yearReservations.filter(r => r.apartmentId === apt.id);
         const reservationRevenue = aptReservations.reduce((s, r) => s + Number(r.price || 0), 0);
 
-        let subleaseRevenue = 0;
-        for (const sub of yearSubleases) {
-          const aptIds: number[] = [];
-          if (sub.apartmentId) aptIds.push(sub.apartmentId);
-          if (sub.apartmentIds) {
-            for (const aid of sub.apartmentIds) {
-              if (aid && !aptIds.includes(aid)) aptIds.push(aid);
-            }
-          }
-          if (!aptIds.includes(apt.id)) continue;
-
-          const subStart = new Date(Math.max(new Date(sub.startDate).getTime(), new Date(startDate).getTime()));
-          const subEnd = new Date(Math.min(new Date(sub.endDate).getTime(), new Date(endDate).getTime()));
-          const totalSubDays = Math.max(0, Math.ceil((new Date(sub.endDate).getTime() - new Date(sub.startDate).getTime()) / 86400000));
-          const overlapDays = Math.max(0, Math.ceil((subEnd.getTime() - subStart.getTime()) / 86400000));
-
-          if (totalSubDays > 0 && overlapDays > 0) {
-            const monthlyRent = Number(sub.rentAmount || 0);
-            const totalMonths = totalSubDays / 30.44;
-            const totalRent = monthlyRent * totalMonths;
-            const proportionalRent = totalRent * (overlapDays / totalSubDays);
-            const perApartment = proportionalRent / aptIds.length;
-            subleaseRevenue += perApartment;
-          }
-        }
+        const subleaseRevenue = subleaseRevenueByAptComp[apt.id] || 0;
 
         const totalRevenue = reservationRevenue + subleaseRevenue;
 
