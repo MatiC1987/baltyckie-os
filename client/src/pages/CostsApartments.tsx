@@ -258,6 +258,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [editEntryColorDialog, setEditEntryColorDialog] = useState<string | null>(null);
   const [editEntryColor, setEditEntryColor] = useState("");
 
+  const [locationTab, setLocationTab] = useState<string>(() => {
+    try { return localStorage.getItem("costs-apartments-location-tab") || "all"; } catch { return "all"; }
+  });
+
   const dragCatRef = useRef<{ entryId: string; category: string } | null>(null);
   const dragOverCatRef = useRef<{ entryId: string; category: string } | null>(null);
   const [dragCatKey, setDragCatKey] = useState<string | null>(null);
@@ -491,6 +495,23 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     }
     return entries;
   }, [apartments, sortedLocations, getActiveCategories]);
+
+  const locationTabNames = useMemo(() => costEntries.map(g => g.location), [costEntries]);
+
+  const validLocationTab = useMemo(() => {
+    if (locationTab === "all") return "all";
+    return locationTabNames.includes(locationTab) ? locationTab : "all";
+  }, [locationTab, locationTabNames]);
+
+  const handleLocationTabChange = useCallback((tab: string) => {
+    setLocationTab(tab);
+    try { localStorage.setItem("costs-apartments-location-tab", tab); } catch {}
+  }, []);
+
+  const filteredCostEntries = useMemo(() => {
+    if (validLocationTab === "all") return costEntries;
+    return costEntries.filter(g => g.location === validLocationTab);
+  }, [costEntries, validLocationTab]);
 
   const compareData = useMemo(() => compareYear !== null ? loadData(compareYear) : {}, [compareYear]);
 
@@ -776,7 +797,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
 
   const costsHeatMax = useMemo(() => {
     let max = 0;
-    costEntries.forEach(group => {
+    filteredCostEntries.forEach(group => {
       group.items.forEach(entry => {
         for (let m = 0; m < 12; m++) {
           const s = getEntrySums(entry, m);
@@ -785,7 +806,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       });
     });
     return max;
-  }, [costEntries, getEntrySums]);
+  }, [filteredCostEntries, getEntrySums]);
 
   const getEntrySparklineData = useCallback((entry: CostEntry): number[] => {
     return Array.from({ length: 12 }, (_, m) => getEntrySums(entry, m).r);
@@ -809,21 +830,21 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
 
   const grandTotal = useMemo(() => {
     let p = 0, r = 0;
-    costEntries.forEach(group => { const s = getLocationYearTotal(group.items); p += s.p; r += s.r; });
+    filteredCostEntries.forEach(group => { const s = getLocationYearTotal(group.items); p += s.p; r += s.r; });
     return { p, r, s: p - r };
-  }, [costEntries, getLocationYearTotal]);
+  }, [filteredCostEntries, getLocationYearTotal]);
 
   const monthlyCostChart = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
       let p = 0, r = 0;
-      costEntries.forEach(group => { const s = getLocationSums(group.items, m); p += s.p; r += s.r; });
+      filteredCostEntries.forEach(group => { const s = getLocationSums(group.items, m); p += s.p; r += s.r; });
       return { name: MONTHS[m], Prognoza: Math.round(p), Rzeczywiste: Math.round(r) };
     });
-  }, [costEntries, getLocationSums]);
+  }, [filteredCostEntries, getLocationSums]);
 
   const archivedEntries = useMemo(() => {
     const result: { entryId: string; entryName: string; categories: string[] }[] = [];
-    costEntries.forEach(group => {
+    filteredCostEntries.forEach(group => {
       group.items.forEach(entry => {
         const archived = getArchivedCategories(entry.id, entry.isGrandBaltic);
         if (archived.length > 0) {
@@ -832,7 +853,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       });
     });
     return result;
-  }, [costEntries, getArchivedCategories]);
+  }, [filteredCostEntries, getArchivedCategories]);
 
   const [showChart, setShowChart] = useState(false);
   const fullscreen = useFullscreen();
@@ -896,6 +917,32 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         </div>
       )}
 
+      {locationTabNames.length > 1 && (
+        <div className="flex items-center gap-1 overflow-x-auto pb-1" data-testid="location-tabs">
+          <Button
+            variant={validLocationTab === "all" ? "default" : "outline"}
+            size="sm"
+            className="text-xs whitespace-nowrap"
+            onClick={() => handleLocationTabChange("all")}
+            data-testid="tab-all"
+          >
+            Wszystkie
+          </Button>
+          {locationTabNames.map(name => (
+            <Button
+              key={name}
+              variant={validLocationTab === name ? "default" : "outline"}
+              size="sm"
+              className="text-xs whitespace-nowrap"
+              onClick={() => handleLocationTabChange(name)}
+              data-testid={`tab-${name.replace(/\s+/g, "-").toLowerCase()}`}
+            >
+              {name}
+            </Button>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
@@ -920,7 +967,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-muted-foreground">Lokalizacje / Apartamenty</p>
-            <p className="text-xl font-bold mt-1" data-testid="text-total-entries">{costEntries.length} / {costEntries.reduce((s, g) => s + g.items.length, 0)}</p>
+            <p className="text-xl font-bold mt-1" data-testid="text-total-entries">{filteredCostEntries.length} / {filteredCostEntries.reduce((s, g) => s + g.items.length, 0)}</p>
           </CardContent>
         </Card>
       </div>
@@ -990,7 +1037,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
             </tr>
           </thead>
           <tbody>
-            {costEntries.map((group) => {
+            {filteredCostEntries.map((group) => {
               const isCollapsed = collapsed.has(group.location);
               const locYear = getLocationYearTotal(group.items);
               const locYearS = locYear.p - locYear.r;
@@ -1197,7 +1244,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
               <td className="sticky left-0 z-20 bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-right uppercase">SUMA</td>
               {MONTHS.map((_, mi) => {
                 let mp = 0, mr = 0;
-                costEntries.forEach(group => { const s = getLocationSums(group.items, mi); mp += s.p; mr += s.r; });
+                filteredCostEntries.forEach(group => { const s = getLocationSums(group.items, mi); mp += s.p; mr += s.r; });
                 const ms = mp - mr;
                 return (
                   <Fragment key={mi}>
@@ -1313,7 +1360,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       {compareYear !== null && (() => {
         const yoyChartData = MONTHS.map((name, m) => {
           let mainR = 0, compR = 0;
-          costEntries.forEach(group => {
+          filteredCostEntries.forEach(group => {
             group.items.forEach(entry => {
               entry.categories.forEach(cat => {
                 const key = getCellKeyOld(entry.id, cat);

@@ -25,7 +25,7 @@ The application features a modern full-stack architecture.
 -   **User & Employee Management**: Internal user account management with role-based permissions, and full CRUD for employee records including medical exam tracking.
 -   **Reporting & Analytics**: Aggregated sublease settlements, revenue forecasting, apartment cost analysis, detailed revenue pages, occupancy rates, profitability rankings, and price seasonality analysis. PDF report exports for various financial summaries.
 -   **Notifications & Reminders**: Dashboard reminders for overdue payments, expiring medical exams, leases/subleases. An internal notification center for critical alerts.
--   **UI/UX**: Collapsible sidebar, consistent Polish language UI, clean design with Tailwind CSS and shadcn/ui, dark mode support, global search, breadcrumbs, and sticky table headers.
+-   **UI/UX**: Collapsible sidebar, consistent Polish language UI, clean design with Tailwind CSS and shadcn/ui, dark mode support, global search, breadcrumbs, and sticky table headers. CostsApartments page features location-based tabs (Grand Baltic, Bulwar Portowy, Wczasowa, Na Wydmie, Przewłoka + "Wszystkie") for filtering by location, with per-apartment colored rows and color picker dialog. Tab selection persists in localStorage (`costs-apartments-location-tab`).
 -   **CRM**: Customer database with CRUD, segmentation, search, filtering, and tracking of total stays and revenue.
 -   **Task Management**: Things 3-inspired task system with projects, sections, tasks (priority, due date, recurring), smart views, and a dashboard widget.
 -   **Architectural Patterns**: Zod schemas for API validation, TanStack Query for data fetching/caching, and an `IStorage` interface for database abstraction.
