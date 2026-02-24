@@ -233,6 +233,7 @@ export default function Dashboard() {
   const { data: leases } = useQuery<Lease[]>({ queryKey: ["/api/leases"] });
   const { data: allSubleasePayments } = useQuery<SubleasePaymentExtended[]>({ queryKey: ["/api/dashboard/all-sublease-payments"] });
   const { data: forecastData } = useQuery<ForecastMonth[]>({ queryKey: ["/api/dashboard/revenue-forecast"] });
+  const { data: subleases } = useQuery<any[]>({ queryKey: ["/api/subleases"] });
   const { data: reminders } = useQuery<{
     expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[];
     overdueCosts: number;
@@ -275,25 +276,40 @@ export default function Dashboard() {
     const now = new Date();
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
+    const prevMonth = thisMonth === 0 ? 11 : thisMonth - 1;
+    const prevYear = thisMonth === 0 ? thisYear - 1 : thisYear;
 
     const thisMonthRes = reservations.filter(r => {
       if (!r.startDate) return false;
       const d = new Date(r.startDate);
       return d.getMonth() === thisMonth && d.getFullYear() === thisYear && r.status !== "ANULOWANA";
     });
-
-    const monthRevenue = thisMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
-    const monthCount = thisMonthRes.length;
-
     const lastMonthRes = reservations.filter(r => {
       if (!r.startDate) return false;
       const d = new Date(r.startDate);
-      const prevMonth = thisMonth === 0 ? 11 : thisMonth - 1;
-      const prevYear = thisMonth === 0 ? thisYear - 1 : thisYear;
       return d.getMonth() === prevMonth && d.getFullYear() === prevYear && r.status !== "ANULOWANA";
     });
-    const lastMonthRevenue = lastMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
 
+    const reservationRevenue = thisMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
+    const monthCount = thisMonthRes.length;
+    const lastMonthResRevenue = lastMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
+
+    const subPayments = allSubleasePayments || [];
+    const thisMonthSubRevenue = subPayments.filter(p => {
+      if (!p.dueDate) return false;
+      if (p.category?.toLowerCase() === "kaucja") return false;
+      const pd = new Date(p.dueDate);
+      return pd.getMonth() === thisMonth && pd.getFullYear() === thisYear;
+    }).reduce((s, p) => s + Number(p.amount), 0);
+    const lastMonthSubRevenue = subPayments.filter(p => {
+      if (!p.dueDate) return false;
+      if (p.category?.toLowerCase() === "kaucja") return false;
+      const pd = new Date(p.dueDate);
+      return pd.getMonth() === prevMonth && pd.getFullYear() === prevYear;
+    }).reduce((s, p) => s + Number(p.amount), 0);
+
+    const monthRevenue = reservationRevenue + thisMonthSubRevenue;
+    const lastMonthRevenue = lastMonthResRevenue + lastMonthSubRevenue;
     const revenueChange = lastMonthRevenue > 0 ? ((monthRevenue - lastMonthRevenue) / lastMonthRevenue * 100) : 0;
 
     const unpaidCount = reservations.filter(r => {
@@ -302,7 +318,7 @@ export default function Dashboard() {
     }).length;
 
     return { monthRevenue, monthCount, revenueChange, lastMonthRevenue, unpaidCount };
-  }, [reservations]);
+  }, [reservations, allSubleasePayments]);
 
   const occupancyPct = useMemo(() => {
     if (!reservations || !apartments || apartments.length === 0) return 0;
@@ -328,8 +344,27 @@ export default function Dashboard() {
       }
     });
 
+    if (subleases) {
+      subleases.forEach(s => {
+        if (!s.startDate || !s.endDate) return;
+        const start = new Date(s.startDate);
+        const end = new Date(s.endDate);
+        const monthStart = new Date(year, month, 1);
+        const monthEnd = new Date(year, month + 1, 0);
+        const overlapStart = start > monthStart ? start : monthStart;
+        const overlapEnd = end < monthEnd ? end : monthEnd;
+        if (overlapStart <= overlapEnd) {
+          const aptCount = Array.isArray(s.apartmentIds) && s.apartmentIds.length > 0
+            ? s.apartmentIds.length
+            : (s.apartmentId ? 1 : 0);
+          const nights = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          if (nights > 0 && aptCount > 0) occupiedNights += nights * aptCount;
+        }
+      });
+    }
+
     return Math.min(100, Math.round((occupiedNights / totalAptNights) * 100));
-  }, [reservations, apartments]);
+  }, [reservations, apartments, subleases]);
 
   if (reservationsLoading && !reservations) {
     return <DashboardSkeleton />;
@@ -1214,7 +1249,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
           </CardHeader>
           <CardContent className="space-y-2">
             {reminders!.overdueCosts > 0 && (
-              <Link href="/koszty-apartamentowe">
+              <Link href="/v2/koszty">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-overdue-costs">
                   <FileWarning className="h-4 w-4 text-red-500 shrink-0" />
                   <span>Zaległe opłaty kosztów: <strong>{reminders!.overdueCosts}</strong></span>
