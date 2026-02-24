@@ -51,12 +51,46 @@ function netCashFlowColor(v: number): string {
   return "";
 }
 
+function readLocalAptCosts(years: number[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const year of years) {
+    try {
+      const raw = localStorage.getItem(`costs-apartments-data-${year}`);
+      if (!raw) continue;
+      const stored = JSON.parse(raw) as Record<string, Record<string, { p: number; r: number }>>;
+      for (const monthData of Object.values(stored)) {
+        for (const [monthStr, cellData] of Object.entries(monthData)) {
+          const ym = `${year}-${parseInt(monthStr)}`;
+          result[ym] = (result[ym] || 0) + (Number(cellData.p) || 0);
+        }
+      }
+    } catch {}
+  }
+  return result;
+}
+
 export default function CashFlowForecast() {
   const { data: response, isLoading } = useQuery<CashFlowResponse>({
     queryKey: ["/api/cash-flow-forecast"],
   });
 
-  const months = response?.months || [];
+  const rawMonths = response?.months || [];
+
+  const months = useMemo(() => {
+    if (rawMonths.length === 0) return rawMonths;
+    const uniqueYears = [...new Set(rawMonths.map(m => m.year))];
+    const aptCosts = readLocalAptCosts(uniqueYears);
+    return rawMonths.map(m => {
+      const ym = `${m.year}-${m.month - 1}`;
+      const localAptCost = aptCosts[ym] || 0;
+      const totalExpenses = m.expectedExpenses + localAptCost;
+      return {
+        ...m,
+        expectedExpenses: Math.round(totalExpenses * 100) / 100,
+        netCashFlow: Math.round((m.expectedIncome + m.expectedSubleaseIncome - totalExpenses) * 100) / 100,
+      };
+    });
+  }, [rawMonths]);
 
   const chartData = useMemo(() => {
     return months.map((m) => ({
