@@ -10,8 +10,8 @@ import {
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/v2-przychody", icon: TrendingUp, label: "Przychody" },
-  { href: "/v2-koszty", icon: Calculator, label: "Koszty" },
+  { href: "/v2/przychody", icon: TrendingUp, label: "Przychody" },
+  { href: "/v2/koszty", icon: Calculator, label: "Koszty" },
   { href: "/saldo-firmowe", icon: Landmark, label: "Saldo" },
 ];
 
