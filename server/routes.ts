@@ -7968,6 +7968,11 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       const allReservations = await storage.getReservations();
       const allForecasts = await storage.getRevenueForecasts();
       const allCostForecasts = await storage.getCostForecasts();
+      const allSubleases = await storage.getSubleases();
+      const subleasePaymentsMap: Record<number, any[]> = {};
+      for (const s of allSubleases) {
+        subleasePaymentsMap[s.id] = await storage.getSubleasePayments(s.id);
+      }
 
       const yearlyData: Record<number, { months: Record<number, { actual: number; forecast: number; cost: number }>; totalActual: number; totalForecast: number; totalCost: number }> = {};
 
@@ -7977,6 +7982,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
 
         for (let m = 0; m < 12; m++) {
           let actual = 0;
+          // Najem (reservations)
           for (const r of allReservations) {
             if (!r.startDate || r.status === "ANULOWANA") continue;
             const d = new Date(r.startDate);
@@ -7984,6 +7990,22 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
             const aptIds = r.apartmentIds?.length ? r.apartmentIds : (r.apartmentId ? [r.apartmentId] : []);
             if (aptIds.includes(aptId)) {
               actual += (Number(r.price) || 0) / Math.max(aptIds.length, 1);
+            }
+          }
+          // Podnajem (sublease payments)
+          for (const s of allSubleases) {
+            const payments = subleasePaymentsMap[s.id] || [];
+            const subleaseAptIds = s.apartmentIds && s.apartmentIds.length > 0
+              ? s.apartmentIds : (s.apartmentId ? [s.apartmentId] : []);
+            for (const p of payments) {
+              if (!p.dueDate) continue;
+              if ((p.category || '').toLowerCase() === 'kaucja') continue;
+              const d = new Date(p.dueDate);
+              if (d.getFullYear() !== y || d.getMonth() !== m) continue;
+              const paymentAptIds = p.apartmentId ? [p.apartmentId] : subleaseAptIds;
+              if (paymentAptIds.includes(aptId)) {
+                actual += (Number(p.amount) || 0) / Math.max(paymentAptIds.length, 1);
+              }
             }
           }
           const fc = allForecasts.find(f => f.year === y && f.month === m && f.apartmentId === aptId);
@@ -8302,7 +8324,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       for (const s of allSubleases) {
         if (!s.startDate || !s.endDate) continue;
         const payments = subleasePaymentsMap[s.id] || [];
-        const aptIds = s.apartmentIds && s.apartmentIds.length > 0
+        const subleaseAptIds = s.apartmentIds && s.apartmentIds.length > 0
           ? s.apartmentIds : (s.apartmentId ? [s.apartmentId] : []);
 
         for (const p of payments) {
@@ -8312,11 +8334,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           if (d.getFullYear() !== yearParam) continue;
           const month = d.getMonth();
           const amount = Number(p.amount || 0);
-          for (const aptId of aptIds) {
+          // If payment has its own apartment_id, use that; otherwise fall back to sublease apartment IDs
+          const paymentAptIds = p.apartmentId ? [p.apartmentId] : subleaseAptIds;
+          for (const aptId of paymentAptIds) {
             if (!aptId) continue;
             if (!actuals[aptId]) actuals[aptId] = {};
             if (!actuals[aptId][month]) actuals[aptId][month] = { najem: 0, podnajem: 0 };
-            actuals[aptId][month].podnajem += aptIds.length > 0 ? amount / aptIds.length : amount;
+            actuals[aptId][month].podnajem += paymentAptIds.length > 0 ? amount / paymentAptIds.length : amount;
           }
         }
       }
