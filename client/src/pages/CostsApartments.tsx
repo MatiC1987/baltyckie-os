@@ -813,6 +813,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     }
   }, [year, toast]);
 
+  useEffect(() => {
+    const flag = localStorage.getItem('costs-apartments-history-imported-v1');
+    if (!flag) {
+      handleImportHistory().then(() => {
+        localStorage.setItem('costs-apartments-history-imported-v1', '1');
+      });
+    }
+  }, []);
+
   return (
     <div className={embedded ? "space-y-4" : "p-6 space-y-4"} onMouseUp={handleMouseUp}>
       {!embedded && (
