@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -16,7 +16,7 @@ const navItems = [
 ];
 
 export function BottomNav() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
 
   return (
     <nav
@@ -26,28 +26,30 @@ export function BottomNav() {
       {navItems.map((item) => {
         const isActive = location === item.href;
         return (
-          <Link key={item.href} href={item.href}>
-            <div
-              className={cn(
-                "flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 cursor-pointer min-w-[56px]",
-                isActive ? "text-primary" : "text-muted-foreground"
-              )}
-              data-testid={`bottom-nav-${item.href === "/" ? "dashboard" : item.href.slice(1)}`}
-            >
-              <item.icon className={cn("h-5 w-5", isActive && "text-primary")} />
-              <span className="text-[10px] font-medium leading-tight">{item.label}</span>
-            </div>
-          </Link>
+          <button
+            key={item.href}
+            type="button"
+            onClick={() => navigate(item.href)}
+            className={cn(
+              "flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 cursor-pointer min-w-[56px] bg-transparent border-0",
+              isActive ? "text-primary" : "text-muted-foreground"
+            )}
+            data-testid={`bottom-nav-${item.href === "/" ? "dashboard" : item.href.slice(1)}`}
+          >
+            <item.icon className={cn("h-5 w-5", isActive && "text-primary")} />
+            <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+          </button>
         );
       })}
-      <div
+      <button
+        type="button"
         onClick={() => window.dispatchEvent(new Event("toggle-mobile-sidebar"))}
-        className="flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 cursor-pointer min-w-[56px] text-muted-foreground"
+        className="flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 cursor-pointer min-w-[56px] bg-transparent border-0 text-muted-foreground"
         data-testid="bottom-nav-menu"
       >
         <Menu className="h-5 w-5" />
         <span className="text-[10px] font-medium leading-tight">Menu</span>
-      </div>
+      </button>
     </nav>
   );
 }
