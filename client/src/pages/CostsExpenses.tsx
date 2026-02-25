@@ -284,7 +284,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const [categories, setCategories] = useState<CostCategory[]>(DEFAULT_CATEGORIES);
 
   useEffect(() => {
-    if (dbCategories !== undefined) {
+    if (dbCategories != null) {
       if (dbCategories.length > 0) {
         setCategories(dbCategories);
       } else {

@@ -8689,7 +8689,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
   app.get('/api/op-cost-categories', isAuthenticated, async (_req, res) => {
     try {
       const raw = await storage.getAppConfig('op-cost-categories');
-      res.json(raw ? JSON.parse(raw) : null);
+      res.json(raw ? JSON.parse(raw) : []);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
