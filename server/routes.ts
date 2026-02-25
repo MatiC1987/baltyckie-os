@@ -8574,23 +8574,40 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         year: revenueForecasts.year,
         month: revenueForecasts.month,
         forecast: revenueForecasts.forecast,
+        apartmentId: revenueForecasts.apartmentId,
+        locationName: revenueForecasts.locationName,
       }).from(revenueForecasts).where(
         and(gte(revenueForecasts.year, fetchStartYear - 1), lte(revenueForecasts.year, fetchEndYear))
       );
       const revForecastMap: Record<number, Record<number, number>> = {};
+      const revForecastAptMap: Record<number, Record<number, number>> = {};
+      const revForecastRazemMap: Record<number, Record<number, number>> = {};
       for (const row of revForecastRows) {
-        if (!revForecastMap[row.year]) revForecastMap[row.year] = {};
-        revForecastMap[row.year][row.month] = (revForecastMap[row.year][row.month] || 0) + Number(row.forecast || 0);
+        const val = Number(row.forecast || 0);
+        if (row.apartmentId) {
+          if (!revForecastAptMap[row.year]) revForecastAptMap[row.year] = {};
+          revForecastAptMap[row.year][row.month] = (revForecastAptMap[row.year][row.month] || 0) + val;
+        } else if (row.locationName === "RAZEM") {
+          if (!revForecastRazemMap[row.year]) revForecastRazemMap[row.year] = {};
+          revForecastRazemMap[row.year][row.month] = (revForecastRazemMap[row.year][row.month] || 0) + val;
+        }
+      }
+      for (let y = fetchStartYear - 1; y <= fetchEndYear; y++) {
+        const hasApt = revForecastAptMap[y] && Object.keys(revForecastAptMap[y]).length > 0;
+        const source = hasApt ? revForecastAptMap[y] : (revForecastRazemMap[y] || {});
+        if (Object.keys(source).length > 0) {
+          revForecastMap[y] = { ...source };
+        }
       }
 
       const futureLimit = `${fetchEndYear}-12-31`;
       const pastLimit = `${fetchStartYear - 1}-01-01`;
       const activeReservations = await db.select({
         startDate: reservations.startDate,
-        paidAmount: reservations.paidAmount,
+        price: reservations.price,
       }).from(reservations).where(
         and(
-          sql`${reservations.status} IN ('PRZYJETA', 'ZAMELDOWANY')`,
+          sql`${reservations.status} != 'ANULOWANA'`,
           gte(reservations.startDate, pastLimit),
           lte(reservations.startDate, futureLimit),
         )
@@ -8601,9 +8618,25 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         const d = new Date(r.startDate);
         const y = d.getFullYear();
         const m = d.getMonth() + 1;
-        const paid = Number(r.paidAmount || 0);
+        const price = Number(r.price || 0);
         if (!revActualMap[y]) revActualMap[y] = {};
-        revActualMap[y][m] = (revActualMap[y][m] || 0) + paid;
+        revActualMap[y][m] = (revActualMap[y][m] || 0) + price;
+      }
+
+      const allSubleasesList = await db.select().from(subleasePayments).where(
+        and(
+          sql`lower(${subleasePayments.category}) != 'kaucja'`,
+          gte(subleasePayments.dueDate, pastLimit),
+          lte(subleasePayments.dueDate, futureLimit),
+        )
+      );
+      for (const sp of allSubleasesList) {
+        const d = new Date(sp.dueDate);
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        const amt = Number(sp.amount || 0);
+        if (!revActualMap[y]) revActualMap[y] = {};
+        revActualMap[y][m] = (revActualMap[y][m] || 0) + amt;
       }
 
       const aptCostRows = await db.select({
