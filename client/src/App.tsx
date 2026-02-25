@@ -33,6 +33,11 @@ import Ustawienia from "@/pages/Ustawienia";
 import Customers from "@/pages/Customers";
 import Tasks from "@/pages/Tasks";
 import SourceComparison from "@/pages/SourceComparison";
+import OccupancyRates from "@/pages/OccupancyRates";
+import Profitability from "@/pages/Profitability";
+import YearComparison from "@/pages/YearComparison";
+import ApartmentComparison from "@/pages/ApartmentComparison";
+import PriceSeasonality from "@/pages/PriceSeasonality";
 import V2Przychody from "@/pages/V2Przychody";
 import V2Koszty from "@/pages/V2Koszty";
 import PriorityRevenueForecast from "@/pages/PriorityRevenueForecast";
@@ -153,11 +158,11 @@ function AuthenticatedRouter() {
       <Route path="/subrent-media" component={() => <Redirect to="/podnajem?tab=media" />} />
       <Route path="/arrivals" component={() => <Redirect to="/reservations?tab=przyjazdy" />} />
       <Route path="/backup" component={() => <Redirect to="/import-export" />} />
-      <Route path="/occupancy" component={() => <Redirect to="/v2/przychody" />} />
-      <Route path="/profitability" component={() => <Redirect to="/v2/przychody" />} />
-      <Route path="/year-comparison" component={() => <Redirect to="/v2/przychody" />} />
-      <Route path="/apartment-comparison" component={() => <Redirect to="/v2/przychody" />} />
-      <Route path="/price-seasonality" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/occupancy" component={() => <AuthenticatedRoute component={OccupancyRates} />} />
+      <Route path="/profitability" component={() => <AuthenticatedRoute component={Profitability} />} />
+      <Route path="/year-comparison" component={() => <AuthenticatedRoute component={YearComparison} />} />
+      <Route path="/apartment-comparison" component={() => <AuthenticatedRoute component={ApartmentComparison} />} />
+      <Route path="/price-seasonality" component={() => <AuthenticatedRoute component={PriceSeasonality} />} />
       <Route path="/cash-flow-forecast" component={() => <Redirect to="/v2/koszty" />} />
       <Route path="/analizy" component={() => <Redirect to="/v2/przychody" />} />
       <Route path="/apartment-schedule" component={() => <Redirect to="/v2/koszty" />} />

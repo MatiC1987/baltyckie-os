@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -801,13 +801,11 @@ export async function registerRoutes(
         ne(subleases.status, "ZAKONCZONA"),
       ));
 
-      const yearCosts = await db.select({
-        apartmentId: costForecasts.apartmentId,
-        forecast: costForecasts.forecast,
-        actual: costForecasts.actual,
-      })
-        .from(costForecasts)
-        .where(eq(costForecasts.year, year));
+      const aptCostRowsProfit = await db.select({
+        entryId: aptCostData.entryId,
+        prognoza: aptCostData.prognoza,
+        realized: aptCostData.realized,
+      }).from(aptCostData).where(eq(aptCostData.year, year));
 
       const allSubChangesProfit = await db.select().from(subleaseApartmentChanges);
       const changesBySubProfit: Record<number, any[]> = {};
@@ -865,10 +863,15 @@ export async function registerRoutes(
       }
 
       const costByApt: Record<number, number> = {};
-      for (const c of yearCosts) {
-        if (!c.apartmentId) continue;
-        const val = Number(c.actual || 0) > 0 ? Number(c.actual) : Number(c.forecast || 0);
-        costByApt[c.apartmentId] = (costByApt[c.apartmentId] || 0) + val;
+      let gbAllCost = 0;
+      for (const c of aptCostRowsProfit) {
+        const val = Number(c.realized || 0) > 0 ? Number(c.realized) : Number(c.prognoza || 0);
+        if (c.entryId === 'gb-all') {
+          gbAllCost += val;
+        } else if (c.entryId.startsWith('apt-')) {
+          const aptId = parseInt(c.entryId.replace('apt-', ''));
+          if (!isNaN(aptId)) costByApt[aptId] = (costByApt[aptId] || 0) + val;
+        }
       }
 
       const perAptData = allApartments.map(apt => {
@@ -904,8 +907,8 @@ export async function registerRoutes(
           reservationRevenue: grandBalticApts.reduce((s, a) => s + a.reservationRevenue, 0),
           subleaseRevenue: Math.round(grandBalticApts.reduce((s, a) => s + a.subleaseRevenue, 0) * 100) / 100,
           totalRevenue: Math.round(grandBalticApts.reduce((s, a) => s + a.totalRevenue, 0) * 100) / 100,
-          cost: Math.round(grandBalticApts.reduce((s, a) => s + a.cost, 0) * 100) / 100,
-          rentownosc: Math.round(grandBalticApts.reduce((s, a) => s + a.rentownosc, 0) * 100) / 100,
+          cost: Math.round((grandBalticApts.reduce((s, a) => s + a.cost, 0) + gbAllCost) * 100) / 100,
+          rentownosc: Math.round((grandBalticApts.reduce((s, a) => s + a.rentownosc, 0) - gbAllCost) * 100) / 100,
           reservationCount: grandBalticApts.reduce((s, a) => s + a.reservationCount, 0),
         };
         result.push(grouped);
@@ -5050,13 +5053,20 @@ export async function registerRoutes(
           ne(reservations.status, "ANULOWANA"),
         ));
 
-      const yearCostForecasts = await db.select({
-        apartmentId: costForecasts.apartmentId,
-        forecast: costForecasts.forecast,
-        actual: costForecasts.actual,
-      })
-        .from(costForecasts)
-        .where(eq(costForecasts.year, year));
+      const aptCostRowsComp = await db.select({
+        entryId: aptCostData.entryId,
+        prognoza: aptCostData.prognoza,
+        realized: aptCostData.realized,
+      }).from(aptCostData).where(eq(aptCostData.year, year));
+
+      const costByAptComp: Record<number, number> = {};
+      for (const c of aptCostRowsComp) {
+        const val = Number(c.realized || 0) > 0 ? Number(c.realized) : Number(c.prognoza || 0);
+        if (c.entryId.startsWith('apt-')) {
+          const aptId = parseInt(c.entryId.replace('apt-', ''));
+          if (!isNaN(aptId)) costByAptComp[aptId] = (costByAptComp[aptId] || 0) + val;
+        }
+      }
 
       const yearSubleases = await db.select({
         id: subleases.id,
@@ -5137,12 +5147,7 @@ export async function registerRoutes(
 
         const totalRevenue = reservationRevenue + subleaseRevenue;
 
-        const aptCosts = yearCostForecasts.filter(c => c.apartmentId === apt.id);
-        const expenseTotal = aptCosts.reduce((s, c) => {
-          const actual = Number(c.actual || 0);
-          const forecast = Number(c.forecast || 0);
-          return s + (actual > 0 ? actual : forecast);
-        }, 0);
+        const expenseTotal = costByAptComp[apt.id] || 0;
 
         let occupiedDays = 0;
         for (const r of aptReservations) {
@@ -5171,222 +5176,6 @@ export async function registerRoutes(
     }
   });
 
-  // Price Seasonality
-  app.get('/api/price-seasonality', isAuthenticated, async (req, res) => {
-    try {
-      const currentYear = new Date().getFullYear();
-      const year = Number(req.query.year) || currentYear;
-      const startDate = `${year}-01-01`;
-      const endDate = `${year}-12-31`;
-
-      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
-
-      const monthNames = [
-        "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
-        "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"
-      ];
-
-      // Get all reservations for the year
-      const yearReservations = await db.select({
-        apartmentId: reservations.apartmentId,
-        price: reservations.price,
-        startDate: reservations.startDate,
-        endDate: reservations.endDate,
-      })
-        .from(reservations)
-        .where(and(
-          lte(reservations.startDate, endDate),
-          gte(reservations.endDate, startDate),
-          ne(reservations.status, "ANULOWANA"),
-        ));
-
-      // Calculate monthly aggregates
-      const monthlyData: Record<number, { prices: number[]; count: number; occupancyRate: number }> = {};
-      for (let m = 0; m < 12; m++) {
-        monthlyData[m] = { prices: [], count: 0, occupancyRate: 0 };
-      }
-
-      // For each apartment, collect monthly rate data
-      const apartmentMonthlyData: Record<number, { prices: number[]; count: number }[]> = {};
-      for (const apt of allApartments) {
-        apartmentMonthlyData[apt.id] = Array.from({ length: 12 }, () => ({ prices: [], count: 0 }));
-      }
-
-      // Process reservations
-      for (const r of yearReservations) {
-        const rStart = new Date(r.startDate);
-        const rEnd = new Date(r.endDate);
-        const price = Number(r.price || 0);
-        const nights = Math.ceil((rEnd.getTime() - rStart.getTime()) / 86400000);
-        const pricePerNight = nights > 0 ? price / nights : price;
-
-        // Determine which months this reservation spans
-        let currentDate = new Date(rStart);
-        while (currentDate < rEnd) {
-          const month = currentDate.getMonth();
-          const year = currentDate.getFullYear();
-
-          // Only count if within our target year
-          if (year === parseInt(startDate.split('-')[0])) {
-            monthlyData[month].prices.push(pricePerNight);
-            monthlyData[month].count++;
-
-            if (apartmentMonthlyData[r.apartmentId]) {
-              apartmentMonthlyData[r.apartmentId][month].prices.push(pricePerNight);
-              apartmentMonthlyData[r.apartmentId][month].count++;
-            }
-          }
-
-          currentDate.setDate(currentDate.getDate() + 1);
-        }
-      }
-
-      // Calculate occupancy for each month
-      const daysInMonth = (m: number) => {
-        if ([0, 2, 4, 6, 7, 9, 11].includes(m)) return 31;
-        if ([3, 5, 8, 10].includes(m)) return 30;
-        return (parseInt(startDate.split('-')[0]) % 4 === 0) ? 29 : 28;
-      };
-
-      // Build monthly data
-      const monthlyResult: Record<string, any>[] = [];
-      const yearNum = parseInt(startDate.split('-')[0]);
-      for (let m = 0; m < 12; m++) {
-        const monthReservations = yearReservations.filter(r => {
-          const rStart = new Date(r.startDate);
-          const rEnd = new Date(r.endDate);
-          // Check if reservation overlaps with this month
-          const monthStart = new Date(yearNum, m, 1);
-          const monthEnd = new Date(yearNum, m + 1, 0);
-          return rStart <= monthEnd && rEnd >= monthStart;
-        });
-
-        // Calculate occupancy
-        let totalOccupiedDays = 0;
-        for (const r of monthReservations) {
-          const rStart = new Date(r.startDate);
-          const rEnd = new Date(r.endDate);
-          const monthStart = new Date(yearNum, m, 1);
-          const monthEnd = new Date(yearNum, m + 1, 0);
-
-          const overlapStart = new Date(Math.max(rStart.getTime(), monthStart.getTime()));
-          const overlapEnd = new Date(Math.min(rEnd.getTime(), monthEnd.getTime()));
-          const days = Math.max(0, Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / 86400000));
-          totalOccupiedDays += days;
-        }
-
-        const data = monthlyData[m];
-        const avgRate = data.prices.length > 0 ? data.prices.reduce((a, b) => a + b, 0) / data.prices.length : 0;
-        const avgOccupancy = daysInMonth(m) > 0 ? totalOccupiedDays / (daysInMonth(m) * allApartments.length) : 0;
-
-        monthlyResult.push({
-          month: m + 1,
-          monthName: monthNames[m],
-          avgNightlyRate: avgRate,
-          reservationCount: data.count,
-          avgOccupancy: Math.min(avgOccupancy, 1), // Cap at 100%
-        });
-      }
-
-      // Build per-apartment data
-      const byApartmentResult = allApartments.map(apt => {
-        const aptMonths = apartmentMonthlyData[apt.id] || Array.from({ length: 12 }, () => ({ prices: [], count: 0 }));
-        return {
-          apartmentId: apt.id,
-          apartmentName: apt.name,
-          monthlyRates: aptMonths.map((md, m) => ({
-            month: m,
-            avgRate: md.prices.length > 0 ? md.prices.reduce((a, b) => a + b, 0) / md.prices.length : 0,
-            count: md.count,
-          })),
-        };
-      });
-
-      res.json({
-        data: monthlyResult,
-        byApartment: byApartmentResult,
-      });
-    } catch (err) {
-      console.error("Price seasonality error:", err);
-      res.status(500).json({ message: "Failed to get price seasonality data" });
-    }
-  });
-
-  // Cash Flow Forecast
-  app.get('/api/cash-flow-forecast', isAuthenticated, async (req, res) => {
-    try {
-      const now = new Date();
-      const months: any[] = [];
-
-      for (let i = 0; i < 6; i++) {
-        const targetDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        const year = targetDate.getFullYear();
-        const month = targetDate.getMonth() + 1;
-        const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const monthEnd = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
-
-        const monthReservations = await db.select({ price: reservations.price })
-          .from(reservations)
-          .where(and(
-            gte(reservations.startDate, monthStart),
-            lte(reservations.startDate, monthEnd),
-            ne(reservations.status, "ANULOWANA"),
-          ));
-        const expectedIncome = monthReservations.reduce((s, r) => s + Number(r.price || 0), 0);
-
-        const activeSubleases = await db.select({ rentAmount: subleases.rentAmount })
-          .from(subleases)
-          .where(and(
-            lte(subleases.startDate, monthEnd),
-            gte(subleases.endDate, monthStart),
-          ));
-        const expectedSubleaseIncome = activeSubleases.reduce((s, sl) => s + Number(sl.rentAmount || 0), 0);
-
-        const monthIdx = month - 1;
-        const costForecastRows = await db.select({ forecast: costForecasts.forecast, actual: costForecasts.actual })
-          .from(costForecasts)
-          .where(and(
-            eq(costForecasts.year, year),
-            eq(costForecasts.month, monthIdx),
-          ));
-        const costForecastTotal = costForecastRows.reduce((s, r) => {
-          const act = Number(r.actual || 0);
-          return s + (act > 0 ? act : Number(r.forecast || 0));
-        }, 0);
-
-        const varCostRows = await db.select({ forecast: variableCostForecasts.forecast, actual: variableCostForecasts.actual })
-          .from(variableCostForecasts)
-          .where(and(
-            eq(variableCostForecasts.year, year),
-            eq(variableCostForecasts.month, monthIdx),
-          ));
-        const varCostTotal = varCostRows.reduce((s, r) => {
-          const act = Number(r.actual || 0);
-          return s + (act > 0 ? act : Number(r.forecast || 0));
-        }, 0);
-
-        // Operational costs are stored in localStorage (oplaty-data-{year}) on the client side.
-        // They are read and added in the frontend to avoid double-counting with DB entries.
-        const expectedExpenses = costForecastTotal + varCostTotal;
-
-        months.push({
-          year,
-          month,
-          monthName: MONTH_NAMES[month - 1],
-          expectedIncome: Math.round(expectedIncome * 100) / 100,
-          expectedSubleaseIncome: Math.round(expectedSubleaseIncome * 100) / 100,
-          expectedExpenses: Math.round(expectedExpenses * 100) / 100,
-          netCashFlow: Math.round((expectedIncome + expectedSubleaseIncome - expectedExpenses) * 100) / 100,
-        });
-      }
-
-      res.json({ months });
-    } catch (err) {
-      console.error("Cash flow forecast error:", err);
-      res.status(500).json({ message: "Failed to get cash flow forecast" });
-    }
-  });
 
   // Price Seasonality
   app.get('/api/price-seasonality', isAuthenticated, async (req, res) => {

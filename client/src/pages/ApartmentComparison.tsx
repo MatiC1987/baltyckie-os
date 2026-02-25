@@ -39,7 +39,7 @@ export default function ApartmentComparison() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const { data, isLoading } = useQuery<ApartmentComparisonData[]>({
-    queryKey: ["/api/apartment-comparison", year],
+    queryKey: [`/api/apartment-comparison?year=${year}`],
   });
 
   const years = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 + i));
