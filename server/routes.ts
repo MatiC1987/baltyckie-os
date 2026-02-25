@@ -8666,11 +8666,25 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       );
       const opForecastMap: Record<number, Record<number, number>> = {};
       const opActualMap: Record<number, Record<number, number>> = {};
-      for (const row of opCostRows) {
-        if (!opForecastMap[row.year]) opForecastMap[row.year] = {};
-        if (!opActualMap[row.year]) opActualMap[row.year] = {};
-        opForecastMap[row.year][row.month] = (opForecastMap[row.year][row.month] || 0) + Number(row.prognoza || 0);
-        opActualMap[row.year][row.month] = (opActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
+      if (opCostRows.length > 0) {
+        for (const row of opCostRows) {
+          if (!opForecastMap[row.year]) opForecastMap[row.year] = {};
+          if (!opActualMap[row.year]) opActualMap[row.year] = {};
+          opForecastMap[row.year][row.month] = (opForecastMap[row.year][row.month] || 0) + Number(row.prognoza || 0);
+          opActualMap[row.year][row.month] = (opActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
+        }
+      } else {
+        const opFallbackRows = await db.select({
+          year: operationalCostForecasts.year,
+          month: operationalCostForecasts.month,
+          forecast: operationalCostForecasts.forecast,
+        }).from(operationalCostForecasts).where(
+          and(gte(operationalCostForecasts.year, fetchStartYear - 1), lte(operationalCostForecasts.year, fetchEndYear))
+        );
+        for (const row of opFallbackRows) {
+          if (!opForecastMap[row.year]) opForecastMap[row.year] = {};
+          opForecastMap[row.year][row.month] = (opForecastMap[row.year][row.month] || 0) + Number(row.forecast || 0);
+        }
       }
 
       function getVal(map: Record<number, Record<number, number>>, year: number, month: number): number {

@@ -38,11 +38,7 @@ function pln(value: number, digits = 0): string {
 }
 
 function plnShort(value: number): string {
-  const abs = Math.abs(value);
-  const sign = value < 0 ? "−" : "";
-  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toLocaleString("pl-PL", { maximumFractionDigits: 1 })} M`;
-  if (abs >= 1_000) return `${sign}${(abs / 1_000).toLocaleString("pl-PL", { maximumFractionDigits: 0 })} k`;
-  return `${sign}${abs.toLocaleString("pl-PL", { maximumFractionDigits: 0 })}`;
+  return `${value.toLocaleString("pl-PL", { maximumFractionDigits: 0, minimumFractionDigits: 0 })} zł`;
 }
 
 function balanceColor(val: number) {
