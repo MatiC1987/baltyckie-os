@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   ChevronDown, ChevronRight, Plus, X, Calculator,
   BarChart3, GripVertical, Trash2, Pencil, Archive, RotateCcw,
-  Copy, ArrowRight, Eraser,
+  Copy, ArrowRight, Eraser, DatabaseBackup,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
@@ -223,6 +223,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [sortOrderMap, setSortOrderMap] = useState<SortOrderMap>(() => loadSortOrder());
   const [compareYear, setCompareYear] = useState<number | null>(null);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
+  const [isImportingHistory, setIsImportingHistory] = useState(false);
   const { toast } = useToast();
 
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
@@ -761,6 +762,57 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     return getCellValue(parsed.entryId, parsed.category, parsed.month, parsed.field);
   }, [selectedCell, getCellValue]);
 
+  const handleImportHistory = useCallback(async () => {
+    setIsImportingHistory(true);
+    try {
+      const resp = await fetch('/api/costs-apartments/import-history', { credentials: 'include' });
+      if (!resp.ok) throw new Error(await resp.text());
+      const imported: Record<number, Record<string, Record<number, { p: number; r: number }>>> = await resp.json();
+
+      let totalEntries = 0;
+      const years = Object.keys(imported).map(Number).sort();
+
+      for (const yr of years) {
+        const importedYear = imported[yr];
+        const existing: DataMap = loadData(yr);
+
+        for (const dataKey of Object.keys(importedYear)) {
+          const monthsData = importedYear[dataKey];
+          if (!existing[dataKey]) existing[dataKey] = {};
+          for (const mStr of Object.keys(monthsData)) {
+            const m = Number(mStr);
+            const { p, r } = monthsData[m];
+            if (!existing[dataKey][m]) existing[dataKey][m] = { p: 0, r: 0 };
+            if (p !== 0) existing[dataKey][m].p = p;
+            if (r !== 0) existing[dataKey][m].r = r;
+          }
+          totalEntries++;
+        }
+
+        saveData(yr, existing);
+
+        const newCats: CategoriesMap = loadCategories();
+        for (const dataKey of Object.keys(importedYear)) {
+          const [entryId, cat] = dataKey.split('__');
+          if (!newCats[entryId]) newCats[entryId] = [];
+          if (!newCats[entryId].includes(cat)) newCats[entryId].push(cat);
+        }
+        saveCategories(newCats);
+        setCategoriesMap(newCats);
+      }
+
+      setData(loadData(year));
+      toast({
+        title: 'Import historii zakończony',
+        description: `Zaimportowano dane za ${years.length} lat (${years.join(', ')}), ${totalEntries} pozycji.`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Błąd importu', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsImportingHistory(false);
+    }
+  }, [year, toast]);
+
   return (
     <div className={embedded ? "space-y-4" : "p-6 space-y-4"} onMouseUp={handleMouseUp}>
       {!embedded && (
@@ -768,6 +820,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
           <PageHeader title="Koszty apartamentów" description="Analiza kosztów w podziale na apartamenty." icon={Calculator} />
           <div className="flex items-center gap-2 flex-wrap">
             <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
+            <Button variant="outline" onClick={handleImportHistory} disabled={isImportingHistory} data-testid="button-import-history-costs">
+              <DatabaseBackup className="mr-1 h-4 w-4" /> {isImportingHistory ? 'Importowanie...' : 'Import historii'}
+            </Button>
             <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
               <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj na {year + 1}
             </Button>
@@ -871,6 +926,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
       <div className="flex items-center gap-2 mb-2">
         <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart-costs">
           <BarChart3 className="mr-1 h-3 w-3" /> {showChart ? "Ukryj wykres" : "Pokaż wykres"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleImportHistory} disabled={isImportingHistory} data-testid="button-import-history-costs-embedded">
+          <DatabaseBackup className="mr-1 h-3 w-3" /> {isImportingHistory ? 'Importowanie...' : 'Import historii'}
         </Button>
         <Button variant="outline" size="sm" onClick={() => setShowClearAllDialog(true)} data-testid="button-clear-all-costs-embedded">
           <Eraser className="mr-1 h-3 w-3" /> Wyczyść rok {year}

@@ -2398,6 +2398,84 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Costs Apartments - import history from Excel file
+  app.get('/api/costs-apartments/import-history', isAuthenticated, (_req, res) => {
+    try {
+      const filePath = path.join(process.cwd(), 'attached_assets', 'APARTAMENTY_1771979718731.xlsx');
+      const workbook = XLSX.readFile(filePath);
+      const ws = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      const APARTMENT_MAP = [
+        { colStart: 6,   entryId: 'gb-all',  categories: ['RATA DLA WŁAŚCICIELA', 'GAZ - PGNiG', 'ENERGIA - ENERGA', 'WODOCIĄGI', 'WYWÓZ ŚMIECI - ZGK'] },
+        { colStart: 39,  entryId: 'apt-168', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 54,  entryId: 'apt-134', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 84,  entryId: 'apt-167', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 99,  entryId: 'apt-142', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 114, entryId: 'apt-184', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 129, entryId: 'apt-145', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 144, entryId: 'apt-131', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 159, entryId: 'apt-166', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 174, entryId: 'apt-152', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 189, entryId: 'apt-151', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 204, entryId: 'apt-155', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 219, entryId: 'apt-129', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 234, entryId: 'apt-136', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 249, entryId: 'apt-159', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 324, entryId: 'apt-170', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 339, entryId: 'apt-156', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 354, entryId: 'apt-144', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 369, entryId: 'apt-132', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 384, entryId: 'apt-163', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 399, entryId: 'apt-139', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 414, entryId: 'apt-177', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 429, entryId: 'apt-173', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 444, entryId: 'apt-165', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 504, entryId: 'apt-176', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 519, entryId: 'apt-181', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 534, entryId: 'apt-172', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 549, entryId: 'apt-135', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 579, entryId: 'apt-162', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 639, entryId: 'apt-179', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 654, entryId: 'apt-182', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 669, entryId: 'apt-150', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+      ];
+
+      const result: Record<number, Record<string, Record<number, { p: number; r: number }>>> = {};
+
+      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+        const row = rows[rowIdx];
+        if (row[1] === 'PROGNOZA' && typeof row[4] === 'number' && row[4] >= 2020) {
+          const year = row[4] as number;
+          const yearData: Record<string, Record<number, { p: number; r: number }>> = {};
+
+          for (let monthOffset = 0; monthOffset < 12; monthOffset++) {
+            const monthRow = rows[rowIdx + 1 + monthOffset];
+            if (!monthRow) continue;
+
+            for (const apt of APARTMENT_MAP) {
+              for (let catIdx = 0; catIdx < apt.categories.length; catIdx++) {
+                const cat = apt.categories[catIdx];
+                const colBase = apt.colStart + catIdx * 3;
+                const pVal = typeof monthRow[colBase] === 'number' ? monthRow[colBase] : 0;
+                const rVal = typeof monthRow[colBase + 1] === 'number' ? monthRow[colBase + 1] : 0;
+                const dataKey = `${apt.entryId}__${cat}`;
+                if (!yearData[dataKey]) yearData[dataKey] = {};
+                yearData[dataKey][monthOffset] = { p: pVal, r: rVal };
+              }
+            }
+          }
+
+          result[year] = yearData;
+        }
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: 'Błąd importu historii: ' + err.message });
+    }
+  });
+
   // Costs Apartments import data
   app.get('/api/costs-apartments/import-data', isAuthenticated, (_req, res) => {
     try {
