@@ -774,19 +774,19 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
 
       for (const yr of years) {
         const importedYear = imported[yr];
-        const existing: DataMap = loadData(yr);
+        const freshData: DataMap = {};
 
         for (const dataKey of Object.keys(importedYear)) {
           const monthsData = importedYear[dataKey];
-          existing[dataKey] = {};
+          freshData[dataKey] = {};
           for (let m = 0; m < 12; m++) {
             const entry = monthsData[m];
-            existing[dataKey][m] = { p: entry?.p ?? 0, r: entry?.r ?? 0 };
+            freshData[dataKey][m] = { p: entry?.p ?? 0, r: entry?.r ?? 0 };
           }
           totalEntries++;
         }
 
-        saveData(yr, existing);
+        saveData(yr, freshData);
 
         const newCats: CategoriesMap = loadCategories();
         for (const dataKey of Object.keys(importedYear)) {
@@ -811,10 +811,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   }, [year, toast]);
 
   useEffect(() => {
-    const flag = localStorage.getItem('costs-apartments-history-imported-v3');
+    const flag = localStorage.getItem('costs-apartments-history-imported-v4');
     if (!flag) {
       handleImportHistory().then(() => {
-        localStorage.setItem('costs-apartments-history-imported-v3', '1');
+        localStorage.setItem('costs-apartments-history-imported-v4', '1');
       });
     }
   }, []);
