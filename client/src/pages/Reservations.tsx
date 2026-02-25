@@ -416,18 +416,19 @@ export default function Reservations() {
               <TableRow className="bg-muted/40 hover:bg-muted/40">
                 <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} className="w-20" />
                 <TableHead className="text-xs font-semibold w-24">Źródło</TableHead>
-                <SortableHeader field="status" label="Status" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <SortableHeader field="startDate" label="od - do" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <TableHead className="text-xs font-semibold">Apartament</TableHead>
+                <SortableHeader field="startDate" label="Termin pobytu" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <SortableHeader field="addDate" label="Dodane" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader field="guestName" label="Imię i nazwisko" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <SortableHeader field="price" label="Wartość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <SortableHeader field="guestName" label="Gość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <TableHead className="w-8"></TableHead>
+                <SortableHeader field="status" label="Status" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <TableHead className="w-16"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {reservations.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
                     {isLoading ? "Ładowanie..." : "Brak rezerwacji"}
                   </TableCell>
                 </TableRow>
@@ -556,6 +557,7 @@ function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reserv
   const isCancelled = r.status === "ANULOWANA";
   const remaining = calcRemaining(r);
   const price = Number(r.price) || 0;
+  const aptName = getApartmentName(r, apartments);
 
   return (
     <TableRow
@@ -571,8 +573,8 @@ function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reserv
       <TableCell className="py-3">
         <SourceBadge source={r.source} />
       </TableCell>
-      <TableCell className="py-3" data-testid={`cell-res-status-${r.id}`}>
-        <StatusBadge status={r.status} />
+      <TableCell className="py-3">
+        <span className="text-xs font-medium whitespace-nowrap" data-testid={`text-res-apartment-${r.id}`}>{aptName}</span>
       </TableCell>
       <TableCell className="py-3">
         <span className="text-xs whitespace-nowrap" data-testid={`text-res-dates-${r.id}`}>
@@ -583,6 +585,12 @@ function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reserv
         <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid={`text-res-adddate-${r.id}`}>
           {r.addDate || "—"}
         </span>
+      </TableCell>
+      <TableCell className="py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium" data-testid={`text-res-guest-${r.id}`}>{r.guestName}</span>
+          {r.notes && <FileText className="h-3 w-3 text-muted-foreground shrink-0" />}
+        </div>
       </TableCell>
       <TableCell className="py-3">
         <div className="space-y-1 min-w-[100px]">
@@ -599,11 +607,8 @@ function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reserv
           {!isCancelled && <PaymentProgressBar reservation={r} />}
         </div>
       </TableCell>
-      <TableCell className="py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium" data-testid={`text-res-guest-${r.id}`}>{r.guestName}</span>
-          {r.notes && <FileText className="h-3 w-3 text-muted-foreground shrink-0" />}
-        </div>
+      <TableCell className="py-3" data-testid={`cell-res-status-${r.id}`}>
+        <StatusBadge status={r.status} />
       </TableCell>
       <TableCell className="py-3">
         <div className="flex items-center gap-0.5">

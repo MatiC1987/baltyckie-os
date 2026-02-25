@@ -223,17 +223,18 @@ export default function Arrivals() {
             <TableRow className="bg-muted/40 hover:bg-muted/40">
               <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <TableHead className="text-xs font-semibold w-24">Źródło</TableHead>
-              <SortableHeader field="startDate" label="od - do" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <TableHead className="text-xs font-semibold">Apartament</TableHead>
+              <SortableHeader field="startDate" label="Termin pobytu" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <SortableHeader field="addDate" label="Dodane" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader field="guestName" label="Imię i nazwisko" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <SortableHeader field="price" label="Wartość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-              <SortableHeader field="guestName" label="Gość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
               <TableHead className="w-8"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {arrivals.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
                   {isLoading ? "Ładowanie..." : "Brak przyjętych rezerwacji"}
                 </TableCell>
               </TableRow>
@@ -241,6 +242,7 @@ export default function Arrivals() {
             {arrivals.map(r => {
               const remaining = calcRemaining(r);
               const price = Number(r.price) || 0;
+              const aptName = getApartmentName(r, apartments || []);
               return (
                 <TableRow
                   key={r.id}
@@ -255,10 +257,19 @@ export default function Arrivals() {
                     <SourceBadge source={r.source} />
                   </TableCell>
                   <TableCell className="py-3">
+                    <span className="text-xs font-medium whitespace-nowrap" data-testid={`text-arrival-apartment-${r.id}`}>{aptName}</span>
+                  </TableCell>
+                  <TableCell className="py-3">
                     <span className="text-xs whitespace-nowrap">{r.startDate} › {r.endDate}</span>
                   </TableCell>
                   <TableCell className="py-3">
                     <span className="text-xs text-muted-foreground">{r.addDate || "—"}</span>
+                  </TableCell>
+                  <TableCell className="py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">{r.guestName}</span>
+                      {r.notes && <FileText className="h-3 w-3 text-muted-foreground shrink-0" />}
+                    </div>
                   </TableCell>
                   <TableCell className="py-3">
                     <div className="space-y-1 min-w-[100px]">
@@ -271,12 +282,6 @@ export default function Arrivals() {
                         </div>
                       )}
                       <PaymentProgressBar reservation={r} />
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium">{r.guestName}</span>
-                      {r.notes && <FileText className="h-3 w-3 text-muted-foreground shrink-0" />}
                     </div>
                   </TableCell>
                   <TableCell className="py-3">
