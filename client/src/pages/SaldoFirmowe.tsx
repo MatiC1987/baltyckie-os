@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -72,12 +72,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <span className={`text-right font-medium ${balanceColor(d.startBalance)}`}>{pln(d.startBalance)}</span>
         <span className="text-muted-foreground">Prognoza przychodów:</span>
         <span className="text-right">{pln(d.revenueForecast)}</span>
-        <span className="text-muted-foreground">Rzecz. przychody:</span>
+        <span className="text-muted-foreground">Zapłacono:</span>
         <span className="text-right">{pln(d.revenueActual)}</span>
         <span className="text-muted-foreground">Pozostałe przychody:</span>
         <span className="text-right text-emerald-600">+{pln(d.revenueRemaining)}</span>
-        <span className="text-muted-foreground">Dopłaty rezerwacje:</span>
-        <span className="text-right text-emerald-600">+{pln(d.surcharges)}</span>
         <span className="text-muted-foreground">Koszty apt (poz.):</span>
         <span className="text-right text-red-600">−{pln(d.aptCostRemaining)}</span>
         <span className="text-muted-foreground">Koszty op. (poz.):</span>
@@ -252,8 +250,8 @@ export default function SaldoFirmowe() {
                 </thead>
                 <tbody>
                   {byYear.map(([year, months]) => (
-                    <>
-                      <tr key={`year-${year}`} className="bg-muted/30 border-b border-t">
+                    <Fragment key={year}>
+                      <tr className="bg-muted/30 border-b border-t">
                         <td colSpan={13} className="sticky left-0 bg-muted/30 px-3 py-1.5 font-bold text-sm">{year}</td>
                       </tr>
                       {months.map(m => {
@@ -322,7 +320,7 @@ export default function SaldoFirmowe() {
                           {plnShort(months[months.length - 1]?.endBalance ?? 0)}
                         </td>
                       </tr>
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

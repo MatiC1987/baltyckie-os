@@ -8551,19 +8551,6 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       }).from(accountSnapshots);
 
       const latestPerAccount: Record<number, number> = {};
-      for (const snap of allSnapshots) {
-        const prev = latestPerAccount[snap.accountId];
-        if (prev === undefined) {
-          latestPerAccount[snap.accountId] = Number(snap.balance);
-        } else {
-          // keep latest by date
-          const existingSnap = allSnapshots.filter(s => s.accountId === snap.accountId && Number(s.balance) === prev)[0];
-          if (existingSnap && snap.date > existingSnap.date) {
-            latestPerAccount[snap.accountId] = Number(snap.balance);
-          }
-        }
-      }
-      // Better: group by accountId and take max date
       const latestDatePerAccount: Record<number, string> = {};
       for (const snap of allSnapshots) {
         if (!latestDatePerAccount[snap.accountId] || snap.date > latestDatePerAccount[snap.accountId]) {
@@ -8619,7 +8606,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         surchargesMap[y][m] = (surchargesMap[y][m] || 0) + surcharge;
       }
 
-      // --- 4. Apt cost data (months 1-indexed) ---
+      // --- 4. Apt cost data (months 0-indexed in DB: 0=Jan, 11=Dec) ---
       const aptCostRows = await db.select({
         year: aptCostData.year,
         month: aptCostData.month,
@@ -8637,7 +8624,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         aptActualMap[row.year][row.month] = (aptActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
       }
 
-      // --- 5. Op cost data (months 1-indexed) ---
+      // --- 5. Op cost data (months 0-indexed in DB: 0=Jan, 11=Dec) ---
       const opCostRows = await db.select({
         year: opCostData.year,
         month: opCostData.month,
@@ -8678,19 +8665,22 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         const revenueRemaining = Math.max(0, revForecast - revActual);
         const surcharges = surchargesMap[year]?.[calMonth] ?? 0;
 
-        const aptCostForecast = getVal(aptForecastMap, year, calMonth);
-        const aptCostActual = aptActualMap[year]?.[calMonth] ?? 0;
+        // apt_cost_data and op_cost_data use 0-indexed months (0=Jan, 11=Dec) — use rfMonth
+        const aptCostForecast = getVal(aptForecastMap, year, rfMonth);
+        const aptCostActual = aptActualMap[year]?.[rfMonth] ?? 0;
         const aptCostRemaining = Math.max(0, aptCostForecast - aptCostActual);
 
-        const opCostForecast = getVal(opForecastMap, year, calMonth);
-        const opCostActual = opActualMap[year]?.[calMonth] ?? 0;
+        const opCostForecast = getVal(opForecastMap, year, rfMonth);
+        const opCostActual = opActualMap[year]?.[rfMonth] ?? 0;
         const opCostRemaining = Math.max(0, opCostForecast - opCostActual);
 
         const totalCostForecast = aptCostForecast + opCostForecast;
         const totalCostActual = aptCostActual + opCostActual;
         const totalCostRemaining = aptCostRemaining + opCostRemaining;
 
-        const endBalance = Math.round((runningBalance + revenueRemaining + surcharges - totalCostRemaining) * 100) / 100;
+        // surcharges (price − paidAmount) are informational only — already contained in revenueRemaining
+        // Adding them would double-count confirmed-but-unpaid reservations
+        const endBalance = Math.round((runningBalance + revenueRemaining - totalCostRemaining) * 100) / 100;
 
         months.push({
           year,
