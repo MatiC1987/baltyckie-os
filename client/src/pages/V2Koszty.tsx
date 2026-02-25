@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Location } from "@shared/schema";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -112,30 +111,6 @@ export default function V2Koszty() {
           </div>
         }
       />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="card-gradient from-blue-500/10" data-testid="kpi-apt-costs">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground font-medium">Koszty (apartamenty)</p>
-            <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(totalAptCosts)} PLN</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalAptRealized)} PLN</p>
-          </CardContent>
-        </Card>
-        <Card className="card-gradient from-purple-500/10" data-testid="kpi-op-costs">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground font-medium">Koszty operacyjne</p>
-            <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(totalOpCosts)} PLN</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalOpRealized)} PLN</p>
-          </CardContent>
-        </Card>
-        <Card className="card-gradient from-red-500/10" data-testid="kpi-total-costs">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground font-medium">Razem koszty</p>
-            <p className="text-xl font-bold mt-1 tabular-nums text-red-600 dark:text-red-400">{formatNum(totalAptCosts + totalOpCosts)} PLN</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalAptRealized + totalOpRealized)} PLN</p>
-          </CardContent>
-        </Card>
-      </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList data-testid="costs-tabs">
