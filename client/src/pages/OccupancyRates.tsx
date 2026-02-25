@@ -62,6 +62,9 @@ export default function OccupancyRates() {
     return "[&>div]:bg-red-500";
   }
 
+  const activeApartments = data?.apartments.filter(a => a.rate > 0).sort((a, b) => b.rate - a.rate) ?? [];
+  const inactiveApartments = data?.apartments.filter(a => a.rate === 0).sort((a, b) => a.apartmentName.localeCompare(b.apartmentName, "pl")) ?? [];
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -130,11 +133,9 @@ export default function OccupancyRates() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {data.apartments
-              .filter(a => a.rate > 0 || data.apartments.length <= 20)
-              .sort((a, b) => b.rate - a.rate)
-              .map(apt => (
+          {activeApartments.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {activeApartments.map(apt => (
                 <Card key={apt.apartmentId} data-testid={`card-occupancy-${apt.apartmentId}`}>
                   <CardContent className="pt-4 pb-3 space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -153,12 +154,32 @@ export default function OccupancyRates() {
                   </CardContent>
                 </Card>
               ))}
-          </div>
+            </div>
+          )}
 
-          {data.apartments.filter(a => a.rate === 0).length > 0 && data.apartments.length > 20 && (
-            <p className="text-sm text-muted-foreground">
-              + {data.apartments.filter(a => a.rate === 0).length} apartamentów bez rezerwacji w tym okresie
-            </p>
+          {inactiveApartments.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Brak rezerwacji w tym okresie ({inactiveApartments.length})
+                </span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                {inactiveApartments.map(apt => (
+                  <div
+                    key={apt.apartmentId}
+                    data-testid={`card-occupancy-inactive-${apt.apartmentId}`}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md border border-border/50 bg-muted/30"
+                  >
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                    <span className="text-sm text-muted-foreground truncate">{apt.apartmentName}</span>
+                    <span className="ml-auto text-xs text-muted-foreground/60 shrink-0">0%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </>
       )}
