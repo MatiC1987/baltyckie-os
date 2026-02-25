@@ -70,24 +70,9 @@ export default function V2Koszty() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const [year, setYear] = useState(currentYear);
-  const [tab, setTab] = useState("apartamentowe");
+  const [tab, setTab] = useState("dashboard");
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [clickedMonth, setClickedMonth] = useState<number | null>(null);
-
-  const [aptPrognoza, setAptPrognoza] = useState(0);
-  const [aptRealized, setAptRealized] = useState(0);
-  const [opPrognoza, setOpPrognoza] = useState(0);
-  const [opRealized, setOpRealized] = useState(0);
-
-  const handleAptTotals = useCallback((prognoza: number, realized: number) => {
-    setAptPrognoza(prognoza);
-    setAptRealized(realized);
-  }, []);
-
-  const handleOpTotals = useCallback((prognoza: number, realized: number) => {
-    setOpPrognoza(prognoza);
-    setOpRealized(realized);
-  }, []);
 
   const years = useMemo(() => {
     const arr = [];
@@ -97,6 +82,14 @@ export default function V2Koszty() {
 
   const { data: aptRows = [] } = useQuery<any[]>({ queryKey: [`/api/apt-cost-data/${year}`] });
   const { data: opRows = [] } = useQuery<any[]>({ queryKey: [`/api/op-cost-data/${year}`] });
+
+  const annualTotals = useMemo(() => {
+    const apt_p = aptRows.reduce((s, r) => s + parseFloat(r.prognoza ?? "0"), 0);
+    const apt_r = aptRows.reduce((s, r) => s + parseFloat(r.realized ?? "0"), 0);
+    const op_p = opRows.reduce((s, r) => s + parseFloat(r.prognoza ?? "0"), 0);
+    const op_r = opRows.reduce((s, r) => s + parseFloat(r.realized ?? "0"), 0);
+    return { apt_p, apt_r, op_p, op_r };
+  }, [aptRows, opRows]);
 
   const monthlyTotals = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
@@ -166,64 +159,68 @@ export default function V2Koszty() {
         }
       />
 
-      <div>
-        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Rok {year} — podsumowanie roczne</p>
-        <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-tiles">
-          <CostTile title="Koszty (apartamenty)" prognoza={aptPrognoza} realized={aptRealized} />
-          <CostTile title="Koszty operacyjne" prognoza={opPrognoza} realized={opRealized} />
-          <CostTile title="Razem koszty" prognoza={aptPrognoza + opPrognoza} realized={aptRealized + opRealized} />
-        </div>
-      </div>
-
-      <div>
-        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">
-          {MONTHS_PL[currentMonth]} {year} — bieżący miesiąc
-        </p>
-        <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-month-tiles">
-          <CostTile title="Koszty (apartamenty)" prognoza={currentMonthTotals.apt_p} realized={currentMonthTotals.apt_r} />
-          <CostTile title="Koszty operacyjne" prognoza={currentMonthTotals.op_p} realized={currentMonthTotals.op_r} />
-          <CostTile title="Razem koszty" prognoza={currentMonthTotals.total_p} realized={currentMonthTotals.total_r} />
-        </div>
-      </div>
-
-      <Card data-testid="costs-monthly-chart">
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Koszty miesięczne — {year}</p>
-            <p className="text-[10px] text-muted-foreground">Kliknij miesiąc → przejdź do tabeli</p>
-          </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <ComposedChart data={chartData} onClick={handleChartClick} className="cursor-pointer">
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="name" className="text-xs" />
-              <YAxis yAxisId="left" className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-              <YAxis yAxisId="right" orientation="right" className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} zł`} />
-              <Legend />
-              <Bar yAxisId="left" dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="left" dataKey="Realizacja" fill="#00CCFF" radius={[4, 4, 0, 0]} />
-              <Line yAxisId="right" dataKey="Kumulatywna" stroke="#f59e0b" strokeWidth={2} dot={false} type="monotone" name="Kumulatywna (realizacja)" />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList data-testid="costs-tabs">
+          <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="apartamentowe" data-testid="tab-apt-costs">Apartamenty</TabsTrigger>
           <TabsTrigger value="operacyjne" data-testid="tab-op-costs">Operacyjne</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="dashboard" className="space-y-4 mt-4">
+          <div>
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Rok {year} — podsumowanie roczne</p>
+            <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-tiles">
+              <CostTile title="Koszty (apartamenty)" prognoza={annualTotals.apt_p} realized={annualTotals.apt_r} />
+              <CostTile title="Koszty operacyjne" prognoza={annualTotals.op_p} realized={annualTotals.op_r} />
+              <CostTile title="Razem koszty" prognoza={annualTotals.apt_p + annualTotals.op_p} realized={annualTotals.apt_r + annualTotals.op_r} />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">
+              {MONTHS_PL[currentMonth]} {year} — bieżący miesiąc
+            </p>
+            <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-month-tiles">
+              <CostTile title="Koszty (apartamenty)" prognoza={currentMonthTotals.apt_p} realized={currentMonthTotals.apt_r} />
+              <CostTile title="Koszty operacyjne" prognoza={currentMonthTotals.op_p} realized={currentMonthTotals.op_r} />
+              <CostTile title="Razem koszty" prognoza={currentMonthTotals.total_p} realized={currentMonthTotals.total_r} />
+            </div>
+          </div>
+
+          <Card data-testid="costs-monthly-chart">
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Koszty miesięczne — {year}</p>
+                <p className="text-[10px] text-muted-foreground">Kliknij miesiąc → przejdź do szczegółów</p>
+              </div>
+              <ResponsiveContainer width="100%" height={260}>
+                <ComposedChart data={chartData} onClick={handleChartClick} className="cursor-pointer">
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="name" className="text-xs" />
+                  <YAxis yAxisId="left" className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                  <YAxis yAxisId="right" orientation="right" className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} zł`} />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="Realizacja" fill="#00CCFF" radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="right" dataKey="Kumulatywna" stroke="#f59e0b" strokeWidth={2} dot={false} type="monotone" name="Kumulatywna (realizacja)" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="apartamentowe" forceMount className="data-[state=inactive]:hidden">
           <CostsApartmentsContent
             embedded
             externalYear={year}
-            onTotalsChange={handleAptTotals}
             triggerMonthHighlight={clickedMonth}
             onMonthHighlightDone={() => setClickedMonth(null)}
           />
         </TabsContent>
+
         <TabsContent value="operacyjne" forceMount className="data-[state=inactive]:hidden">
-          <CostsExpensesContent embedded externalYear={year} onTotalsChange={handleOpTotals} />
+          <CostsExpensesContent embedded externalYear={year} />
         </TabsContent>
       </Tabs>
 
