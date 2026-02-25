@@ -2,17 +2,17 @@ import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
+  CalendarRange,
   TrendingUp,
   Calculator,
-  Landmark,
   Menu,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/v2/przychody", icon: TrendingUp, label: "Przychody" },
+  { href: "/calendar", icon: CalendarRange, label: "Terminarz" },
   { href: "/v2/koszty", icon: Calculator, label: "Koszty" },
-  { href: "/saldo-firmowe", icon: Landmark, label: "Saldo" },
+  { href: "/v2/przychody", icon: TrendingUp, label: "Przychody" },
 ];
 
 export function BottomNav() {

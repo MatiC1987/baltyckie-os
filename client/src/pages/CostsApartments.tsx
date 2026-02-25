@@ -1752,7 +1752,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                 <div className="mt-6 space-y-5">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-2">Rok {year}</p>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="text-center border rounded-lg p-2">
                         <p className="text-[10px] text-muted-foreground">Prognoza</p>
                         <p className="text-base font-bold tabular-nums">{annualTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
@@ -1771,7 +1771,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                   {year === currentYear && (
                     <div>
                       <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-2">{MONTHS_PL[currentMonth]}</p>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="text-center border rounded-lg p-2">
                           <p className="text-[10px] text-muted-foreground">Prognoza</p>
                           <p className="text-base font-bold tabular-nums">{monthP.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
@@ -1845,7 +1845,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                   {entry && <Badge variant="secondary" className="w-fit">{entry.name}</Badge>}
                 </SheetHeader>
                 <div className="mt-6 space-y-4">
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="text-center border rounded-lg p-2">
                       <p className="text-[10px] text-muted-foreground">Prognoza {year}</p>
                       <p className="text-base font-bold tabular-nums">{totalP.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>

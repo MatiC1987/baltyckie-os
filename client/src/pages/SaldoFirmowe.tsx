@@ -115,7 +115,8 @@ export default function SaldoFirmowe() {
     return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
   }, [data]);
 
-  const COL_COUNT = 11;
+  const COL_COUNT_DESKTOP = 11;
+  const COL_COUNT_MOBILE = 5;
 
   return (
     <div className="space-y-4">
@@ -225,32 +226,36 @@ export default function SaldoFirmowe() {
 
           {(view === "table" || view === "both") && (
             <div className="rounded-md border overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
-              <table className="w-full text-[10px] sm:text-xs min-w-[600px] sm:min-w-[1100px]">
+              <table className="w-full text-[10px] sm:text-xs sm:min-w-[1100px]">
                 <thead>
                   <tr className="bg-muted/50 border-b">
                     <th className="sticky left-0 bg-muted/50 z-10 text-left px-1.5 sm:px-3 py-2 sm:py-2.5 font-semibold w-20 sm:w-28" rowSpan={2}>Miesiąc</th>
-                    <th className="text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-emerald-700 dark:text-emerald-400 border-b" colSpan={3}>Przychody</th>
-                    <th className="text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-orange-700 dark:text-orange-400 border-b" colSpan={3}>Koszty apartamentów</th>
-                    <th className="text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-red-700 dark:text-red-400 border-b" colSpan={3}>Koszty operacyjne</th>
+                    <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-emerald-700 dark:text-emerald-400 border-b" colSpan={3}>Przychody</th>
+                    <th className="sm:hidden text-center px-1 py-1 font-semibold text-emerald-700 dark:text-emerald-400 border-b" rowSpan={2}>Poz.<br/>przych.</th>
+                    <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-orange-700 dark:text-orange-400 border-b" colSpan={3}>Koszty apartamentów</th>
+                    <th className="sm:hidden text-center px-1 py-1 font-semibold text-orange-700 dark:text-orange-400 border-b" rowSpan={2}>Poz.<br/>apt.</th>
+                    <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-red-700 dark:text-red-400 border-b" colSpan={3}>Koszty operacyjne</th>
+                    <th className="sm:hidden text-center px-1 py-1 font-semibold text-red-700 dark:text-red-400 border-b" rowSpan={2}>Poz.<br/>op.</th>
                     <th className="text-center px-1 sm:px-3 py-1 sm:py-1.5 font-semibold border-b" rowSpan={2}>Saldo<br/>firmowe</th>
                   </tr>
                   <tr className="bg-muted/50 border-b">
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Prognoza</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Realizacja</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Pozostało</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-600 dark:text-orange-400">Prognoza</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-600 dark:text-orange-400">Realizacja</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-700 dark:text-orange-300">Pozostało</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-600 dark:text-red-400">Prognoza</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-600 dark:text-red-400">Realizacja</th>
-                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-700 dark:text-red-300">Pozostało</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Prognoza</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Realizacja</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Pozostało</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-600 dark:text-orange-400">Prognoza</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-600 dark:text-orange-400">Realizacja</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-700 dark:text-orange-300">Pozostało</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-600 dark:text-red-400">Prognoza</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-600 dark:text-red-400">Realizacja</th>
+                    <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-700 dark:text-red-300">Pozostało</th>
                   </tr>
                 </thead>
                 <tbody>
                   {byYear.map(([year, months]) => (
                     <Fragment key={year}>
                       <tr className="bg-muted/30 border-b border-t">
-                        <td colSpan={COL_COUNT} className="sticky left-0 bg-muted/30 px-1.5 sm:px-3 py-1.5 font-bold text-sm">{year}</td>
+                        <td colSpan={COL_COUNT_DESKTOP} className="hidden sm:table-cell sticky left-0 bg-muted/30 px-1.5 sm:px-3 py-1.5 font-bold text-sm">{year}</td>
+                        <td colSpan={COL_COUNT_MOBILE} className="sm:hidden sticky left-0 bg-muted/30 px-1.5 py-1.5 font-bold text-sm">{year}</td>
                       </tr>
                       {months.map(m => {
                         const isCurrent = m.year === currentYear && m.month === currentMonth;
@@ -266,18 +271,18 @@ export default function SaldoFirmowe() {
                               {MONTH_NAMES_SHORT[m.month - 1]}
                               {isCurrent && <span className="ml-1 text-[10px] text-blue-500 font-normal">(teraz)</span>}
                             </td>
-                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueForecast)}</td>
-                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueActual)}</td>
+                            <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueForecast)}</td>
+                            <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueActual)}</td>
                             <td className={`text-right px-1 sm:px-2 py-1.5 tabular-nums font-medium ${m.revenueRemaining >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
                               {plnShort(m.revenueRemaining)}
                             </td>
-                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostForecast)}</td>
-                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostActual)}</td>
+                            <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostForecast)}</td>
+                            <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostActual)}</td>
                             <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-orange-600 dark:text-orange-400 font-medium">
                               {m.aptCostRemaining > 0 ? `−${plnShort(m.aptCostRemaining)}` : "0"}
                             </td>
-                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostForecast)}</td>
-                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostActual)}</td>
+                            <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostForecast)}</td>
+                            <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostActual)}</td>
                             <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-red-600 dark:text-red-400 font-medium">
                               {m.opCostRemaining > 0 ? `−${plnShort(m.opCostRemaining)}` : "0"}
                             </td>
@@ -289,28 +294,28 @@ export default function SaldoFirmowe() {
                       })}
                       <tr key={`year-total-${year}`} className="bg-muted/50 border-b-2 border-border">
                         <td className="sticky left-0 bg-muted/50 px-1.5 sm:px-3 py-1.5 font-semibold text-xs text-muted-foreground">Suma {year}</td>
-                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.revenueForecast, 0))}
                         </td>
-                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.revenueActual, 0))}
                         </td>
                         <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-emerald-600 text-[11px] font-medium">
                           {plnShort(months.reduce((s, m) => s + m.revenueRemaining, 0))}
                         </td>
-                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.aptCostForecast, 0))}
                         </td>
-                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.aptCostActual, 0))}
                         </td>
                         <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-orange-600 text-[11px] font-medium">
                           −{plnShort(months.reduce((s, m) => s + m.aptCostRemaining, 0))}
                         </td>
-                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.opCostForecast, 0))}
                         </td>
-                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.opCostActual, 0))}
                         </td>
                         <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-red-600 text-[11px] font-medium">
