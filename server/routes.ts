@@ -8543,6 +8543,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.get('/api/apt-cost-data/:year', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.params.year) || new Date().getFullYear();
+      const data = await storage.getAptCostData(year);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/apt-cost-data/bulk', isAuthenticated, async (req, res) => {
     try {
       const { cells } = req.body;
@@ -8666,6 +8676,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
   app.get('/api/op-cost-data', isAuthenticated, async (req, res) => {
     try {
       const year = Number(req.query.year) || new Date().getFullYear();
+      const data = await storage.getOpCostData(year);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/op-cost-data/:year', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.params.year) || new Date().getFullYear();
       const data = await storage.getOpCostData(year);
       res.json(data);
     } catch (err: any) {
