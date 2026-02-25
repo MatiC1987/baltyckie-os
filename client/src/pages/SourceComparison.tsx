@@ -11,7 +11,7 @@ import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 import type { Reservation, Apartment, Location } from "@shared/schema";
 
 const SOURCE_COLORS: Record<string, string> = {
-  Booking: "#003580", Airbnb: "#FF5A5F", Recepcja: "#5ADBFA",
+  "Booking.com": "#003580", Airbnb: "#FF5A5F", Recepcja: "#5ADBFA",
   HotRes: "#FF9800", Inne: "#9C27B0", Nieznane: "#9E9E9E",
 };
 const SOURCES = Object.keys(SOURCE_COLORS);

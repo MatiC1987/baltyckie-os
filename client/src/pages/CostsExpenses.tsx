@@ -1093,25 +1093,14 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-              <p className="text-xs text-muted-foreground">Zaległe płatności</p>
-            </div>
-            <p className="text-xl font-bold mt-1 text-red-600" data-testid="text-overdue-count">{overdueSummary.overdueCount}</p>
-            <p className="text-xs text-muted-foreground">{formatNum2(overdueSummary.overdueAmount)} zł</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-3 gap-3">
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-amber-500" />
               <p className="text-xs text-muted-foreground">Do opłacenia ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-            <p className="text-xl font-bold mt-1" data-testid="text-current-unpaid">{overdueSummary.currentMonthUnpaidCount}</p>
-            <p className="text-xs text-muted-foreground">{formatNum2(overdueSummary.currentMonthUnpaidAmount)} zł</p>
+            <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-current-unpaid">{formatNum2(overdueSummary.currentMonthUnpaidAmount)} zł</p>
           </CardContent>
         </Card>
         <Card>
@@ -1120,22 +1109,14 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
               <CheckCircle2 className="h-4 w-4 text-green-500" />
               <p className="text-xs text-muted-foreground">Opłacone ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-            <p className="text-xl font-bold mt-1 text-green-600" data-testid="text-paid-this-month">{overdueSummary.paidThisMonthCount}</p>
-            <p className="text-xs text-muted-foreground">{formatNum2(overdueSummary.paidThisMonthAmount)} zł</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-muted-foreground">Koszty miesięczne (harmonogram)</p>
-            <p className="text-xl font-bold mt-1" data-testid="text-monthly-total">{formatNum2(overdueSummary.monthlyTotal)} zł</p>
-            <p className="text-xs text-muted-foreground">{overdueSummary.activeSchedules} aktywnych</p>
+            <p className="text-xl font-bold mt-1 text-green-600 tabular-nums" data-testid="text-paid-this-month">{formatNum2(overdueSummary.paidThisMonthAmount)} zł</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-muted-foreground">Prognoza roczna</p>
-            <p className="text-xl font-bold mt-1" data-testid="text-total-prognoza">{grandTotal.prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
-            <p className={`text-xs ${saldoColor(grandTotal.saldo)}`}>Saldo: {grandTotal.saldo >= 0 ? "+" : ""}{grandTotal.saldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+            <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{grandTotal.prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {grandTotal.rzeczywiste.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
           </CardContent>
         </Card>
       </div>

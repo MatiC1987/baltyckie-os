@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Wallet, ChevronDown, ChevronRight, Copy, Sparkles } from "lucide-react";
+import { Wallet, ChevronDown, ChevronRight, Copy, Sparkles, BarChart3 } from "lucide-react";
 import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
@@ -73,6 +73,76 @@ function MiniProgress({ value, colorClass }: { value: number; colorClass: string
   );
 }
 
+type ApartmentTrendData = {
+  apartment: { id: number; name: string };
+  years: number[];
+  yearlyData: Record<number, { months: Record<number, { actual: number; forecast: number }>; totalActual: number; totalForecast: number }>;
+};
+
+function ApartmentYearComparison({ apartmentId, isOpen, colSpan }: { apartmentId: number; isOpen: boolean; colSpan: number }) {
+  const currentYear = new Date().getFullYear();
+  const { data, isLoading } = useQuery<ApartmentTrendData>({
+    queryKey: [`/api/v2/apartment-trend/${apartmentId}`],
+    enabled: isOpen,
+  });
+
+  if (!isOpen) return null;
+
+  return (
+    <tr data-testid={`apt-year-comparison-${apartmentId}`}>
+      <td colSpan={colSpan} className="p-0 bg-muted/5">
+        <div className="px-4 py-3">
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ) : data ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left p-1.5 font-medium min-w-[70px]">Miesiąc</th>
+                    {data.years.map(y => (
+                      <th key={y} className={`text-right p-1.5 font-medium min-w-[70px] ${y === currentYear ? "text-cyan-600 dark:text-cyan-400 font-bold" : ""}`}>{y}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {MONTHS.map((m, mi) => (
+                    <tr key={mi} className="border-b hover:bg-muted/20">
+                      <td className="p-1.5 font-medium text-muted-foreground">{m}</td>
+                      {data.years.map(y => {
+                        const val = data.yearlyData[y]?.months[mi]?.actual || 0;
+                        const fc = data.yearlyData[y]?.months[mi]?.forecast || 0;
+                        const display = val > 0 ? val : (y === currentYear && fc > 0 ? fc : 0);
+                        return (
+                          <td key={y} className={`p-1.5 text-right tabular-nums ${y === currentYear ? "font-semibold text-cyan-700 dark:text-cyan-300" : ""} ${val === 0 && fc > 0 && y === currentYear ? "text-muted-foreground italic" : ""}`}>
+                            {display > 0 ? formatNum(display) : "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 font-bold bg-muted/20">
+                    <td className="p-1.5">Razem</td>
+                    {data.years.map(y => (
+                      <td key={y} className={`p-1.5 text-right tabular-nums ${y === currentYear ? "text-cyan-700 dark:text-cyan-300" : ""}`}>
+                        {formatNum(data.yearlyData[y]?.totalActual || 0)}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="text-xs text-muted-foreground">Brak danych</p>}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function LocationGroup({ locationName, apartments, currentMonth, onApartmentClick }: {
   locationName: string;
   apartments: AptRevenueData[];
@@ -80,6 +150,12 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
   onApartmentClick?: (id: number) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [expandedComparison, setExpandedComparison] = useState<Set<number>>(new Set());
+  const toggleComparison = (id: number) => setExpandedComparison(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const sortedApts = useMemo(() => {
     if (locationName === "GRAND BALTIC") {
@@ -144,12 +220,23 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                 const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
                 const yearDev = yearAct - yearFc;
                 const yearPct = pctVal(yearAct, yearFc);
+                const compExpanded = expandedComparison.has(apt.apartmentId);
                 return [
                   <tr key={`${apt.apartmentId}-plan`} className="border-b border-dashed" data-testid={`apt-row-plan-${apt.apartmentId}`}>
                     <td className="p-2 font-medium" rowSpan={3}>
-                      <button className="text-left hover:text-[#5ADBFA] hover:underline transition-colors" onClick={() => onApartmentClick?.(apt.apartmentId)} data-testid={`apt-trend-link-${apt.apartmentId}`}>
-                        {apt.apartmentName}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button className="text-left hover:text-[#5ADBFA] hover:underline transition-colors flex-1" onClick={() => onApartmentClick?.(apt.apartmentId)} data-testid={`apt-trend-link-${apt.apartmentId}`}>
+                          {apt.apartmentName}
+                        </button>
+                        <button
+                          className={`p-0.5 rounded transition-colors shrink-0 ${compExpanded ? "text-cyan-600" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() => toggleComparison(apt.apartmentId)}
+                          title="Porównaj lata"
+                          data-testid={`apt-toggle-comparison-${apt.apartmentId}`}
+                        >
+                          <BarChart3 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                     <td className="p-2 text-muted-foreground">Plan</td>
                     {MONTHS.map((_, i) => (
@@ -205,6 +292,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                       )}
                     </td>
                   </tr>,
+                  <ApartmentYearComparison key={`${apt.apartmentId}-comp`} apartmentId={apt.apartmentId} isOpen={compExpanded} colSpan={15} />,
                 ];
               })}
               <tr className="border-t-2 font-bold bg-muted/20">

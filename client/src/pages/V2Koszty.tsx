@@ -52,10 +52,25 @@ export default function V2Koszty() {
       s + Object.values(months).reduce((ms, v) => ms + v, 0), 0);
   }, [data]);
 
+  const totalAptRealized = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(`costs-apartments-data-${year}`);
+      if (!raw) return 0;
+      const d = JSON.parse(raw) as Record<string, Record<number, { p: number; r: number }>>;
+      return Object.values(d).reduce((s, months) =>
+        s + Object.values(months).reduce((ms, v) => ms + (v.r || 0), 0), 0);
+    } catch { return 0; }
+  }, [year]);
+
   const totalOpCosts = useMemo(() => {
     if (!data) return 0;
     return Object.values(data.operationalCosts).reduce((s, months) =>
       s + Object.values(months).reduce((ms, v) => ms + v, 0), 0);
+  }, [data]);
+
+  const totalOpRealized = useMemo(() => {
+    if (!data) return 0;
+    return Object.values(data.actualExpensesByMonth).reduce((s, v) => s + v, 0);
   }, [data]);
 
   if (isLoading) {
@@ -101,20 +116,23 @@ export default function V2Koszty() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="card-gradient from-blue-500/10" data-testid="kpi-apt-costs">
           <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground font-medium">Koszty apartamentowe</p>
+            <p className="text-xs text-muted-foreground font-medium">Koszty (apartamenty)</p>
             <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(totalAptCosts)} PLN</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalAptRealized)} PLN</p>
           </CardContent>
         </Card>
         <Card className="card-gradient from-purple-500/10" data-testid="kpi-op-costs">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground font-medium">Koszty operacyjne</p>
             <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(totalOpCosts)} PLN</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalOpRealized)} PLN</p>
           </CardContent>
         </Card>
         <Card className="card-gradient from-red-500/10" data-testid="kpi-total-costs">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground font-medium">Razem koszty</p>
             <p className="text-xl font-bold mt-1 tabular-nums text-red-600 dark:text-red-400">{formatNum(totalAptCosts + totalOpCosts)} PLN</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalAptRealized + totalOpRealized)} PLN</p>
           </CardContent>
         </Card>
       </div>

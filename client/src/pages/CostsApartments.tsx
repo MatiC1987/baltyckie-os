@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChevronDown, ChevronRight, Plus, X, Calculator,
   BarChart3, GripVertical, Trash2, Pencil, Archive, RotateCcw,
-  Copy, ArrowRight, Eraser, DatabaseBackup,
+  Copy, ArrowRight, Eraser, DatabaseBackup, Palette,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
@@ -20,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+const MONTHS_PL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 
 const CATEGORY_COLORS = [
   { label: "Niebieski", value: "bg-blue-600 dark:bg-blue-700" },
@@ -252,6 +255,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [editEntryColor, setEditEntryColor] = useState("");
 
   const [resetEntryDialog, setResetEntryDialog] = useState<{ entryId: string; entryName: string } | null>(null);
+  const [apartmentSheet, setApartmentSheet] = useState<string | null>(null);
+  const [categorySheet, setCategorySheet] = useState<{ entryId: string; cat: string } | null>(null);
+  const [highlightMonth, setHighlightMonth] = useState<number | null>(null);
 
   const [locationTab, setLocationTab] = useState<string>(() => {
     try { return localStorage.getItem("costs-apartments-location-tab") || "GRAND BALTIC"; } catch { return "GRAND BALTIC"; }
@@ -732,6 +738,19 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     return { p, r, s: p - r };
   }, [filteredCostEntries, getLocationYearTotal]);
 
+  const currentMonthTotals = useMemo(() => {
+    let p = 0, r = 0;
+    filteredCostEntries.forEach(group => { const s = getLocationSums(group.items, currentMonth); p += s.p; r += s.r; });
+    return { p, r, s: p - r };
+  }, [filteredCostEntries, getLocationSums, currentMonth]);
+
+  const scrollToMonth = useCallback(() => {
+    const el = document.getElementById(`month-col-${currentMonth}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    setHighlightMonth(currentMonth);
+    setTimeout(() => setHighlightMonth(null), 2000);
+  }, [currentMonth]);
+
   const monthlyCostChart = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
       let p = 0, r = 0;
@@ -900,34 +919,70 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-muted-foreground">Prognoza roczna</p>
-            <p className="text-xl font-bold mt-1" data-testid="text-total-prognoza">{grandTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-muted-foreground">Rzeczywiste roczne</p>
-            <p className="text-xl font-bold mt-1" data-testid="text-total-rzeczywiste">{grandTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-muted-foreground">Saldo</p>
-            <p className={`text-xl font-bold mt-1 ${saldoColor(grandTotal.s)}`} data-testid="text-total-saldo">
-              {grandTotal.s >= 0 ? "+" : ""}{grandTotal.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-muted-foreground">Lokalizacje / Apartamenty</p>
-            <p className="text-xl font-bold mt-1" data-testid="text-total-entries">{filteredCostEntries.length} / {filteredCostEntries.reduce((s, g) => s + g.items.length, 0)}</p>
-          </CardContent>
-        </Card>
-      </div>
+      {isImportingHistory ? (
+        <div className="grid grid-cols-3 gap-3">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-muted-foreground">Prognoza roczna</p>
+              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{grandTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-muted-foreground">Zrealizowane koszty</p>
+              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-rzeczywiste">{grandTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              {grandTotal.p > 0 && (
+                <p className="text-xs text-muted-foreground mt-0.5">{Math.round(grandTotal.r / grandTotal.p * 100)}% planu</p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <p className="text-xs text-muted-foreground">Saldo</p>
+              <p className={`text-xl font-bold mt-1 tabular-nums ${saldoColor(grandTotal.s)}`} data-testid="text-total-saldo">
+                {grandTotal.s >= 0 ? "+" : ""}{grandTotal.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {year === currentYear && !isImportingHistory && (
+        <>
+          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">{MONTHS_PL[currentMonth]} — bieżący miesiąc</p>
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="cursor-pointer hover:bg-accent/30 transition-colors" onClick={scrollToMonth} data-testid="kpi-month-prognoza">
+              <CardContent className="pt-4 pb-3 px-4">
+                <p className="text-xs text-muted-foreground">Prognoza ({MONTHS[currentMonth]})</p>
+                <p className="text-xl font-bold mt-1 tabular-nums">{currentMonthTotals.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:bg-accent/30 transition-colors" onClick={scrollToMonth} data-testid="kpi-month-realized">
+              <CardContent className="pt-4 pb-3 px-4">
+                <p className="text-xs text-muted-foreground">Zrealizowane ({MONTHS[currentMonth]})</p>
+                <p className="text-xl font-bold mt-1 tabular-nums">{currentMonthTotals.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                {currentMonthTotals.p > 0 && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{Math.round(currentMonthTotals.r / currentMonthTotals.p * 100)}% planu</p>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:bg-accent/30 transition-colors" onClick={scrollToMonth} data-testid="kpi-month-saldo">
+              <CardContent className="pt-4 pb-3 px-4">
+                <p className="text-xs text-muted-foreground">Saldo ({MONTHS[currentMonth]})</p>
+                <p className={`text-xl font-bold mt-1 tabular-nums ${saldoColor(currentMonthTotals.s)}`}>
+                  {currentMonthTotals.s >= 0 ? "+" : ""}{currentMonthTotals.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
 
       <div className="flex items-center gap-2 mb-2">
         <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart-costs">
@@ -981,7 +1036,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                 Pozycja
               </th>
               {MONTHS.map((m, i) => (
-                <th key={i} colSpan={3} className={`border-b border-r-2 border-border px-1 py-1 text-center font-bold ${i === currentMonth && year === currentYear ? "bg-primary/10" : ""}`}>{m}</th>
+                <th key={i} id={`month-col-${i}`} colSpan={3} className={`border-b border-r-2 border-border px-1 py-1 text-center font-bold transition-colors duration-300 ${i === currentMonth && year === currentYear ? "bg-primary/10" : ""} ${highlightMonth === i ? "bg-yellow-200/60 dark:bg-yellow-700/40" : ""}`}>{m}</th>
               ))}
               <th colSpan={3} className="border-b border-border px-1 py-1 text-center font-bold bg-muted dark:bg-muted/70">ROCZNIE</th>
             </tr>
@@ -1040,12 +1095,20 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                             <div className="flex items-center gap-1.5">
                               <span
                                 className="flex-1 min-w-0 truncate cursor-pointer hover:underline"
-                                onClick={() => openEntryColorDialog(entry.id, entryIdx)}
-                                title="Kliknij aby zmienić kolor"
+                                onClick={() => setApartmentSheet(entry.id)}
+                                title="Kliknij aby zobaczyć szczegóły"
                                 data-testid={`entry-name-${entry.id}`}
                               >
                                 {entry.name}
                               </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openEntryColorDialog(entry.id, entryIdx); }}
+                                className="opacity-60 hover:opacity-100 transition-opacity p-0.5 shrink-0"
+                                title="Zmień kolor"
+                                data-testid={`button-entry-color-${entry.id}`}
+                              >
+                                <Palette className="h-3 w-3" />
+                              </button>
                               <Sparkline data={getEntrySparklineData(entry)} width={50} height={14} color="rgba(255,255,255,0.7)" />
                               <button
                                 onClick={() => openCategoryEditor(entry)}
@@ -1118,12 +1181,20 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                                   </span>
                                   <span
                                     className="truncate flex-1 min-w-0 cursor-pointer hover:underline text-[11px] font-medium text-foreground"
-                                    onClick={() => openEditCatDialog(entry.id, cat)}
-                                    title="Kliknij aby edytować"
+                                    onClick={() => setCategorySheet({ entryId: entry.id, cat })}
+                                    title="Kliknij aby zobaczyć szczegóły"
                                     data-testid={`label-category-${entry.id}-${cat}`}
                                   >
                                     {cat}
                                   </span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openEditCatDialog(entry.id, cat); }}
+                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0 text-muted-foreground"
+                                    title="Edytuj nazwę / kolor"
+                                    data-testid={`btn-edit-cat-${entry.id}-${cat}`}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
                                   <Sparkline data={getCatSparklineData(entry.id, cat)} width={40} height={12} color="rgb(239, 68, 68)" />
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleArchiveCategory(entry.id, cat); }}
@@ -1557,6 +1628,178 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Sheet apartamentu */}
+      <Sheet open={!!apartmentSheet} onOpenChange={(open) => { if (!open) setApartmentSheet(null); }}>
+        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-apartment">
+          {(() => {
+            if (!apartmentSheet) return null;
+            const entry = filteredCostEntries.flatMap(g => g.items).find(e => e.id === apartmentSheet);
+            if (!entry) return null;
+            const annualTotal = getEntryYearTotal(entry);
+            const annualS = annualTotal.p - annualTotal.r;
+            const monthP = getEntrySums(entry, currentMonth).p;
+            const monthR = getEntrySums(entry, currentMonth).r;
+            const monthS = monthP - monthR;
+            return (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="text-lg" data-testid="sheet-apt-title">{entry.name}</SheetTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{year}</Badge>
+                    <Button size="sm" variant="outline" onClick={() => { setApartmentSheet(null); const idx = filteredCostEntries.flatMap(g => g.items).findIndex(e => e.id === apartmentSheet); openEntryColorDialog(apartmentSheet, idx >= 0 ? idx : 0); }} data-testid="button-apt-color">
+                      <Palette className="h-3 w-3 mr-1" /> Zmień kolor
+                    </Button>
+                  </div>
+                </SheetHeader>
+                <div className="mt-6 space-y-5">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-2">Rok {year}</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="text-center border rounded-lg p-2">
+                        <p className="text-[10px] text-muted-foreground">Prognoza</p>
+                        <p className="text-base font-bold tabular-nums">{annualTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                      </div>
+                      <div className="text-center border rounded-lg p-2">
+                        <p className="text-[10px] text-muted-foreground">Zrealizowane</p>
+                        <p className="text-base font-bold tabular-nums">{annualTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                        {annualTotal.p > 0 && <p className="text-[10px] text-muted-foreground">{Math.round(annualTotal.r / annualTotal.p * 100)}%</p>}
+                      </div>
+                      <div className="text-center border rounded-lg p-2">
+                        <p className="text-[10px] text-muted-foreground">Saldo</p>
+                        <p className={`text-base font-bold tabular-nums ${saldoColor(annualS)}`}>{annualS >= 0 ? "+" : ""}{annualS.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                      </div>
+                    </div>
+                  </div>
+                  {year === currentYear && (
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-2">{MONTHS_PL[currentMonth]}</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="text-center border rounded-lg p-2">
+                          <p className="text-[10px] text-muted-foreground">Prognoza</p>
+                          <p className="text-base font-bold tabular-nums">{monthP.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                        </div>
+                        <div className="text-center border rounded-lg p-2">
+                          <p className="text-[10px] text-muted-foreground">Zrealizowane</p>
+                          <p className="text-base font-bold tabular-nums">{monthR.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                        </div>
+                        <div className="text-center border rounded-lg p-2">
+                          <p className="text-[10px] text-muted-foreground">Saldo</p>
+                          <p className={`text-base font-bold tabular-nums ${saldoColor(monthS)}`}>{monthS >= 0 ? "+" : ""}{monthS.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-2">Kategorie</p>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b bg-muted/30">
+                          <th className="text-left p-2 font-medium">Kategoria</th>
+                          <th className="text-right p-2 font-medium">Prognoza</th>
+                          <th className="text-right p-2 font-medium">Zrealizowane</th>
+                          <th className="text-right p-2 font-medium">Saldo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entry.categories.map(cat => {
+                          let catP = 0, catR = 0;
+                          for (let m = 0; m < 12; m++) { catP += getCellValue(entry.id, cat, m, "p"); catR += getCellValue(entry.id, cat, m, "r"); }
+                          const catS = catP - catR;
+                          return (
+                            <tr key={cat} className="border-b hover:bg-muted/20 cursor-pointer" onClick={() => { setApartmentSheet(null); setCategorySheet({ entryId: entry.id, cat }); }}>
+                              <td className="p-2 font-medium">{cat}</td>
+                              <td className="p-2 text-right tabular-nums">{catP > 0 ? catP.toLocaleString("pl-PL", { minimumFractionDigits: 2 }) : "—"}</td>
+                              <td className="p-2 text-right tabular-nums">{catR > 0 ? catR.toLocaleString("pl-PL", { minimumFractionDigits: 2 }) : "—"}</td>
+                              <td className={`p-2 text-right tabular-nums ${saldoColor(catS)}`}>{catS !== 0 ? `${catS >= 0 ? "+" : ""}${catS.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}` : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                        <tr className="font-bold border-t-2">
+                          <td className="p-2">Razem</td>
+                          <td className="p-2 text-right tabular-nums">{annualTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 text-right tabular-nums">{annualTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</td>
+                          <td className={`p-2 text-right tabular-nums ${saldoColor(annualS)}`}>{annualS >= 0 ? "+" : ""}{annualS.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
+
+      {/* Sheet kategorii */}
+      <Sheet open={!!categorySheet} onOpenChange={(open) => { if (!open) setCategorySheet(null); }}>
+        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-category">
+          {(() => {
+            if (!categorySheet) return null;
+            const { entryId, cat } = categorySheet;
+            const entry = filteredCostEntries.flatMap(g => g.items).find(e => e.id === entryId);
+            let totalP = 0, totalR = 0;
+            for (let m = 0; m < 12; m++) { totalP += getCellValue(entryId, cat, m, "p"); totalR += getCellValue(entryId, cat, m, "r"); }
+            const totalS = totalP - totalR;
+            return (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="text-lg" data-testid="sheet-cat-title">{cat}</SheetTitle>
+                  {entry && <Badge variant="secondary" className="w-fit">{entry.name}</Badge>}
+                </SheetHeader>
+                <div className="mt-6 space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center border rounded-lg p-2">
+                      <p className="text-[10px] text-muted-foreground">Prognoza {year}</p>
+                      <p className="text-base font-bold tabular-nums">{totalP.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                    </div>
+                    <div className="text-center border rounded-lg p-2">
+                      <p className="text-[10px] text-muted-foreground">Zrealizowane</p>
+                      <p className="text-base font-bold tabular-nums">{totalR.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                      {totalP > 0 && <p className="text-[10px] text-muted-foreground">{Math.round(totalR / totalP * 100)}%</p>}
+                    </div>
+                    <div className="text-center border rounded-lg p-2">
+                      <p className="text-[10px] text-muted-foreground">Saldo</p>
+                      <p className={`text-base font-bold tabular-nums ${saldoColor(totalS)}`}>{totalS >= 0 ? "+" : ""}{totalS.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                    </div>
+                  </div>
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b bg-muted/30">
+                        <th className="text-left p-2 font-medium">Miesiąc</th>
+                        <th className="text-right p-2 font-medium">Prognoza</th>
+                        <th className="text-right p-2 font-medium">Zrealizowane</th>
+                        <th className="text-right p-2 font-medium">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {MONTHS.map((m, mi) => {
+                        const mP = getCellValue(entryId, cat, mi, "p");
+                        const mR = getCellValue(entryId, cat, mi, "r");
+                        const mS = mP - mR;
+                        return (
+                          <tr key={mi} className={`border-b ${mi === currentMonth && year === currentYear ? "bg-cyan-50/40 dark:bg-cyan-950/10" : ""}`}>
+                            <td className="p-2 font-medium">{MONTHS_PL[mi]}</td>
+                            <td className="p-2 text-right tabular-nums">{mP > 0 ? mP.toLocaleString("pl-PL", { minimumFractionDigits: 2 }) : "—"}</td>
+                            <td className="p-2 text-right tabular-nums">{mR > 0 ? mR.toLocaleString("pl-PL", { minimumFractionDigits: 2 }) : "—"}</td>
+                            <td className={`p-2 text-right tabular-nums ${saldoColor(mS)}`}>{mS !== 0 ? `${mS >= 0 ? "+" : ""}${mS.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}` : "—"}</td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="font-bold border-t-2 bg-muted/20">
+                        <td className="p-2">Razem</td>
+                        <td className="p-2 text-right tabular-nums">{totalP.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</td>
+                        <td className="p-2 text-right tabular-nums">{totalR.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</td>
+                        <td className={`p-2 text-right tabular-nums ${saldoColor(totalS)}`}>{totalS >= 0 ? "+" : ""}{totalS.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
