@@ -191,7 +191,7 @@ function EditableCell({
   );
 }
 
-export function CostsApartmentsContent({ embedded = false, externalYear, onTotalsChange, triggerMonthHighlight, onMonthHighlightDone }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void; triggerMonthHighlight?: number | null; onMonthHighlightDone?: () => void }) {
+export function CostsApartmentsContent({ embedded = false, externalYear, onTotalsChange, onMonthlyDataChange, triggerMonthHighlight, onMonthHighlightDone }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void; onMonthlyDataChange?: (data: Array<{p: number, r: number}>) => void; triggerMonthHighlight?: number | null; onMonthHighlightDone?: () => void }) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const queryClient = useQueryClient();
@@ -844,9 +844,22 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     return { p, r };
   }, [costEntries, getLocationYearTotal]);
 
+  const allEntriesMonthlyTotals = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) => {
+      let p = 0, r = 0;
+      costEntries.forEach(group => { const s = getLocationSums(group.items, m); p += s.p; r += s.r; });
+      return { p, r };
+    });
+  }, [costEntries, getLocationSums]);
+
   useEffect(() => {
     onTotalsChange?.(allEntriesTotal.p, allEntriesTotal.r);
   }, [allEntriesTotal.p, allEntriesTotal.r]);
+
+  useEffect(() => {
+    if (!onMonthlyDataChange) return;
+    onMonthlyDataChange(allEntriesMonthlyTotals);
+  }, [allEntriesMonthlyTotals]);
 
   const currentMonthTotals = useMemo(() => {
     let p = 0, r = 0;

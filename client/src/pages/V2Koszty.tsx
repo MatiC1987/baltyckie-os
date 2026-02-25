@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +13,8 @@ import { CostsApartmentsContent } from "@/pages/CostsApartments";
 
 const MONTHS_SHORT = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 const MONTHS_PL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+const EMPTY_MONTHLY = Array.from({ length: 12 }, () => ({ p: 0, r: 0 }));
 
 function formatNum(v: number): string {
   if (v === 0) return "—";
@@ -74,32 +75,29 @@ export default function V2Koszty() {
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [clickedMonth, setClickedMonth] = useState<number | null>(null);
 
+  const [aptAnnual, setAptAnnual] = useState({ p: 0, r: 0 });
+  const [opAnnual, setOpAnnual] = useState({ p: 0, r: 0 });
+  const [aptMonthly, setAptMonthly] = useState<Array<{ p: number; r: number }>>(EMPTY_MONTHLY);
+  const [opMonthly, setOpMonthly] = useState<Array<{ p: number; r: number }>>(EMPTY_MONTHLY);
+
+  const handleAptTotals = useCallback((p: number, r: number) => setAptAnnual({ p, r }), []);
+  const handleOpTotals = useCallback((p: number, r: number) => setOpAnnual({ p, r }), []);
+  const handleAptMonthly = useCallback((data: Array<{ p: number; r: number }>) => setAptMonthly(data), []);
+  const handleOpMonthly = useCallback((data: Array<{ p: number; r: number }>) => setOpMonthly(data), []);
+
   const years = useMemo(() => {
     const arr = [];
     for (let y = currentYear - 4; y <= currentYear + 5; y++) arr.push(y);
     return arr;
   }, [currentYear]);
 
-  const { data: aptRows = [] } = useQuery<any[]>({ queryKey: [`/api/apt-cost-data/${year}`] });
-  const { data: opRows = [] } = useQuery<any[]>({ queryKey: [`/api/op-cost-data/${year}`] });
-
-  const annualTotals = useMemo(() => {
-    const apt_p = aptRows.reduce((s, r) => s + parseFloat(r.prognoza ?? "0"), 0);
-    const apt_r = aptRows.reduce((s, r) => s + parseFloat(r.realized ?? "0"), 0);
-    const op_p = opRows.reduce((s, r) => s + parseFloat(r.prognoza ?? "0"), 0);
-    const op_r = opRows.reduce((s, r) => s + parseFloat(r.realized ?? "0"), 0);
-    return { apt_p, apt_r, op_p, op_r };
-  }, [aptRows, opRows]);
-
   const monthlyTotals = useMemo(() => {
-    return Array.from({ length: 12 }, (_, m) => {
-      const apt_p = aptRows.filter(r => r.month === m).reduce((s, r) => s + parseFloat(r.prognoza ?? "0"), 0);
-      const apt_r = aptRows.filter(r => r.month === m).reduce((s, r) => s + parseFloat(r.realized ?? "0"), 0);
-      const op_p = opRows.filter(r => r.month === m).reduce((s, r) => s + parseFloat(r.prognoza ?? "0"), 0);
-      const op_r = opRows.filter(r => r.month === m).reduce((s, r) => s + parseFloat(r.realized ?? "0"), 0);
-      return { apt_p, apt_r, op_p, op_r, total_p: apt_p + op_p, total_r: apt_r + op_r };
+    return Array.from({ length: 12 }, (_, i) => {
+      const apt = aptMonthly[i] ?? { p: 0, r: 0 };
+      const op = opMonthly[i] ?? { p: 0, r: 0 };
+      return { apt_p: apt.p, apt_r: apt.r, op_p: op.p, op_r: op.r, total_p: apt.p + op.p, total_r: apt.r + op.r };
     });
-  }, [aptRows, opRows]);
+  }, [aptMonthly, opMonthly]);
 
   const currentMonthTotals = useMemo(
     () => monthlyTotals[currentMonth] ?? { apt_p: 0, apt_r: 0, op_p: 0, op_r: 0, total_p: 0, total_r: 0 },
@@ -170,9 +168,9 @@ export default function V2Koszty() {
           <div>
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Rok {year} — podsumowanie roczne</p>
             <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-tiles">
-              <CostTile title="Koszty (apartamenty)" prognoza={annualTotals.apt_p} realized={annualTotals.apt_r} />
-              <CostTile title="Koszty operacyjne" prognoza={annualTotals.op_p} realized={annualTotals.op_r} />
-              <CostTile title="Razem koszty" prognoza={annualTotals.apt_p + annualTotals.op_p} realized={annualTotals.apt_r + annualTotals.op_r} />
+              <CostTile title="Koszty (apartamenty)" prognoza={aptAnnual.p} realized={aptAnnual.r} />
+              <CostTile title="Koszty operacyjne" prognoza={opAnnual.p} realized={opAnnual.r} />
+              <CostTile title="Razem koszty" prognoza={aptAnnual.p + opAnnual.p} realized={aptAnnual.r + opAnnual.r} />
             </div>
           </div>
 
@@ -214,13 +212,20 @@ export default function V2Koszty() {
           <CostsApartmentsContent
             embedded
             externalYear={year}
+            onTotalsChange={handleAptTotals}
+            onMonthlyDataChange={handleAptMonthly}
             triggerMonthHighlight={clickedMonth}
             onMonthHighlightDone={() => setClickedMonth(null)}
           />
         </TabsContent>
 
         <TabsContent value="operacyjne" forceMount className="data-[state=inactive]:hidden">
-          <CostsExpensesContent embedded externalYear={year} />
+          <CostsExpensesContent
+            embedded
+            externalYear={year}
+            onTotalsChange={handleOpTotals}
+            onMonthlyDataChange={handleOpMonthly}
+          />
         </TabsContent>
       </Tabs>
 

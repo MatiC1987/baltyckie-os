@@ -254,7 +254,7 @@ function costChangeColor(current: number, previous: number): string {
   return "text-muted-foreground";
 }
 
-export function CostsExpensesContent({ embedded = false, externalYear, onTotalsChange }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void }) {
+export function CostsExpensesContent({ embedded = false, externalYear, onTotalsChange, onMonthlyDataChange }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void; onMonthlyDataChange?: (data: Array<{p: number, r: number}>) => void }) {
   const { toast } = useToast();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -1004,6 +1004,11 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       return { name: MONTHS_SHORT_CHART[m], Prognoza: Math.round(prognoza), Rzeczywiste: Math.round(rzeczywiste) };
     });
   }, [activeCategories, getCategorySummary]);
+
+  useEffect(() => {
+    if (!onMonthlyDataChange) return;
+    onMonthlyDataChange(monthlySummaryChart.map(m => ({ p: m.Prognoza, r: m.Rzeczywiste })));
+  }, [monthlySummaryChart]);
 
   const [showChart, setShowChart] = useState(false);
   const fullscreen = useFullscreen();
