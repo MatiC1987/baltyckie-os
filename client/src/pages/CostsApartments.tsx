@@ -814,10 +814,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   }, [year, toast]);
 
   useEffect(() => {
-    const flag = localStorage.getItem('costs-apartments-history-imported-v1');
+    const flag = localStorage.getItem('costs-apartments-history-imported-v2');
     if (!flag) {
       handleImportHistory().then(() => {
-        localStorage.setItem('costs-apartments-history-imported-v1', '1');
+        localStorage.setItem('costs-apartments-history-imported-v2', '1');
       });
     }
   }, []);

@@ -2401,7 +2401,7 @@ export async function registerRoutes(
   // Costs Apartments - import history from Excel file
   app.get('/api/costs-apartments/import-history', isAuthenticated, (_req, res) => {
     try {
-      const filePath = path.join(process.cwd(), 'attached_assets', 'APARTAMENTY_1771979718731.xlsx');
+      const filePath = path.join(process.cwd(), 'attached_assets', 'APARTAMENTY_1771982164657.xlsx');
       const fileBuffer = fs.readFileSync(filePath);
       const workbook = XLSX.read(fileBuffer);
       const ws = workbook.Sheets[workbook.SheetNames[0]];
@@ -2451,7 +2451,7 @@ export async function registerRoutes(
           const yearData: Record<string, Record<number, { p: number; r: number }>> = {};
 
           for (let monthOffset = 0; monthOffset < 12; monthOffset++) {
-            const monthRow = rows[rowIdx + 1 + monthOffset];
+            const monthRow = rows[rowIdx + monthOffset];
             if (!monthRow) continue;
 
             for (const apt of APARTMENT_MAP) {
