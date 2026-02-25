@@ -263,39 +263,18 @@ export default function Dashboard() {
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
     const prevMonth = thisMonth === 0 ? 11 : thisMonth - 1;
-    const prevYear = thisMonth === 0 ? thisYear - 1 : thisYear;
 
     const thisMonthRes = reservations.filter(r => {
       if (!r.startDate) return false;
       const d = new Date(r.startDate);
       return d.getMonth() === thisMonth && d.getFullYear() === thisYear && r.status !== "ANULOWANA";
     });
-    const lastMonthRes = reservations.filter(r => {
-      if (!r.startDate) return false;
-      const d = new Date(r.startDate);
-      return d.getMonth() === prevMonth && d.getFullYear() === prevYear && r.status !== "ANULOWANA";
-    });
-
-    const reservationRevenue = thisMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
     const monthCount = thisMonthRes.length;
-    const lastMonthResRevenue = lastMonthRes.reduce((sum, r) => sum + (Number(r.price) || 0), 0);
 
-    const subPayments = allSubleasePayments || [];
-    const thisMonthSubRevenue = subPayments.filter(p => {
-      if (!p.dueDate) return false;
-      if (p.category?.toLowerCase() === "kaucja") return false;
-      const pd = new Date(p.dueDate);
-      return pd.getMonth() === thisMonth && pd.getFullYear() === thisYear;
-    }).reduce((s, p) => s + Number(p.amount), 0);
-    const lastMonthSubRevenue = subPayments.filter(p => {
-      if (!p.dueDate) return false;
-      if (p.category?.toLowerCase() === "kaucja") return false;
-      const pd = new Date(p.dueDate);
-      return pd.getMonth() === prevMonth && pd.getFullYear() === prevYear;
-    }).reduce((s, p) => s + Number(p.amount), 0);
-
-    const monthRevenue = reservationRevenue + thisMonthSubRevenue;
-    const lastMonthRevenue = lastMonthResRevenue + lastMonthSubRevenue;
+    const currentForecast = forecastData?.find(m => m.month === thisMonth);
+    const prevForecast = forecastData?.find(m => m.month === prevMonth);
+    const monthRevenue = currentForecast?.actual ?? 0;
+    const lastMonthRevenue = prevForecast?.actual ?? 0;
     const revenueChange = lastMonthRevenue > 0 ? ((monthRevenue - lastMonthRevenue) / lastMonthRevenue * 100) : 0;
 
     const unpaidCount = reservations.filter(r => {
@@ -304,7 +283,7 @@ export default function Dashboard() {
     }).length;
 
     return { monthRevenue, monthCount, revenueChange, lastMonthRevenue, unpaidCount };
-  }, [reservations, allSubleasePayments]);
+  }, [reservations, forecastData]);
 
   const occupancyPct = useMemo(() => {
     if (!reservations || !apartments || apartments.length === 0) return 0;
