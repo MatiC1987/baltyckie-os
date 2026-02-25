@@ -8658,7 +8658,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
 
         const revForecast = getVal(revForecastMap, year, rfMonth);
         const revActual = revActualMap[year]?.[calMonth] ?? 0;
-        const revenueRemaining = revForecast - revActual;
+        const revenueRemaining = Math.max(0, revForecast - revActual);
 
         const aptCostForecast = getVal(aptForecastMap, year, rfMonth);
         const aptCostActual = aptActualMap[year]?.[rfMonth] ?? 0;
