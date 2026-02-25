@@ -2398,85 +2398,6 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
-  // Costs Apartments - import history from Excel file
-  app.get('/api/costs-apartments/import-history', isAuthenticated, (_req, res) => {
-    try {
-      const filePath = path.join(process.cwd(), 'attached_assets', 'APARTAMENTY_1771982164657.xlsx');
-      const fileBuffer = fs.readFileSync(filePath);
-      const workbook = XLSX.read(fileBuffer);
-      const ws = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-      const APARTMENT_MAP = [
-        { colStart: 6,   entryId: 'gb-all',  categories: ['RATA DLA WŁAŚCICIELA', 'GAZ - PGNiG', 'ENERGIA - ENERGA', 'WODOCIĄGI', 'WYWÓZ ŚMIECI - ZGK'] },
-        { colStart: 39,  entryId: 'apt-168', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 54,  entryId: 'apt-134', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 84,  entryId: 'apt-167', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 99,  entryId: 'apt-142', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 114, entryId: 'apt-184', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 129, entryId: 'apt-145', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 144, entryId: 'apt-131', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 159, entryId: 'apt-166', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 174, entryId: 'apt-152', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 189, entryId: 'apt-151', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 204, entryId: 'apt-155', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 219, entryId: 'apt-129', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 234, entryId: 'apt-136', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 249, entryId: 'apt-159', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 324, entryId: 'apt-170', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 339, entryId: 'apt-156', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 354, entryId: 'apt-144', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 369, entryId: 'apt-132', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 384, entryId: 'apt-163', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 399, entryId: 'apt-139', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 414, entryId: 'apt-177', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 429, entryId: 'apt-173', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 444, entryId: 'apt-165', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 504, entryId: 'apt-176', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 519, entryId: 'apt-181', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 534, entryId: 'apt-172', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 549, entryId: 'apt-135', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 579, entryId: 'apt-162', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 639, entryId: 'apt-179', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 654, entryId: 'apt-182', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-        { colStart: 669, entryId: 'apt-150', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
-      ];
-
-      const result: Record<number, Record<string, Record<number, { p: number; r: number }>>> = {};
-
-      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-        const row = rows[rowIdx];
-        if (row[1] === 'PROGNOZA' && typeof row[4] === 'number' && row[4] >= 2020) {
-          const year = row[4] as number;
-          const yearData: Record<string, Record<number, { p: number; r: number }>> = {};
-
-          for (let monthOffset = 0; monthOffset < 12; monthOffset++) {
-            const monthRow = rows[rowIdx + monthOffset];
-            if (!monthRow) continue;
-
-            for (const apt of APARTMENT_MAP) {
-              for (let catIdx = 0; catIdx < apt.categories.length; catIdx++) {
-                const cat = apt.categories[catIdx];
-                const colBase = apt.colStart + catIdx * 3;
-                const pVal = typeof monthRow[colBase] === 'number' ? monthRow[colBase] : 0;
-                const rVal = typeof monthRow[colBase + 1] === 'number' ? monthRow[colBase + 1] : 0;
-                const dataKey = `${apt.entryId}__${cat}`;
-                if (!yearData[dataKey]) yearData[dataKey] = {};
-                yearData[dataKey][monthOffset] = { p: pVal, r: rVal };
-              }
-            }
-          }
-
-          result[year] = yearData;
-        }
-      }
-
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ message: 'Błąd importu historii: ' + err.message });
-    }
-  });
-
   // Costs Apartments import data
   app.get('/api/costs-apartments/import-data', isAuthenticated, (_req, res) => {
     try {
@@ -8607,6 +8528,208 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       });
     } catch (err: any) {
       console.error("V2 Realization error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== APT COST DATA ====================
+  app.get('/api/apt-cost-data', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const data = await storage.getAptCostData(year);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/apt-cost-data/bulk', isAuthenticated, async (req, res) => {
+    try {
+      const { cells } = req.body;
+      if (!Array.isArray(cells) || cells.length === 0) return res.status(400).json({ message: 'Brak komórek' });
+      if (cells.length > 2000) return res.status(400).json({ message: 'Za dużo komórek (max 2000)' });
+      await storage.upsertAptCostCells(cells);
+      res.json({ updated: cells.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/apt-cost-data', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year);
+      if (!year) return res.status(400).json({ message: 'year wymagany' });
+      const entryId = req.query.entryId as string | undefined;
+      await storage.clearAptCostData(year, entryId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/apt-cost-data/seed', isAuthenticated, async (_req, res) => {
+    try {
+      const existing = await storage.getAptCostData(2024);
+      if (existing.length > 0) {
+        return res.json({ seeded: 0, skipped: true, message: 'Baza danych już zawiera dane (seed pominięty)' });
+      }
+      const filePath = path.join(process.cwd(), 'attached_assets', 'APARTAMENTY_1771982164657.xlsx');
+      if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Plik Excel nie znaleziony' });
+      const fileBuffer = fs.readFileSync(filePath);
+      const workbook = XLSX.read(fileBuffer);
+      const ws = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const APARTMENT_MAP = [
+        { colStart: 6,   entryId: 'gb-all',  categories: ['RATA DLA WŁAŚCICIELA', 'GAZ - PGNiG', 'ENERGIA - ENERGA', 'WODOCIĄGI', 'WYWÓZ ŚMIECI - ZGK'] },
+        { colStart: 39,  entryId: 'apt-168', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 54,  entryId: 'apt-134', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 84,  entryId: 'apt-167', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 99,  entryId: 'apt-142', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 114, entryId: 'apt-184', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 129, entryId: 'apt-145', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 144, entryId: 'apt-131', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 159, entryId: 'apt-166', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 174, entryId: 'apt-152', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 189, entryId: 'apt-151', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 204, entryId: 'apt-155', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 219, entryId: 'apt-129', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 234, entryId: 'apt-136', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 249, entryId: 'apt-159', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 324, entryId: 'apt-170', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 339, entryId: 'apt-156', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 354, entryId: 'apt-144', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 369, entryId: 'apt-132', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 384, entryId: 'apt-163', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 399, entryId: 'apt-139', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 414, entryId: 'apt-177', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 429, entryId: 'apt-173', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 444, entryId: 'apt-165', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 504, entryId: 'apt-176', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 519, entryId: 'apt-181', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 534, entryId: 'apt-172', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 549, entryId: 'apt-135', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 579, entryId: 'apt-162', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 639, entryId: 'apt-179', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 654, entryId: 'apt-182', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+        { colStart: 669, entryId: 'apt-150', categories: ['RATA DLA WŁAŚCICIELA', 'CZYNSZ DO WSPÓLNOTY', 'ROZLICZENIE ROCZNE', 'ENERGIA - ENERGA'] },
+      ];
+      const allCells: any[] = [];
+      for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+        const row = rows[rowIdx];
+        if (row[1] === 'PROGNOZA' && typeof row[4] === 'number' && row[4] >= 2020) {
+          const year = row[4] as number;
+          for (let monthOffset = 0; monthOffset < 12; monthOffset++) {
+            const monthRow = rows[rowIdx + monthOffset];
+            if (!monthRow) continue;
+            for (const apt of APARTMENT_MAP) {
+              for (let catIdx = 0; catIdx < apt.categories.length; catIdx++) {
+                const cat = apt.categories[catIdx];
+                const colBase = apt.colStart + catIdx * 3;
+                const pVal = typeof monthRow[colBase] === 'number' ? monthRow[colBase] : 0;
+                const rVal = typeof monthRow[colBase + 1] === 'number' ? monthRow[colBase + 1] : 0;
+                if (pVal !== 0 || rVal !== 0) {
+                  allCells.push({ year, entryId: apt.entryId, category: cat, month: monthOffset, prognoza: String(pVal), realized: String(rVal) });
+                }
+              }
+            }
+          }
+        }
+      }
+      await storage.upsertAptCostCells(allCells);
+      res.json({ seeded: allCells.length, skipped: false });
+    } catch (err: any) {
+      res.status(500).json({ message: 'Błąd seedowania: ' + err.message });
+    }
+  });
+
+  app.get('/api/apt-cost-settings', isAuthenticated, async (_req, res) => {
+    try {
+      const data = await storage.getAptCostSettings();
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/apt-cost-settings/:entryId', isAuthenticated, async (req, res) => {
+    try {
+      const { entryId } = req.params;
+      const { categories, colors, entryColor, sortOrder } = req.body;
+      const result = await storage.upsertAptCostSettings(entryId, { categories, colors, entryColor, sortOrder });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== OP COST DATA ====================
+  app.get('/api/op-cost-data', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const data = await storage.getOpCostData(year);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/op-cost-data/bulk', isAuthenticated, async (req, res) => {
+    try {
+      const { cells } = req.body;
+      if (!Array.isArray(cells) || cells.length === 0) return res.status(400).json({ message: 'Brak komórek' });
+      if (cells.length > 2000) return res.status(400).json({ message: 'Za dużo komórek (max 2000)' });
+      await storage.upsertOpCostCells(cells);
+      res.json({ updated: cells.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== OP COST CATEGORIES ====================
+  app.get('/api/op-cost-categories', isAuthenticated, async (_req, res) => {
+    try {
+      const raw = await storage.getAppConfig('op-cost-categories');
+      res.json(raw ? JSON.parse(raw) : null);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/op-cost-categories', isAuthenticated, async (req, res) => {
+    try {
+      await storage.setAppConfig('op-cost-categories', JSON.stringify(req.body));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TERMINARZ COLORS ====================
+  app.get('/api/terminarz-colors', isAuthenticated, async (_req, res) => {
+    try {
+      const raw = await storage.getAppConfig('terminarz-colors');
+      res.json(raw ? JSON.parse(raw) : {});
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/terminarz-colors', isAuthenticated, async (req, res) => {
+    try {
+      await storage.setAppConfig('terminarz-colors', JSON.stringify(req.body));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== BACKUP LOG ====================
+  app.post('/api/backup/log', isAuthenticated, async (req, res) => {
+    try {
+      const { recordCount = 0, details = 'JSON/Excel export' } = req.body;
+      const result = await storage.logBackup(Number(recordCount), String(details));
+      res.json(result);
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });

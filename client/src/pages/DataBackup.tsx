@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Download, FileJson, FileSpreadsheet, Clock, Database, DatabaseBackup } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 
 interface BackupData {
   exportDate: string;
@@ -81,19 +82,30 @@ function downloadFile(content: string, filename: string, mimeType: string = "app
   URL.revokeObjectURL(url);
 }
 
+async function logBackupToDb(recordCount: number) {
+  await fetch('/api/backup/log', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    body: JSON.stringify({ recordCount, details: 'JSON/Excel export' }),
+  });
+  queryClient.invalidateQueries({ queryKey: ['/api/import-metadata/last/data_backup'] });
+}
+
 export default function DataBackup() {
   const [isLoading, setIsLoading] = useState(false);
   const [backupData, setBackupData] = useState<BackupData | null>(null);
   const [recordCounts, setRecordCounts] = useState<RecordCount[]>([]);
-  const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const { data: lastBackupMeta } = useQuery<{ importedAt: string } | null>({
+    queryKey: ['/api/import-metadata/last/data_backup'],
+    staleTime: 30000,
+  });
+  const lastBackupTime = lastBackupMeta?.importedAt
+    ? new Date(lastBackupMeta.importedAt).toLocaleString('pl-PL')
+    : null;
 
   useEffect(() => {
     fetchBackupData();
-    const stored = localStorage.getItem("lastBackupTime");
-    if (stored) {
-      setLastBackupTime(stored);
-    }
   }, []);
 
   const fetchBackupData = async () => {
@@ -150,9 +162,8 @@ export default function DataBackup() {
       const content = JSON.stringify(backupData, null, 2);
       downloadFile(content, filename, "application/json");
 
-      const now = new Date().toLocaleString("pl-PL");
-      localStorage.setItem("lastBackupTime", now);
-      setLastBackupTime(now);
+      const totalRecords = recordCounts.reduce((s, r) => s + r.count, 0);
+      await logBackupToDb(totalRecords);
 
       toast({
         title: "Sukces",
@@ -212,9 +223,8 @@ export default function DataBackup() {
         downloadFile(csvContent, filename, "text/csv;charset=utf-8");
       }
 
-      const now = new Date().toLocaleString("pl-PL");
-      localStorage.setItem("lastBackupTime", now);
-      setLastBackupTime(now);
+      const totalRecords = recordCounts.reduce((s, r) => s + r.count, 0);
+      await logBackupToDb(totalRecords);
 
       toast({
         title: "Sukces",

@@ -39,18 +39,11 @@ const DEFAULT_COLORS: TerminarzColors = {
   PODNAJEM: "#8b5cf6",
 };
 
-const COLORS_STORAGE_KEY = "terminarz-colors-v1";
-
-function loadColors(): TerminarzColors {
-  try {
-    const stored = localStorage.getItem(COLORS_STORAGE_KEY);
-    if (stored) return { ...DEFAULT_COLORS, ...JSON.parse(stored) };
-  } catch {}
-  return DEFAULT_COLORS;
-}
-
-function saveColors(colors: TerminarzColors) {
-  try { localStorage.setItem(COLORS_STORAGE_KEY, JSON.stringify(colors)); } catch {}
+async function dbSaveTerminarzColors(colors: TerminarzColors) {
+  await fetch('/api/terminarz-colors', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    body: JSON.stringify(colors),
+  });
 }
 
 function getColorForStatus(status: string, colors: TerminarzColors): string {
@@ -167,7 +160,34 @@ export default function Terminarz() {
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [hoveredBlockade, setHoveredBlockade] = useState<any>(null);
   const [compact, setCompact] = useState(false);
-  const [colors, setColors] = useState<TerminarzColors>(loadColors);
+  const { data: dbColors } = useQuery<TerminarzColors>({
+    queryKey: ['/api/terminarz-colors'],
+    staleTime: 60000,
+  });
+  const [colors, setColors] = useState<TerminarzColors>(DEFAULT_COLORS);
+
+  useEffect(() => {
+    if (!dbColors || Object.keys(dbColors).length === 0) {
+      // Auto-migrate from localStorage on first load
+      const flag = localStorage.getItem('migrated-terminarz-colors-to-db-v1');
+      if (!flag) {
+        try {
+          const stored = localStorage.getItem('terminarz-colors-v1');
+          if (stored) {
+            const parsed = { ...DEFAULT_COLORS, ...JSON.parse(stored) };
+            setColors(parsed);
+            dbSaveTerminarzColors(parsed).then(() => {
+              localStorage.setItem('migrated-terminarz-colors-to-db-v1', '1');
+            });
+          } else {
+            localStorage.setItem('migrated-terminarz-colors-to-db-v1', '1');
+          }
+        } catch {}
+      }
+    } else {
+      setColors({ ...DEFAULT_COLORS, ...dbColors });
+    }
+  }, [dbColors]);
   const [showSettings, setShowSettings] = useState(false);
   const [previewRes, setPreviewRes] = useState<Reservation | null>(null);
   const [dragSelection, setDragSelection] = useState<{ aptId: number; startIdx: number; endIdx: number } | null>(null);
@@ -889,7 +909,7 @@ export default function Terminarz() {
         colors={colors}
         onChange={(newColors) => {
           setColors(newColors);
-          saveColors(newColors);
+          dbSaveTerminarzColors(newColors);
         }}
       />
 

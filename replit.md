@@ -18,7 +18,16 @@ The application features a modern full-stack architecture.
 -   **Data Import**: `xlsx` library for Excel, and CSV imports from HotRes.
 -   **File Storage**: Object Storage with presigned URLs for attachments.
 
-**V2Koszty Top Tiles Architecture**: The 3 top tiles (Koszty apartamenty, Koszty operacyjne, Razem) receive their values via `onTotalsChange` callbacks from child components (`CostsApartmentsContent`, `CostsExpensesContent`). This ensures tiles show identical numbers to the tables below. Both TabsContent use `forceMount` to guarantee children mount on page load. Apartment costs come from localStorage `costs-apartments-data-{year}`; operational costs from `oplaty-data-{year}` + server forecasts (same as what `grandTotal` in each child computes).
+**V2Koszty Top Tiles Architecture**: The 3 top tiles (Koszty apartamenty, Koszty operacyjne, Razem) receive their values via `onTotalsChange` callbacks from child components (`CostsApartmentsContent`, `CostsExpensesContent`). This ensures tiles show identical numbers to the tables below. Both TabsContent use `forceMount` to guarantee children mount on page load. Apartment costs come from DB table `apt_cost_data` via `GET /api/apt-cost-data?year=X`; operational costs from DB table `op_cost_data` via `GET /api/op-cost-data?year=X` + server forecasts (same as what `grandTotal` in each child computes). Both use 600ms debounced batch writes via `POST /api/apt-cost-data/bulk` and `POST /api/op-cost-data/bulk`.
+
+**Shared Data Architecture (DB, not localStorage)**: All business data is stored in PostgreSQL and shared across all users:
+- `apt_cost_data` (year, entryId, category, month, prognoza, realized) — apartment cost grid
+- `apt_cost_settings` (entryId PK, categories, colors, entryColor, sortOrder) — apartment settings/colors
+- `op_cost_data` (year, catId, itemIdx, month, prognoza, realized) — operational cost grid
+- `app_config` key `op-cost-categories` — operational cost categories structure
+- `app_config` key `terminarz-colors` — Terminarz apartment color map
+- `import_metadata` type `data_backup` — tracks last backup time (shared across users)
+Auto-migration: on first load, if DB is empty and localStorage has data, it migrates automatically then clears localStorage.
 
 **Core Features and Design:**
 -   **Financial Management**: Dashboard overview, detailed expense tracking, bank account management, balance snapshots, and owner payments. The FINANSE section contains: Przychody (V2Przychody), Koszty (V2Koszty with 2 tabs: Apartamenty + Operacyjne). V2Prognoza, V2Realizacja, Analizy, ApartmentSchedule, and CashFlowForecast pages have been removed; their routes redirect to current equivalents. CostsApartments.tsx and CostsExpenses.tsx files are retained as embedded components within V2Koszty. A dedicated Prognoza Przychodów page (`/v2/prognoza-przychodow`) allows per-apartment monthly revenue forecasting using DB `revenue_forecasts` table — accessible via Ustawienia only (not in sidebar). Sidebar storage key is `sidebar-config-v11`.

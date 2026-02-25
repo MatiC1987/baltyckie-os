@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, Fragment, useRef } from "react";
 import type React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Apartment, Location } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -78,74 +78,51 @@ function costChangeColor(current: number, previous: number): string {
   return "text-muted-foreground";
 }
 
-function storageKey(year: number) { return `costs-apartments-data-${year}`; }
-function categoriesStorageKey() { return `costs-apartments-categories`; }
-
 type CellData = { p: number; r: number };
 type DataMap = Record<string, Record<number, CellData>>;
 type CategoriesMap = Record<string, string[]>;
-
-function loadData(year: number): DataMap {
-  try {
-    const raw = localStorage.getItem(storageKey(year));
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-}
-
-function saveData(year: number, data: DataMap) {
-  localStorage.setItem(storageKey(year), JSON.stringify(data));
-}
-
-function loadCategories(): CategoriesMap {
-  try {
-    const raw = localStorage.getItem(categoriesStorageKey());
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-}
-
-function saveCategories(cats: CategoriesMap) {
-  localStorage.setItem(categoriesStorageKey(), JSON.stringify(cats));
-}
-
 type ColorMap = Record<string, Record<string, { color: string; archived?: boolean }>>;
-function colorStorageKey() { return `costs-apartments-colors`; }
-function loadColorMap(): ColorMap {
-  try {
-    const raw = localStorage.getItem(colorStorageKey());
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
-}
-function saveColorMap(m: ColorMap) {
-  localStorage.setItem(colorStorageKey(), JSON.stringify(m));
-}
-
 type EntryColorMap = Record<string, string>;
-function entryColorStorageKey() { return `costs-apartments-entry-colors`; }
-function loadEntryColorMap(): EntryColorMap {
-  try {
-    const raw = localStorage.getItem(entryColorStorageKey());
-    if (raw) return JSON.parse(raw);
-  } catch {}
+type SortOrderMap = Record<string, string[]>;
+
+// Legacy localStorage readers — used ONLY during one-time migration, then abandoned
+function _legacyLoadData(year: number): DataMap {
+  try { const r = localStorage.getItem(`costs-apartments-data-${year}`); if (r) return JSON.parse(r); } catch {}
   return {};
 }
-function saveEntryColorMap(m: EntryColorMap) {
-  localStorage.setItem(entryColorStorageKey(), JSON.stringify(m));
+function _legacyLoadCategories(): CategoriesMap {
+  try { const r = localStorage.getItem("costs-apartments-categories"); if (r) return JSON.parse(r); } catch {}
+  return {};
+}
+function _legacyLoadColorMap(): ColorMap {
+  try { const r = localStorage.getItem("costs-apartments-colors"); if (r) return JSON.parse(r); } catch {}
+  return {};
+}
+function _legacyLoadEntryColorMap(): EntryColorMap {
+  try { const r = localStorage.getItem("costs-apartments-entry-colors"); if (r) return JSON.parse(r); } catch {}
+  return {};
+}
+function _legacyLoadSortOrder(): SortOrderMap {
+  try { const r = localStorage.getItem("costs-apartments-sort-order"); if (r) return JSON.parse(r); } catch {}
+  return {};
 }
 
-type SortOrderMap = Record<string, string[]>;
-function sortOrderKey() { return `costs-apartments-sort-order`; }
-function loadSortOrder(): SortOrderMap {
-  try {
-    const raw = localStorage.getItem(sortOrderKey());
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return {};
+// DB helpers
+async function dbBulkSaveCells(cells: { year: number; entryId: string; category: string; month: number; prognoza: string; realized: string }[]) {
+  if (cells.length === 0) return;
+  const CHUNK = 500;
+  for (let i = 0; i < cells.length; i += CHUNK) {
+    await fetch('/api/apt-cost-data/bulk', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ cells: cells.slice(i, i + CHUNK) }),
+    });
+  }
 }
-function saveSortOrder(m: SortOrderMap) {
-  localStorage.setItem(sortOrderKey(), JSON.stringify(m));
+async function dbSaveSettings(entryId: string, settings: Partial<{ categories: string[]; colors: Record<string, { color: string; archived?: boolean }>; entryColor: string; sortOrder: string[] }>) {
+  await fetch(`/api/apt-cost-settings/${entryId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    body: JSON.stringify(settings),
+  });
 }
 
 interface CostEntry {
@@ -217,17 +194,125 @@ function EditableCell({
 export function CostsApartmentsContent({ embedded = false, externalYear, onTotalsChange }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void }) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
+  const queryClient = useQueryClient();
   const [year, setYear] = useState(externalYear ?? currentYear);
-  const [data, setData] = useState(() => loadData(externalYear ?? currentYear));
+  const [data, setData] = useState<DataMap>({});
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [categoriesMap, setCategoriesMap] = useState<CategoriesMap>(() => loadCategories());
-  const [colorMap, setColorMap] = useState<ColorMap>(() => loadColorMap());
-  const [entryColorMap, setEntryColorMap] = useState<EntryColorMap>(() => loadEntryColorMap());
-  const [sortOrderMap, setSortOrderMap] = useState<SortOrderMap>(() => loadSortOrder());
+  const [categoriesMap, setCategoriesMap] = useState<CategoriesMap>({});
+  const [colorMap, setColorMap] = useState<ColorMap>({});
+  const [entryColorMap, setEntryColorMap] = useState<EntryColorMap>({});
+  const [sortOrderMap, setSortOrderMap] = useState<SortOrderMap>({});
   const [compareYear, setCompareYear] = useState<number | null>(null);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
   const [isImportingHistory, setIsImportingHistory] = useState(false);
   const { toast } = useToast();
+
+  // DB queries
+  const { data: aptCostRows, isLoading: isLoadingCostData } = useQuery<any[]>({
+    queryKey: ['/api/apt-cost-data', year],
+    staleTime: 30000,
+  });
+  const { data: compareCostRows } = useQuery<any[]>({
+    queryKey: ['/api/apt-cost-data', compareYear],
+    enabled: compareYear !== null,
+    staleTime: 30000,
+  });
+  const { data: settingsRows } = useQuery<any[]>({
+    queryKey: ['/api/apt-cost-settings'],
+    staleTime: 60000,
+  });
+
+  // Pending cells ref for debounced DB writes
+  const pendingCellsRef = useRef<Map<string, { year: number; entryId: string; category: string; month: number; prognoza: string; realized: string }>>(new Map());
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingCells = useCallback(async () => {
+    if (pendingCellsRef.current.size === 0) return;
+    const cells = Array.from(pendingCellsRef.current.values());
+    pendingCellsRef.current.clear();
+    try { await dbBulkSaveCells(cells); } catch (err) { console.error('Błąd zapisu komórek:', err); }
+  }, []);
+
+  // Populate data state from API
+  useEffect(() => {
+    if (!aptCostRows) return;
+    const m: DataMap = {};
+    for (const r of aptCostRows) {
+      const key = `${r.entryId}__${r.category}`;
+      if (!m[key]) m[key] = {};
+      m[key][r.month] = { p: parseFloat(r.prognoza ?? '0'), r: parseFloat(r.realized ?? '0') };
+    }
+    setData(m);
+  }, [aptCostRows]);
+
+  // Populate settings from API
+  useEffect(() => {
+    if (!settingsRows) return;
+    const cats: CategoriesMap = {};
+    const colors: ColorMap = {};
+    const entryColors: EntryColorMap = {};
+    const sortOrders: SortOrderMap = {};
+    for (const s of settingsRows) {
+      if (s.categories) cats[s.entryId] = s.categories as string[];
+      if (s.colors) colors[s.entryId] = s.colors as Record<string, { color: string; archived?: boolean }>;
+      if (s.entryColor) entryColors[s.entryId] = s.entryColor;
+      if (s.sortOrder) sortOrders[s.entryId] = s.sortOrder as string[];
+    }
+    setCategoriesMap(cats);
+    setColorMap(colors);
+    setEntryColorMap(entryColors);
+    setSortOrderMap(sortOrders);
+  }, [settingsRows]);
+
+  // One-time auto-migration from localStorage → DB
+  useEffect(() => {
+    if (isLoadingCostData || !aptCostRows || !settingsRows) return;
+    const dataFlag = localStorage.getItem('migrated-apt-cost-to-db-v1');
+    const settingsFlag = localStorage.getItem('migrated-apt-settings-to-db-v1');
+    if (dataFlag && settingsFlag) return;
+
+    const doMigration = async () => {
+      if (!dataFlag) {
+        const allCells: { year: number; entryId: string; category: string; month: number; prognoza: string; realized: string }[] = [];
+        for (let y = 2022; y <= currentYear; y++) {
+          const localData = _legacyLoadData(y);
+          for (const key of Object.keys(localData)) {
+            const parts = key.split('__');
+            if (parts.length < 2) continue;
+            const [entryId, ...catParts] = parts;
+            const category = catParts.join('__');
+            for (let m = 0; m < 12; m++) {
+              const cell = localData[key]?.[m];
+              if (cell && (cell.p !== 0 || cell.r !== 0)) {
+                allCells.push({ year: y, entryId, category, month: m, prognoza: String(cell.p), realized: String(cell.r) });
+              }
+            }
+          }
+        }
+        if (allCells.length > 0) await dbBulkSaveCells(allCells);
+        localStorage.setItem('migrated-apt-cost-to-db-v1', '1');
+        if (allCells.length > 0) queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data'] });
+      }
+      if (!settingsFlag) {
+        const legacyCats = _legacyLoadCategories();
+        const legacyColors = _legacyLoadColorMap();
+        const legacyEntryColors = _legacyLoadEntryColorMap();
+        const legacySortOrder = _legacyLoadSortOrder();
+        const entryIds = new Set([...Object.keys(legacyCats), ...Object.keys(legacyColors), ...Object.keys(legacyEntryColors), ...Object.keys(legacySortOrder)]);
+        for (const entryId of entryIds) {
+          const s: Partial<{ categories: string[]; colors: Record<string, { color: string; archived?: boolean }>; entryColor: string; sortOrder: string[] }> = {};
+          if (legacyCats[entryId]) s.categories = legacyCats[entryId];
+          if (legacyColors[entryId]) s.colors = legacyColors[entryId];
+          if (legacyEntryColors[entryId]) s.entryColor = legacyEntryColors[entryId];
+          if (legacySortOrder[entryId]) s.sortOrder = legacySortOrder[entryId];
+          if (Object.keys(s).length > 0) await dbSaveSettings(entryId, s);
+        }
+        localStorage.setItem('migrated-apt-settings-to-db-v1', '1');
+        if (entryIds.size > 0) queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-settings'] });
+      }
+    };
+    doMigration().catch(err => console.error('Błąd migracji:', err));
+  }, [aptCostRows, settingsRows, isLoadingCostData]);
 
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -270,17 +355,17 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   useEffect(() => {
     if (externalYear !== undefined && externalYear !== year) {
       setYear(externalYear);
-      setData(loadData(externalYear));
-      if (compareYear === externalYear) {
-        setCompareYear(null);
-      }
+      if (compareYear === externalYear) setCompareYear(null);
     }
   }, [externalYear]);
 
-  const handleClearAll = () => {
-    localStorage.removeItem(storageKey(year));
+  const handleClearAll = async () => {
     setData({});
     setShowClearAllDialog(false);
+    try {
+      await fetch(`/api/apt-cost-data?year=${year}`, { method: 'DELETE', credentials: 'include' });
+      queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', year] });
+    } catch (err) { console.error('Błąd czyszczenia:', err); }
     toast({ title: "Dane wyczyszczone", description: `Wszystkie koszty za rok ${year} zostały usunięte` });
   };
 
@@ -335,7 +420,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     if (!editEntryColorDialog) return;
     const next = { ...entryColorMap, [editEntryColorDialog]: editEntryColor };
     setEntryColorMap(next);
-    saveEntryColorMap(next);
+    dbSaveSettings(editEntryColorDialog, { entryColor: editEntryColor });
     setEditEntryColorDialog(null);
   }, [editEntryColorDialog, editEntryColor, entryColorMap]);
 
@@ -401,7 +486,16 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     return costEntries.filter(g => g.location === validLocationTab);
   }, [costEntries, validLocationTab]);
 
-  const compareData = useMemo(() => compareYear !== null ? loadData(compareYear) : {}, [compareYear]);
+  const compareData = useMemo(() => {
+    if (compareYear === null || !compareCostRows) return {};
+    const m: DataMap = {};
+    for (const r of compareCostRows) {
+      const key = `${r.entryId}__${r.category}`;
+      if (!m[key]) m[key] = {};
+      m[key][r.month] = { p: parseFloat(r.prognoza ?? '0'), r: parseFloat(r.realized ?? '0') };
+    }
+    return m;
+  }, [compareYear, compareCostRows]);
 
   const getCellKeyOld = (entryId: string, category: string) => `${entryId}__${category}`;
 
@@ -416,11 +510,16 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       const next = { ...prev };
       if (!next[key]) next[key] = {};
       if (!next[key][month]) next[key][month] = { p: 0, r: 0 };
-      next[key][month] = { ...next[key][month], [field]: parseFloat(value) || 0 };
-      saveData(year, next);
+      const newCell = { ...next[key][month], [field]: parseFloat(value) || 0 };
+      next[key][month] = newCell;
+      // Queue for DB write
+      const cellKey = `${year}__${entryId}__${category}__${month}`;
+      pendingCellsRef.current.set(cellKey, { year, entryId, category, month, prognoza: String(newCell.p), realized: String(newCell.r) });
       return next;
     });
-  }, [year]);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(flushPendingCells, 600);
+  }, [year, flushPendingCells]);
 
   const startEditing = useCallback((cellKey: CellKey) => {
     const parsed = parseCellKey(cellKey);
@@ -489,29 +588,27 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     setSelectedCell(null);
   }, [selectedCell, getCellValue, handleCellChange]);
 
-  const handleCopyForecastToNextYear = useCallback(() => {
+  const handleCopyForecastToNextYear = useCallback(async () => {
     const nextYear = year + 1;
-    const existingNextYearData = loadData(nextYear);
-    const newNextYearData = { ...existingNextYearData };
+    const cells: { year: number; entryId: string; category: string; month: number; prognoza: string; realized: string }[] = [];
     costEntries.forEach(group => {
       group.items.forEach(entry => {
         entry.categories.forEach(cat => {
           const key = getCellKeyOld(entry.id, cat);
           for (let m = 0; m < 12; m++) {
             const val = data[key]?.[m]?.p || 0;
-            if (val !== 0) {
-              if (!newNextYearData[key]) newNextYearData[key] = {};
-              if (!newNextYearData[key][m]) newNextYearData[key][m] = { p: 0, r: 0 };
-              newNextYearData[key][m] = { ...newNextYearData[key][m], p: val };
-            }
+            if (val !== 0) cells.push({ year: nextYear, entryId: entry.id, category: cat, month: m, prognoza: String(val), realized: '0' });
           }
         });
       });
     });
-    saveData(nextYear, newNextYearData);
+    if (cells.length > 0) {
+      try { await dbBulkSaveCells(cells); queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', nextYear] }); }
+      catch (err) { console.error('Błąd kopiowania prognozy:', err); }
+    }
     setShowCopyToNextYear(false);
     toast({ title: "Skopiowano", description: `Prognoza skopiowana na rok ${nextYear}` });
-  }, [year, costEntries, data, toast]);
+  }, [year, costEntries, data, toast, queryClient]);
 
   const toggleLocation = (loc: string) => {
     setCollapsed(prev => {
@@ -525,7 +622,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const handleYearChange = (y: string) => {
     const newYear = Number(y);
     setYear(newYear);
-    setData(loadData(newYear));
+    // Data will be loaded from DB via useQuery when year changes
   };
 
   const openCategoryEditor = (entry: CostEntry) => {
@@ -538,7 +635,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     if (!editingEntry) return;
     const next = { ...categoriesMap, [editingEntry.id]: editCategories };
     setCategoriesMap(next);
-    saveCategories(next);
+    dbSaveSettings(editingEntry.id, { categories: editCategories, sortOrder: sortOrderMap[editingEntry.id] });
     setEditingEntry(null);
   };
 
@@ -558,16 +655,14 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     if (!addCatEntryId || !newCatName.trim()) return;
     const name = newCatName.trim().toUpperCase();
     const existing = categoriesMap[addCatEntryId] || (addCatEntryId === "gb-all" ? [...DEFAULT_CATEGORIES_GRAND_BALTIC] : [...DEFAULT_CATEGORIES_INDIVIDUAL]);
-    if (!existing.includes(name)) {
-      const next = { ...categoriesMap, [addCatEntryId]: [...existing, name] };
-      setCategoriesMap(next);
-      saveCategories(next);
-    }
+    const newCats = existing.includes(name) ? existing : [...existing, name];
+    const nextCats = { ...categoriesMap, [addCatEntryId]: newCats };
+    setCategoriesMap(nextCats);
     const newColors = { ...colorMap };
     if (!newColors[addCatEntryId]) newColors[addCatEntryId] = {};
     newColors[addCatEntryId][name] = { color: newCatColor };
     setColorMap(newColors);
-    saveColorMap(newColors);
+    dbSaveSettings(addCatEntryId, { categories: newCats, colors: newColors[addCatEntryId], sortOrder: sortOrderMap[addCatEntryId] });
     setNewCatName("");
     setNewCatColor(CATEGORY_COLORS[0].value);
     setShowAddCategory(false);
@@ -579,7 +674,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     if (!newColors[entryId]) newColors[entryId] = {};
     newColors[entryId][category] = { ...newColors[entryId][category], archived: true };
     setColorMap(newColors);
-    saveColorMap(newColors);
+    dbSaveSettings(entryId, { colors: newColors[entryId] });
     toast({ title: "Zarchiwizowano kategorię" });
   }, [colorMap, toast]);
 
@@ -588,34 +683,35 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     if (newColors[entryId]?.[category]) {
       newColors[entryId][category] = { ...newColors[entryId][category], archived: false };
       setColorMap(newColors);
-      saveColorMap(newColors);
+      dbSaveSettings(entryId, { colors: newColors[entryId] });
     }
     toast({ title: "Przywrócono kategorię" });
   }, [colorMap, toast]);
 
   const handleDeleteCategory = useCallback((entryId: string, category: string) => {
     const existing = categoriesMap[entryId] || [];
-    const next = { ...categoriesMap, [entryId]: existing.filter(c => c !== category) };
-    setCategoriesMap(next);
-    saveCategories(next);
+    const newCats = existing.filter(c => c !== category);
+    setCategoriesMap({ ...categoriesMap, [entryId]: newCats });
+    dbSaveSettings(entryId, { categories: newCats });
     toast({ title: "Usunięto kategorię" });
   }, [categoriesMap, toast]);
 
-  const handleResetEntryData = useCallback((entryId: string) => {
-    const current = loadData(year);
-    const next: typeof current = {};
-    for (const key of Object.keys(current)) {
-      if (!key.startsWith(`${entryId}__`)) next[key] = current[key];
+  const handleResetEntryData = useCallback(async (entryId: string) => {
+    const next: DataMap = {};
+    for (const key of Object.keys(data)) {
+      if (!key.startsWith(`${entryId}__`)) next[key] = data[key];
     }
-    saveData(year, next);
     setData(next);
     const nextCats = { ...categoriesMap };
     delete nextCats[entryId];
     setCategoriesMap(nextCats);
-    saveCategories(nextCats);
     setResetEntryDialog(null);
+    try {
+      await fetch(`/api/apt-cost-data?year=${year}&entryId=${entryId}`, { method: 'DELETE', credentials: 'include' });
+      queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', year] });
+    } catch (err) { console.error('Błąd resetu:', err); }
     toast({ title: "Zresetowano dane", description: "Koszty zostały usunięte dla wybranego apartamentu i roku" });
-  }, [year, categoriesMap, toast]);
+  }, [year, data, categoriesMap, queryClient, toast]);
 
   const openEditCatDialog = useCallback((entryId: string, category: string) => {
     setEditCatDialog({ entryId, category });
@@ -623,22 +719,27 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     setEditCatColor(colorMap[entryId]?.[category]?.color || CATEGORY_COLORS[0].value);
   }, [colorMap]);
 
-  const handleSaveEditCat = useCallback(() => {
+  const handleSaveEditCat = useCallback(async () => {
     if (!editCatDialog || !editCatName.trim()) return;
     const { entryId, category } = editCatDialog;
     const newName = editCatName.trim().toUpperCase();
+    let newCats = categoriesMap[entryId] || [];
     if (newName !== category) {
-      const existing = categoriesMap[entryId] || [];
-      const next = { ...categoriesMap, [entryId]: existing.map(c => c === category ? newName : c) };
-      setCategoriesMap(next);
-      saveCategories(next);
+      newCats = newCats.map(c => c === category ? newName : c);
+      setCategoriesMap({ ...categoriesMap, [entryId]: newCats });
       const oldKey = getCellKeyOld(entryId, category);
       const newKey = getCellKeyOld(entryId, newName);
       if (data[oldKey]) {
         const newData = { ...data, [newKey]: data[oldKey] };
         delete newData[oldKey];
         setData(newData);
-        saveData(year, newData);
+        // Remap pending cells for new category name
+        const cells: { year: number; entryId: string; category: string; month: number; prognoza: string; realized: string }[] = [];
+        for (let m = 0; m < 12; m++) {
+          const cell = newData[newKey]?.[m];
+          if (cell) cells.push({ year, entryId, category: newName, month: m, prognoza: String(cell.p), realized: String(cell.r) });
+        }
+        if (cells.length > 0) await dbBulkSaveCells(cells);
       }
     }
     const newColors = { ...colorMap };
@@ -646,7 +747,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     newColors[entryId][newName] = { ...(newColors[entryId][category] || {}), color: editCatColor };
     if (newName !== category) delete newColors[entryId][category];
     setColorMap(newColors);
-    saveColorMap(newColors);
+    dbSaveSettings(entryId, { categories: newCats, colors: newColors[entryId] });
     setEditCatDialog(null);
   }, [editCatDialog, editCatName, editCatColor, categoriesMap, colorMap, data, year]);
 
@@ -676,12 +777,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     const newCats = [...cats];
     const [moved] = newCats.splice(fromIdx, 1);
     newCats.splice(toIdx, 0, moved);
-    const nextSort = { ...sortOrderMap, [entryId]: newCats };
-    setSortOrderMap(nextSort);
-    saveSortOrder(nextSort);
-    const nextCats = { ...categoriesMap, [entryId]: newCats };
-    setCategoriesMap(nextCats);
-    saveCategories(nextCats);
+    setSortOrderMap({ ...sortOrderMap, [entryId]: newCats });
+    setCategoriesMap({ ...categoriesMap, [entryId]: newCats });
+    dbSaveSettings(entryId, { categories: newCats, sortOrder: newCats });
   }, [getCategoriesForEntry, sortOrderMap, categoriesMap]);
 
   const getEntrySums = useCallback((entry: CostEntry, month: number): { p: number; r: number } => {
@@ -794,59 +892,21 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const handleImportHistory = useCallback(async () => {
     setIsImportingHistory(true);
     try {
-      const resp = await fetch('/api/costs-apartments/import-history', { credentials: 'include' });
+      const resp = await fetch('/api/apt-cost-data/seed', { method: 'POST', credentials: 'include' });
       if (!resp.ok) throw new Error(await resp.text());
-      const imported: Record<number, Record<string, Record<number, { p: number; r: number }>>> = await resp.json();
-
-      let totalEntries = 0;
-      const years = Object.keys(imported).map(Number).sort();
-
-      for (const yr of years) {
-        const importedYear = imported[yr];
-        const freshData: DataMap = {};
-
-        for (const dataKey of Object.keys(importedYear)) {
-          const monthsData = importedYear[dataKey];
-          freshData[dataKey] = {};
-          for (let m = 0; m < 12; m++) {
-            const entry = monthsData[m];
-            freshData[dataKey][m] = { p: entry?.p ?? 0, r: entry?.r ?? 0 };
-          }
-          totalEntries++;
-        }
-
-        saveData(yr, freshData);
-
-        const newCats: CategoriesMap = loadCategories();
-        for (const dataKey of Object.keys(importedYear)) {
-          const [entryId, cat] = dataKey.split('__');
-          if (!newCats[entryId]) newCats[entryId] = [];
-          if (!newCats[entryId].includes(cat)) newCats[entryId].push(cat);
-        }
-        saveCategories(newCats);
-        setCategoriesMap(newCats);
+      const result = await resp.json();
+      if (result.skipped) {
+        toast({ title: 'Dane już istnieją', description: 'Baza danych zawiera już dane historyczne. Seed pominięty.' });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data'] });
+        toast({ title: 'Import zakończony', description: `Zaimportowano ${result.seeded} rekordów z pliku Excel do bazy danych.` });
       }
-
-      setData(loadData(year));
-      toast({
-        title: 'Import historii zakończony',
-        description: `Zaimportowano dane za ${years.length} lat (${years.join(', ')}), ${totalEntries} pozycji.`,
-      });
     } catch (err: any) {
       toast({ title: 'Błąd importu', description: err.message, variant: 'destructive' });
     } finally {
       setIsImportingHistory(false);
     }
-  }, [year, toast]);
-
-  useEffect(() => {
-    const flag = localStorage.getItem('costs-apartments-history-imported-v4');
-    if (!flag) {
-      handleImportHistory().then(() => {
-        localStorage.setItem('costs-apartments-history-imported-v4', '1');
-      });
-    }
-  }, []);
+  }, [toast, queryClient]);
 
   return (
     <div className={embedded ? "space-y-4" : "p-6 space-y-4"} onMouseUp={handleMouseUp}>
@@ -929,7 +989,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         </div>
       )}
 
-      {isImportingHistory ? (
+      {isLoadingCostData ? (
         <div className="grid grid-cols-3 gap-3">
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
@@ -963,7 +1023,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         </div>
       )}
 
-      {year === currentYear && !isImportingHistory && (
+      {year === currentYear && !isLoadingCostData && (
         <>
           <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">{MONTHS_PL[currentMonth]} — bieżący miesiąc</p>
           <div className="grid grid-cols-3 gap-3">

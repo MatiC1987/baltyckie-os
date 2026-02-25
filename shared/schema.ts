@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, numeric, date, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, numeric, date, decimal, jsonb, varchar, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -1203,3 +1203,47 @@ export const appConfig = pgTable("app_config", {
 });
 
 export type AppConfig = typeof appConfig.$inferSelect;
+
+export const aptCostData = pgTable("apt_cost_data", {
+  id: serial("id").primaryKey(),
+  year: integer("year").notNull(),
+  entryId: varchar("entry_id", { length: 100 }).notNull(),
+  category: varchar("category", { length: 200 }).notNull(),
+  month: integer("month").notNull(),
+  prognoza: numeric("prognoza", { precision: 12, scale: 2 }).default("0"),
+  realized: numeric("realized", { precision: 12, scale: 2 }).default("0"),
+}, (t) => [
+  uniqueIndex("apt_cost_data_unique").on(t.year, t.entryId, t.category, t.month),
+]);
+
+export const insertAptCostDataSchema = createInsertSchema(aptCostData).omit({ id: true });
+export type AptCostData = typeof aptCostData.$inferSelect;
+export type InsertAptCostData = z.infer<typeof insertAptCostDataSchema>;
+
+export const aptCostSettings = pgTable("apt_cost_settings", {
+  entryId: varchar("entry_id", { length: 100 }).primaryKey(),
+  categories: jsonb("categories"),
+  colors: jsonb("colors"),
+  entryColor: varchar("entry_color", { length: 50 }),
+  sortOrder: jsonb("sort_order"),
+});
+
+export const insertAptCostSettingsSchema = createInsertSchema(aptCostSettings);
+export type AptCostSettings = typeof aptCostSettings.$inferSelect;
+export type InsertAptCostSettings = z.infer<typeof insertAptCostSettingsSchema>;
+
+export const opCostData = pgTable("op_cost_data", {
+  id: serial("id").primaryKey(),
+  year: integer("year").notNull(),
+  catId: varchar("cat_id", { length: 100 }).notNull(),
+  itemIdx: integer("item_idx").notNull(),
+  month: integer("month").notNull(),
+  prognoza: numeric("prognoza", { precision: 12, scale: 2 }).default("0"),
+  realized: numeric("realized", { precision: 12, scale: 2 }).default("0"),
+}, (t) => [
+  uniqueIndex("op_cost_data_unique").on(t.year, t.catId, t.itemIdx, t.month),
+]);
+
+export const insertOpCostDataSchema = createInsertSchema(opCostData).omit({ id: true });
+export type OpCostData = typeof opCostData.$inferSelect;
+export type InsertOpCostData = z.infer<typeof insertOpCostDataSchema>;

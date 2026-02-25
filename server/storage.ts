@@ -60,6 +60,11 @@ import {
   taskSections, TaskSection, InsertTaskSection,
   tasks, Task, InsertTask,
   taskChecklistItems, TaskChecklistItem, InsertTaskChecklistItem,
+  aptCostData, AptCostData, InsertAptCostData,
+  aptCostSettings, AptCostSettings, InsertAptCostSettings,
+  opCostData, OpCostData, InsertOpCostData,
+  appConfig, AppConfig,
+  insertImportMetadataSchema,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, type SQL } from "drizzle-orm";
@@ -425,6 +430,23 @@ export interface IStorage {
     netIncome: number;
     occupancyRate: number;
   }>;
+
+  // Apt Cost Data
+  getAptCostData(year: number): Promise<AptCostData[]>;
+  upsertAptCostCells(cells: InsertAptCostData[]): Promise<void>;
+  getAptCostSettings(): Promise<AptCostSettings[]>;
+  upsertAptCostSettings(entryId: string, settings: Partial<Omit<InsertAptCostSettings, 'entryId'>>): Promise<AptCostSettings>;
+
+  // Op Cost Data
+  getOpCostData(year: number): Promise<OpCostData[]>;
+  upsertOpCostCells(cells: InsertOpCostData[]): Promise<void>;
+
+  // App Config (op-cost-categories, terminarz-colors)
+  getAppConfig(key: string): Promise<string | null>;
+  setAppConfig(key: string, value: string): Promise<void>;
+
+  // Backup log
+  logBackup(recordCount: number, details: string): Promise<ImportMetadata>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1964,6 +1986,96 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTaskChecklistItem(id: number): Promise<void> {
     await db.delete(taskChecklistItems).where(eq(taskChecklistItems.id, id));
+  }
+
+  async clearAptCostData(year: number, entryId?: string): Promise<void> {
+    if (entryId) {
+      await db.delete(aptCostData).where(and(eq(aptCostData.year, year), eq(aptCostData.entryId, entryId)));
+    } else {
+      await db.delete(aptCostData).where(eq(aptCostData.year, year));
+    }
+  }
+
+  // Apt Cost Data
+  async getAptCostData(year: number): Promise<AptCostData[]> {
+    return await db.select().from(aptCostData).where(eq(aptCostData.year, year));
+  }
+
+  async upsertAptCostCells(cells: InsertAptCostData[]): Promise<void> {
+    if (cells.length === 0) return;
+    const BATCH = 200;
+    for (let i = 0; i < cells.length; i += BATCH) {
+      const chunk = cells.slice(i, i + BATCH);
+      await db.insert(aptCostData)
+        .values(chunk)
+        .onConflictDoUpdate({
+          target: [aptCostData.year, aptCostData.entryId, aptCostData.category, aptCostData.month],
+          set: {
+            prognoza: sql`EXCLUDED.prognoza`,
+            realized: sql`EXCLUDED.realized`,
+          },
+        });
+    }
+  }
+
+  async getAptCostSettings(): Promise<AptCostSettings[]> {
+    return await db.select().from(aptCostSettings);
+  }
+
+  async upsertAptCostSettings(entryId: string, settings: Partial<Omit<InsertAptCostSettings, 'entryId'>>): Promise<AptCostSettings> {
+    const [result] = await db.insert(aptCostSettings)
+      .values({ entryId, ...settings })
+      .onConflictDoUpdate({
+        target: aptCostSettings.entryId,
+        set: settings,
+      })
+      .returning();
+    return result;
+  }
+
+  // Op Cost Data
+  async getOpCostData(year: number): Promise<OpCostData[]> {
+    return await db.select().from(opCostData).where(eq(opCostData.year, year));
+  }
+
+  async upsertOpCostCells(cells: InsertOpCostData[]): Promise<void> {
+    if (cells.length === 0) return;
+    const BATCH = 200;
+    for (let i = 0; i < cells.length; i += BATCH) {
+      const chunk = cells.slice(i, i + BATCH);
+      await db.insert(opCostData)
+        .values(chunk)
+        .onConflictDoUpdate({
+          target: [opCostData.year, opCostData.catId, opCostData.itemIdx, opCostData.month],
+          set: {
+            prognoza: sql`EXCLUDED.prognoza`,
+            realized: sql`EXCLUDED.realized`,
+          },
+        });
+    }
+  }
+
+  // App Config
+  async getAppConfig(key: string): Promise<string | null> {
+    const [row] = await db.select().from(appConfig).where(eq(appConfig.key, key));
+    return row?.value ?? null;
+  }
+
+  async setAppConfig(key: string, value: string): Promise<void> {
+    await db.insert(appConfig)
+      .values({ key, value })
+      .onConflictDoUpdate({
+        target: appConfig.key,
+        set: { value, updatedAt: new Date() },
+      });
+  }
+
+  // Backup log
+  async logBackup(recordCount: number, details: string): Promise<ImportMetadata> {
+    const [result] = await db.insert(importMetadata)
+      .values({ importType: 'data_backup', recordsImported: recordCount, details })
+      .returning();
+    return result;
   }
 }
 

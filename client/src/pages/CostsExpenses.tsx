@@ -75,7 +75,7 @@ function getStorageKey(year: number) {
   return `oplaty-data-${year}`;
 }
 
-function loadData(year: number): Record<CellKey, number> {
+function _legacyLoadData(year: number): Record<CellKey, number> {
   try {
     const raw = localStorage.getItem(getStorageKey(year));
     if (raw) return JSON.parse(raw);
@@ -83,20 +83,36 @@ function loadData(year: number): Record<CellKey, number> {
   return {};
 }
 
-function saveData(year: number, data: Record<CellKey, number>) {
-  localStorage.setItem(getStorageKey(year), JSON.stringify(data));
-}
-
-function loadCategories(): CostCategory[] {
+function _legacyLoadCategories(): CostCategory[] {
   try {
     const raw = localStorage.getItem("oplaty-categories");
     if (raw) return JSON.parse(raw);
   } catch {}
-  return DEFAULT_CATEGORIES;
+  return [];
 }
 
-function saveCategories(cats: CostCategory[]) {
-  localStorage.setItem("oplaty-categories", JSON.stringify(cats));
+function apiRowsToCellData(rows: Array<{ catId: string; itemIdx: number; month: number; prognoza: string | null; realized: string | null }>): Record<CellKey, number> {
+  const out: Record<CellKey, number> = {};
+  for (const r of rows) {
+    const p = Number(r.prognoza) || 0;
+    const rv = Number(r.realized) || 0;
+    if (p !== 0) out[makeCellKey(r.catId, r.itemIdx, r.month, "prognoza")] = p;
+    if (rv !== 0) out[makeCellKey(r.catId, r.itemIdx, r.month, "rzeczywiste")] = rv;
+  }
+  return out;
+}
+
+function cellDataToBulkPayload(year: number, cells: Record<CellKey, number>) {
+  const grouped: Record<string, { catId: string; itemIdx: number; month: number; prognoza?: number; realized?: number }> = {};
+  for (const [key, val] of Object.entries(cells)) {
+    const parts = key.split("__");
+    const catId = parts[0], itemIdx = parseInt(parts[1]), month = parseInt(parts[2]), field = parts[3];
+    const gk = `${catId}__${itemIdx}__${month}`;
+    if (!grouped[gk]) grouped[gk] = { catId, itemIdx, month };
+    if (field === "prognoza") grouped[gk].prognoza = val;
+    else grouped[gk].realized = val;
+  }
+  return Object.values(grouped).map(g => ({ year, catId: g.catId, itemIdx: g.itemIdx, month: g.month, prognoza: g.prognoza ?? 0, realized: g.realized ?? 0 }));
 }
 
 function parseDateLocal(dateStr: string): { year: number; month: number } {
@@ -244,13 +260,93 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const currentMonth = new Date().getMonth();
   const [selectedYear, setSelectedYear] = useState(externalYear ?? currentYear);
   const [compareYear, setCompareYear] = useState<number | null>(null);
-  const [cellData, setCellData] = useState<Record<CellKey, number>>(() => loadData(externalYear ?? currentYear));
-  const [categories, setCategories] = useState<CostCategory[]>(() => loadCategories());
+
+  const { data: dbRows = [] } = useQuery<Array<{ catId: string; itemIdx: number; month: number; prognoza: string | null; realized: string | null }>>({
+    queryKey: ["/api/op-cost-data", selectedYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/op-cost-data?year=${selectedYear}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+
+  const { data: dbCategories } = useQuery<CostCategory[]>({
+    queryKey: ["/api/op-cost-categories"],
+    staleTime: 60000,
+  });
+
+  const baseDbCellData = useMemo(() => apiRowsToCellData(dbRows), [dbRows]);
+
+  const [cellData, setCellData] = useState<Record<CellKey, number>>({});
+  const [categories, setCategories] = useState<CostCategory[]>(DEFAULT_CATEGORIES);
+
+  useEffect(() => {
+    if (dbCategories !== undefined) {
+      if (dbCategories.length > 0) {
+        setCategories(dbCategories);
+      } else {
+        const legacyCats = _legacyLoadCategories();
+        if (legacyCats.length > 0) {
+          setCategories(legacyCats);
+          fetch("/api/op-cost-categories", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(legacyCats) });
+          localStorage.removeItem("oplaty-categories");
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
+        }
+      }
+    }
+  }, [dbCategories]);
+
+  useEffect(() => {
+    setCellData(baseDbCellData);
+    if (Object.keys(baseDbCellData).length === 0 && !localStorage.getItem(`migrated-op-cost-to-db-v1-${selectedYear}`)) {
+      const legacy = _legacyLoadData(selectedYear);
+      if (Object.keys(legacy).length > 0) {
+        setCellData(legacy);
+        const payload = cellDataToBulkPayload(selectedYear, legacy);
+        fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ cells: payload }) })
+          .then(() => {
+            localStorage.setItem(`migrated-op-cost-to-db-v1-${selectedYear}`, "1");
+            localStorage.removeItem(getStorageKey(selectedYear));
+            queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data", selectedYear] });
+          });
+      } else {
+        localStorage.setItem(`migrated-op-cost-to-db-v1-${selectedYear}`, "1");
+      }
+    }
+  }, [baseDbCellData, selectedYear]);
+
+  const pendingCellsRef = useRef<Record<CellKey, number>>({});
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingCells = useCallback((year: number) => {
+    const pending = { ...pendingCellsRef.current };
+    if (Object.keys(pending).length === 0) return;
+    pendingCellsRef.current = {};
+    const payload = cellDataToBulkPayload(year, pending);
+    fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ cells: payload }) })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data", year] }));
+  }, []);
+
+  const queueCellSave = useCallback((key: CellKey, val: number, year: number) => {
+    if (val === 0) {
+      delete pendingCellsRef.current[key];
+    } else {
+      pendingCellsRef.current[key] = val;
+    }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => flushPendingCells(year), 600);
+  }, [flushPendingCells]);
+
+  const dbSaveCategories = useCallback((cats: CostCategory[]) => {
+    fetch("/api/op-cost-categories", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(cats) })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["/api/op-cost-categories"] }));
+  }, []);
 
   useEffect(() => {
     if (externalYear !== undefined && externalYear !== selectedYear) {
       setSelectedYear(externalYear);
-      setCellData(loadData(externalYear));
       if (compareYear === externalYear) {
         setCompareYear(null);
       }
@@ -460,8 +556,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
   const updateCategories = useCallback((newCats: CostCategory[]) => {
     setCategories(newCats);
-    saveCategories(newCats);
-  }, []);
+    dbSaveCategories(newCats);
+  }, [dbSaveCategories]);
 
   const handleArchiveCategory = useCallback((catId: string) => {
     const newCats = categories.map(c => c.id === catId ? { ...c, archived: true } : c);
@@ -577,7 +673,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const handleYearChange = useCallback((year: string) => {
     const y = parseInt(year);
     setSelectedYear(y);
-    setCellData(loadData(y));
   }, []);
 
   const toggleCategory = useCallback((catId: string) => {
@@ -620,7 +715,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         newData[editingCell] = val;
       }
       setCellData(newData);
-      saveData(selectedYear, newData);
+      queueCellSave(editingCell, val, selectedYear);
 
       if (val > 0 && editingCell.endsWith("__rzeczywiste")) {
         const { catId, itemIdx, month } = parseCellKey(editingCell);
@@ -682,12 +777,15 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
           }
         }
         setCellData(newData);
-        saveData(selectedYear, newData);
+        for (let m2 = startM; m2 <= endM; m2++) {
+          const k2 = makeCellKey(source.catId, source.itemIdx, m2, source.field);
+          queueCellSave(k2, sourceVal, selectedYear);
+        }
       }
     }
     fillDragging.current = false;
     setFillRangeEnd(null);
-  }, [selectedCell, fillRangeEnd, cellData, selectedYear, parseCellKey]);
+  }, [selectedCell, fillRangeEnd, cellData, selectedYear, parseCellKey, queueCellSave]);
 
   const isInFillRange = useCallback((key: CellKey): boolean => {
     if (!selectedCell || fillRangeEnd === null) return false;
@@ -711,28 +809,30 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       } else {
         newData[k] = sourceVal;
       }
+      queueCellSave(k, sourceVal, selectedYear);
     }
     setCellData(newData);
-    saveData(selectedYear, newData);
     setSelectedCell(null);
-  }, [selectedCell, cellData, selectedYear, parseCellKey]);
+  }, [selectedCell, cellData, selectedYear, parseCellKey, queueCellSave]);
 
-  const handleCopyForecastToNextYear = useCallback(() => {
+  const handleCopyForecastToNextYear = useCallback(async () => {
     const nextYear = selectedYear + 1;
-    const existingNextYearData = loadData(nextYear);
-    const newNextYearData = { ...existingNextYearData };
+    const cells: Array<{ year: number; catId: string; itemIdx: number; month: number; prognoza: number; realized: number }> = [];
     for (const cat of categories) {
       cat.items.forEach((_, itemIdx) => {
         for (let m = 0; m < 12; m++) {
           const sourceKey = makeCellKey(cat.id, itemIdx, m, "prognoza");
           const val = cellData[sourceKey] || 0;
           if (val !== 0) {
-            newNextYearData[sourceKey] = val;
+            cells.push({ year: nextYear, catId: cat.id, itemIdx, month: m, prognoza: val, realized: 0 });
           }
         }
       });
     }
-    saveData(nextYear, newNextYearData);
+    if (cells.length > 0) {
+      await fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ cells }) });
+      queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data", nextYear] });
+    }
     setShowCopyToNextYear(false);
   }, [selectedYear, categories, cellData]);
 
@@ -919,10 +1019,22 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
   const years = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
 
+  const { data: compareDbRows = [] } = useQuery<Array<{ catId: string; itemIdx: number; month: number; prognoza: string | null; realized: string | null }>>({
+    queryKey: ["/api/op-cost-data", compareYear],
+    queryFn: async () => {
+      if (compareYear === null) return [];
+      const res = await fetch(`/api/op-cost-data?year=${compareYear}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: compareYear !== null,
+    staleTime: 60000,
+  });
+
   const compareCellData = useMemo(() => {
     if (compareYear === null) return {};
-    return loadData(compareYear);
-  }, [compareYear]);
+    return apiRowsToCellData(compareDbRows);
+  }, [compareYear, compareDbRows]);
 
   const compareScheduleOverlay = useMemo(() => {
     if (compareYear === null) return {};
