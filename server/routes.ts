@@ -2402,7 +2402,8 @@ export async function registerRoutes(
   app.get('/api/costs-apartments/import-history', isAuthenticated, (_req, res) => {
     try {
       const filePath = path.join(process.cwd(), 'attached_assets', 'APARTAMENTY_1771979718731.xlsx');
-      const workbook = XLSX.readFile(filePath);
+      const fileBuffer = fs.readFileSync(filePath);
+      const workbook = XLSX.read(fileBuffer);
       const ws = workbook.Sheets[workbook.SheetNames[0]];
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
