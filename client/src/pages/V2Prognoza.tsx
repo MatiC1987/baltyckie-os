@@ -80,6 +80,28 @@ function readLocalAptCosts(years: number[]): Record<string, number> {
   return aptCostsByYM;
 }
 
+// Reads ALL operational costs from CostsExpenses localStorage (oplaty-data-{year}).
+// Cell key format: "${catId}__${itemIdx}__${monthIdx}__prognoza" (monthIdx 0-based)
+function readLocalOpCosts(years: number[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const year of years) {
+    try {
+      const raw = localStorage.getItem(`oplaty-data-${year}`);
+      if (!raw) continue;
+      const stored = JSON.parse(raw) as Record<string, number>;
+      for (const [key, value] of Object.entries(stored)) {
+        const parts = key.split("__");
+        if (parts.length === 4 && parts[3] === "prognoza") {
+          const monthIdx = parseInt(parts[2]);
+          const ym = `${year}-${monthIdx}`;
+          result[ym] = (result[ym] || 0) + (Number(value) || 0);
+        }
+      }
+    } catch {}
+  }
+  return result;
+}
+
 export default function V2Prognoza() {
   const currentYear = new Date().getFullYear();
   const [horizon, setHorizon] = useState<string>("12");
@@ -99,25 +121,37 @@ export default function V2Prognoza() {
 
     const uniqueYears = [...new Set(months.map(m => m.year))];
     const aptCostsByYM = readLocalAptCosts(uniqueYears);
+    const opCostsByYM = readLocalOpCosts(uniqueYears);
 
     let cumCostOffset = 0;
     let currentMonthPassed = false;
 
     return months.map((m) => {
       const ym = `${m.year}-${m.month}`;
+
+      // Apartment costs: replace DB value (empty) with localStorage
       const localAptCost = aptCostsByYM[ym] || 0;
+
+      // Operational costs: replace DB value (only wages) with full localStorage data.
+      // Only apply diff when localStorage actually has data (avoid wiping DB values when localStorage is empty).
+      const localOpCost = opCostsByYM[ym] || 0;
+      const opCostDiff = localOpCost > 0 ? (localOpCost - m.operationalCostForecast) : 0;
+
+      // Total extra cost vs what the API already computed
+      const extraCost = localAptCost + opCostDiff;
 
       if (m.isCurrent) {
         currentMonthPassed = true;
       } else if (currentMonthPassed) {
-        cumCostOffset += localAptCost;
+        cumCostOffset += extraCost;
       }
 
       return {
         ...m,
         apartmentCostForecast: localAptCost > 0 ? localAptCost : m.apartmentCostForecast,
-        totalCostForecast: m.totalCostForecast + localAptCost,
-        monthResult: m.monthResult - localAptCost,
+        operationalCostForecast: localOpCost > 0 ? localOpCost : m.operationalCostForecast,
+        totalCostForecast: m.totalCostForecast + extraCost,
+        monthResult: m.monthResult - extraCost,
         cumulativeBalance: m.cumulativeBalance - cumCostOffset,
       };
     });
