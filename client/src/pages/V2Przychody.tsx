@@ -12,6 +12,7 @@ import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Respo
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
 import { ApartmentTrendSheet } from "@/components/v2/ApartmentTrendSheet";
+import RevenueForecastSection, { type ForecastMonth } from "@/components/RevenueForecastSection";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 
@@ -336,6 +337,10 @@ export default function V2Przychody() {
     queryKey: [`/api/v2/revenue-summary?year=${year}`],
   });
 
+  const { data: forecastData } = useQuery<ForecastMonth[]>({
+    queryKey: [`/api/dashboard/revenue-forecast?year=${year}`],
+  });
+
   const years = useMemo(() => {
     const arr = [];
     for (let y = currentYear - 4; y <= currentYear + 5; y++) arr.push(y);
@@ -500,6 +505,14 @@ export default function V2Przychody() {
                 );
               })}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {forecastData && forecastData.length > 0 && (
+        <Card data-testid="revenue-forecast-section">
+          <CardContent className="pt-4">
+            <RevenueForecastSection forecastData={forecastData} />
           </CardContent>
         </Card>
       )}

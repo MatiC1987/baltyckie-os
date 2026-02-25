@@ -4190,6 +4190,7 @@ export async function registerRoutes(
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
+    const year = Number(req.query.year) || currentYear;
 
     const reservations = await storage.getReservations();
     const subleases = await storage.getSubleases();
@@ -4199,7 +4200,7 @@ export async function registerRoutes(
       allSubleasePayments.push(...payments.filter(p => (p.category || '').toLowerCase() !== 'kaucja').map(p => ({ dueDate: p.dueDate, amount: p.amount, status: p.status })));
     }
 
-    const revForecasts = await storage.getRevenueForecasts(currentYear);
+    const revForecasts = await storage.getRevenueForecasts(year);
     const forecastByMonth: Record<number, number> = {};
     for (const f of revForecasts) {
       if (f.apartmentId) {
@@ -4217,13 +4218,13 @@ export async function registerRoutes(
 
     const months: { year: number; month: number; label: string }[] = [];
     for (let i = 0; i < 12; i++) {
-      months.push({ year: currentYear, month: i, label: "" });
+      months.push({ year, month: i, label: "" });
     }
 
     const result = months.map(m => {
       const daysInMonth = new Date(m.year, m.month + 1, 0).getDate();
-      const isCurrentMonth = m.year === now.getFullYear() && m.month === now.getMonth();
-      const dayOfMonth = isCurrentMonth ? now.getDate() : (m.month < now.getMonth() && m.year === now.getFullYear() ? daysInMonth : 0);
+      const isCurrentMonth = m.year === currentYear && m.month === currentMonth;
+      const dayOfMonth = isCurrentMonth ? now.getDate() : (m.year < currentYear || (m.year === currentYear && m.month < currentMonth) ? daysInMonth : 0);
       const daysRemaining = Math.max(0, daysInMonth - dayOfMonth);
 
       let reservationRevenue = 0;
