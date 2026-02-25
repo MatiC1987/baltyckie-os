@@ -38,6 +38,7 @@ import Profitability from "@/pages/Profitability";
 import YearComparison from "@/pages/YearComparison";
 import ApartmentComparison from "@/pages/ApartmentComparison";
 import PriceSeasonality from "@/pages/PriceSeasonality";
+import SaldoFirmowe from "@/pages/SaldoFirmowe";
 import V2Przychody from "@/pages/V2Przychody";
 import V2Koszty from "@/pages/V2Koszty";
 import PriorityRevenueForecast from "@/pages/PriorityRevenueForecast";
@@ -163,6 +164,7 @@ function AuthenticatedRouter() {
       <Route path="/year-comparison" component={() => <AuthenticatedRoute component={YearComparison} />} />
       <Route path="/apartment-comparison" component={() => <AuthenticatedRoute component={ApartmentComparison} />} />
       <Route path="/price-seasonality" component={() => <AuthenticatedRoute component={PriceSeasonality} />} />
+      <Route path="/saldo-firmowe" component={() => <AuthenticatedRoute component={SaldoFirmowe} />} />
       <Route path="/cash-flow-forecast" component={() => <Redirect to="/v2/koszty" />} />
       <Route path="/analizy" component={() => <Redirect to="/v2/przychody" />} />
       <Route path="/apartment-schedule" component={() => <Redirect to="/v2/koszty" />} />

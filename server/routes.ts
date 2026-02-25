@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -8530,6 +8530,198 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+
+  // ==================== SALDO FIRMOWE - BALANCE FORECAST ====================
+  app.get('/api/balance-forecast', isAuthenticated, async (req, res) => {
+    try {
+      const today = new Date();
+      today.setDate(1); // normalize to first of month
+      const currentYear = today.getFullYear();
+      const fetchStartYear = currentYear;
+      const fetchEndYear = currentYear + 5;
+
+      // --- 1. Current company balance (latest snapshot per account) ---
+      const allSnapshots = await db.select({
+        accountId: accountSnapshots.accountId,
+        date: accountSnapshots.date,
+        balance: accountSnapshots.balance,
+      }).from(accountSnapshots);
+
+      const latestPerAccount: Record<number, number> = {};
+      for (const snap of allSnapshots) {
+        const prev = latestPerAccount[snap.accountId];
+        if (prev === undefined) {
+          latestPerAccount[snap.accountId] = Number(snap.balance);
+        } else {
+          // keep latest by date
+          const existingSnap = allSnapshots.filter(s => s.accountId === snap.accountId && Number(s.balance) === prev)[0];
+          if (existingSnap && snap.date > existingSnap.date) {
+            latestPerAccount[snap.accountId] = Number(snap.balance);
+          }
+        }
+      }
+      // Better: group by accountId and take max date
+      const latestDatePerAccount: Record<number, string> = {};
+      for (const snap of allSnapshots) {
+        if (!latestDatePerAccount[snap.accountId] || snap.date > latestDatePerAccount[snap.accountId]) {
+          latestDatePerAccount[snap.accountId] = snap.date;
+          latestPerAccount[snap.accountId] = Number(snap.balance);
+        }
+      }
+      const currentBalance = Object.values(latestPerAccount).reduce((s, v) => s + v, 0);
+
+      // --- 2. Revenue forecasts (months 0-indexed: 0=Jan, 11=Dec) ---
+      const revForecastRows = await db.select({
+        year: revenueForecasts.year,
+        month: revenueForecasts.month,
+        forecast: revenueForecasts.forecast,
+      }).from(revenueForecasts).where(
+        and(gte(revenueForecasts.year, fetchStartYear - 1), lte(revenueForecasts.year, fetchEndYear))
+      );
+      // Build lookup: revForecastMap[year][month0idx] = total
+      const revForecastMap: Record<number, Record<number, number>> = {};
+      for (const row of revForecastRows) {
+        if (!revForecastMap[row.year]) revForecastMap[row.year] = {};
+        revForecastMap[row.year][row.month] = (revForecastMap[row.year][row.month] || 0) + Number(row.forecast || 0);
+      }
+
+      // --- 3. Actual revenue & surcharges from reservations ---
+      const futureLimit = `${fetchEndYear}-12-31`;
+      const pastLimit = `${fetchStartYear - 1}-01-01`;
+      const activeReservations = await db.select({
+        startDate: reservations.startDate,
+        price: reservations.price,
+        paidAmount: reservations.paidAmount,
+      }).from(reservations).where(
+        and(
+          sql`${reservations.status} IN ('PRZYJETA', 'ZAMELDOWANY')`,
+          gte(reservations.startDate, pastLimit),
+          lte(reservations.startDate, futureLimit),
+        )
+      );
+
+      // Build lookups: revActualMap[year][calMonth1-12] and surchargesMap[year][calMonth1-12]
+      const revActualMap: Record<number, Record<number, number>> = {};
+      const surchargesMap: Record<number, Record<number, number>> = {};
+      for (const r of activeReservations) {
+        const d = new Date(r.startDate);
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1; // 1-12
+        const paid = Number(r.paidAmount || 0);
+        const price = Number(r.price || 0);
+        const surcharge = Math.max(0, price - paid);
+        if (!revActualMap[y]) revActualMap[y] = {};
+        revActualMap[y][m] = (revActualMap[y][m] || 0) + paid;
+        if (!surchargesMap[y]) surchargesMap[y] = {};
+        surchargesMap[y][m] = (surchargesMap[y][m] || 0) + surcharge;
+      }
+
+      // --- 4. Apt cost data (months 1-indexed) ---
+      const aptCostRows = await db.select({
+        year: aptCostData.year,
+        month: aptCostData.month,
+        prognoza: aptCostData.prognoza,
+        realized: aptCostData.realized,
+      }).from(aptCostData).where(
+        and(gte(aptCostData.year, fetchStartYear - 1), lte(aptCostData.year, fetchEndYear))
+      );
+      const aptForecastMap: Record<number, Record<number, number>> = {};
+      const aptActualMap: Record<number, Record<number, number>> = {};
+      for (const row of aptCostRows) {
+        if (!aptForecastMap[row.year]) aptForecastMap[row.year] = {};
+        if (!aptActualMap[row.year]) aptActualMap[row.year] = {};
+        aptForecastMap[row.year][row.month] = (aptForecastMap[row.year][row.month] || 0) + Number(row.prognoza || 0);
+        aptActualMap[row.year][row.month] = (aptActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
+      }
+
+      // --- 5. Op cost data (months 1-indexed) ---
+      const opCostRows = await db.select({
+        year: opCostData.year,
+        month: opCostData.month,
+        prognoza: opCostData.prognoza,
+        realized: opCostData.realized,
+      }).from(opCostData).where(
+        and(gte(opCostData.year, fetchStartYear - 1), lte(opCostData.year, fetchEndYear))
+      );
+      const opForecastMap: Record<number, Record<number, number>> = {};
+      const opActualMap: Record<number, Record<number, number>> = {};
+      for (const row of opCostRows) {
+        if (!opForecastMap[row.year]) opForecastMap[row.year] = {};
+        if (!opActualMap[row.year]) opActualMap[row.year] = {};
+        opForecastMap[row.year][row.month] = (opForecastMap[row.year][row.month] || 0) + Number(row.prognoza || 0);
+        opActualMap[row.year][row.month] = (opActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
+      }
+
+      // --- Helper: get value with year fallback ---
+      function getVal(map: Record<number, Record<number, number>>, year: number, month: number): number {
+        for (let y = year; y >= year - 4; y--) {
+          const v = map[y]?.[month];
+          if (v !== undefined && v > 0) return v;
+        }
+        return 0;
+      }
+
+      // --- 6. Build 60 months ---
+      let runningBalance = Math.round(currentBalance * 100) / 100;
+      const months: any[] = [];
+      for (let i = 0; i < 60; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+        const year = d.getFullYear();
+        const calMonth = d.getMonth() + 1; // 1-12
+        const rfMonth = d.getMonth(); // 0-11 for revenue_forecasts
+
+        const revForecast = getVal(revForecastMap, year, rfMonth);
+        const revActual = revActualMap[year]?.[calMonth] ?? 0;
+        const revenueRemaining = Math.max(0, revForecast - revActual);
+        const surcharges = surchargesMap[year]?.[calMonth] ?? 0;
+
+        const aptCostForecast = getVal(aptForecastMap, year, calMonth);
+        const aptCostActual = aptActualMap[year]?.[calMonth] ?? 0;
+        const aptCostRemaining = Math.max(0, aptCostForecast - aptCostActual);
+
+        const opCostForecast = getVal(opForecastMap, year, calMonth);
+        const opCostActual = opActualMap[year]?.[calMonth] ?? 0;
+        const opCostRemaining = Math.max(0, opCostForecast - opCostActual);
+
+        const totalCostForecast = aptCostForecast + opCostForecast;
+        const totalCostActual = aptCostActual + opCostActual;
+        const totalCostRemaining = aptCostRemaining + opCostRemaining;
+
+        const endBalance = Math.round((runningBalance + revenueRemaining + surcharges - totalCostRemaining) * 100) / 100;
+
+        months.push({
+          year,
+          month: calMonth,
+          startBalance: Math.round(runningBalance * 100) / 100,
+          revenueForecast: Math.round(revForecast * 100) / 100,
+          revenueActual: Math.round(revActual * 100) / 100,
+          revenueRemaining: Math.round(revenueRemaining * 100) / 100,
+          surcharges: Math.round(surcharges * 100) / 100,
+          aptCostForecast: Math.round(aptCostForecast * 100) / 100,
+          aptCostActual: Math.round(aptCostActual * 100) / 100,
+          aptCostRemaining: Math.round(aptCostRemaining * 100) / 100,
+          opCostForecast: Math.round(opCostForecast * 100) / 100,
+          opCostActual: Math.round(opCostActual * 100) / 100,
+          opCostRemaining: Math.round(opCostRemaining * 100) / 100,
+          totalCostForecast: Math.round(totalCostForecast * 100) / 100,
+          totalCostActual: Math.round(totalCostActual * 100) / 100,
+          totalCostRemaining: Math.round(totalCostRemaining * 100) / 100,
+          endBalance,
+        });
+
+        runningBalance = endBalance;
+      }
+
+      res.json({
+        currentBalance: Math.round(currentBalance * 100) / 100,
+        months,
+      });
+    } catch (err) {
+      console.error('Balance forecast error:', err);
+      res.status(500).json({ message: 'Failed to calculate balance forecast' });
     }
   });
 
