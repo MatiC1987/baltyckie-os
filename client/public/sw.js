@@ -1,13 +1,14 @@
-const CACHE_NAME = 'baltyckie-v1';
+const CACHE_NAME = 'baltyckie-v2';
 
 const STATIC_ASSETS = [
-  '/',
   '/favicon.png',
   '/icon-192.png',
   '/icon-512.png',
   '/apple-touch-icon.png',
   '/manifest.json',
 ];
+
+const AUTH_PATHS = ['/api/login', '/api/logout', '/api/callback', '/api/auth/'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -34,12 +35,23 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.method !== 'GET') return;
 
+  if (AUTH_PATHS.some((p) => url.pathname.startsWith(p))) return;
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match('/'))
+    );
+    return;
+  }
+
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
           return response;
         })
         .catch(() => caches.match(event.request))
@@ -48,16 +60,17 @@ self.addEventListener('fetch', (event) => {
   }
 
   const isStaticAsset =
-    url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot)$/) ||
-    STATIC_ASSETS.includes(url.pathname);
+    url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot)$/);
 
   if (isStaticAsset) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
         return fetch(event.request).then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
           return response;
         });
       })
