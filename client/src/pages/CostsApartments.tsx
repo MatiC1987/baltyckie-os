@@ -191,7 +191,7 @@ function EditableCell({
   );
 }
 
-export function CostsApartmentsContent({ embedded = false, externalYear, onTotalsChange }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void }) {
+export function CostsApartmentsContent({ embedded = false, externalYear, onTotalsChange, triggerMonthHighlight, onMonthHighlightDone }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void; triggerMonthHighlight?: number | null; onMonthHighlightDone?: () => void }) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const queryClient = useQueryClient();
@@ -860,6 +860,18 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     setHighlightMonth(currentMonth);
     setTimeout(() => setHighlightMonth(null), 2000);
   }, [currentMonth]);
+
+  useEffect(() => {
+    if (triggerMonthHighlight === null || triggerMonthHighlight === undefined) return;
+    const el = document.getElementById(`month-col-${triggerMonthHighlight}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    setHighlightMonth(triggerMonthHighlight);
+    const timer = setTimeout(() => {
+      setHighlightMonth(null);
+      onMonthHighlightDone?.();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [triggerMonthHighlight]);
 
   const monthlyCostChart = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
