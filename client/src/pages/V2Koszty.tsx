@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calculator, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
@@ -76,6 +77,11 @@ export default function V2Koszty() {
     return (
       <div className="space-y-4">
         <PageHeader title="Koszty" icon={Calculator} description="Koszty apartamentowe i operacyjne" />
+        <div className="grid grid-cols-3 gap-3">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -111,6 +117,30 @@ export default function V2Koszty() {
           </div>
         }
       />
+
+      <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-tiles">
+        <Card data-testid="tile-apt-costs">
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Koszty (apartamenty)</p>
+            <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(totalAptCosts)} zł</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalAptRealized)} zł</p>
+          </CardContent>
+        </Card>
+        <Card data-testid="tile-op-costs">
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Koszty operacyjne</p>
+            <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(totalOpCosts)} zł</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalOpRealized)} zł</p>
+          </CardContent>
+        </Card>
+        <Card data-testid="tile-total-costs">
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground">Razem koszty</p>
+            <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(totalAptCosts + totalOpCosts)} zł</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {formatNum(totalAptRealized + totalOpRealized)} zł</p>
+          </CardContent>
+        </Card>
+      </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList data-testid="costs-tabs">
