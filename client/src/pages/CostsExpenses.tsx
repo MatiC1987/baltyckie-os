@@ -970,6 +970,17 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
   }, [activeCategories, getCategoryAnnualSummary]);
 
+  const currentMonthTableTotals = useMemo(() => {
+    let prognoza = 0;
+    let rzeczywiste = 0;
+    activeCategories.forEach(cat => {
+      const s = getCategorySummary(cat, currentMonth);
+      prognoza += s.prognoza;
+      rzeczywiste += s.rzeczywiste;
+    });
+    return { prognoza, rzeczywiste };
+  }, [activeCategories, getCategorySummary, currentMonth]);
+
   useEffect(() => {
     onTotalsChange?.(grandTotal.prognoza, grandTotal.rzeczywiste);
   }, [grandTotal.prognoza, grandTotal.rzeczywiste]);
@@ -1232,7 +1243,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               <CheckCircle2 className="h-4 w-4 text-green-500" />
               <p className="text-xs text-muted-foreground">Opłacone ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-            <p className="text-xl font-bold mt-1 text-green-600 tabular-nums" data-testid="text-paid-this-month">{formatNum2(overdueSummary.paidThisMonthAmount)} zł</p>
+            <p className="text-xl font-bold mt-1 text-green-600 tabular-nums" data-testid="text-paid-this-month">{formatNum2(currentMonthTableTotals.rzeczywiste)} zł</p>
           </CardContent>
         </Card>
         <Card>
