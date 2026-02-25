@@ -230,99 +230,99 @@ export default function SaldoFirmowe() {
                 <table className="w-full text-xs sm:text-sm sm:min-w-[1100px]">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-20 bg-slate-800 dark:bg-slate-900 text-white text-left px-2 sm:px-4 py-2.5 sm:py-3 font-bold w-20 sm:w-32 border-r border-slate-700" rowSpan={2}>Miesiąc</th>
-                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-white bg-emerald-700 dark:bg-emerald-800 border-b border-emerald-600" colSpan={3}>Przychody</th>
-                      <th className="sm:hidden text-center px-1 py-2 font-bold text-white bg-emerald-700 dark:bg-emerald-800" rowSpan={2}>Poz.<br/>przych.</th>
-                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-white bg-orange-600 dark:bg-orange-800 border-b border-orange-500" colSpan={3}>Koszty apartamentów</th>
-                      <th className="sm:hidden text-center px-1 py-2 font-bold text-white bg-orange-600 dark:bg-orange-800" rowSpan={2}>Poz.<br/>apt.</th>
-                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-white bg-red-700 dark:bg-red-800 border-b border-red-600" colSpan={3}>Koszty operacyjne</th>
-                      <th className="sm:hidden text-center px-1 py-2 font-bold text-white bg-red-700 dark:bg-red-800" rowSpan={2}>Poz.<br/>op.</th>
-                      <th className="text-center px-1 sm:px-4 py-2 font-bold text-white bg-slate-800 dark:bg-slate-900 border-l border-slate-700" rowSpan={2}>Saldo<br/>firmowe</th>
+                      <th className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-left px-2 sm:px-4 py-2.5 sm:py-3 font-bold w-20 sm:w-32 border-r border-slate-200 dark:border-slate-700" rowSpan={2}>Miesiąc</th>
+                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/60 border-b border-emerald-200 dark:border-emerald-800" colSpan={3}>Przychody</th>
+                      <th className="sm:hidden text-center px-1 py-2 font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/60" rowSpan={2}>Poz.<br/>przych.</th>
+                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-orange-800 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/60 border-b border-orange-200 dark:border-orange-800" colSpan={3}>Koszty apartamentów</th>
+                      <th className="sm:hidden text-center px-1 py-2 font-bold text-orange-800 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/60" rowSpan={2}>Poz.<br/>apt.</th>
+                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60 border-b border-red-200 dark:border-red-800" colSpan={3}>Koszty operacyjne</th>
+                      <th className="sm:hidden text-center px-1 py-2 font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60" rowSpan={2}>Poz.<br/>op.</th>
+                      <th className="text-center px-1 sm:px-4 py-2 font-bold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700" rowSpan={2}>Saldo<br/>firmowe</th>
                     </tr>
                     <tr>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-emerald-100 bg-emerald-700 dark:bg-emerald-800">Prognoza</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-emerald-100 bg-emerald-700 dark:bg-emerald-800">Realizacja</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-white bg-emerald-800 dark:bg-emerald-900">Pozostało</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-orange-100 bg-orange-600 dark:bg-orange-800">Prognoza</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-orange-100 bg-orange-600 dark:bg-orange-800">Realizacja</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-white bg-orange-700 dark:bg-orange-900">Pozostało</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-red-100 bg-red-700 dark:bg-red-800">Prognoza</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-red-100 bg-red-700 dark:bg-red-800">Realizacja</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-white bg-red-800 dark:bg-red-900">Pozostało</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40">Prognoza</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40">Realizacja</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/60">Pozostało</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/40">Prognoza</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/40">Realizacja</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-orange-800 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/60">Pozostało</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/40">Prognoza</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/40">Realizacja</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60">Pozostało</th>
                     </tr>
                   </thead>
                   <tbody>
                     {byYear.map(([year, months]) => (
                       <Fragment key={year}>
-                        <tr className="bg-slate-100 dark:bg-slate-800/60 border-y-2 border-slate-300 dark:border-slate-600">
-                          <td colSpan={COL_COUNT_DESKTOP} className="hidden sm:table-cell sticky left-0 bg-slate-100 dark:bg-slate-800/60 px-2 sm:px-4 py-2 font-bold text-base tracking-wide">{year}</td>
-                          <td colSpan={COL_COUNT_MOBILE} className="sm:hidden sticky left-0 bg-slate-100 dark:bg-slate-800/60 px-2 py-2 font-bold text-base tracking-wide">{year}</td>
+                        <tr className="bg-slate-50 dark:bg-slate-800/60 border-y-2 border-slate-200 dark:border-slate-600">
+                          <td colSpan={COL_COUNT_DESKTOP} className="hidden sm:table-cell sticky left-0 bg-slate-50 dark:bg-slate-800/60 px-2 sm:px-4 py-2 font-bold text-base text-slate-800 dark:text-slate-200 tracking-wide">{year}</td>
+                          <td colSpan={COL_COUNT_MOBILE} className="sm:hidden sticky left-0 bg-slate-50 dark:bg-slate-800/60 px-2 py-2 font-bold text-base text-slate-800 dark:text-slate-200 tracking-wide">{year}</td>
                         </tr>
                         {months.map(m => {
                           const isCurrent = m.year === currentYear && m.month === currentMonth;
-                          const rowBg = isCurrent ? "bg-blue-50 dark:bg-blue-950/30" : "even:bg-muted/20";
-                          const stickyBg = isCurrent ? "bg-blue-50 dark:bg-blue-950/30" : "bg-background";
+                          const rowBg = isCurrent ? "bg-blue-50/70 dark:bg-blue-950/30" : "";
+                          const stickyBg = isCurrent ? "bg-blue-50/70 dark:bg-blue-950/30" : "bg-card";
                           return (
                             <tr
                               key={`${m.year}-${m.month}`}
                               data-testid={`row-balance-${m.year}-${m.month}`}
-                              className={`border-b border-border/60 transition-colors hover:bg-muted/40 ${rowBg}`}
+                              className={`border-b border-border/50 transition-colors hover:bg-muted/50 ${rowBg}`}
                             >
-                              <td className={`sticky left-0 z-10 px-2 sm:px-4 py-2 sm:py-2.5 font-semibold border-r border-border/40 ${stickyBg}`}>
+                              <td className={`sticky left-0 z-10 px-2 sm:px-4 py-2 sm:py-2.5 font-semibold text-slate-700 dark:text-slate-200 border-r border-border/30 ${stickyBg}`}>
                                 {MONTH_NAMES_SHORT[m.month - 1]}
                                 {isCurrent && <span className="ml-1.5 text-[10px] sm:text-xs text-blue-600 dark:text-blue-400 font-bold">(teraz)</span>}
                               </td>
-                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-foreground/70">{plnShort(m.revenueForecast)}</td>
-                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-foreground/70">{plnShort(m.revenueActual)}</td>
-                              <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.revenueRemaining > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground/40"}`}>
+                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{plnShort(m.revenueForecast)}</td>
+                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{plnShort(m.revenueActual)}</td>
+                              <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.revenueRemaining > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"}`}>
                                 {plnShort(m.revenueRemaining)}
                               </td>
-                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-foreground/70">{plnShort(m.aptCostForecast)}</td>
-                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-foreground/70">{plnShort(m.aptCostActual)}</td>
-                              <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.aptCostRemaining > 0 ? "text-orange-600 dark:text-orange-400" : "text-foreground/40"}`}>
+                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{plnShort(m.aptCostForecast)}</td>
+                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{plnShort(m.aptCostActual)}</td>
+                              <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.aptCostRemaining > 0 ? "text-orange-700 dark:text-orange-400" : "text-slate-400 dark:text-slate-500"}`}>
                                 {m.aptCostRemaining > 0 ? `−${plnShort(m.aptCostRemaining)}` : "0"}
                               </td>
-                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-foreground/70">{plnShort(m.opCostForecast)}</td>
-                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-foreground/70">{plnShort(m.opCostActual)}</td>
-                              <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.opCostRemaining > 0 ? "text-red-600 dark:text-red-400" : "text-foreground/40"}`}>
+                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{plnShort(m.opCostForecast)}</td>
+                              <td className="hidden sm:table-cell text-right px-2 py-2 sm:py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{plnShort(m.opCostActual)}</td>
+                              <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.opCostRemaining > 0 ? "text-red-700 dark:text-red-400" : "text-slate-400 dark:text-slate-500"}`}>
                                 {m.opCostRemaining > 0 ? `−${plnShort(m.opCostRemaining)}` : "0"}
                               </td>
-                              <td className={`text-right px-2 sm:px-4 py-2 sm:py-2.5 tabular-nums font-bold border-l border-border/40 ${balanceBg(m.endBalance)}`}>
+                              <td className={`text-right px-2 sm:px-4 py-2 sm:py-2.5 tabular-nums font-bold border-l border-border/30 ${balanceBg(m.endBalance)}`}>
                                 {plnShort(m.endBalance)}
                               </td>
                             </tr>
                           );
                         })}
-                        <tr key={`year-total-${year}`} className="bg-slate-100 dark:bg-slate-800/50 border-b-2 border-slate-300 dark:border-slate-600">
-                          <td className="sticky left-0 bg-slate-100 dark:bg-slate-800/50 px-2 sm:px-4 py-2.5 font-bold text-sm border-r border-border/40">Suma {year}</td>
-                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-foreground/60 font-medium">
+                        <tr key={`year-total-${year}`} className="bg-slate-50 dark:bg-slate-800/50 border-b-2 border-slate-200 dark:border-slate-600">
+                          <td className="sticky left-0 bg-slate-50 dark:bg-slate-800/50 px-2 sm:px-4 py-2.5 font-bold text-sm text-slate-800 dark:text-slate-200 border-r border-border/30">Suma {year}</td>
+                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-slate-500 dark:text-slate-400 font-medium">
                             {plnShort(months.reduce((s, m) => s + m.revenueForecast, 0))}
                           </td>
-                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-foreground/60 font-medium">
+                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-slate-500 dark:text-slate-400 font-medium">
                             {plnShort(months.reduce((s, m) => s + m.revenueActual, 0))}
                           </td>
                           <td className="text-right px-1.5 sm:px-2 py-2.5 tabular-nums text-emerald-700 dark:text-emerald-400 font-bold">
                             {plnShort(months.reduce((s, m) => s + m.revenueRemaining, 0))}
                           </td>
-                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-foreground/60 font-medium">
+                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-slate-500 dark:text-slate-400 font-medium">
                             {plnShort(months.reduce((s, m) => s + m.aptCostForecast, 0))}
                           </td>
-                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-foreground/60 font-medium">
+                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-slate-500 dark:text-slate-400 font-medium">
                             {plnShort(months.reduce((s, m) => s + m.aptCostActual, 0))}
                           </td>
                           <td className="text-right px-1.5 sm:px-2 py-2.5 tabular-nums text-orange-700 dark:text-orange-400 font-bold">
                             −{plnShort(months.reduce((s, m) => s + m.aptCostRemaining, 0))}
                           </td>
-                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-foreground/60 font-medium">
+                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-slate-500 dark:text-slate-400 font-medium">
                             {plnShort(months.reduce((s, m) => s + m.opCostForecast, 0))}
                           </td>
-                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-foreground/60 font-medium">
+                          <td className="hidden sm:table-cell text-right px-2 py-2.5 tabular-nums text-slate-500 dark:text-slate-400 font-medium">
                             {plnShort(months.reduce((s, m) => s + m.opCostActual, 0))}
                           </td>
                           <td className="text-right px-1.5 sm:px-2 py-2.5 tabular-nums text-red-700 dark:text-red-400 font-bold">
                             −{plnShort(months.reduce((s, m) => s + m.opCostRemaining, 0))}
                           </td>
-                          <td className={`text-right px-2 sm:px-4 py-2.5 tabular-nums font-bold border-l border-border/40 ${balanceBg(months[months.length - 1]?.endBalance ?? 0)}`}>
+                          <td className={`text-right px-2 sm:px-4 py-2.5 tabular-nums font-bold border-l border-border/30 ${balanceBg(months[months.length - 1]?.endBalance ?? 0)}`}>
                             {plnShort(months[months.length - 1]?.endBalance ?? 0)}
                           </td>
                         </tr>
