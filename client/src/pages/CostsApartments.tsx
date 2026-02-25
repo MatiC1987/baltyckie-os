@@ -211,6 +211,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const { data: aptCostRows, isLoading: isLoadingCostData } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-data', year],
     staleTime: 30000,
+    refetchInterval: 30000,
   });
   const { data: compareCostRows } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-data', compareYear],
@@ -220,6 +221,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const { data: settingsRows } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-settings'],
     staleTime: 60000,
+    refetchInterval: 60000,
   });
 
   // Pending cells ref for debounced DB writes

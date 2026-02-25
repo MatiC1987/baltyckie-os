@@ -269,11 +269,13 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       return res.json();
     },
     staleTime: 30000,
+    refetchInterval: 30000,
   });
 
   const { data: dbCategories } = useQuery<CostCategory[]>({
     queryKey: ["/api/op-cost-categories"],
     staleTime: 60000,
+    refetchInterval: 60000,
   });
 
   const baseDbCellData = useMemo(() => apiRowsToCellData(dbRows), [dbRows]);

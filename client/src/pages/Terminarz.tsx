@@ -163,6 +163,7 @@ export default function Terminarz() {
   const { data: dbColors } = useQuery<TerminarzColors>({
     queryKey: ['/api/terminarz-colors'],
     staleTime: 60000,
+    refetchInterval: 60000,
   });
   const [colors, setColors] = useState<TerminarzColors>(DEFAULT_COLORS);
 
