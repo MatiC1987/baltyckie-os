@@ -214,7 +214,7 @@ function EditableCell({
   );
 }
 
-export function CostsApartmentsContent({ embedded = false, externalYear }: { embedded?: boolean; externalYear?: number }) {
+export function CostsApartmentsContent({ embedded = false, externalYear, onTotalsChange }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void }) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const [year, setYear] = useState(externalYear ?? currentYear);
@@ -737,6 +737,16 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     filteredCostEntries.forEach(group => { const s = getLocationYearTotal(group.items); p += s.p; r += s.r; });
     return { p, r, s: p - r };
   }, [filteredCostEntries, getLocationYearTotal]);
+
+  const allEntriesTotal = useMemo(() => {
+    let p = 0, r = 0;
+    costEntries.forEach(group => { const s = getLocationYearTotal(group.items); p += s.p; r += s.r; });
+    return { p, r };
+  }, [costEntries, getLocationYearTotal]);
+
+  useEffect(() => {
+    onTotalsChange?.(allEntriesTotal.p, allEntriesTotal.r);
+  }, [allEntriesTotal.p, allEntriesTotal.r]);
 
   const currentMonthTotals = useMemo(() => {
     let p = 0, r = 0;

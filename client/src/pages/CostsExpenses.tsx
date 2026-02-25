@@ -238,7 +238,7 @@ function costChangeColor(current: number, previous: number): string {
   return "text-muted-foreground";
 }
 
-export function CostsExpensesContent({ embedded = false, externalYear }: { embedded?: boolean; externalYear?: number }) {
+export function CostsExpensesContent({ embedded = false, externalYear, onTotalsChange }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void }) {
   const { toast } = useToast();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -867,6 +867,10 @@ export function CostsExpensesContent({ embedded = false, externalYear }: { embed
     });
     return { prognoza, rzeczywiste, saldo: prognoza - rzeczywiste };
   }, [activeCategories, getCategoryAnnualSummary]);
+
+  useEffect(() => {
+    onTotalsChange?.(grandTotal.prognoza, grandTotal.rzeczywiste);
+  }, [grandTotal.prognoza, grandTotal.rzeczywiste]);
 
   const expenseHeatMax = useMemo(() => {
     let max = 0;
