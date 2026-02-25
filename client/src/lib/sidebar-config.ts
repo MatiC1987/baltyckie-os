@@ -114,8 +114,6 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   calendar: { id: "calendar", href: "/calendar", label: "Terminarz", iconName: "CalendarDays" },
   reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
   podnajem: { id: "podnajem", href: "/podnajem", label: "Podnajem", iconName: "FileSignature" },
-  analizy: { id: "analizy", href: "/analizy", label: "Analizy", iconName: "BarChart3" },
-  "apartment-schedule": { id: "apartment-schedule", href: "/apartment-schedule", label: "Harmonogram", iconName: "CalendarCheck" },
   salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
   invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
   "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
@@ -128,15 +126,13 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "owners": { id: "owners", href: "/owners", label: "Właściciele", iconName: "Users" },
   "v2-przychody": { id: "v2-przychody", href: "/v2/przychody", label: "Przychody", iconName: "Wallet" },
   "v2-koszty": { id: "v2-koszty", href: "/v2/koszty", label: "Koszty", iconName: "Calculator" },
-  "v2-prognoza": { id: "v2-prognoza", href: "/v2/prognoza", label: "Prognoza finansowa", iconName: "TrendingUp" },
-  "v2-realizacja": { id: "v2-realizacja", href: "/v2/realizacja", label: "Realizacja", iconName: "Target" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
   { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks"], color: "violet" },
-  { id: "finanse", title: "FINANSE", itemIds: ["v2-prognoza", "v2-przychody", "v2-koszty", "v2-realizacja", "analizy", "source-comparison", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
+  { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
 ];
 
 export const DEFAULT_CONFIG: SidebarConfig = {
@@ -146,7 +142,7 @@ export const DEFAULT_CONFIG: SidebarConfig = {
   customLabels: {},
   collapsed: [],
   compact: false,
-  badgeConfig: { "apartment-schedule": true, podnajem: true },
+  badgeConfig: { podnajem: true },
 };
 
 export function generateId(prefix: string): string {
@@ -273,9 +269,9 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
     description: "Uproszczony układ z najważniejszymi elementami w jednej sekcji",
     sections: [
       { id: "main", itemIds: ["kokpit"] },
-      { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "apartments", "tasks", "analizy", "v2-przychody", "v2-koszty", "invoices"], color: "cyan" },
+      { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "apartments", "tasks", "v2-przychody", "v2-koszty", "invoices"], color: "cyan" },
     ],
-    hiddenItems: ["source-comparison", "apartment-schedule", "salda", "dokumenty-ksiegowe", "contracts-services", "przeglady", "customers", "owners"],
+    hiddenItems: ["source-comparison", "salda", "dokumenty-ksiegowe", "contracts-services", "przeglady", "customers", "owners"],
   },
   {
     id: "full",
@@ -285,7 +281,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
       { id: "main", itemIds: ["kokpit"] },
       { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "podnajem", "customers"], color: "cyan" },
       { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "contracts-services", "przeglady"], color: "violet" },
-      { id: "finanse", title: "FINANSE", itemIds: ["v2-prognoza", "v2-przychody", "v2-koszty", "v2-realizacja", "analizy", "source-comparison", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe"], color: "emerald" },
+      { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe"], color: "emerald" },
     ],
   },
   {
@@ -295,7 +291,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
     sections: [
       { id: "main", itemIds: ["kokpit"] },
       { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations"], color: "cyan" },
-      { id: "finanse", title: "FINANSE", itemIds: ["v2-prognoza", "v2-przychody", "v2-koszty", "v2-realizacja", "analizy", "source-comparison", "apartment-schedule", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services"], color: "emerald" },
+      { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services"], color: "emerald" },
       { id: "inne", title: "INNE", itemIds: ["apartments", "owners", "podnajem", "customers", "tasks", "przeglady"], color: "violet" },
     ],
   },

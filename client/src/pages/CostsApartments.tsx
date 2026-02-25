@@ -8,9 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  ChevronDown, ChevronRight, Plus, X, FolderInput, FileDown, Calculator,
-  BarChart3, AlertTriangle, GripVertical, Trash2, Pencil, Archive, RotateCcw,
-  Copy, ArrowRight,
+  ChevronDown, ChevronRight, Plus, X, Calculator,
+  BarChart3, GripVertical, Trash2, Pencil, Archive, RotateCcw,
+  Copy, ArrowRight, Eraser,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
@@ -153,10 +153,6 @@ interface CostEntry {
   apartmentIds: number[];
 }
 
-type ContractCostItem = { name: string; monthlyAmount: number; contractId: number };
-type ContractCostData = Record<string, { apartmentId: number; apartmentName: string; location: string; items: ContractCostItem[] }>;
-type ConflictEntry = { entryId: string; category: string; existingValue: number; contractValue: number; contractName: string };
-
 type CellKey = string;
 function makeCellKey(entryId: string, category: string, month: number, field: "p" | "r"): CellKey {
   return `${entryId}__${category}__${month}__${field}`;
@@ -225,12 +221,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
   const [colorMap, setColorMap] = useState<ColorMap>(() => loadColorMap());
   const [entryColorMap, setEntryColorMap] = useState<EntryColorMap>(() => loadEntryColorMap());
   const [sortOrderMap, setSortOrderMap] = useState<SortOrderMap>(() => loadSortOrder());
-  const [isImporting, setIsImporting] = useState(false);
-  const [isImportingContracts, setIsImportingContracts] = useState(false);
   const [compareYear, setCompareYear] = useState<number | null>(null);
-  const [conflicts, setConflicts] = useState<ConflictEntry[]>([]);
-  const [pendingContractData, setPendingContractData] = useState<{ entries: { key: string; month: number; value: number }[] } | null>(null);
-  const [conflictResolutions, setConflictResolutions] = useState<Record<string, "existing" | "contract">>({});
+  const [showClearAllDialog, setShowClearAllDialog] = useState(false);
   const { toast } = useToast();
 
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
@@ -278,124 +270,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
     }
   }, [externalYear]);
 
-  const handleImportFromExcel = async () => {
-    setIsImporting(true);
-    try {
-      const res = await fetch('/api/costs-apartments/import-data', { credentials: 'include' });
-      if (!res.ok) throw new Error('Brak danych');
-      const importData = await res.json();
-      const { data: yearlyData, categories } = importData;
-      let totalEntries = 0;
-      for (const [yr, entries] of Object.entries(yearlyData as Record<string, DataMap>)) {
-        const existing = loadData(Number(yr));
-        const merged = { ...existing, ...entries };
-        saveData(Number(yr), merged);
-        totalEntries += Object.keys(entries).length;
-      }
-      if (categories) {
-        const existingCats = loadCategories();
-        const mergedCats = { ...existingCats, ...categories };
-        saveCategories(mergedCats);
-        setCategoriesMap(mergedCats);
-      }
-      setData(loadData(year));
-      toast({ title: "Import zakończony", description: `Zaimportowano dane dla ${Object.keys(yearlyData).length} lat (${totalEntries} pozycji)` });
-    } catch {
-      toast({ title: "Błąd importu", description: "Nie udało się zaimportować danych", variant: "destructive" });
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
-  const handleImportFromContracts = async () => {
-    setIsImportingContracts(true);
-    try {
-      const res = await fetch(`/api/apartment-contract-costs?year=${year}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Brak danych');
-      const contractData: ContractCostData = await res.json();
-      if (Object.keys(contractData).length === 0) {
-        toast({ title: "Brak danych", description: "Nie znaleziono aktywnych umów z właścicielami na ten rok" });
-        setIsImportingContracts(false);
-        return;
-      }
-      const freshData = loadData(year);
-      const newCats = { ...categoriesMap };
-      const entriesToApply: { key: string; month: number; value: number }[] = [];
-      const foundConflicts: ConflictEntry[] = [];
-      const seenConflictKeys = new Set<string>();
-      for (const [entryId, contractEntry] of Object.entries(contractData)) {
-        const existingCats = newCats[entryId] || (entryId === "gb-all" ? [...DEFAULT_CATEGORIES_GRAND_BALTIC] : [...DEFAULT_CATEGORIES_INDIVIDUAL]);
-        const updatedCats = [...existingCats];
-        for (const item of contractEntry.items) {
-          if (!updatedCats.includes(item.name)) updatedCats.push(item.name);
-          const key = `${entryId}__${item.name}`;
-          const conflictKey = `${entryId}||${item.name}`;
-          let hasConflict = false;
-          let conflictExistingValue = 0;
-          for (let m = 0; m < 12; m++) {
-            const existingCell = freshData[key]?.[m];
-            const existingP = existingCell?.p || 0;
-            if (existingP > 0 && existingP !== item.monthlyAmount) {
-              hasConflict = true;
-              conflictExistingValue = existingP;
-            }
-          }
-          if (hasConflict && !seenConflictKeys.has(conflictKey)) {
-            seenConflictKeys.add(conflictKey);
-            foundConflicts.push({ entryId, category: item.name, existingValue: conflictExistingValue, contractValue: item.monthlyAmount, contractName: contractEntry.apartmentName });
-          } else if (!hasConflict) {
-            for (let m = 0; m < 12; m++) entriesToApply.push({ key, month: m, value: item.monthlyAmount });
-          }
-        }
-        newCats[entryId] = updatedCats;
-      }
-      if (foundConflicts.length > 0) {
-        setConflicts(foundConflicts);
-        setPendingContractData({ entries: entriesToApply });
-        setCategoriesMap(newCats);
-        saveCategories(newCats);
-        const defaultResolutions: Record<string, "existing" | "contract"> = {};
-        foundConflicts.forEach(c => { defaultResolutions[`${c.entryId}||${c.category}`] = "contract"; });
-        setConflictResolutions(defaultResolutions);
-      } else {
-        setCategoriesMap(newCats);
-        saveCategories(newCats);
-        applyContractEntries(entriesToApply);
-        toast({ title: "Import zakończony", description: `Zaimportowano koszty z ${Object.keys(contractData).length} pozycji umów` });
-      }
-    } catch {
-      toast({ title: "Błąd importu", description: "Nie udało się zaimportować danych z umów", variant: "destructive" });
-    } finally {
-      setIsImportingContracts(false);
-    }
-  };
-
-  const applyContractEntries = (entries: { key: string; month: number; value: number }[]) => {
-    const freshData = loadData(year);
-    const next = { ...freshData };
-    for (const e of entries) {
-      if (!next[e.key]) next[e.key] = {};
-      if (!next[e.key][e.month]) next[e.key][e.month] = { p: 0, r: 0 };
-      next[e.key][e.month] = { ...next[e.key][e.month], p: e.value };
-    }
-    saveData(year, next);
-    setData(next);
-  };
-
-  const resolveConflicts = () => {
-    const allEntries = [...(pendingContractData?.entries || [])];
-    conflicts.forEach(c => {
-      const resKey = `${c.entryId}||${c.category}`;
-      const resolution = conflictResolutions[resKey] || "contract";
-      if (resolution === "contract") {
-        const key = `${c.entryId}__${c.category}`;
-        for (let m = 0; m < 12; m++) allEntries.push({ key, month: m, value: c.contractValue });
-      }
-    });
-    applyContractEntries(allEntries);
-    setConflicts([]);
-    setPendingContractData(null);
-    toast({ title: "Import zakończony", description: "Koszty z umów zostały zaimportowane" });
+  const handleClearAll = () => {
+    localStorage.removeItem(storageKey(year));
+    setData({});
+    setShowClearAllDialog(false);
+    toast({ title: "Dane wyczyszczone", description: `Wszystkie koszty za rok ${year} zostały usunięte` });
   };
 
   const { data: apartments = [] } = useQuery<Apartment[]>({ queryKey: ["/api/apartments"] });
@@ -892,9 +771,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
             <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
               <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj na {year + 1}
             </Button>
-            <Button variant="outline" onClick={handleImportFromExcel} disabled={isImporting} data-testid="button-import-costs">
-              <FolderInput className="h-4 w-4 mr-1" />
-              {isImporting ? "Importowanie..." : "Import z Excel"}
+            <Button variant="outline" onClick={() => setShowClearAllDialog(true)} data-testid="button-clear-all-costs">
+              <Eraser className="h-4 w-4 mr-1" /> Wyczyść rok {year}
             </Button>
             <Select value={String(year)} onValueChange={handleYearChange}>
               <SelectTrigger className="w-[100px]" data-testid="select-year"><SelectValue /></SelectTrigger>
@@ -994,9 +872,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         <Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)} data-testid="button-toggle-chart-costs">
           <BarChart3 className="mr-1 h-3 w-3" /> {showChart ? "Ukryj wykres" : "Pokaż wykres"}
         </Button>
-        <Button variant="outline" size="sm" onClick={handleImportFromContracts} disabled={isImportingContracts} data-testid="button-import-from-contracts">
-          <FileDown className="mr-1 h-3 w-3" />
-          {isImportingContracts ? "Importowanie..." : "Import z umów"}
+        <Button variant="outline" size="sm" onClick={() => setShowClearAllDialog(true)} data-testid="button-clear-all-costs-embedded">
+          <Eraser className="mr-1 h-3 w-3" /> Wyczyść rok {year}
         </Button>
       </div>
 
@@ -1124,7 +1001,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
                               </button>
                               <button
                                 onClick={() => setResetEntryDialog({ entryId: entry.id, entryName: entry.name })}
-                                className="opacity-40 hover:opacity-100 hover:text-red-300 transition-opacity p-0.5 shrink-0"
+                                className="opacity-70 hover:opacity-100 hover:text-red-300 transition-opacity p-0.5 shrink-0"
                                 title="Resetuj dane (usuń wszystkie koszty)"
                                 data-testid={`button-reset-entry-${entry.id}`}
                               >
@@ -1600,52 +1477,19 @@ export function CostsApartmentsContent({ embedded = false, externalYear }: { emb
         </DialogContent>
       </Dialog>
 
-      <Dialog open={conflicts.length > 0} onOpenChange={(open) => { if (!open) { setConflicts([]); setPendingContractData(null); } }}>
-        <DialogContent className="sm:max-w-[600px]" aria-describedby="conflict-dialog-desc">
+      <Dialog open={showClearAllDialog} onOpenChange={setShowClearAllDialog}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              Wykryto konflikty wartości
-            </DialogTitle>
+            <DialogTitle>Wyczyść wszystkie koszty za rok {year}</DialogTitle>
           </DialogHeader>
-          <p id="conflict-dialog-desc" className="text-sm text-muted-foreground">
-            Dla poniższych pozycji wartości prognozowane w arkuszu różnią się od wartości w umowach. Wybierz, którą wartość zachować:
+          <p className="text-sm text-muted-foreground">
+            Czy na pewno usunąć <strong>wszystkie dane kosztów apartamentów</strong> za rok <strong>{year}</strong>? Tej operacji nie można cofnąć.
           </p>
-          <div className="max-h-[400px] overflow-y-auto space-y-2">
-            {conflicts.map(c => {
-              const resKey = `${c.entryId}||${c.category}`;
-              return (
-                <div key={resKey} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold">{c.contractName} — {c.category}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`conflict-${resKey}`}
-                        checked={conflictResolutions[resKey] === "existing"}
-                        onChange={() => setConflictResolutions(p => ({ ...p, [resKey]: "existing" }))}
-                      />
-                      <span>Obecna: <strong>{c.existingValue.toLocaleString("pl-PL")} zł</strong></span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`conflict-${resKey}`}
-                        checked={conflictResolutions[resKey] === "contract"}
-                        onChange={() => setConflictResolutions(p => ({ ...p, [resKey]: "contract" }))}
-                      />
-                      <span>Z umowy: <strong>{c.contractValue.toLocaleString("pl-PL")} zł</strong></span>
-                    </label>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setConflicts([]); setPendingContractData(null); }} data-testid="button-cancel-conflicts">Anuluj</Button>
-            <Button onClick={resolveConflicts} data-testid="button-resolve-conflicts">Zastosuj</Button>
+            <Button variant="outline" onClick={() => setShowClearAllDialog(false)}>Anuluj</Button>
+            <Button variant="destructive" onClick={handleClearAll} data-testid="button-confirm-clear-all">
+              <Eraser className="h-4 w-4 mr-1" /> Wyczyść rok {year}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

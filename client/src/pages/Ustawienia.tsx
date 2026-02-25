@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   Building2, Users, UserCog, MapPin, Briefcase, Files,
   FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
-  Type, Menu, ChevronDown, ChevronRight, PanelLeft,
+  Type, Menu, ChevronDown, ChevronRight, PanelLeft, TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +50,10 @@ const ZARZADZANIE_ITEMS: SettingsItem[] = [
   { href: "/contracts-services", label: "Umowy", description: "Zarządzanie umowami", icon: Briefcase },
   { href: "/document-templates", label: "Szablony dokumentów", description: "Wzory umów i dokumentów", icon: Files },
   { href: "/user-accounts", label: "Konta użytkowników", description: "Zarządzanie dostępem do systemu", icon: ScrollText },
+];
+
+const FINANSE_ITEMS: SettingsItem[] = [
+  { href: "/v2/prognoza-przychodow", label: "Prognoza przychodów", description: "Planowane przychody per apartament, miesięcznie i rocznie", icon: TrendingUp },
 ];
 
 const NARZEDZIA_ITEMS: SettingsItem[] = [
@@ -189,6 +193,7 @@ export default function Ustawienia() {
       </CollapsibleSection>
 
       <SettingsGrid title="Zarządzanie" items={ZARZADZANIE_ITEMS} />
+      <SettingsGrid title="Dane finansowe" items={FINANSE_ITEMS} />
       <SettingsGrid title="Narzędzia" items={NARZEDZIA_ITEMS} />
     </div>
   );

@@ -19,11 +19,9 @@ import Terminarz from "@/pages/Terminarz";
 import Lokalizacje from "@/pages/Lokalizacje";
 import ServiceContracts from "@/pages/ServiceContracts";
 import Podnajem from "@/pages/Podnajem";
-import Analizy from "@/pages/Analizy";
 import UserAccounts from "@/pages/UserAccounts";
 import Saldo from "@/pages/Saldo";
 import DocumentTemplates from "@/pages/DocumentTemplates";
-import ApartmentSchedule from "@/pages/ApartmentSchedule";
 import ActivityLog from "@/pages/ActivityLog";
 import PlaceholderPage from "@/pages/Placeholder";
 import ReportExport from "@/pages/ReportExport";
@@ -37,8 +35,7 @@ import Tasks from "@/pages/Tasks";
 import SourceComparison from "@/pages/SourceComparison";
 import V2Przychody from "@/pages/V2Przychody";
 import V2Koszty from "@/pages/V2Koszty";
-import V2Prognoza from "@/pages/V2Prognoza";
-import V2Realizacja from "@/pages/V2Realizacja";
+import PriorityRevenueForecast from "@/pages/PriorityRevenueForecast";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -114,7 +111,6 @@ function AuthenticatedRouter() {
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
 
       <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
-      <Route path="/apartment-schedule" component={() => <AuthenticatedRoute component={ApartmentSchedule} />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
       <Route path="/przeglady" component={() => <AuthenticatedRoute component={TechnicalInspections} />} />
       <Route path="/dokumenty-ksiegowe" component={() => <AuthenticatedRoute component={DokumentyKsiegowe} />} />
@@ -125,7 +121,6 @@ function AuthenticatedRouter() {
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
 
       <Route path="/podnajem" component={() => <AuthenticatedRoute component={Podnajem} />} />
-      <Route path="/analizy" component={() => <AuthenticatedRoute component={Analizy} />} />
 
       <Route path="/ustawienia" component={() => <AuthenticatedRoute component={Ustawienia} />} />
       <Route path="/apartments" component={() => <AuthenticatedRoute component={Apartments} />} />
@@ -143,8 +138,7 @@ function AuthenticatedRouter() {
       <Route path="/source-comparison" component={() => <AuthenticatedRoute component={SourceComparison} />} />
       <Route path="/v2/przychody" component={() => <AuthenticatedRoute component={V2Przychody} />} />
       <Route path="/v2/koszty" component={() => <AuthenticatedRoute component={V2Koszty} />} />
-      <Route path="/v2/prognoza" component={() => <AuthenticatedRoute component={V2Prognoza} />} />
-      <Route path="/v2/realizacja" component={() => <AuthenticatedRoute component={V2Realizacja} />} />
+      <Route path="/v2/prognoza-przychodow" component={() => <AuthenticatedRoute component={PriorityRevenueForecast} />} />
       <Route path="/ustawienia-menu" component={() => <Redirect to="/ustawienia" />} />
 
       <Route path="/koszty">{() => <Redirect to="/v2/koszty" />}</Route>
@@ -153,18 +147,22 @@ function AuthenticatedRouter() {
       <Route path="/koszty-apartamentowe" component={() => <Redirect to="/v2/koszty" />} />
       <Route path="/koszty-operacyjne" component={() => <Redirect to="/v2/koszty" />} />
       <Route path="/revenue" component={() => <Redirect to="/v2/przychody" />} />
-      <Route path="/finance-forecast" component={() => <Redirect to="/v2/prognoza" />} />
+      <Route path="/finance-forecast" component={() => <Redirect to="/v2/koszty" />} />
       <Route path="/contracts-subrent" component={() => <Redirect to="/podnajem" />} />
       <Route path="/subrent-settlement" component={() => <Redirect to="/podnajem?tab=rozliczenia" />} />
       <Route path="/subrent-media" component={() => <Redirect to="/podnajem?tab=media" />} />
       <Route path="/arrivals" component={() => <Redirect to="/reservations?tab=przyjazdy" />} />
       <Route path="/backup" component={() => <Redirect to="/import-export" />} />
-      <Route path="/occupancy" component={() => <Redirect to="/analizy?tab=oblozenosc" />} />
-      <Route path="/profitability" component={() => <Redirect to="/analizy?tab=rentownosc" />} />
-      <Route path="/year-comparison" component={() => <Redirect to="/analizy?tab=porownanie" />} />
-      <Route path="/apartment-comparison" component={() => <Redirect to="/analizy?tab=apartamenty" />} />
-      <Route path="/price-seasonality" component={() => <Redirect to="/analizy?tab=sezonowosc" />} />
-      <Route path="/cash-flow-forecast" component={() => <Redirect to="/analizy" />} />
+      <Route path="/occupancy" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/profitability" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/year-comparison" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/apartment-comparison" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/price-seasonality" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/cash-flow-forecast" component={() => <Redirect to="/v2/koszty" />} />
+      <Route path="/analizy" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/apartment-schedule" component={() => <Redirect to="/v2/koszty" />} />
+      <Route path="/v2/prognoza" component={() => <Redirect to="/ustawienia" />} />
+      <Route path="/v2/realizacja" component={() => <Redirect to="/v2/przychody" />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>
