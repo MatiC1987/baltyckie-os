@@ -399,7 +399,7 @@ export default function Dashboard() {
                         <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
                     </div>
-                    <p className="text-xl font-bold mt-1 animate-count-up">
+                    <p className="text-lg sm:text-xl font-bold mt-1 animate-count-up">
                       {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
                     </p>
                     {kpiStats.lastMonthRevenue > 0 && (
@@ -418,7 +418,7 @@ export default function Dashboard() {
                         <Plane className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </div>
                     </div>
-                    <p className="text-xl font-bold mt-1">{kpiStats.monthCount}</p>
+                    <p className="text-lg sm:text-xl font-bold mt-1">{kpiStats.monthCount}</p>
                     <p className="text-xs text-muted-foreground mt-1">aktywnych rezerwacji</p>
                   </CardContent>
                 </Card>
@@ -430,7 +430,7 @@ export default function Dashboard() {
                         <AlertCircle className={`h-4 w-4 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} />
                       </div>
                     </div>
-                    <p className={`text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                    <p className={`text-lg sm:text-xl font-bold mt-1 ${kpiStats.unpaidCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
                       {kpiStats.unpaidCount}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">nieopłaconych rezerwacji</p>
@@ -444,7 +444,7 @@ export default function Dashboard() {
                         <Wallet className="h-4 w-4 text-primary" />
                       </div>
                     </div>
-                    <p className={`text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                    <p className={`text-lg sm:text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                       {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">łączne saldo kont</p>
@@ -458,7 +458,7 @@ export default function Dashboard() {
                         <Target className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                       </div>
                     </div>
-                    <p className="text-xl font-bold mt-1">{occupancyPct}%</p>
+                    <p className="text-lg sm:text-xl font-bold mt-1">{occupancyPct}%</p>
                     <div className="mt-1.5">
                       <div className="h-2 w-full rounded-full bg-muted">
                         <div

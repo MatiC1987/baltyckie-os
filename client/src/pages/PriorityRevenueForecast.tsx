@@ -264,19 +264,19 @@ export default function PriorityRevenueForecast() {
         </Card>
       </div>
 
-      <div className="rounded-md border border-border bg-card overflow-x-auto">
-        <table className="w-full text-xs border-collapse" style={{ minWidth: "1200px" }}>
+      <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
+        <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "900px" }}>
           <thead className="sticky top-0 z-20">
             <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-2 text-left font-bold min-w-[200px]">
+              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-1.5 sm:px-2 py-2 text-left font-bold min-w-[140px] sm:min-w-[200px]">
                 Apartament
               </th>
               {MONTHS.map((m, i) => (
-                <th key={i} className={`border-b border-r border-border px-2 py-2 text-center font-bold min-w-[70px] ${i === currentMonth && year === currentYear ? "bg-cyan-100/60 dark:bg-cyan-950/30" : ""}`}>
+                <th key={i} className={`border-b border-r border-border px-1.5 sm:px-2 py-2 text-center font-bold min-w-[50px] sm:min-w-[70px] ${i === currentMonth && year === currentYear ? "bg-cyan-100/60 dark:bg-cyan-950/30" : ""}`}>
                   {m}
                 </th>
               ))}
-              <th className="border-b border-border px-2 py-2 text-center font-bold min-w-[80px] bg-muted dark:bg-muted/70">
+              <th className="border-b border-border px-1.5 sm:px-2 py-2 text-center font-bold min-w-[60px] sm:min-w-[80px] bg-muted dark:bg-muted/70">
                 Rok
               </th>
             </tr>

@@ -633,8 +633,8 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">Ładowanie danych...</div>
       ) : (
-        <div className="rounded-md border border-border bg-card overflow-x-auto">
-          <table className="w-full text-xs border-collapse" style={{ minWidth: "1350px" }}>
+        <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
+          <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1100px" }}>
             <thead className="sticky top-0 z-20">
               <tr className="bg-muted/80 dark:bg-muted/50">
                 {([

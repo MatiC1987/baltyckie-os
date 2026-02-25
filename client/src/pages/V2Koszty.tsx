@@ -37,7 +37,7 @@ function CostTile({ title, prognoza, realized }: { title: string; prognoza: numb
     <Card>
       <CardContent className="pt-4 pb-3 px-4">
         <p className="text-xs text-muted-foreground">{title}</p>
-        <p className="text-xl font-bold mt-1 tabular-nums">{formatNum(prognoza)} zł</p>
+        <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums">{formatNum(prognoza)} zł</p>
         <p className="text-xs text-muted-foreground mt-0.5">
           Zrealizowane: <span className="font-medium text-foreground">{formatNum(realized)} zł</span>
         </p>
@@ -133,8 +133,8 @@ export default function V2Koszty() {
         icon={Calculator}
         description="Koszty apartamentowe i operacyjne"
         actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" className="h-9 w-9" disabled={year <= years[0]} onClick={() => setYear(y => y - 1)} data-testid="button-prev-year">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="icon" disabled={year <= years[0]} onClick={() => setYear(y => y - 1)} data-testid="button-prev-year">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
@@ -147,11 +147,11 @@ export default function V2Koszty() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" className="h-9 w-9" disabled={year >= years[years.length - 1]} onClick={() => setYear(y => y + 1)} data-testid="button-next-year">
+            <Button variant="outline" size="icon" disabled={year >= years[years.length - 1]} onClick={() => setYear(y => y + 1)} data-testid="button-next-year">
               <ChevronRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-costs">
-              <Copy className="h-4 w-4 mr-1" /> Kopiuj
+              <Copy className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Kopiuj</span>
             </Button>
           </div>
         }
@@ -167,7 +167,7 @@ export default function V2Koszty() {
         <TabsContent value="dashboard" className="space-y-4 mt-4">
           <div>
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Rok {year} — podsumowanie roczne</p>
-            <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-tiles">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3" data-testid="v2-koszty-tiles">
               <CostTile title="Koszty (apartamenty)" prognoza={aptAnnual.p} realized={aptAnnual.r} />
               <CostTile title="Koszty operacyjne" prognoza={opAnnual.p} realized={opAnnual.r} />
               <CostTile title="Razem koszty" prognoza={aptAnnual.p + opAnnual.p} realized={aptAnnual.r + opAnnual.r} />
@@ -178,7 +178,7 @@ export default function V2Koszty() {
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">
               {MONTHS_PL[currentMonth]} {year} — bieżący miesiąc
             </p>
-            <div className="grid grid-cols-3 gap-3" data-testid="v2-koszty-month-tiles">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3" data-testid="v2-koszty-month-tiles">
               <CostTile title="Koszty (apartamenty)" prognoza={currentMonthTotals.apt_p} realized={currentMonthTotals.apt_r} />
               <CostTile title="Koszty operacyjne" prognoza={currentMonthTotals.op_p} realized={currentMonthTotals.op_r} />
               <CostTile title="Razem koszty" prognoza={currentMonthTotals.total_p} realized={currentMonthTotals.total_r} />

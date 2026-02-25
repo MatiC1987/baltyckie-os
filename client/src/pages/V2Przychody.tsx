@@ -144,6 +144,13 @@ function ApartmentYearComparison({ apartmentId, isOpen, colSpan }: { apartmentId
   );
 }
 
+function handleTableScroll(e: React.UIEvent<HTMLDivElement>) {
+  const el = e.currentTarget;
+  const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10;
+  if (atEnd) el.classList.add('scrolled-end');
+  else el.classList.remove('scrolled-end');
+}
+
 function LocationGroup({ locationName, apartments, currentMonth, onApartmentClick }: {
   locationName: string;
   apartments: AptRevenueData[];
@@ -201,18 +208,18 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
       </button>
 
       {open && (
-        <div className="overflow-x-auto mt-1">
-          <table className="w-full text-xs border-collapse" data-testid={`revenue-table-${locationName}`}>
+        <div className="overflow-x-auto mt-1 table-scroll-container" onScroll={handleTableScroll}>
+          <table className="w-full text-[10px] sm:text-xs border-collapse" data-testid={`revenue-table-${locationName}`}>
             <thead>
               <tr className="border-b bg-muted/30 sticky top-0 z-10">
-                <th className="text-left p-2 min-w-[160px] font-medium">Apartament</th>
-                <th className="text-left p-2 min-w-[60px] font-medium">Wiersz</th>
+                <th className="sticky left-0 z-20 bg-muted/30 text-left p-1.5 sm:p-2 min-w-[120px] sm:min-w-[160px] font-medium">Apartament</th>
+                <th className="text-left p-1.5 sm:p-2 min-w-[45px] sm:min-w-[60px] font-medium">Wiersz</th>
                 {MONTHS.map((m, i) => (
-                  <th key={i} className={`text-right p-2 min-w-[80px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                  <th key={i} className={`text-right p-1.5 sm:p-2 min-w-[60px] sm:min-w-[80px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
                     {m}
                   </th>
                 ))}
-                <th className="text-right p-2 min-w-[90px] font-bold">Razem</th>
+                <th className="text-right p-1.5 sm:p-2 min-w-[70px] sm:min-w-[90px] font-bold">Razem</th>
               </tr>
             </thead>
             <tbody>
@@ -224,7 +231,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                 const compExpanded = expandedComparison.has(apt.apartmentId);
                 return [
                   <tr key={`${apt.apartmentId}-plan`} className="border-b border-dashed" data-testid={`apt-row-plan-${apt.apartmentId}`}>
-                    <td className="p-2 font-medium" rowSpan={3}>
+                    <td className="sticky left-0 z-10 bg-background p-1.5 sm:p-2 font-medium" rowSpan={3}>
                       <div className="flex items-center gap-1">
                         <button className="text-left hover:text-[#5ADBFA] hover:underline transition-colors flex-1" onClick={() => onApartmentClick?.(apt.apartmentId)} data-testid={`apt-trend-link-${apt.apartmentId}`}>
                           {apt.apartmentName}
@@ -239,32 +246,32 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                         </button>
                       </div>
                     </td>
-                    <td className="p-2 text-muted-foreground">Plan</td>
+                    <td className="p-1.5 sm:p-2 text-muted-foreground">Plan</td>
                     {MONTHS.map((_, i) => (
-                      <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                      <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
                         {formatNum(apt.months[i]?.forecast || 0)}
                       </td>
                     ))}
-                    <td className="p-2 text-right font-semibold tabular-nums">{formatNum(yearFc)} PLN</td>
+                    <td className="p-1.5 sm:p-2 text-right font-semibold tabular-nums">{formatNum(yearFc)} PLN</td>
                   </tr>,
                   <tr key={`${apt.apartmentId}-actual`} className="border-b border-dashed" data-testid={`apt-row-actual-${apt.apartmentId}`}>
-                    <td className="p-2 text-muted-foreground">Rzecz.</td>
+                    <td className="p-1.5 sm:p-2 text-muted-foreground">Rzecz.</td>
                     {MONTHS.map((_, i) => (
-                      <td key={i} className={`p-2 text-right tabular-nums font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                      <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
                         {formatNum(apt.months[i]?.actual || 0)}
                       </td>
                     ))}
-                    <td className="p-2 text-right font-bold tabular-nums">{formatNum(yearAct)} PLN</td>
+                    <td className="p-1.5 sm:p-2 text-right font-bold tabular-nums">{formatNum(yearAct)} PLN</td>
                   </tr>,
                   <tr key={`${apt.apartmentId}-dev`} className="border-b" data-testid={`apt-row-dev-${apt.apartmentId}`}>
-                    <td className="p-2 text-muted-foreground">Odch.</td>
+                    <td className="p-1.5 sm:p-2 text-muted-foreground">Odch.</td>
                     {MONTHS.map((_, i) => {
                       const fc = apt.months[i]?.forecast || 0;
                       const act = apt.months[i]?.actual || 0;
                       const dev = act - fc;
                       const mPct = pctVal(act, fc);
                       return (
-                        <td key={i} className={`p-2 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                        <td key={i} className={`p-1.5 sm:p-2 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
                           {fc === 0 && act === 0 ? "—" : (
                             <div className="space-y-0.5">
                               <div className="flex items-center gap-1 justify-end">
@@ -279,7 +286,7 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                         </td>
                       );
                     })}
-                    <td className="p-2 text-right">
+                    <td className="p-1.5 sm:p-2 text-right">
                       {yearFc === 0 && yearAct === 0 ? "—" : (
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1 justify-end">
@@ -297,24 +304,24 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
                 ];
               })}
               <tr className="border-t-2 font-bold bg-muted/20">
-                <td className="p-2">Razem {locationName}</td>
-                <td className="p-2 text-muted-foreground text-xs">Plan</td>
+                <td className="sticky left-0 z-10 bg-muted/20 p-1.5 sm:p-2">Razem {locationName}</td>
+                <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Plan</td>
                 {MONTHS.map((_, i) => (
-                  <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                  <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
                     {formatNum(totals[i]?.forecast || 0)}
                   </td>
                 ))}
-                <td className="p-2 text-right tabular-nums">{formatNum(yearTotalFc)} PLN</td>
+                <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalFc)} PLN</td>
               </tr>
               <tr className="font-bold bg-muted/20">
-                <td className="p-2"></td>
-                <td className="p-2 text-muted-foreground text-xs">Rzecz.</td>
+                <td className="sticky left-0 z-10 bg-muted/20 p-1.5 sm:p-2"></td>
+                <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Rzecz.</td>
                 {MONTHS.map((_, i) => (
-                  <td key={i} className={`p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                  <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
                     {formatNum(totals[i]?.actual || 0)}
                   </td>
                 ))}
-                <td className="p-2 text-right tabular-nums">{formatNum(yearTotalAct)} PLN</td>
+                <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalAct)} PLN</td>
               </tr>
             </tbody>
           </table>
@@ -416,9 +423,9 @@ export default function V2Przychody() {
         icon={Wallet}
         description="Przychody — prognoza vs realizacja"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="w-[180px]" data-testid="select-location-filter">
+              <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-location-filter">
                 <SelectValue placeholder="Lokalizacja" />
               </SelectTrigger>
               <SelectContent>
@@ -439,10 +446,10 @@ export default function V2Przychody() {
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={() => setShowAutoFill(true)} data-testid="button-auto-fill">
-              <Sparkles className="h-4 w-4 mr-1" /> Auto-uzup.
+              <Sparkles className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Auto-uzup.</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-forecasts">
-              <Copy className="h-4 w-4 mr-1" /> Kopiuj
+              <Copy className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Kopiuj</span>
             </Button>
           </div>
         }

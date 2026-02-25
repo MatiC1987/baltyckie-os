@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -116,6 +116,12 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
   const [isOpen, setIsOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
 
+  useEffect(() => {
+    const handler = () => setIsOpen(prev => !prev);
+    window.addEventListener("toggle-mobile-sidebar", handler);
+    return () => window.removeEventListener("toggle-mobile-sidebar", handler);
+  }, []);
+
   const { config, allItems, toggleCollapsed, setCompact } = useSidebar();
   const { sections, hiddenItems, collapsed, compact } = config;
   const hiddenSet = useMemo(() => new Set(hiddenItems), [hiddenItems]);
@@ -155,15 +161,17 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
 
   return (
     <>
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 border-b border-white/10 z-50 flex items-center px-4 justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 border-b border-white/10 z-50 flex items-center px-4 justify-between gap-2">
         {companyLogoUrl ? (
           <img src={companyLogoUrl} alt={companyName || "Logo"} className="h-6 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = logoSrc; }} />
         ) : (
           <img src={logoSrc} alt="Bałtyckie Finanse" className="h-6" />
         )}
-        <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)} className="text-white">
-          {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </Button>
+        {isOpen && (
+          <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="text-white" data-testid="button-close-sidebar">
+            <X className="h-6 w-6" />
+          </Button>
+        )}
       </div>
 
       <aside className={cn(

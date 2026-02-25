@@ -1017,23 +1017,23 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       )}
 
       {isLoadingCostData ? (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
           <Card>
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-xs text-muted-foreground">Prognoza roczna</p>
-              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{grandTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{grandTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-xs text-muted-foreground">Zrealizowane koszty</p>
-              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-rzeczywiste">{grandTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums" data-testid="text-total-rzeczywiste">{grandTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
               {grandTotal.p > 0 && (
                 <p className="text-xs text-muted-foreground mt-0.5">{Math.round(grandTotal.r / grandTotal.p * 100)}% planu</p>
               )}
@@ -1042,7 +1042,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           <Card>
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-xs text-muted-foreground">Saldo</p>
-              <p className={`text-xl font-bold mt-1 tabular-nums ${saldoColor(grandTotal.s)}`} data-testid="text-total-saldo">
+              <p className={`text-lg sm:text-xl font-bold mt-1 tabular-nums ${saldoColor(grandTotal.s)}`} data-testid="text-total-saldo">
                 {grandTotal.s >= 0 ? "+" : ""}{grandTotal.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
               </p>
             </CardContent>
@@ -1053,17 +1053,17 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       {year === currentYear && !isLoadingCostData && (
         <>
           <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">{MONTHS_PL[currentMonth]} — bieżący miesiąc</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
             <Card className="cursor-pointer hover:bg-accent/30 transition-colors" onClick={scrollToMonth} data-testid="kpi-month-prognoza">
               <CardContent className="pt-4 pb-3 px-4">
                 <p className="text-xs text-muted-foreground">Prognoza ({MONTHS[currentMonth]})</p>
-                <p className="text-xl font-bold mt-1 tabular-nums">{currentMonthTotals.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums">{currentMonthTotals.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
               </CardContent>
             </Card>
             <Card className="cursor-pointer hover:bg-accent/30 transition-colors" onClick={scrollToMonth} data-testid="kpi-month-realized">
               <CardContent className="pt-4 pb-3 px-4">
                 <p className="text-xs text-muted-foreground">Zrealizowane ({MONTHS[currentMonth]})</p>
-                <p className="text-xl font-bold mt-1 tabular-nums">{currentMonthTotals.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+                <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums">{currentMonthTotals.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
                 {currentMonthTotals.p > 0 && (
                   <p className="text-xs text-muted-foreground mt-0.5">{Math.round(currentMonthTotals.r / currentMonthTotals.p * 100)}% planu</p>
                 )}
@@ -1072,7 +1072,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
             <Card className="cursor-pointer hover:bg-accent/30 transition-colors" onClick={scrollToMonth} data-testid="kpi-month-saldo">
               <CardContent className="pt-4 pb-3 px-4">
                 <p className="text-xs text-muted-foreground">Saldo ({MONTHS[currentMonth]})</p>
-                <p className={`text-xl font-bold mt-1 tabular-nums ${saldoColor(currentMonthTotals.s)}`}>
+                <p className={`text-lg sm:text-xl font-bold mt-1 tabular-nums ${saldoColor(currentMonthTotals.s)}`}>
                   {currentMonthTotals.s >= 0 ? "+" : ""}{currentMonthTotals.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
                 </p>
               </CardContent>
@@ -1125,8 +1125,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       )}
 
       <FullscreenWrapper title={`Koszty apartamentów ${year}`} isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
-        <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-costs-apartments">
-        <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
+        <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" data-testid="table-costs-apartments" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
+        <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1400px" }}>
           <thead className="sticky top-0 z-20">
             <tr className="bg-muted/80 dark:bg-muted/50">
               <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>

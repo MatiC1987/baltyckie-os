@@ -1227,14 +1227,14 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-amber-500" />
               <p className="text-xs text-muted-foreground">Do opłacenia ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-            <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-current-unpaid">{formatNum2(overdueSummary.currentMonthUnpaidAmount)} zł</p>
+            <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums" data-testid="text-current-unpaid">{formatNum2(overdueSummary.currentMonthUnpaidAmount)} zł</p>
           </CardContent>
         </Card>
         <Card>
@@ -1243,13 +1243,13 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               <CheckCircle2 className="h-4 w-4 text-green-500" />
               <p className="text-xs text-muted-foreground">Opłacone ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-            <p className="text-xl font-bold mt-1 text-green-600 tabular-nums" data-testid="text-paid-this-month">{formatNum2(currentMonthTableTotals.rzeczywiste)} zł</p>
+            <p className="text-lg sm:text-xl font-bold mt-1 text-green-600 tabular-nums" data-testid="text-paid-this-month">{formatNum2(currentMonthTableTotals.rzeczywiste)} zł</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <p className="text-xs text-muted-foreground">Prognoza roczna</p>
-            <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{grandTotal.prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+            <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{grandTotal.prognoza.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
             <p className="text-xs text-muted-foreground mt-0.5">Zrealizowane: {grandTotal.rzeczywiste.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
           </CardContent>
         </Card>
@@ -1358,8 +1358,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       )}
 
       <FullscreenWrapper title={`Opłaty i koszty ${selectedYear}`} toolbar={<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)}><BarChart3 className="mr-1 h-3 w-3" />{showChart ? "Ukryj wykres" : "Pokaż wykres"}</Button></div>} isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
-      <div className="rounded-md border border-border bg-card overflow-x-auto" data-testid="table-oplaty" onMouseUp={handleMouseUp}>
-        <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
+      <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" data-testid="table-oplaty" onMouseUp={handleMouseUp} onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
+        <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1400px" }}>
           <thead className="sticky top-0 z-20">
             <tr className="bg-muted/80 dark:bg-muted/50">
               <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>

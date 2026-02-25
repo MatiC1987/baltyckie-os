@@ -495,7 +495,7 @@ function HotResSection() {
             </div>
 
             {importResult.imported > 0 && (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
                 <StatBox label="Zaimportowano" value={importResult.imported} />
                 <StatBox label="Pominięto" value={importResult.skipped} />
                 <StatBox label="Nowe apartamenty" value={importResult.newApartments || 0} />
@@ -522,7 +522,7 @@ function HotResSection() {
 function StatBox({ label, value }: { label: string; value: number }) {
   return (
     <div className="text-center p-3 rounded-lg bg-muted/50">
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-xl sm:text-2xl font-bold">{value}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   );

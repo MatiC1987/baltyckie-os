@@ -252,6 +252,37 @@
   }
 }
 
+@media (pointer: coarse) {
+  button,
+  a[role="button"],
+  [role="menuitem"],
+  [role="option"],
+  [role="tab"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  [data-radix-collection-item] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="date"],
+  textarea,
+  [role="combobox"] {
+    min-height: 44px;
+  }
+}
+
 aside[data-sidebar-fs] {
   --_fs: var(--sidebar-fs, 14px);
   font-size: var(--_fs);
@@ -305,4 +336,29 @@ main[data-page-fs] .text-3xl {
 }
 main[data-page-fs] .text-4xl {
   font-size: calc(var(--_pfs) + 20px) !important;
+}
+
+.table-scroll-container {
+  position: relative;
+}
+.table-scroll-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 32px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, hsl(var(--background) / 0.7));
+  z-index: 15;
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+.table-scroll-container.scrolled-end::after {
+  opacity: 0;
+}
+@media (min-width: 1024px) {
+  .table-scroll-container::after {
+    display: none;
+  }
 }

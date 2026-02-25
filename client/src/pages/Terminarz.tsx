@@ -17,6 +17,7 @@ import { Plus, Lock, ChevronLeft, ChevronRight, X, Settings2 } from "lucide-reac
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import type { Location, Sublease, SubleaseApartmentChange } from "@shared/schema";
 
@@ -138,6 +139,7 @@ function isSameDay(a: Date, b: Date): boolean {
 
 const NORMAL = { dayWidth: 36, aptColWidth: 140, rowHeight: 36, headerHeight: 52, monthLabelHeight: 20, dayHeaderHeight: 32, barTop: 4, barHeight: 28, aptFontSize: "11px", dayNameSize: "9px", dayNumSize: "10px", barFontSize: "10px", monthLabelSize: "10px" };
 const COMPACT = { dayWidth: 22, aptColWidth: 100, rowHeight: 22, headerHeight: 36, monthLabelHeight: 14, dayHeaderHeight: 22, barTop: 2, barHeight: 18, aptFontSize: "9px", dayNameSize: "7px", dayNumSize: "8px", barFontSize: "8px", monthLabelSize: "8px" };
+const MOBILE = { dayWidth: 18, aptColWidth: 90, rowHeight: 28, headerHeight: 40, monthLabelHeight: 16, dayHeaderHeight: 24, barTop: 2, barHeight: 24, aptFontSize: "9px", dayNameSize: "7px", dayNumSize: "8px", barFontSize: "8px", monthLabelSize: "8px" };
 
 export default function Terminarz() {
   const { data: reservations, isLoading: loadingRes } = useReservations();
@@ -147,6 +149,7 @@ export default function Terminarz() {
   const { data: subleases = [] } = useQuery<Sublease[]>({ queryKey: ['/api/subleases'] });
   const { data: allAptChanges = [] } = useQuery<SubleaseApartmentChange[]>({ queryKey: ['/api/sublease-apartment-changes/all'] });
 
+  const isMobile = useIsMobile();
   const [monthsToShow, setMonthsToShow] = useState(2);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -160,6 +163,7 @@ export default function Terminarz() {
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [hoveredBlockade, setHoveredBlockade] = useState<any>(null);
   const [compact, setCompact] = useState(false);
+  const [mobileInitDone, setMobileInitDone] = useState(false);
   const { data: dbColors } = useQuery<TerminarzColors>({
     queryKey: ['/api/terminarz-colors'],
     staleTime: 60000,
@@ -197,8 +201,15 @@ export default function Terminarz() {
   const [resPrefill, setResPrefill] = useState<{ aptId?: number; startDate?: string; endDate?: string } | undefined>(undefined);
   const [blkPrefill, setBlkPrefill] = useState<{ aptId?: number; startDate?: string; endDate?: string } | undefined>(undefined);
 
+  useEffect(() => {
+    if (isMobile && !mobileInitDone) {
+      setMonthsToShow(1);
+      setMobileInitDone(true);
+    }
+  }, [isMobile, mobileInitDone]);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const sz = compact ? COMPACT : NORMAL;
+  const sz = isMobile ? MOBILE : compact ? COMPACT : NORMAL;
 
   const dragDataRef = useRef<{
     reservationId: number;
@@ -413,20 +424,20 @@ export default function Terminarz() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-terminarz-title">Terminarz</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight" data-testid="text-terminarz-title">Terminarz</h2>
           <p className="text-muted-foreground text-sm">Graficzny terminarz rezerwacji apartamentów.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={() => setShowNewReservation(true)} data-testid="button-add-reservation-cal">
-            <Plus className="mr-2 h-4 w-4" /> Nowa
+            <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Nowa</span>
           </Button>
           <Button variant="outline" onClick={() => setShowNewBlockade(true)} data-testid="button-add-blockade">
-            <Lock className="mr-2 h-4 w-4" /> Dodaj blokadę
+            <Lock className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Dodaj blokadę</span>
           </Button>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={() => navigateMonths(-1)} data-testid="button-prev-month">
             <ChevronLeft className="h-4 w-4" />
@@ -435,7 +446,7 @@ export default function Terminarz() {
             type="date"
             value={startDate}
             onChange={e => setStartDate(e.target.value)}
-            className="w-40"
+            className="w-full sm:w-40"
             data-testid="input-start-date"
           />
           <Button size="icon" variant="ghost" onClick={() => navigateMonths(1)} data-testid="button-next-month">
@@ -447,9 +458,9 @@ export default function Terminarz() {
         </div>
 
         <div className="flex items-center gap-1">
-          <Label className="text-xs text-muted-foreground whitespace-nowrap">Okres:</Label>
+          <Label className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">Okres:</Label>
           <Select value={String(monthsToShow)} onValueChange={v => setMonthsToShow(Number(v))}>
-            <SelectTrigger className="w-[120px]" data-testid="select-months">
+            <SelectTrigger className="w-[100px] sm:w-[120px]" data-testid="select-months">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -461,9 +472,9 @@ export default function Terminarz() {
         </div>
 
         <div className="flex items-center gap-1">
-          <Label className="text-xs text-muted-foreground whitespace-nowrap">Lokalizacja:</Label>
+          <Label className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">Lokalizacja:</Label>
           <Select value={locationFilter} onValueChange={setLocationFilter}>
-            <SelectTrigger className="w-[180px]" data-testid="select-location-filter">
+            <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-location-filter">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -20,3 +20,7 @@ window.fetch = function(input: RequestInfo | URL, init?: RequestInit): Promise<R
 };
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
