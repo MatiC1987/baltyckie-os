@@ -8538,29 +8538,38 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
   app.get('/api/balance-forecast', isAuthenticated, async (req, res) => {
     try {
       const today = new Date();
-      today.setDate(1); // normalize to first of month
+      today.setDate(1);
       const currentYear = today.getFullYear();
       const fetchStartYear = currentYear;
       const fetchEndYear = currentYear + 5;
 
-      // --- 1. Current company balance (latest snapshot per account) ---
-      const allSnapshots = await db.select({
-        accountId: accountSnapshots.accountId,
-        date: accountSnapshots.date,
-        balance: accountSnapshots.balance,
-      }).from(accountSnapshots);
-
-      const latestPerAccount: Record<number, number> = {};
-      const latestDatePerAccount: Record<number, string> = {};
-      for (const snap of allSnapshots) {
-        if (!latestDatePerAccount[snap.accountId] || snap.date > latestDatePerAccount[snap.accountId]) {
-          latestDatePerAccount[snap.accountId] = snap.date;
-          latestPerAccount[snap.accountId] = Number(snap.balance);
+      const companyBalance = await storage.getCompanyBalance();
+      const saldoPersonMap: Record<string, string> = {
+        "Saldo - M. Latasiewicz": "Małgorzata Latasiewicz",
+        "Saldo - J. Głodkowska": "Jolanta Głodkowska",
+        "Saldo - M. Cieślak": "Mateusz Cieślak",
+      };
+      for (const acc of companyBalance.accounts) {
+        if (acc.balanceSource === "auto_saldo") {
+          const personName = saldoPersonMap[acc.name];
+          if (personName) {
+            const initialBal = parseFloat(await storage.getSaldoInitialBalance(personName));
+            const entries = await storage.getSaldoEntries({ personName });
+            let running = initialBal;
+            for (const e of entries) {
+              if (e.cashAmount) running += parseFloat(e.cashAmount);
+            }
+            acc.latestBalance = running.toFixed(2);
+          }
+        }
+        if (acc.type === "LOAN") {
+          const loansBalance = await storage.getLoansBalance();
+          acc.latestBalance = loansBalance.toFixed(2);
+          acc.balanceSource = "auto_loans";
         }
       }
-      const currentBalance = Object.values(latestPerAccount).reduce((s, v) => s + v, 0);
+      const currentBalance = companyBalance.accounts.reduce((sum, a) => sum + Number(a.latestBalance), 0);
 
-      // --- 2. Revenue forecasts (months 0-indexed: 0=Jan, 11=Dec) ---
       const revForecastRows = await db.select({
         year: revenueForecasts.year,
         month: revenueForecasts.month,
@@ -8568,19 +8577,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       }).from(revenueForecasts).where(
         and(gte(revenueForecasts.year, fetchStartYear - 1), lte(revenueForecasts.year, fetchEndYear))
       );
-      // Build lookup: revForecastMap[year][month0idx] = total
       const revForecastMap: Record<number, Record<number, number>> = {};
       for (const row of revForecastRows) {
         if (!revForecastMap[row.year]) revForecastMap[row.year] = {};
         revForecastMap[row.year][row.month] = (revForecastMap[row.year][row.month] || 0) + Number(row.forecast || 0);
       }
 
-      // --- 3. Actual revenue & surcharges from reservations ---
       const futureLimit = `${fetchEndYear}-12-31`;
       const pastLimit = `${fetchStartYear - 1}-01-01`;
       const activeReservations = await db.select({
         startDate: reservations.startDate,
-        price: reservations.price,
         paidAmount: reservations.paidAmount,
       }).from(reservations).where(
         and(
@@ -8590,23 +8596,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         )
       );
 
-      // Build lookups: revActualMap[year][calMonth1-12] and surchargesMap[year][calMonth1-12]
       const revActualMap: Record<number, Record<number, number>> = {};
-      const surchargesMap: Record<number, Record<number, number>> = {};
       for (const r of activeReservations) {
         const d = new Date(r.startDate);
         const y = d.getFullYear();
-        const m = d.getMonth() + 1; // 1-12
+        const m = d.getMonth() + 1;
         const paid = Number(r.paidAmount || 0);
-        const price = Number(r.price || 0);
-        const surcharge = Math.max(0, price - paid);
         if (!revActualMap[y]) revActualMap[y] = {};
         revActualMap[y][m] = (revActualMap[y][m] || 0) + paid;
-        if (!surchargesMap[y]) surchargesMap[y] = {};
-        surchargesMap[y][m] = (surchargesMap[y][m] || 0) + surcharge;
       }
 
-      // --- 4. Apt cost data (months 0-indexed in DB: 0=Jan, 11=Dec) ---
       const aptCostRows = await db.select({
         year: aptCostData.year,
         month: aptCostData.month,
@@ -8624,7 +8623,6 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         aptActualMap[row.year][row.month] = (aptActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
       }
 
-      // --- 5. Op cost data (months 0-indexed in DB: 0=Jan, 11=Dec) ---
       const opCostRows = await db.select({
         year: opCostData.year,
         month: opCostData.month,
@@ -8642,7 +8640,6 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         opActualMap[row.year][row.month] = (opActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
       }
 
-      // --- Helper: get value with year fallback ---
       function getVal(map: Record<number, Record<number, number>>, year: number, month: number): number {
         for (let y = year; y >= year - 4; y--) {
           const v = map[y]?.[month];
@@ -8651,21 +8648,18 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         return 0;
       }
 
-      // --- 6. Build 60 months ---
       let runningBalance = Math.round(currentBalance * 100) / 100;
       const months: any[] = [];
       for (let i = 0; i < 60; i++) {
         const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
         const year = d.getFullYear();
-        const calMonth = d.getMonth() + 1; // 1-12
-        const rfMonth = d.getMonth(); // 0-11 for revenue_forecasts
+        const calMonth = d.getMonth() + 1;
+        const rfMonth = d.getMonth();
 
         const revForecast = getVal(revForecastMap, year, rfMonth);
         const revActual = revActualMap[year]?.[calMonth] ?? 0;
-        const revenueRemaining = Math.max(0, revForecast - revActual);
-        const surcharges = surchargesMap[year]?.[calMonth] ?? 0;
+        const revenueRemaining = revForecast - revActual;
 
-        // apt_cost_data and op_cost_data use 0-indexed months (0=Jan, 11=Dec) — use rfMonth
         const aptCostForecast = getVal(aptForecastMap, year, rfMonth);
         const aptCostActual = aptActualMap[year]?.[rfMonth] ?? 0;
         const aptCostRemaining = Math.max(0, aptCostForecast - aptCostActual);
@@ -8674,31 +8668,20 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         const opCostActual = opActualMap[year]?.[rfMonth] ?? 0;
         const opCostRemaining = Math.max(0, opCostForecast - opCostActual);
 
-        const totalCostForecast = aptCostForecast + opCostForecast;
-        const totalCostActual = aptCostActual + opCostActual;
-        const totalCostRemaining = aptCostRemaining + opCostRemaining;
-
-        // surcharges (price − paidAmount) are informational only — already contained in revenueRemaining
-        // Adding them would double-count confirmed-but-unpaid reservations
-        const endBalance = Math.round((runningBalance + revenueRemaining - totalCostRemaining) * 100) / 100;
+        const endBalance = Math.round((runningBalance + revenueRemaining - aptCostRemaining - opCostRemaining) * 100) / 100;
 
         months.push({
           year,
           month: calMonth,
-          startBalance: Math.round(runningBalance * 100) / 100,
           revenueForecast: Math.round(revForecast * 100) / 100,
           revenueActual: Math.round(revActual * 100) / 100,
           revenueRemaining: Math.round(revenueRemaining * 100) / 100,
-          surcharges: Math.round(surcharges * 100) / 100,
           aptCostForecast: Math.round(aptCostForecast * 100) / 100,
           aptCostActual: Math.round(aptCostActual * 100) / 100,
           aptCostRemaining: Math.round(aptCostRemaining * 100) / 100,
           opCostForecast: Math.round(opCostForecast * 100) / 100,
           opCostActual: Math.round(opCostActual * 100) / 100,
           opCostRemaining: Math.round(opCostRemaining * 100) / 100,
-          totalCostForecast: Math.round(totalCostForecast * 100) / 100,
-          totalCostActual: Math.round(totalCostActual * 100) / 100,
-          totalCostRemaining: Math.round(totalCostRemaining * 100) / 100,
           endBalance,
         });
 

@@ -1,8 +1,8 @@
-import { useState, useMemo, Fragment, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ComposedChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ReferenceLine, ResponsiveContainer, Legend,
+  ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,20 +13,15 @@ import { Landmark, TrendingUp, TrendingDown, BarChart3, Table2 } from "lucide-re
 type MonthData = {
   year: number;
   month: number;
-  startBalance: number;
   revenueForecast: number;
   revenueActual: number;
   revenueRemaining: number;
-  surcharges: number;
   aptCostForecast: number;
   aptCostActual: number;
   aptCostRemaining: number;
   opCostForecast: number;
   opCostActual: number;
   opCostRemaining: number;
-  totalCostForecast: number;
-  totalCostActual: number;
-  totalCostRemaining: number;
   endBalance: number;
 };
 
@@ -60,7 +55,7 @@ function balanceBg(val: number) {
     : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300";
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   const d: MonthData = payload[0]?.payload;
   if (!d) return null;
@@ -68,22 +63,20 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-xs space-y-1 min-w-56">
       <p className="font-semibold text-sm mb-2">{MONTH_NAMES_FULL[d.month - 1]} {d.year}</p>
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-        <span className="text-muted-foreground">Saldo startowe:</span>
-        <span className={`text-right font-medium ${balanceColor(d.startBalance)}`}>{pln(d.startBalance)}</span>
         <span className="text-muted-foreground">Prognoza przychodów:</span>
         <span className="text-right">{pln(d.revenueForecast)}</span>
-        <span className="text-muted-foreground">Zapłacono:</span>
+        <span className="text-muted-foreground">Realizacja przychodów:</span>
         <span className="text-right">{pln(d.revenueActual)}</span>
-        <span className="text-muted-foreground">Pozostałe przychody:</span>
-        <span className="text-right text-emerald-600">+{pln(d.revenueRemaining)}</span>
-        <span className="text-muted-foreground">Koszty apt (poz.):</span>
-        <span className="text-right text-red-600">−{pln(d.aptCostRemaining)}</span>
-        <span className="text-muted-foreground">Koszty op. (poz.):</span>
+        <span className="text-muted-foreground">Pozostało do wynajęcia:</span>
+        <span className={`text-right font-medium ${d.revenueRemaining >= 0 ? "text-emerald-600" : "text-blue-600"}`}>{pln(d.revenueRemaining)}</span>
+        <span className="text-muted-foreground">Koszty apt (pozostało):</span>
+        <span className="text-right text-orange-600">−{pln(d.aptCostRemaining)}</span>
+        <span className="text-muted-foreground">Koszty op (pozostało):</span>
         <span className="text-right text-red-600">−{pln(d.opCostRemaining)}</span>
       </div>
       <div className="border-t border-border mt-1.5 pt-1.5">
         <div className="flex justify-between font-semibold">
-          <span>Saldo końcowe:</span>
+          <span>Saldo firmowe:</span>
           <span className={balanceColor(d.endBalance)}>{pln(d.endBalance)}</span>
         </div>
       </div>
@@ -122,6 +115,8 @@ export default function SaldoFirmowe() {
     return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
   }, [data]);
 
+  const COL_COUNT = 11;
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -152,11 +147,11 @@ export default function SaldoFirmowe() {
           <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-3">
             <Card>
               <CardContent className="pt-4 pb-3">
-                <p className="text-xs text-muted-foreground font-medium">Aktualne saldo</p>
-                <p className={`text-lg sm:text-xl font-bold mt-1 ${balanceColor(data.currentBalance)}`}>
+                <p className="text-xs text-muted-foreground font-medium">Aktualne saldo firmowe</p>
+                <p className={`text-lg sm:text-xl font-bold mt-1 ${balanceColor(data.currentBalance)}`} data-testid="text-current-balance">
                   {pln(data.currentBalance)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">Suma wszystkich kont</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Suma kont, sald, krypto i pożyczek</p>
               </CardContent>
             </Card>
             <Card>
@@ -165,7 +160,7 @@ export default function SaldoFirmowe() {
                   <TrendingUp className="h-4 w-4 text-green-500" />
                   <p className="text-xs text-muted-foreground font-medium">Maksymalne saldo (5 lat)</p>
                 </div>
-                <p className="text-lg sm:text-xl font-bold mt-1 text-green-600 dark:text-green-400">
+                <p className="text-lg sm:text-xl font-bold mt-1 text-green-600 dark:text-green-400" data-testid="text-max-balance">
                   {pln(maxBalance)}
                 </p>
               </CardContent>
@@ -176,7 +171,7 @@ export default function SaldoFirmowe() {
                   <TrendingDown className={`h-4 w-4 ${minBalance < 0 ? "text-red-500" : "text-amber-500"}`} />
                   <p className="text-xs text-muted-foreground font-medium">Minimalne saldo (5 lat)</p>
                 </div>
-                <p className={`text-lg sm:text-xl font-bold mt-1 ${balanceColor(minBalance)}`}>
+                <p className={`text-lg sm:text-xl font-bold mt-1 ${balanceColor(minBalance)}`} data-testid="text-min-balance">
                   {pln(minBalance)}
                 </p>
               </CardContent>
@@ -215,7 +210,7 @@ export default function SaldoFirmowe() {
                     <Area
                       type="monotone"
                       dataKey="endBalance"
-                      name="Saldo końcowe"
+                      name="Saldo firmowe"
                       stroke="#22c55e"
                       strokeWidth={2}
                       fill="url(#balanceGrad)"
@@ -230,53 +225,62 @@ export default function SaldoFirmowe() {
 
           {(view === "table" || view === "both") && (
             <div className="rounded-md border overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
-              <table className="w-full text-[10px] sm:text-xs min-w-[480px] sm:min-w-[1100px]">
+              <table className="w-full text-[10px] sm:text-xs min-w-[600px] sm:min-w-[1100px]">
                 <thead>
                   <tr className="bg-muted/50 border-b">
-                    <th className="sticky left-0 bg-muted/50 z-10 text-left px-1.5 sm:px-3 py-2 sm:py-2.5 font-semibold w-20 sm:w-28">Miesiąc</th>
-                    <th className="text-right px-1.5 sm:px-2 py-2 sm:py-2.5 font-semibold">Saldo start.</th>
-                    <th className="hidden sm:table-cell text-right px-2 py-2.5 font-semibold text-emerald-700 dark:text-emerald-400">Prognoza przyc.</th>
-                    <th className="hidden sm:table-cell text-right px-2 py-2.5 font-semibold text-emerald-700 dark:text-emerald-400">Rzecz. przyc.</th>
-                    <th className="text-right px-1.5 sm:px-2 py-2 sm:py-2.5 font-semibold text-emerald-700 dark:text-emerald-400">Poz. przyc.</th>
-                    <th className="text-right px-1.5 sm:px-2 py-2 sm:py-2.5 font-semibold text-sky-700 dark:text-sky-400">Dopłaty</th>
-                    <th className="hidden sm:table-cell text-right px-2 py-2.5 font-semibold text-orange-700 dark:text-orange-400">Koszty apt P</th>
-                    <th className="hidden sm:table-cell text-right px-2 py-2.5 font-semibold text-orange-700 dark:text-orange-400">Koszty apt R</th>
-                    <th className="text-right px-1.5 sm:px-2 py-2 sm:py-2.5 font-semibold text-orange-700 dark:text-orange-400">Apt Poz.</th>
-                    <th className="hidden sm:table-cell text-right px-2 py-2.5 font-semibold text-red-700 dark:text-red-400">Koszty op P</th>
-                    <th className="hidden sm:table-cell text-right px-2 py-2.5 font-semibold text-red-700 dark:text-red-400">Koszty op R</th>
-                    <th className="text-right px-1.5 sm:px-2 py-2 sm:py-2.5 font-semibold text-red-700 dark:text-red-400">Op Poz.</th>
-                    <th className="text-right px-1.5 sm:px-3 py-2 sm:py-2.5 font-semibold w-24 sm:w-32">Saldo końc.</th>
+                    <th className="sticky left-0 bg-muted/50 z-10 text-left px-1.5 sm:px-3 py-2 sm:py-2.5 font-semibold w-20 sm:w-28" rowSpan={2}>Miesiąc</th>
+                    <th className="text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-emerald-700 dark:text-emerald-400 border-b" colSpan={3}>Przychody</th>
+                    <th className="text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-orange-700 dark:text-orange-400 border-b" colSpan={3}>Koszty apartamentów</th>
+                    <th className="text-center px-1 sm:px-2 py-1 sm:py-1.5 font-semibold text-red-700 dark:text-red-400 border-b" colSpan={3}>Koszty operacyjne</th>
+                    <th className="text-center px-1 sm:px-3 py-1 sm:py-1.5 font-semibold border-b" rowSpan={2}>Saldo<br/>firmowe</th>
+                  </tr>
+                  <tr className="bg-muted/50 border-b">
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Prognoza</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Realizacja</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Pozostało</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-600 dark:text-orange-400">Prognoza</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-600 dark:text-orange-400">Realizacja</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-orange-700 dark:text-orange-300">Pozostało</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-600 dark:text-red-400">Prognoza</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-600 dark:text-red-400">Realizacja</th>
+                    <th className="text-right px-1 sm:px-2 py-1 sm:py-1.5 text-[9px] sm:text-[11px] font-medium text-red-700 dark:text-red-300">Pozostało</th>
                   </tr>
                 </thead>
                 <tbody>
                   {byYear.map(([year, months]) => (
                     <Fragment key={year}>
                       <tr className="bg-muted/30 border-b border-t">
-                        <td colSpan={13} className="sticky left-0 bg-muted/30 px-1.5 sm:px-3 py-1.5 font-bold text-sm">{year}</td>
+                        <td colSpan={COL_COUNT} className="sticky left-0 bg-muted/30 px-1.5 sm:px-3 py-1.5 font-bold text-sm">{year}</td>
                       </tr>
                       {months.map(m => {
                         const isCurrent = m.year === currentYear && m.month === currentMonth;
+                        const rowBg = isCurrent ? "bg-blue-50 dark:bg-blue-950/20" : "";
+                        const stickyBg = isCurrent ? "bg-blue-50 dark:bg-blue-950/20" : "bg-background";
                         return (
                           <tr
                             key={`${m.year}-${m.month}`}
                             data-testid={`row-balance-${m.year}-${m.month}`}
-                            className={`border-b transition-colors hover:bg-muted/30 ${isCurrent ? "bg-blue-50 dark:bg-blue-950/20" : ""}`}
+                            className={`border-b transition-colors hover:bg-muted/30 ${rowBg}`}
                           >
-                            <td className={`sticky left-0 z-10 px-1.5 sm:px-3 py-1.5 font-medium ${isCurrent ? "bg-blue-50 dark:bg-blue-950/20" : "bg-background"}`}>
+                            <td className={`sticky left-0 z-10 px-1.5 sm:px-3 py-1.5 font-medium ${stickyBg}`}>
                               {MONTH_NAMES_SHORT[m.month - 1]}
                               {isCurrent && <span className="ml-1 text-[10px] text-blue-500 font-normal">(teraz)</span>}
                             </td>
-                            <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums">{plnShort(m.startBalance)}</td>
-                            <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueForecast)}</td>
-                            <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueActual)}</td>
-                            <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">+{plnShort(m.revenueRemaining)}</td>
-                            <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-sky-600 dark:text-sky-400 font-medium">+{plnShort(m.surcharges)}</td>
-                            <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostForecast)}</td>
-                            <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostActual)}</td>
-                            <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-orange-600 dark:text-orange-400 font-medium">−{plnShort(m.aptCostRemaining)}</td>
-                            <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostForecast)}</td>
-                            <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostActual)}</td>
-                            <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-red-600 dark:text-red-400 font-medium">−{plnShort(m.opCostRemaining)}</td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueForecast)}</td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.revenueActual)}</td>
+                            <td className={`text-right px-1 sm:px-2 py-1.5 tabular-nums font-medium ${m.revenueRemaining >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-blue-600 dark:text-blue-400"}`}>
+                              {plnShort(m.revenueRemaining)}
+                            </td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostForecast)}</td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.aptCostActual)}</td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-orange-600 dark:text-orange-400 font-medium">
+                              {m.aptCostRemaining > 0 ? `−${plnShort(m.aptCostRemaining)}` : "0"}
+                            </td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostForecast)}</td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground">{plnShort(m.opCostActual)}</td>
+                            <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-red-600 dark:text-red-400 font-medium">
+                              {m.opCostRemaining > 0 ? `−${plnShort(m.opCostRemaining)}` : "0"}
+                            </td>
                             <td className={`text-right px-1.5 sm:px-3 py-1.5 tabular-nums font-bold rounded-sm ${balanceBg(m.endBalance)}`}>
                               {plnShort(m.endBalance)}
                             </td>
@@ -285,35 +289,31 @@ export default function SaldoFirmowe() {
                       })}
                       <tr key={`year-total-${year}`} className="bg-muted/50 border-b-2 border-border">
                         <td className="sticky left-0 bg-muted/50 px-1.5 sm:px-3 py-1.5 font-semibold text-xs text-muted-foreground">Suma {year}</td>
-                        <td className="text-right px-1.5 sm:px-2 py-1.5"></td>
-                        <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.revenueForecast, 0))}
                         </td>
-                        <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.revenueActual, 0))}
                         </td>
-                        <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-emerald-600 text-[11px] font-medium">
-                          +{plnShort(months.reduce((s, m) => s + m.revenueRemaining, 0))}
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-emerald-600 text-[11px] font-medium">
+                          {plnShort(months.reduce((s, m) => s + m.revenueRemaining, 0))}
                         </td>
-                        <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-sky-600 text-[11px] font-medium">
-                          +{plnShort(months.reduce((s, m) => s + m.surcharges, 0))}
-                        </td>
-                        <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.aptCostForecast, 0))}
                         </td>
-                        <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.aptCostActual, 0))}
                         </td>
-                        <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-orange-600 text-[11px] font-medium">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-orange-600 text-[11px] font-medium">
                           −{plnShort(months.reduce((s, m) => s + m.aptCostRemaining, 0))}
                         </td>
-                        <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.opCostForecast, 0))}
                         </td>
-                        <td className="hidden sm:table-cell text-right px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {plnShort(months.reduce((s, m) => s + m.opCostActual, 0))}
                         </td>
-                        <td className="text-right px-1.5 sm:px-2 py-1.5 tabular-nums text-red-600 text-[11px] font-medium">
+                        <td className="text-right px-1 sm:px-2 py-1.5 tabular-nums text-red-600 text-[11px] font-medium">
                           −{plnShort(months.reduce((s, m) => s + m.opCostRemaining, 0))}
                         </td>
                         <td className={`text-right px-1.5 sm:px-3 py-1.5 tabular-nums font-bold text-[11px] ${balanceBg(months[months.length - 1]?.endBalance ?? 0)}`}>
