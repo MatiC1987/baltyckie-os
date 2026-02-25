@@ -1234,7 +1234,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               <Calendar className="h-4 w-4 text-amber-500" />
               <p className="text-xs text-muted-foreground">Do opłacenia ({MONTHS_SHORT[currentMonth]})</p>
             </div>
-            <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums" data-testid="text-current-unpaid">{formatNum2(overdueSummary.currentMonthUnpaidAmount)} zł</p>
+            <p className="text-lg sm:text-xl font-bold mt-1 tabular-nums" data-testid="text-current-unpaid">{formatNum2(currentMonthTableTotals.prognoza)} zł</p>
           </CardContent>
         </Card>
         <Card>
