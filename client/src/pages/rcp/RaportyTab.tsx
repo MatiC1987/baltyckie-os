@@ -19,7 +19,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileDown, Briefcase, Clock, Timer, Banknote } from "lucide-react";
+import { FileDown, Briefcase, Clock, Timer, Banknote, AlertCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -274,16 +280,41 @@ export default function RaportyTab() {
                     >
                       <TableCell className="font-medium">{d.date}</TableCell>
                       <TableCell>{d.dayName}</TableCell>
-                      <TableCell>{d.type === "work" ? d.clockIn : ""}</TableCell>
+                      <TableCell>
+                        {d.type === "work" && (
+                          <span className="inline-flex items-center gap-1">
+                            {d.clockIn}
+                            {d.lateMinutes > 0 && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Spóźnienie: {d.lateMinutes} min (plan: {d.scheduledStart})</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>{d.type === "work" ? d.clockOut : ""}</TableCell>
                       <TableCell>{d.type === "work" && d.breakMinutes ? formatMinutes(d.breakMinutes) : ""}</TableCell>
                       <TableCell>{d.type === "work" ? formatMinutes(d.workMinutes) : ""}</TableCell>
-                      <TableCell>{overtime > 0 ? formatMinutes(overtime) : ""}</TableCell>
+                      <TableCell>
+                        {overtime > 0 && (
+                          <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                            {formatMinutes(overtime)}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {d.type === "leave" && <span className="text-amber-600 dark:text-amber-400">{d.leaveType}</span>}
                         {d.type === "weekend" && <span className="text-muted-foreground">Dzień wolny</span>}
                         {d.type === "absent" && <span className="text-red-600 dark:text-red-400">Nieobecność</span>}
-                        {d.type === "work" && d.status && <span className="text-emerald-600 dark:text-emerald-400">{d.status}</span>}
+                        {d.type === "work" && d.lateMinutes > 0 && <span className="text-red-600 dark:text-red-400">Spóźnienie ({d.lateMinutes} min)</span>}
+                        {d.type === "work" && !d.lateMinutes && d.status && <span className="text-emerald-600 dark:text-emerald-400">{d.status}</span>}
                       </TableCell>
                     </TableRow>
                   );

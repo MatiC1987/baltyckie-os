@@ -135,7 +135,12 @@ function DashboardTab() {
     return <div className="flex items-center justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
   }
 
-  const { working = 0, onBreak = 0, pendingCount = 0, pendingEntries = [], employeeStatuses = [] } = data || {};
+  const {
+    working = 0, onBreak = 0, pendingCount = 0, pendingEntries = [], employeeStatuses = [],
+    pendingLeavesCount = 0, missingSchedules = [], lateToday = [], overtimeYesterday = [],
+  } = data || {};
+
+  const alertCount = pendingLeavesCount + missingSchedules.length + lateToday.length + overtimeYesterday.length;
 
   return (
     <div className="space-y-6">
@@ -216,6 +221,75 @@ function DashboardTab() {
           })}
         </div>
       </div>
+
+      {alertCount > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            Powiadomienia ({alertCount})
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {pendingLeavesCount > 0 && (
+              <Card className="border-amber-200 dark:border-amber-800" data-testid="alert-pending-leaves">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Urlopy</Badge>
+                    <span className="font-medium text-sm">Nierozpatrzone wnioski urlopowe</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{pendingLeavesCount} {pendingLeavesCount === 1 ? "wniosek oczekuje" : "wniosków oczekuje"} na rozpatrzenie</p>
+                </CardContent>
+              </Card>
+            )}
+            {lateToday.length > 0 && (
+              <Card className="border-red-200 dark:border-red-800" data-testid="alert-late-today">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="destructive">Spóźnienia</Badge>
+                    <span className="font-medium text-sm">Spóźnienia dzisiaj</span>
+                  </div>
+                  <div className="space-y-1">
+                    {lateToday.map((lt: any, i: number) => (
+                      <p key={i} className="text-sm text-muted-foreground">
+                        {lt.employee.firstName} {lt.employee.lastName}: planowane {lt.scheduledStart}, {lt.actualStart ? `przyszedł ${lt.actualStart}` : "brak wejścia"} ({lt.lateMinutes} min)
+                      </p>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {overtimeYesterday.length > 0 && (
+              <Card className="border-blue-200 dark:border-blue-800" data-testid="alert-overtime-yesterday">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Nadgodziny</Badge>
+                    <span className="font-medium text-sm">Nadgodziny wczoraj</span>
+                  </div>
+                  <div className="space-y-1">
+                    {overtimeYesterday.map((ot: any, i: number) => (
+                      <p key={i} className="text-sm text-muted-foreground">
+                        {ot.employee.firstName} {ot.employee.lastName}: {Math.floor(ot.workMinutes / 60)}h {ot.workMinutes % 60}m ({ot.overtimeMinutes} min nadgodzin)
+                      </p>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {missingSchedules.length > 0 && (
+              <Card className="border-orange-200 dark:border-orange-800" data-testid="alert-missing-schedules">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">Grafik</Badge>
+                    <span className="font-medium text-sm">Brak grafiku na dzisiaj</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {missingSchedules.map((e: any) => `${e.firstName} ${e.lastName}`).join(", ")}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
 
       {pendingEntries.length > 0 && (
         <div>

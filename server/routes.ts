@@ -9177,6 +9177,70 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         }
       }
 
+      const pendingLeaves = await storage.getLeaveRequests({ status: 'OCZEKUJACY' });
+
+      const todaySchedules = await storage.getWorkSchedules({ from: today, to: today });
+      const employeesWithPin = activeEmployees.filter(e => e.pin);
+      const scheduledEmpIds = new Set(todaySchedules.map(s => s.employeeId));
+      const missingSchedules = employeesWithPin
+        .filter(e => !scheduledEmpIds.has(e.id))
+        .map(e => ({ id: e.id, firstName: e.firstName, lastName: e.lastName }));
+
+      const lateToday: any[] = [];
+      const LATE_THRESHOLD_MIN = 15;
+      for (const sched of todaySchedules) {
+        const emp = activeEmployees.find(e => e.id === sched.employeeId);
+        if (!emp) continue;
+        const entry = todayEntries.find(te => te.employeeId === sched.employeeId);
+        const [sh, sm] = sched.startTime.split(':').map(Number);
+        const scheduledStart = new Date(`${today}T${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}:00`);
+        if (entry && entry.clockIn) {
+          const actualStart = new Date(entry.clockIn);
+          const diffMin = Math.round((actualStart.getTime() - scheduledStart.getTime()) / 60000);
+          if (diffMin > LATE_THRESHOLD_MIN) {
+            lateToday.push({
+              employee: { id: emp.id, firstName: emp.firstName, lastName: emp.lastName },
+              scheduledStart: sched.startTime,
+              actualStart: actualStart.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
+              lateMinutes: diffMin,
+            });
+          }
+        } else if (!entry) {
+          const now = new Date();
+          const diffMin = Math.round((now.getTime() - scheduledStart.getTime()) / 60000);
+          if (diffMin > LATE_THRESHOLD_MIN) {
+            lateToday.push({
+              employee: { id: emp.id, firstName: emp.firstName, lastName: emp.lastName },
+              scheduledStart: sched.startTime,
+              actualStart: null,
+              lateMinutes: diffMin,
+            });
+          }
+        }
+      }
+
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const yesterdayEntries = await storage.getTimeEntries({ from: yesterdayStr, to: yesterdayStr });
+      const overtimeYesterday: any[] = [];
+      for (const entry of yesterdayEntries) {
+        if (entry.clockIn && entry.clockOut) {
+          const totalMs = new Date(entry.clockOut).getTime() - new Date(entry.clockIn).getTime();
+          const workMin = Math.round(totalMs / 60000) - (entry.breakMinutes || 0);
+          if (workMin > 480) {
+            const emp = activeEmployees.find(e => e.id === entry.employeeId);
+            if (emp) {
+              overtimeYesterday.push({
+                employee: { id: emp.id, firstName: emp.firstName, lastName: emp.lastName },
+                workMinutes: workMin,
+                overtimeMinutes: workMin - 480,
+              });
+            }
+          }
+        }
+      }
+
       res.json({
         working,
         onBreak,
@@ -9184,6 +9248,10 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         pendingCount: pendingEntries.length,
         pendingEntries,
         employeeStatuses,
+        pendingLeavesCount: pendingLeaves.length,
+        missingSchedules,
+        lateToday,
+        overtimeYesterday,
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -9457,10 +9525,14 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
 
       const entries = await storage.getTimeEntries({ employeeId, from: firstDay, to: lastDayStr });
       const leaveReqs = await storage.getLeaveRequests({ employeeId, status: 'ZAAKCEPTOWANY' });
+      const schedules = await storage.getWorkSchedules({ employeeId, from: firstDay, to: lastDayStr });
+      const scheduleByDate: Record<string, any> = {};
+      for (const s of schedules) { scheduleByDate[s.date] = s; }
 
       const days: any[] = [];
       let totalWorkMinutes = 0;
       let totalBreakMinutes = 0;
+      let totalOvertimeMinutes = 0;
       let workDays = 0;
 
       for (let d = 1; d <= lastDay; d++) {
@@ -9474,6 +9546,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         const leave = leaveReqs.find(lr =>
           lr.startDate <= dateStr && lr.endDate >= dateStr
         );
+        const sched = scheduleByDate[dateStr];
 
         if (dayEntries.length > 0) {
           let dayWorkMin = 0;
@@ -9481,6 +9554,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           let clockInStr = '';
           let clockOutStr = '';
           let status = '';
+          let firstClockIn: Date | null = null;
 
           for (const entry of dayEntries) {
             if (entry.clockIn && entry.clockOut) {
@@ -9491,6 +9565,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
             }
             if (!clockInStr && entry.clockIn) {
               clockInStr = new Date(entry.clockIn).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+              firstClockIn = new Date(entry.clockIn);
             }
             if (entry.clockOut) {
               clockOutStr = new Date(entry.clockOut).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
@@ -9498,8 +9573,20 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
             status = entry.status;
           }
 
+          let lateMinutes = 0;
+          let scheduledStart = sched?.startTime || null;
+          let scheduledEnd = sched?.endTime || null;
+          if (sched && firstClockIn) {
+            const [sh, sm] = sched.startTime.split(':').map(Number);
+            const schedTime = new Date(`${dateStr}T${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}:00`);
+            const diff = Math.round((firstClockIn.getTime() - schedTime.getTime()) / 60000);
+            if (diff > 0) lateMinutes = diff;
+          }
+
+          const overtime = dayWorkMin > 480 ? dayWorkMin - 480 : 0;
           totalWorkMinutes += dayWorkMin;
           totalBreakMinutes += dayBreakMin;
+          totalOvertimeMinutes += overtime;
           workDays++;
 
           days.push({
@@ -9510,6 +9597,10 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
             clockOut: clockOutStr,
             breakMinutes: dayBreakMin,
             workMinutes: dayWorkMin,
+            overtime,
+            lateMinutes,
+            scheduledStart,
+            scheduledEnd,
             status,
             type: 'work',
           });
@@ -9550,11 +9641,79 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           workDays,
           totalWorkMinutes,
           totalBreakMinutes,
+          totalOvertimeMinutes,
           totalHours,
           hourlyRate,
           grossPay,
         },
       });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP - LEAVE BALANCE ====================
+  app.get('/api/rcp/leave-balance', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const allEmployees = await storage.getEmployees();
+      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY');
+      const allLeaves = await storage.getLeaveRequests({});
+
+      const balance = activeEmployees.map(emp => {
+        const empLeaves = allLeaves.filter(lr => lr.employeeId === emp.id);
+        const yearLeaves = empLeaves.filter(lr => {
+          const startYear = new Date(lr.startDate + 'T12:00:00').getFullYear();
+          return startYear === year;
+        });
+        const usedDays = yearLeaves
+          .filter(lr => lr.status === 'ZAAKCEPTOWANY')
+          .reduce((s, lr) => s + lr.days, 0);
+        const pendingDays = yearLeaves
+          .filter(lr => lr.status === 'OCZEKUJACY')
+          .reduce((s, lr) => s + lr.days, 0);
+        const allocated = 26;
+        return {
+          employeeId: emp.id,
+          firstName: emp.firstName,
+          lastName: emp.lastName,
+          allocated,
+          used: usedDays,
+          pending: pendingDays,
+          remaining: allocated - usedDays,
+        };
+      });
+
+      res.json(balance);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP - EMPLOYEE LEAVE REQUESTS (Bearer token) ====================
+  app.get('/api/time-clock/leave-requests', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Brak autoryzacji' });
+      const requests = await storage.getLeaveRequests({ employeeId });
+      res.json(requests);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/time-clock/leave-requests', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Brak autoryzacji' });
+      const parsed = insertLeaveRequestSchema.safeParse({
+        ...req.body,
+        employeeId,
+        status: 'OCZEKUJACY',
+      });
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const request = await storage.createLeaveRequest(parsed.data);
+      res.json(request);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

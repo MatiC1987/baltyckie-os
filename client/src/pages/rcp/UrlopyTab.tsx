@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Employee, LeaveRequest } from "@shared/schema";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Check, X, Trash2, CalendarDays, Clock, AlertCircle } from "lucide-react";
+import { Plus, Check, X, Trash2, CalendarDays, Clock, AlertCircle, BarChart3 } from "lucide-react";
+
+interface LeaveBalance {
+  employeeId: number;
+  firstName: string;
+  lastName: string;
+  allocated: number;
+  used: number;
+  pending: number;
+  remaining: number;
+}
 
 const LEAVE_TYPES = [
   { value: "URLOP_WYPOCZYNKOWY", label: "Urlop wypoczynkowy" },
@@ -71,6 +81,7 @@ export default function UrlopyTab() {
   const [formStart, setFormStart] = useState("");
   const [formEnd, setFormEnd] = useState("");
   const [formComment, setFormComment] = useState("");
+  const [balanceYear, setBalanceYear] = useState(String(new Date().getFullYear()));
   const { toast } = useToast();
 
   const statusParam = statusFilter !== "all" ? `&status=${statusFilter}` : "";
@@ -79,6 +90,10 @@ export default function UrlopyTab() {
 
   const { data: requests = [], isLoading } = useQuery<LeaveRequest[]>({ queryKey: [qk] });
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
+  const balanceQk = `/api/rcp/leave-balance?year=${balanceYear}`;
+  const { data: leaveBalances = [], isLoading: isBalanceLoading } = useQuery<LeaveBalance[]>({
+    queryKey: [balanceQk],
+  });
 
   const empMap = useMemo(() => {
     const m: Record<number, Employee> = {};
@@ -310,6 +325,94 @@ export default function UrlopyTab() {
           </TableBody>
         </Table>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BarChart3 className="h-5 w-5" />
+            Bilans urlopowy
+          </CardTitle>
+          <Select value={balanceYear} onValueChange={setBalanceYear}>
+            <SelectTrigger className="w-[120px]" data-testid="select-balance-year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 5 }, (_, i) => {
+                const y = new Date().getFullYear() - 2 + i;
+                return (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent>
+          {isBalanceLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+            </div>
+          ) : leaveBalances.length === 0 ? (
+            <p className="text-center text-muted-foreground py-6">Brak aktywnych pracowników</p>
+          ) : (
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pracownik</TableHead>
+                    <TableHead className="text-center">Przysługuje</TableHead>
+                    <TableHead className="text-center">Wykorzystane</TableHead>
+                    <TableHead className="text-center">Oczekujące</TableHead>
+                    <TableHead className="text-center">Pozostałe</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {leaveBalances.map((b) => {
+                    const remainingColor =
+                      b.remaining > 5
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : b.remaining >= 1
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-red-600 dark:text-red-400";
+                    const remainingBg =
+                      b.remaining > 5
+                        ? "bg-emerald-500/10"
+                        : b.remaining >= 1
+                          ? "bg-amber-500/10"
+                          : "bg-red-500/10";
+                    return (
+                      <TableRow key={b.employeeId} data-testid={`row-balance-${b.employeeId}`}>
+                        <TableCell className="font-medium whitespace-nowrap">
+                          {b.firstName} {b.lastName}
+                        </TableCell>
+                        <TableCell className="text-center" data-testid={`text-allocated-${b.employeeId}`}>
+                          {b.allocated}
+                        </TableCell>
+                        <TableCell className="text-center" data-testid={`text-used-${b.employeeId}`}>
+                          {b.used}
+                        </TableCell>
+                        <TableCell className="text-center" data-testid={`text-pending-balance-${b.employeeId}`}>
+                          {b.pending}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant="secondary"
+                            className={`${remainingBg} ${remainingColor} border-0`}
+                            data-testid={`badge-remaining-${b.employeeId}`}
+                          >
+                            {b.remaining}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md">

@@ -18,9 +18,17 @@ import {
   History,
   ChevronLeft,
   UserX,
+  CalendarDays,
+  Plus,
+  Send,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
-import type { Employee, TimeEntry } from "@shared/schema";
+import type { Employee, TimeEntry, LeaveRequest } from "@shared/schema";
 
 let rcpToken: string | null = null;
 
@@ -253,6 +261,8 @@ function EmployeeDashboard({
   const [gpsStatus, setGpsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showLeaves, setShowLeaves] = useState(false);
+  const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
   const { toast } = useToast();
 
   const teamStatusQuery = useQuery<TeamStatus>({
@@ -375,6 +385,30 @@ function EmployeeDashboard({
     },
   });
 
+  const leaveRequestsQuery = useQuery<LeaveRequest[]>({
+    queryKey: ["/api/time-clock/leave-requests"],
+    enabled: showLeaves,
+    queryFn: async () => {
+      const res = await rcpFetch("GET", "/api/time-clock/leave-requests");
+      return await res.json();
+    },
+  });
+
+  const createLeaveMutation = useMutation({
+    mutationFn: async (data: { type: string; startDate: string; endDate: string; days: number; comment: string }) => {
+      const res = await rcpFetch("POST", "/api/time-clock/leave-requests", data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-clock/leave-requests"] });
+      setShowNewLeaveDialog(false);
+      toast({ title: "Wniosek zostal zlozony" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Blad", description: err.message, variant: "destructive" });
+    },
+  });
+
   const isWorking = activeEntry && (activeEntry.status === "AKTYWNA" || activeEntry.status === "WARUNKOWA");
   const isOnBreak = activeEntry?.status === "PRZERWA";
   const anyPending = clockInMutation.isPending || clockOutMutation.isPending || breakStartMutation.isPending || breakEndMutation.isPending;
@@ -390,6 +424,67 @@ function EmployeeDashboard({
     : isWorking
       ? "text-green-600 dark:text-green-400"
       : "text-muted-foreground";
+
+  if (showLeaves) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
+          <Button variant="ghost" size="icon" onClick={() => setShowLeaves(false)} data-testid="button-back-from-leaves">
+            <ChevronLeft />
+          </Button>
+          <span className="font-semibold text-sm">Moje wnioski urlopowe</span>
+          <Button variant="ghost" size="icon" onClick={() => setShowNewLeaveDialog(true)} data-testid="button-new-leave">
+            <Plus />
+          </Button>
+        </header>
+        <div className="flex-1 overflow-auto p-4">
+          {leaveRequestsQuery.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !leaveRequestsQuery.data?.length ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <CalendarDays className="h-10 w-10 text-muted-foreground" />
+              <p className="text-center text-muted-foreground" data-testid="text-no-leaves">Brak wnioskow urlopowych</p>
+              <Button onClick={() => setShowNewLeaveDialog(true)} data-testid="button-new-leave-empty">
+                <Plus className="h-4 w-4 mr-2" />
+                Zloz wniosek
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {leaveRequestsQuery.data.map((lr) => (
+                <Card key={lr.id} className="p-4" data-testid={`card-leave-${lr.id}`}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="font-medium text-sm">{leaveTypeLabel(lr.type)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateShort(lr.startDate)} - {formatDateShort(lr.endDate)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-muted-foreground">{lr.days}d</span>
+                      <LeaveStatusBadge status={lr.status} />
+                    </div>
+                  </div>
+                  {lr.comment && (
+                    <p className="text-xs text-muted-foreground mt-1">{lr.comment}</p>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <NewLeaveDialog
+          open={showNewLeaveDialog}
+          onClose={() => setShowNewLeaveDialog(false)}
+          onSubmit={(data) => createLeaveMutation.mutate(data)}
+          isPending={createLeaveMutation.isPending}
+        />
+      </div>
+    );
+  }
 
   if (showHistory) {
     return (
@@ -457,6 +552,9 @@ function EmployeeDashboard({
           <span className="font-semibold text-sm hidden sm:inline">RCP</span>
         </div>
         <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={() => setShowLeaves(true)} data-testid="button-show-leaves">
+            <CalendarDays />
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowHistory(true)} data-testid="button-show-history">
             <History />
           </Button>
@@ -636,6 +734,158 @@ function EmployeeDashboard({
         </div>
       </div>
     </div>
+  );
+}
+
+function leaveTypeLabel(type: string): string {
+  const map: Record<string, string> = {
+    URLOP_WYPOCZYNKOWY: "Urlop wypoczynkowy",
+    URLOP_NA_ZADANIE: "Urlop na żądanie",
+    ZWOLNIENIE_LEKARSKIE: "Zwolnienie lekarskie",
+    INNY: "Inny",
+  };
+  return map[type] || type;
+}
+
+function LeaveStatusBadge({ status }: { status: string }) {
+  const variants: Record<string, { label: string; className: string }> = {
+    OCZEKUJACY: { label: "Oczekujący", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" },
+    ZAAKCEPTOWANY: { label: "Zaakceptowany", className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" },
+    ODRZUCONY: { label: "Odrzucony", className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" },
+  };
+  const v = variants[status] || { label: status, className: "bg-muted text-muted-foreground" };
+  return (
+    <Badge variant="outline" className={v.className} data-testid={`badge-leave-status-${status}`}>
+      {v.label}
+    </Badge>
+  );
+}
+
+function NewLeaveDialog({
+  open,
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (data: { type: string; startDate: string; endDate: string; days: number; comment: string }) => void;
+  isPending: boolean;
+}) {
+  const [type, setType] = useState("URLOP_WYPOCZYNKOWY");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [comment, setComment] = useState("");
+
+  const calcDays = (start: string, end: string): number => {
+    if (!start || !end) return 0;
+    const s = new Date(start);
+    const e = new Date(end);
+    if (e < s) return 0;
+    let count = 0;
+    const cur = new Date(s);
+    while (cur <= e) {
+      const day = cur.getDay();
+      if (day !== 0 && day !== 6) count++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+  };
+
+  const days = calcDays(startDate, endDate);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!startDate || !endDate || days <= 0) return;
+    onSubmit({ type, startDate, endDate, days, comment });
+  };
+
+  const handleClose = () => {
+    if (!isPending) {
+      setType("URLOP_WYPOCZYNKOWY");
+      setStartDate("");
+      setEndDate("");
+      setComment("");
+      onClose();
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Nowy wniosek urlopowy</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="leave-type">Rodzaj</Label>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger data-testid="select-leave-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="URLOP_WYPOCZYNKOWY">Urlop wypoczynkowy</SelectItem>
+                <SelectItem value="URLOP_NA_ZADANIE">Urlop na żądanie</SelectItem>
+                <SelectItem value="ZWOLNIENIE_LEKARSKIE">Zwolnienie lekarskie</SelectItem>
+                <SelectItem value="INNY">Inny</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="leave-start">Data od</Label>
+            <Input
+              id="leave-start"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              data-testid="input-leave-start"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="leave-end">Data do</Label>
+            <Input
+              id="leave-end"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              min={startDate}
+              data-testid="input-leave-end"
+            />
+          </div>
+          {days > 0 && (
+            <p className="text-sm text-muted-foreground" data-testid="text-leave-days">
+              Dni roboczych: <span className="font-semibold">{days}</span>
+            </p>
+          )}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="leave-comment">Komentarz (opcjonalnie)</Label>
+            <Textarea
+              id="leave-comment"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              className="resize-none"
+              rows={2}
+              data-testid="input-leave-comment"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isPending} data-testid="button-cancel-leave">
+              Anuluj
+            </Button>
+            <Button type="submit" disabled={!startDate || !endDate || days <= 0 || isPending} data-testid="button-submit-leave">
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Zloz wniosek
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

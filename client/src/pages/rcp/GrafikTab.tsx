@@ -28,7 +28,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, FileDown, Copy } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const MONTH_NAMES = [
   "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
@@ -72,6 +84,7 @@ export default function GrafikTab() {
   const [formEnd, setFormEnd] = useState("16:00");
   const [formShiftName, setFormShiftName] = useState("");
   const [formColor, setFormColor] = useState("#3b82f6");
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -112,6 +125,51 @@ export default function GrafikTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [qk] });
       toast({ title: "Zmiana usunięta" });
+    },
+  });
+
+  const copyMut = useMutation({
+    mutationFn: async () => {
+      const prevMonth = month === 1 ? 12 : month - 1;
+      const prevYear = month === 1 ? year - 1 : year;
+      const prevFirstDay = `${prevYear}-${String(prevMonth).padStart(2, "0")}-01`;
+      const prevLastDay = new Date(prevYear, prevMonth, 0).getDate();
+      const prevLastDayStr = `${prevYear}-${String(prevMonth).padStart(2, "0")}-${String(prevLastDay).padStart(2, "0")}`;
+
+      const resp = await apiRequest("GET", `/api/work-schedules?from=${prevFirstDay}&to=${prevLastDayStr}`);
+      const prevSchedules: WorkSchedule[] = await resp.json();
+      if (prevSchedules.length === 0) throw new Error("Brak zmian w poprzednim miesiącu");
+
+      const newSchedules = prevSchedules.map(s => {
+        const oldDate = new Date(s.date + "T12:00:00");
+        const newDate = new Date(year, month - 1, oldDate.getDate());
+        if (newDate.getMonth() !== month - 1) return null;
+        const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(newDate.getDate()).padStart(2, "0")}`;
+        return {
+          employeeId: s.employeeId,
+          date: dateStr,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          locationId: s.locationId,
+          shiftName: s.shiftName,
+          shiftColor: s.shiftColor,
+        };
+      }).filter(Boolean);
+
+      await apiRequest("POST", "/api/work-schedules/bulk", {
+        schedules: newSchedules,
+        deleteFrom: firstDay,
+        deleteTo: lastDayStr,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [qk] });
+      toast({ title: "Grafik skopiowany z poprzedniego miesiąca" });
+      setCopyDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+      setCopyDialogOpen(false);
     },
   });
 
@@ -208,6 +266,52 @@ export default function GrafikTab() {
     setFormColor(preset.color);
   }
 
+  function exportGrafikPdf() {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    doc.setFontSize(14);
+    doc.text(`Grafik pracy — ${MONTH_NAMES[month - 1]} ${year}`, 14, 15);
+
+    const dayHeaders = daysInMonth.map(d => `${d.day}\n${DAY_NAMES_SHORT[d.dow]}`);
+    const headers = ["Pracownik", ...dayHeaders, "Σ godz."];
+
+    const rows = activeEmployees.map((emp: Employee) => {
+      const cells = daysInMonth.map(d => {
+        const key = `${emp.id}-${d.dateStr}`;
+        const shifts = scheduleMap[key] || [];
+        return shifts.map(s => `${s.startTime}-${s.endTime}`).join("\n") || "";
+      });
+      const hours = empHours[emp.id] || 0;
+      return [`${emp.firstName} ${emp.lastName}`, ...cells, `${hours}h`];
+    });
+
+    autoTable(doc, {
+      head: [headers],
+      body: rows,
+      startY: 22,
+      styles: { fontSize: 6, cellPadding: 1, overflow: "linebreak" },
+      headStyles: { fillColor: [59, 130, 246], fontSize: 6, halign: "center" },
+      columnStyles: {
+        0: { cellWidth: 28, halign: "left" },
+        [headers.length - 1]: { cellWidth: 14, halign: "center", fontStyle: "bold" },
+      },
+      didParseCell(data: any) {
+        if (data.section === "body" && data.column.index > 0 && data.column.index < headers.length - 1) {
+          const d = daysInMonth[data.column.index - 1];
+          if (d?.isWeekend) {
+            data.cell.styles.fillColor = [254, 226, 226];
+          }
+        }
+      },
+    });
+
+    const pageHeight = doc.internal.pageSize.getHeight();
+    doc.setFontSize(8);
+    doc.setTextColor(128, 128, 128);
+    doc.text(`Wygenerowano: ${new Date().toLocaleDateString("pl-PL")}`, 14, pageHeight - 8);
+
+    doc.save(`grafik_${year}_${String(month).padStart(2, "0")}.pdf`);
+  }
+
   if (isLoading) {
     return <div className="flex items-center justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
   }
@@ -226,17 +330,25 @@ export default function GrafikTab() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <Select value={locationFilter} onValueChange={setLocationFilter}>
-          <SelectTrigger className="w-[200px]" data-testid="select-location-filter">
-            <SelectValue placeholder="Wszystkie lokalizacje" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Wszystkie lokalizacje</SelectItem>
-            {locations.map((loc: Location) => (
-              <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger className="w-[200px]" data-testid="select-location-filter">
+              <SelectValue placeholder="Wszystkie lokalizacje" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Wszystkie lokalizacje</SelectItem>
+              {locations.map((loc: Location) => (
+                <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => setCopyDialogOpen(true)} data-testid="button-copy-schedule">
+            <Copy className="h-4 w-4 mr-1" /> Kopiuj z poprzedniego miesiąca
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportGrafikPdf} data-testid="button-export-grafik-pdf">
+            <FileDown className="h-4 w-4 mr-1" /> Eksportuj PDF
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto border rounded-lg">
@@ -435,6 +547,27 @@ export default function GrafikTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kopiuj grafik z poprzedniego miesiąca</AlertDialogTitle>
+            <AlertDialogDescription>
+              Wszystkie istniejące zmiany w {MONTH_NAMES[month - 1]} {year} zostaną zastąpione zmianami z {MONTH_NAMES[month === 1 ? 11 : month - 2]} {month === 1 ? year - 1 : year}. Czy kontynuować?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-copy">Anuluj</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => copyMut.mutate()}
+              disabled={copyMut.isPending}
+              data-testid="button-confirm-copy"
+            >
+              {copyMut.isPending ? "Kopiowanie..." : "Kopiuj"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
