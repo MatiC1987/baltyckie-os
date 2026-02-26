@@ -3,7 +3,7 @@ import { recepcjaFetch } from "./RecepcjaApp";
 import { Card } from "@/components/ui/card";
 import { Link } from "wouter";
 import {
-  Plane, PlaneLanding, AlertCircle, CheckSquare, UserPlus, LayoutDashboard,
+  Plane, PlaneLanding, AlertCircle, CheckSquare, UserPlus, LayoutDashboard, AlertTriangle,
 } from "lucide-react";
 
 export default function RecepcjaDashboard() {
@@ -21,6 +21,7 @@ export default function RecepcjaDashboard() {
     { label: "Zaległe płatności", value: data?.overduePayments || 0, icon: AlertCircle, color: "text-red-600", link: "/recepcja/podnajem/rozliczenia" },
     { label: "Zadania na dziś", value: data?.todayTasks || 0, icon: CheckSquare, color: "text-orange-600", link: "/recepcja/zadania" },
     { label: "Oczekujący najemcy", value: data?.pendingSubmissions || 0, icon: UserPlus, color: "text-purple-600", link: "/recepcja/podnajem/nowy-najemca" },
+    { label: "Otwarte usterki", value: data?.openIssues || 0, icon: AlertTriangle, color: "text-yellow-600", link: "/recepcja/usterki" },
   ];
 
   return (
@@ -31,13 +32,13 @@ export default function RecepcjaDashboard() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {[...Array(5)].map((_, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {[...Array(6)].map((_, i) => (
             <Card key={i} className="p-4 animate-pulse"><div className="h-16 bg-muted rounded" /></Card>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {cards.map(card => {
             const Icon = card.icon;
             return (

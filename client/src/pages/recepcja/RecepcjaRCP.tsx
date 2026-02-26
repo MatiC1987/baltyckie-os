@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit } from "lucide-react";
 
 type RCPTab = "dashboard" | "obecnosci" | "grafik" | "urlopy" | "raporty" | "lokalizacje" | "piny";
 
@@ -119,6 +120,13 @@ function RCPDashboard() {
 
 function RCPObecnosci() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editClockIn, setEditClockIn] = useState("");
+  const [editClockOut, setEditClockOut] = useState("");
+  const { toast } = useToast();
+
   const { data: employees = [] } = useQuery({
     queryKey: ["/api/recepcja/rcp/employees"],
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees"); return r.json(); },
@@ -128,18 +136,58 @@ function RCPObecnosci() {
     queryFn: async () => { const r = await recepcjaFetch("GET", `/api/recepcja/rcp/time-entries?date=${date}`); return r.json(); },
   });
 
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await recepcjaFetch("DELETE", `/api/recepcja/rcp/time-entries/${id}`);
+      if (!r.ok) throw new Error("Błąd usuwania");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/recepcja/rcp/time-entries?date=${date}`] });
+      toast({ title: "Wpis usunięty" });
+      setSheetOpen(false);
+      setSelectedEntry(null);
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const r = await recepcjaFetch("PUT", `/api/recepcja/rcp/time-entries/${id}`, data);
+      if (!r.ok) throw new Error("Błąd zapisu");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/recepcja/rcp/time-entries?date=${date}`] });
+      toast({ title: "Wpis zaktualizowany" });
+      setEditMode(false);
+    },
+  });
+
   const changeDate = (offset: number) => {
     const d = new Date(date);
     d.setDate(d.getDate() + offset);
     setDate(d.toISOString().slice(0, 10));
   };
 
+  const openDetail = (entry: any) => {
+    setSelectedEntry(entry);
+    setEditMode(false);
+    if (entry.clockIn) setEditClockIn(new Date(entry.clockIn).toTimeString().slice(0, 5));
+    if (entry.clockOut) setEditClockOut(new Date(entry.clockOut).toTimeString().slice(0, 5));
+    setSheetOpen(true);
+  };
+
+  const saveEdit = () => {
+    if (!selectedEntry) return;
+    const clockIn = editClockIn ? new Date(`${date}T${editClockIn}:00`) : undefined;
+    const clockOut = editClockOut ? new Date(`${date}T${editClockOut}:00`) : undefined;
+    updateMut.mutate({ id: selectedEntry.id, data: { clockIn, clockOut } });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => changeDate(-1)}><ChevronLeft className="h-4 w-4" /></Button>
-        <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-auto" />
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => changeDate(1)}><ChevronRight className="h-4 w-4" /></Button>
+        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => changeDate(-1)} data-testid="button-prev-day"><ChevronLeft className="h-4 w-4" /></Button>
+        <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-auto" data-testid="input-date" />
+        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => changeDate(1)} data-testid="button-next-day"><ChevronRight className="h-4 w-4" /></Button>
       </div>
       <Card className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -155,14 +203,14 @@ function RCPObecnosci() {
             {entries.map((e: any) => {
               const emp = employees.find((em: any) => em.id === e.employeeId);
               return (
-                <tr key={e.id} className="border-b hover:bg-muted/30">
+                <tr key={e.id} className="border-b hover:bg-muted/30 cursor-pointer" onClick={() => openDetail(e)} data-testid={`row-entry-${e.id}`}>
                   <td className="p-2 font-medium">{emp ? `${emp.firstName} ${emp.lastName}` : `#${e.employeeId}`}</td>
                   <td className="p-2">{e.clockIn ? new Date(e.clockIn).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td className="p-2">{e.clockOut ? new Date(e.clockOut).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td className="p-2">{e.totalBreakMinutes ? `${e.totalBreakMinutes} min` : '-'}</td>
                   <td className="p-2 text-center">{e.isOutsideZone ? <Badge variant="destructive">Tak</Badge> : '-'}</td>
                   <td className="p-2 text-center">
-                    <Badge variant={e.status === 'ZAAKCEPTOWANY' ? 'default' : e.status === 'ODRZUCONY' ? 'destructive' : 'secondary'}>
+                    <Badge variant={e.status === 'ZAAKCEPTOWANA' || e.status === 'ZAKONCZONA' ? 'default' : e.status === 'ODRZUCONA' ? 'destructive' : 'secondary'}>
                       {e.status || (e.clockOut ? 'Zakończone' : 'W trakcie')}
                     </Badge>
                   </td>
@@ -173,6 +221,91 @@ function RCPObecnosci() {
           </tbody>
         </table>
       </Card>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle>Szczegóły wpisu</SheetTitle>
+          </SheetHeader>
+          {selectedEntry && (() => {
+            const emp = employees.find((em: any) => em.id === selectedEntry.employeeId);
+            return (
+              <div className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Pracownik</span>
+                    <span className="font-medium">{emp ? `${emp.firstName} ${emp.lastName}` : `#${selectedEntry.employeeId}`}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Data</span>
+                    <span>{selectedEntry.date}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Status</span>
+                    <Badge variant="secondary">{selectedEntry.status || 'Brak'}</Badge>
+                  </div>
+                  {selectedEntry.isOutsideZone && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Poza strefą</span>
+                      <Badge variant="destructive">Tak</Badge>
+                    </div>
+                  )}
+                </div>
+
+                {editMode ? (
+                  <div className="space-y-3 border-t pt-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Wejście</label>
+                      <Input type="time" value={editClockIn} onChange={e => setEditClockIn(e.target.value)} data-testid="input-edit-clock-in" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Wyjście</label>
+                      <Input type="time" value={editClockOut} onChange={e => setEditClockOut(e.target.value)} data-testid="input-edit-clock-out" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveEdit} disabled={updateMut.isPending} data-testid="button-save-edit">
+                        <Check className="h-4 w-4 mr-1" /> Zapisz
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditMode(false)} data-testid="button-cancel-edit">
+                        Anuluj
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 border-t pt-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Wejście</span>
+                      <span>{selectedEntry.clockIn ? new Date(selectedEntry.clockIn).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Wyjście</span>
+                      <span>{selectedEntry.clockOut ? new Date(selectedEntry.clockOut).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 border-t pt-3">
+                  {!editMode && (
+                    <Button size="sm" variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-entry">
+                      <Edit className="h-4 w-4 mr-1" /> Edytuj godziny
+                    </Button>
+                  )}
+                  <Button size="sm" variant="destructive" onClick={() => deleteMut.mutate(selectedEntry.id)} disabled={deleteMut.isPending} data-testid="button-delete-entry">
+                    <Trash2 className="h-4 w-4 mr-1" /> Usuń
+                  </Button>
+                </div>
+
+                {selectedEntry.note && (
+                  <div className="border-t pt-3">
+                    <span className="text-xs text-muted-foreground">Notatka pracownika</span>
+                    <p className="text-sm mt-1">{selectedEntry.note}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

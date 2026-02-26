@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation, Link } from "wouter";
-import { useRecepcjaAuth } from "./RecepcjaApp";
+import { useRecepcjaAuth, recepcjaFetch } from "./RecepcjaApp";
 import { useTheme } from "@/components/ThemeProvider";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
   Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
@@ -10,7 +11,7 @@ import {
   LayoutDashboard, Wallet, FileText, HandCoins, UserPlus, History,
   Gauge, ClipboardList, FolderOpen, Search, CalendarDays, Hotel,
   Phone, CheckSquare, Clock, LogOut, Sun, Moon, Menu, X,
-  PanelLeftClose, PanelLeft, ChevronDown, FileBarChart,
+  PanelLeftClose, PanelLeft, ChevronDown, FileBarChart, AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
@@ -56,6 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Protokoły", path: "/recepcja/protokoly", icon: ClipboardList },
       { label: "Dokumenty", path: "/recepcja/dokumenty", icon: FolderOpen },
       { label: "Przeglądy", path: "/recepcja/przeglady", icon: Search },
+      { label: "Usterki", path: "/recepcja/usterki", icon: AlertTriangle },
     ],
   },
   {
@@ -147,6 +149,29 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
   const [compact, setCompact] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
+  const { data: sidebarConfig } = useQuery<{ hiddenItems: string[] }>({
+    queryKey: ["/api/recepcja/sidebar-config"],
+    queryFn: async () => {
+      const res = await recepcjaFetch("GET", "/api/recepcja/sidebar-config");
+      if (!res.ok) return { hiddenItems: [] };
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+
+  const hiddenItems = useMemo(() => new Set(sidebarConfig?.hiddenItems || []), [sidebarConfig]);
+
+  const filteredNavSections = useMemo(() => {
+    return NAV_SECTIONS.map(section => ({
+      ...section,
+      items: section.items.filter(item => !hiddenItems.has(item.path)),
+    })).filter(section => section.items.length > 0);
+  }, [hiddenItems]);
+
+  const filteredMobileNav = useMemo(() => {
+    return MOBILE_NAV.filter(item => !hiddenItems.has(item.path));
+  }, [hiddenItems]);
+
   useEffect(() => {
     const handler = () => setIsOpen(prev => !prev);
     window.addEventListener("toggle-recepcja-sidebar", handler);
@@ -202,7 +227,7 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
           </div>
 
           <nav className={cn("flex-1 overflow-y-auto pb-4 space-y-1", compact ? "px-1" : "px-3")} data-testid="nav-recepcja-sidebar">
-            {NAV_SECTIONS.map((section, sIdx) => {
+            {filteredNavSections.map((section, sIdx) => {
               const isCollapsed = section.label ? collapsedSections.has(section.id) : false;
               return (
                 <div key={section.id} data-testid={`nav-recepcja-section-${section.id}`}>
@@ -359,7 +384,7 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
 
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-slate-900 border-t border-white/10 lg:hidden" data-testid="nav-recepcja-bottom">
         <div className="flex items-center justify-around h-14">
-          {MOBILE_NAV.map(item => {
+          {filteredMobileNav.map(item => {
             const Icon = item.icon;
             const active = isActive(item.path);
             return (

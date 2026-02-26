@@ -1418,3 +1418,41 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   auth: text("auth").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const issues = pgTable("issues", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  priority: text("priority").notNull().default("NORMALNY"),
+  status: text("status").notNull().default("OTWARTE"),
+  category: text("category").notNull().default("ogólne"),
+  reportedBy: text("reported_by").notNull(),
+  assignedTo: text("assigned_to"),
+  photoUrls: text("photo_urls").array(),
+  cost: numeric("cost", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertIssueSchema = createInsertSchema(issues).omit({ id: true, createdAt: true, updatedAt: true });
+export type Issue = typeof issues.$inferSelect;
+export type InsertIssue = z.infer<typeof insertIssueSchema>;
+
+export const locationLogs = pgTable("location_logs", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  timeEntryId: integer("time_entry_id").references(() => timeEntries.id, { onDelete: "cascade" }),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }).notNull(),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }).notNull(),
+  accuracy: numeric("accuracy", { precision: 8, scale: 2 }),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  locationId: integer("location_id").references(() => locations.id),
+  distanceFromZone: numeric("distance_from_zone", { precision: 10, scale: 2 }),
+});
+
+export const insertLocationLogSchema = createInsertSchema(locationLogs).omit({ id: true });
+export type LocationLog = typeof locationLogs.$inferSelect;
+export type InsertLocationLog = z.infer<typeof insertLocationLogSchema>;

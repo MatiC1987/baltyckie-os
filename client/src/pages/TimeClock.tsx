@@ -326,10 +326,54 @@ function EmployeeDashboard({
   const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(initialEntry);
   const [gpsStatus, setGpsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsTrackingActive, setGpsTrackingActive] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLeaves, setShowLeaves] = useState(false);
   const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
+  const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const isActive = activeEntry && (activeEntry.status === "AKTYWNA" || activeEntry.status === "WARUNKOWA" || activeEntry.status === "PRZERWA");
+
+    if (isActive && navigator.geolocation) {
+      const sendLocation = () => {
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            try {
+              await rcpFetch("POST", "/api/time-clock/location-log", {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+              });
+              setGpsTrackingActive(true);
+            } catch {
+              setGpsTrackingActive(false);
+            }
+          },
+          () => { setGpsTrackingActive(false); },
+          { enableHighAccuracy: true, timeout: 15000 }
+        );
+      };
+
+      sendLocation();
+      gpsIntervalRef.current = setInterval(sendLocation, 5 * 60 * 1000);
+
+      return () => {
+        if (gpsIntervalRef.current) {
+          clearInterval(gpsIntervalRef.current);
+          gpsIntervalRef.current = null;
+        }
+        setGpsTrackingActive(false);
+      };
+    } else {
+      if (gpsIntervalRef.current) {
+        clearInterval(gpsIntervalRef.current);
+        gpsIntervalRef.current = null;
+      }
+      setGpsTrackingActive(false);
+    }
+  }, [activeEntry?.id, activeEntry?.status]);
 
   const teamStatusQuery = useQuery<TeamStatus>({
     queryKey: ["/api/time-clock/team-status"],
@@ -714,6 +758,14 @@ function EmployeeDashboard({
 
               {gpsStatus === "error" && (
                 <GpsErrorPanel onRetry={() => getGps().catch(() => {})} />
+              )}
+
+              {(isWorking || isOnBreak) && (
+                <div className={`flex items-center gap-2 text-xs ${gpsTrackingActive ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} data-testid="text-gps-tracking">
+                  <MapPin className="h-3.5 w-3.5" />
+                  <span>{gpsTrackingActive ? 'Śledzenie GPS aktywne' : 'Śledzenie GPS nieaktywne'}</span>
+                  {gpsTrackingActive && <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />}
+                </div>
               )}
 
               <div className="flex flex-col gap-3 w-full mt-2">

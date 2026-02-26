@@ -11,7 +11,7 @@ import {
   Square, Triangle, Hexagon, Wifi, Cloud, Database, Server, Monitor,
   Smartphone, Tablet, Tv, Radio, Headphones, Mic, Video, Image,
   FolderOpen, Archive, Trash2, Edit, Eye, EyeOff, Search, Filter,
-  SortAsc, AlertCircle, CheckCircle, Info, HelpCircle, MessageSquare,
+  SortAsc, AlertCircle, AlertTriangle, CheckCircle, Info, HelpCircle, MessageSquare,
   Send, Share2, Link, Paperclip, Scissors, Copy, Clipboard, Terminal,
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
   Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map as MapIcon, Navigation,
@@ -59,7 +59,7 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   Square, Triangle, Hexagon, Wifi, Cloud, Database, Server, Monitor,
   Smartphone, Tablet, Tv, Radio, Headphones, Mic, Video, Image,
   FolderOpen, Archive, Trash2, Edit, Eye, EyeOff, Search, Filter,
-  SortAsc, AlertCircle, CheckCircle, Info, HelpCircle, MessageSquare,
+  SortAsc, AlertCircle, AlertTriangle, CheckCircle, Info, HelpCircle, MessageSquare,
   Send, Share2, Link, Paperclip, Scissors, Copy, Clipboard, Terminal,
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
   Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map: MapIcon, Navigation,
@@ -133,12 +133,13 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "apartment-comparison": { id: "apartment-comparison", href: "/apartment-comparison", label: "Porównanie apartamentów", iconName: "ArrowUpDown" },
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
   "rcp": { id: "rcp", href: "/rcp/admin", label: "RCP", iconName: "Clock" },
+  "usterki": { id: "usterki", href: "/usterki", label: "Usterki", iconName: "AlertTriangle" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp"], color: "violet" },
+  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp", "usterki"], color: "violet" },
   { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "saldo-firmowe", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality"], color: "blue" },
 ];

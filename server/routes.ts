@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -9716,6 +9716,176 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
       const request = await storage.createLeaveRequest(parsed.data);
       res.json(request);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== LOCATION LOGS (GPS tracking) ====================
+  app.post('/api/time-clock/location-log', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Brak autoryzacji' });
+
+      const { latitude, longitude, accuracy } = req.body;
+      if (latitude == null || longitude == null || isNaN(Number(latitude)) || isNaN(Number(longitude))) {
+        return res.status(400).json({ message: 'Brak współrzędnych' });
+      }
+
+      const activeEntries = await db.select().from(timeEntries)
+        .where(and(
+          eq(timeEntries.employeeId, employeeId),
+          sql`${timeEntries.status} IN ('AKTYWNA', 'WARUNKOWA', 'PRZERWA')`
+        ));
+      const activeEntry = activeEntries[0];
+      if (!activeEntry) return res.status(400).json({ message: 'Brak aktywnej zmiany' });
+
+      const allLocations = await db.select().from(locations).where(
+        and(sql`${locations.latitude} IS NOT NULL`, sql`${locations.longitude} IS NOT NULL`)
+      );
+
+      let nearestLocationId: number | null = null;
+      let minDistance = Infinity;
+      for (const loc of allLocations) {
+        if (!loc.latitude || !loc.longitude) continue;
+        const dist = haversineDistance(
+          Number(latitude), Number(longitude),
+          Number(loc.latitude), Number(loc.longitude)
+        );
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestLocationId = loc.id;
+        }
+      }
+
+      const [log] = await db.insert(locationLogs).values({
+        employeeId,
+        timeEntryId: activeEntry.id,
+        latitude: String(latitude),
+        longitude: String(longitude),
+        accuracy: accuracy ? String(accuracy) : null,
+        timestamp: new Date(),
+        locationId: nearestLocationId,
+        distanceFromZone: String(Math.round(minDistance * 100) / 100),
+      }).returning();
+
+      res.json(log);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/location-logs', isAuthenticated, async (req, res) => {
+    try {
+      const { employeeId, date } = req.query;
+      if (!employeeId || !date) return res.status(400).json({ message: 'Wymagane employeeId i date' });
+
+      const dayStart = new Date(`${date}T00:00:00`);
+      const dayEnd = new Date(`${date}T23:59:59`);
+
+      const logs = await db.select({
+        log: locationLogs,
+        locationName: locations.name,
+      }).from(locationLogs)
+        .leftJoin(locations, eq(locationLogs.locationId, locations.id))
+        .where(and(
+          eq(locationLogs.employeeId, Number(employeeId)),
+          gte(locationLogs.timestamp, dayStart),
+          lte(locationLogs.timestamp, dayEnd),
+        ))
+        .orderBy(locationLogs.timestamp);
+
+      res.json(logs.map(r => ({ ...r.log, locationName: r.locationName })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/location-logs/summary', isAuthenticated, async (req, res) => {
+    try {
+      const { date } = req.query;
+      if (!date) return res.status(400).json({ message: 'Wymagane date' });
+
+      const dayStart = new Date(`${date}T00:00:00`);
+      const dayEnd = new Date(`${date}T23:59:59`);
+
+      const allLogs = await db.select()
+        .from(locationLogs)
+        .where(and(
+          gte(locationLogs.timestamp, dayStart),
+          lte(locationLogs.timestamp, dayEnd),
+        ));
+
+      const uniqueEmployees = new Set(allLogs.map(l => l.employeeId));
+      const outsideZone = allLogs.filter(l => l.distanceFromZone && parseFloat(l.distanceFromZone) > 0).length;
+
+      res.json({
+        totalEmployees: uniqueEmployees.size,
+        totalLogs: allLogs.length,
+        outsideZone,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== ISSUES (admin management) ====================
+  app.get('/api/issues', isAuthenticated, async (req, res) => {
+    try {
+      const results = await db.select({
+        issue: issues,
+        apartmentName: apartments.name,
+      }).from(issues)
+        .leftJoin(apartments, eq(issues.apartmentId, apartments.id))
+        .orderBy(desc(issues.createdAt));
+      res.json(results.map(r => ({ ...r.issue, apartmentName: r.apartmentName })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/issues/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { status, assignedTo, cost, notes, priority } = req.body;
+      const update: any = { updatedAt: new Date() };
+      if (status) update.status = status;
+      if (assignedTo !== undefined) update.assignedTo = assignedTo;
+      if (cost !== undefined) update.cost = cost;
+      if (notes !== undefined) update.notes = notes;
+      if (priority) update.priority = priority;
+      if (status === 'ROZWIĄZANE' || status === 'ZAMKNIĘTE') update.resolvedAt = new Date();
+      const [updated] = await db.update(issues).set(update).where(eq(issues.id, id)).returning();
+      if (!updated) return res.status(404).json({ message: 'Nie znaleziono' });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/issues/:id', isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(issues).where(eq(issues.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RECEPCJA SIDEBAR VISIBILITY CONFIG (admin) ====================
+  app.get('/api/recepcja-sidebar-config', isAuthenticated, async (_req, res) => {
+    try {
+      const raw = await storage.getAppConfig('recepcja-sidebar-visibility');
+      res.json(raw ? JSON.parse(raw) : { hiddenItems: [] });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/recepcja-sidebar-config', isAuthenticated, async (req, res) => {
+    try {
+      await storage.setAppConfig('recepcja-sidebar-visibility', JSON.stringify(req.body));
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -35,12 +35,13 @@ import {
 import {
   Clock, Users, Coffee, AlertTriangle, ChevronLeft, ChevronRight,
   Check, X, Eye, EyeOff, RefreshCw, MapPin, Pencil, Trash2, Plus,
-  KeyRound, CalendarRange, Palmtree, FileBarChart,
+  KeyRound, CalendarRange, Palmtree, FileBarChart, Navigation,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import GrafikTab from "@/pages/rcp/GrafikTab";
 import UrlopyTab from "@/pages/rcp/UrlopyTab";
 import RaportyTab from "@/pages/rcp/RaportyTab";
+import GpsTrackingTab from "@/pages/rcp/GpsTrackingTab";
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -1018,6 +1019,9 @@ export default function TimeAdmin() {
             <FileBarChart className="h-4 w-4 mr-1 hidden sm:inline" />Raporty
           </TabsTrigger>
           <TabsTrigger value="lokalizacje" data-testid="tab-lokalizacje">Lokalizacje GPS</TabsTrigger>
+          <TabsTrigger value="sledzenie" data-testid="tab-sledzenie">
+            <Navigation className="h-4 w-4 mr-1 hidden sm:inline" />Śledzenie GPS
+          </TabsTrigger>
           <TabsTrigger value="piny" data-testid="tab-piny">PINy</TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard" className="mt-4">
@@ -1037,6 +1041,9 @@ export default function TimeAdmin() {
         </TabsContent>
         <TabsContent value="lokalizacje" className="mt-4">
           <LokalizacjeGPSTab />
+        </TabsContent>
+        <TabsContent value="sledzenie" className="mt-4">
+          <GpsTrackingTab />
         </TabsContent>
         <TabsContent value="piny" className="mt-4">
           <PINyTab />

@@ -3,10 +3,15 @@ import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Building2, Users, UserCog, MapPin, Briefcase, Files,
   FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
   Type, Menu, ChevronDown, ChevronRight, PanelLeft, TrendingUp,
+  Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -158,6 +163,133 @@ function CollapsibleSection({ title, icon: Icon, defaultOpen = false, children, 
   );
 }
 
+const RECEPCJA_NAV_SECTIONS = [
+  {
+    id: "main",
+    label: "Główne",
+    items: [
+      { id: "dashboard", label: "Pulpit", path: "/recepcja/dashboard" },
+      { id: "saldo", label: "Saldo", path: "/recepcja/saldo" },
+    ],
+  },
+  {
+    id: "podnajem",
+    label: "Podnajem",
+    items: [
+      { id: "umowy", label: "Umowy", path: "/recepcja/podnajem/umowy" },
+      { id: "rozliczenia", label: "Rozliczenia", path: "/recepcja/podnajem/rozliczenia" },
+      { id: "nowy-najemca", label: "Nowi najemcy", path: "/recepcja/podnajem/nowy-najemca" },
+      { id: "historia", label: "Historia zmian", path: "/recepcja/podnajem/historia" },
+    ],
+  },
+  {
+    id: "operacje",
+    label: "Operacje",
+    items: [
+      { id: "liczniki", label: "Liczniki", path: "/recepcja/liczniki" },
+      { id: "protokoly", label: "Protokoły", path: "/recepcja/protokoly" },
+      { id: "dokumenty", label: "Dokumenty", path: "/recepcja/dokumenty" },
+      { id: "przeglady", label: "Przeglądy", path: "/recepcja/przeglady" },
+      { id: "usterki", label: "Usterki", path: "/recepcja/usterki" },
+    ],
+  },
+  {
+    id: "rezerwacje",
+    label: "Rezerwacje",
+    items: [
+      { id: "terminarz", label: "Terminarz", path: "/recepcja/terminarz" },
+      { id: "rezerwacje", label: "Rezerwacje", path: "/recepcja/rezerwacje" },
+    ],
+  },
+  {
+    id: "zarzadzanie",
+    label: "Zarządzanie",
+    items: [
+      { id: "rcp", label: "RCP", path: "/recepcja/rcp" },
+      { id: "kontakty", label: "Kontakty najemców", path: "/recepcja/kontakty" },
+      { id: "zadania", label: "Zadania", path: "/recepcja/zadania" },
+      { id: "raport-dzienny", label: "Raport dzienny", path: "/recepcja/raport-dzienny" },
+    ],
+  },
+];
+
+function RecepcjaSidebarConfig() {
+  const { toast } = useToast();
+
+  const { data: config, isLoading } = useQuery<{ hiddenItems: string[] }>({
+    queryKey: ["/api/recepcja-sidebar-config"],
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (hiddenItems: string[]) => {
+      await apiRequest("PUT", "/api/recepcja-sidebar-config", { hiddenItems });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja-sidebar-config"] });
+      toast({ title: "Zapisano", description: "Konfiguracja menu recepcji została zaktualizowana" });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się zapisać konfiguracji", variant: "destructive" });
+    },
+  });
+
+  const hiddenItems = config?.hiddenItems || [];
+
+  const toggleItem = (path: string) => {
+    const next = hiddenItems.includes(path)
+      ? hiddenItems.filter(p => p !== path)
+      : [...hiddenItems, path];
+    mutation.mutate(next);
+  };
+
+  if (isLoading) {
+    return <div className="py-4 text-center text-sm text-muted-foreground">Ładowanie konfiguracji...</div>;
+  }
+
+  return (
+    <Card data-testid="card-recepcja-sidebar-config">
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <Monitor className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-sm">Menu panelu Recepcja</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Włącz lub wyłącz pozycje widoczne w menu bocznym panelu recepcji</p>
+          </div>
+        </div>
+        <div className="space-y-4">
+          {RECEPCJA_NAV_SECTIONS.map(section => (
+            <div key={section.id} data-testid={`section-recepcja-${section.id}`}>
+              <p className="text-xs font-bold tracking-wide text-muted-foreground uppercase mb-2">{section.label}</p>
+              <div className="space-y-1">
+                {section.items.map(item => {
+                  const isVisible = !hiddenItems.includes(item.path);
+                  return (
+                    <div
+                      key={item.path}
+                      className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md"
+                      data-testid={`toggle-recepcja-item-${item.id}`}
+                    >
+                      <span className={cn("text-sm", !isVisible && "text-muted-foreground")}>{item.label}</span>
+                      <Switch
+                        checked={isVisible}
+                        onCheckedChange={() => toggleItem(item.path)}
+                        disabled={mutation.isPending}
+                        data-testid={`switch-recepcja-item-${item.id}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Ustawienia() {
   return (
     <div className="p-4 lg:p-6 space-y-6" data-testid="page-ustawienia">
@@ -190,6 +322,13 @@ export default function Ustawienia() {
         <Suspense fallback={<div className="py-8 text-center text-sm text-muted-foreground">Ładowanie...</div>}>
           <MenuCustomizationPanel />
         </Suspense>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Menu panelu Recepcja" icon={Monitor} testId="toggle-recepcja-menu-config">
+        <p className="text-sm text-muted-foreground">
+          Włącz lub wyłącz pozycje widoczne w menu bocznym panelu recepcji. Zmiany są zapisywane automatycznie.
+        </p>
+        <RecepcjaSidebarConfig />
       </CollapsibleSection>
 
       <SettingsGrid title="Zarządzanie" items={ZARZADZANIE_ITEMS} />

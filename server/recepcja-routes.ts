@@ -13,6 +13,7 @@ import {
   handoverProtocolItems, handoverProtocolMeters, technicalInspections,
   costInvoices, accountingNotes, tasks as tasksTable, taskProjects, taskSections,
   taskChecklistItems, employees, timeEntries, workSchedules, leaveRequests, locations,
+  issues, locationLogs, appConfig, insertIssueSchema,
   insertSaldoEntrySchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema,
   insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema,
   insertTenantDataSubmissionSchema, insertTaskProjectSchema, insertTaskSectionSchema,
@@ -725,12 +726,17 @@ export function registerRecepcjaRoutes(app: Express) {
       const submissions = await db.select().from(tenantDataSubmissions);
       const pendingSubmissions = submissions.filter(s => ['NOWE', 'DO_PODPISANIA'].includes(s.status));
 
+      const openIssues = await db.select({ count: sql<number>`count(*)::int` }).from(issues)
+        .where(sql`${issues.status} IN ('OTWARTE', 'W_REALIZACJI')`);
+      const openIssuesCount = openIssues[0]?.count || 0;
+
       res.json({
         todayArrivals: todayArrivals.length,
         todayDepartures: todayDepartures.length,
         overduePayments: overduePayments.length,
         todayTasks: todayTasks.length,
         pendingSubmissions: pendingSubmissions.length,
+        openIssues: openIssuesCount,
         arrivals: todayArrivals.slice(0, 10),
         departures: todayDepartures.slice(0, 10),
       });
@@ -796,6 +802,99 @@ export function registerRecepcjaRoutes(app: Express) {
         .where(eq(tenantDataSubmissions.id, Number(req.params.id)))
         .returning();
       res.json(updated);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== RCP DELETE TIME ENTRY (T001 bug fix) ====================
+  app.delete('/api/recepcja/rcp/time-entries/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      await storage.deleteTimeEntry(Number(req.params.id));
+      await logRecepcjaAction(req.recepcjaUser.id, 'DELETE', 'time_entry', req.params.id, {});
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== ZGŁOSZENIA USTEREK ====================
+  app.get('/api/recepcja/issues', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { status, priority } = req.query;
+      let query = db.select({
+        issue: issues,
+        apartmentName: apartments.name,
+      }).from(issues).leftJoin(apartments, eq(issues.apartmentId, apartments.id)).orderBy(desc(issues.createdAt));
+
+      const results = await query;
+      let filtered = results.map(r => ({ ...r.issue, apartmentName: r.apartmentName }));
+      if (status) filtered = filtered.filter(i => i.status === status);
+      if (priority) filtered = filtered.filter(i => i.priority === priority);
+      res.json(filtered);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/issues', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const data = insertIssueSchema.parse({
+        ...req.body,
+        reportedBy: req.recepcjaUser.name,
+      });
+      const [issue] = await db.insert(issues).values(data).returning();
+      await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'issue', issue.id.toString(), { title: issue.title, apartmentId: issue.apartmentId });
+      res.json(issue);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/issues/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      const [existing] = await db.select().from(issues).where(eq(issues.id, id));
+      if (!existing) return res.status(404).json({ message: 'Nie znaleziono' });
+      if (existing.reportedBy !== req.recepcjaUser.name && existing.status !== 'OTWARTE') {
+        return res.status(403).json({ message: 'Brak uprawnień' });
+      }
+      const { title, description, priority, category } = req.body;
+      const update: any = { updatedAt: new Date() };
+      if (title) update.title = title;
+      if (description !== undefined) update.description = description;
+      if (priority) update.priority = priority;
+      if (category) update.category = category;
+      const [updated] = await db.update(issues).set(update).where(eq(issues.id, id)).returning();
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'issue', req.params.id, update);
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/issues/:id/photos', isRecepcjaAuth as any, upload.array('photos', 5) as any, async (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      const [existing] = await db.select().from(issues).where(eq(issues.id, id));
+      if (!existing) return res.status(404).json({ message: 'Nie znaleziono' });
+
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) return res.status(400).json({ message: 'Brak plików' });
+
+      const { objectStorage } = await import('./replit_integrations/object_storage');
+      const newUrls: string[] = [];
+      for (const file of files) {
+        const ext = file.originalname.split('.').pop() || 'jpg';
+        const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const path = `private/issues/issue_${id}_${uniqueId}.${ext}`;
+        await objectStorage.writeFile(path, file.buffer);
+        newUrls.push(path);
+      }
+
+      const currentUrls = existing.photoUrls || [];
+      const allUrls = [...currentUrls, ...newUrls];
+      const [updated] = await db.update(issues).set({ photoUrls: allUrls, updatedAt: new Date() }).where(eq(issues.id, id)).returning();
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPLOAD_PHOTOS', 'issue', req.params.id, { count: files.length });
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== SIDEBAR VISIBILITY CONFIG (read-only for Gosia) ====================
+  app.get('/api/recepcja/sidebar-config', isRecepcjaAuth as any, async (_req: any, res) => {
+    try {
+      const raw = await storage.getAppConfig('recepcja-sidebar-visibility');
+      res.json(raw ? JSON.parse(raw) : { hiddenItems: [] });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
