@@ -121,7 +121,7 @@ export default function PriorityRevenueForecast() {
   const forecastMap = useMemo(() => {
     const m: Record<string, number> = {};
     for (const f of forecasts) {
-      if (f.apartmentId && !f.locationName) {
+      if (f.apartmentId) {
         m[`${f.apartmentId}__${f.month}`] = parseFloat(f.forecast || "0");
       }
     }

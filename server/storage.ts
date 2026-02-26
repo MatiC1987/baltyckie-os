@@ -1489,6 +1489,9 @@ export class DatabaseStorage implements IStorage {
     ];
     if (data.apartmentId) {
       conditions.push(eq(revenueForecasts.apartmentId, data.apartmentId));
+      if (!data.locationName) {
+        data = { ...data, locationName: null };
+      }
     } else if (data.locationName) {
       conditions.push(eq(revenueForecasts.locationName, data.locationName));
     }
