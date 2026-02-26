@@ -22,6 +22,7 @@ type MonthData = {
   opCostForecast: number;
   opCostActual: number;
   opCostRemaining: number;
+  surcharges: number;
   endBalance: number;
 };
 
@@ -69,6 +70,8 @@ const CustomTooltip = ({ active, payload }: any) => {
         <span className="text-right text-orange-600">−{pln(d.aptCostRemaining)}</span>
         <span className="text-muted-foreground">Koszty op (pozostało):</span>
         <span className="text-right text-red-600">−{pln(d.opCostRemaining)}</span>
+        <span className="text-muted-foreground">Dopłaty:</span>
+        <span className="text-right text-cyan-600">+{pln(d.surcharges)}</span>
       </div>
       <div className="border-t border-border mt-1.5 pt-1.5">
         <div className="flex justify-between font-semibold">
@@ -111,8 +114,8 @@ export default function SaldoFirmowe() {
     return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
   }, [data]);
 
-  const COL_COUNT_DESKTOP = 11;
-  const COL_COUNT_MOBILE = 5;
+  const COL_COUNT_DESKTOP = 12;
+  const COL_COUNT_MOBILE = 6;
 
   return (
     <div className="space-y-4">
@@ -233,6 +236,7 @@ export default function SaldoFirmowe() {
                       <th className="sm:hidden text-center px-1 py-2 font-bold text-orange-800 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/60" rowSpan={2}>Poz.<br/>apt.</th>
                       <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60 border-b border-red-200 dark:border-red-800" colSpan={3}>Koszty operacyjne</th>
                       <th className="sm:hidden text-center px-1 py-2 font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60" rowSpan={2}>Poz.<br/>op.</th>
+                      <th className="text-center px-1 sm:px-2 py-2 font-bold text-cyan-800 dark:text-cyan-200 bg-cyan-100 dark:bg-cyan-900/60" rowSpan={2}>Dopłaty</th>
                       <th className="text-center px-1 sm:px-4 py-2 font-bold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700" rowSpan={2}>Saldo<br/>firmowe</th>
                     </tr>
                     <tr>
@@ -283,6 +287,9 @@ export default function SaldoFirmowe() {
                               <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.opCostRemaining > 0 ? "text-red-700 dark:text-red-400" : "text-slate-400 dark:text-slate-500"}`}>
                                 {m.opCostRemaining > 0 ? `−${plnShort(m.opCostRemaining)}` : "0"}
                               </td>
+                              <td className={`text-right px-1.5 sm:px-2 py-2 sm:py-2.5 tabular-nums font-semibold ${m.surcharges > 0 ? "text-cyan-700 dark:text-cyan-400" : "text-slate-400 dark:text-slate-500"}`}>
+                                {m.surcharges > 0 ? `+${plnShort(m.surcharges)}` : "0"}
+                              </td>
                               <td className={`text-right px-2 sm:px-4 py-2 sm:py-2.5 tabular-nums font-bold border-l border-border/30 ${balanceBg(m.endBalance)}`}>
                                 {plnShort(m.endBalance)}
                               </td>
@@ -317,6 +324,9 @@ export default function SaldoFirmowe() {
                           </td>
                           <td className="text-right px-1.5 sm:px-2 py-2.5 tabular-nums text-red-700 dark:text-red-400 font-bold">
                             −{plnShort(months.reduce((s, m) => s + m.opCostRemaining, 0))}
+                          </td>
+                          <td className="text-right px-1.5 sm:px-2 py-2.5 tabular-nums text-cyan-700 dark:text-cyan-400 font-bold">
+                            +{plnShort(months.reduce((s, m) => s + m.surcharges, 0))}
                           </td>
                           <td className={`text-right px-2 sm:px-4 py-2.5 tabular-nums font-bold border-l border-border/30 ${balanceBg(months[months.length - 1]?.endBalance ?? 0)}`}>
                             {plnShort(months[months.length - 1]?.endBalance ?? 0)}

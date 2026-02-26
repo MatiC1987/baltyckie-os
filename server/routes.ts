@@ -8605,6 +8605,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       const activeReservations = await db.select({
         startDate: reservations.startDate,
         price: reservations.price,
+        paidAmount: reservations.paidAmount,
       }).from(reservations).where(
         and(
           sql`${reservations.status} != 'ANULOWANA'`,
@@ -8614,13 +8615,18 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       );
 
       const revActualMap: Record<number, Record<number, number>> = {};
+      const surchargeMap: Record<number, Record<number, number>> = {};
       for (const r of activeReservations) {
         const d = new Date(r.startDate);
         const y = d.getFullYear();
         const m = d.getMonth() + 1;
         const price = Number(r.price || 0);
+        const paid = Number(r.paidAmount || 0);
+        const surcharge = Math.max(0, price - paid);
         if (!revActualMap[y]) revActualMap[y] = {};
         revActualMap[y][m] = (revActualMap[y][m] || 0) + price;
+        if (!surchargeMap[y]) surchargeMap[y] = {};
+        surchargeMap[y][m] = (surchargeMap[y][m] || 0) + surcharge;
       }
 
       const allSubleasesList = await db.select().from(subleasePayments).where(
@@ -8800,7 +8806,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         const opCostActual = opActualMap[year]?.[rfMonth] ?? 0;
         const opCostRemaining = Math.max(0, opCostForecast - opCostActual);
 
-        const endBalance = Math.round((runningBalance + revenueRemaining - aptCostRemaining - opCostRemaining) * 100) / 100;
+        const surcharges = surchargeMap[year]?.[calMonth] ?? 0;
+
+        const endBalance = Math.round((runningBalance + revenueRemaining + surcharges - aptCostRemaining - opCostRemaining) * 100) / 100;
 
         months.push({
           year,
@@ -8814,6 +8822,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           opCostForecast: Math.round(opCostForecast * 100) / 100,
           opCostActual: Math.round(opCostActual * 100) / 100,
           opCostRemaining: Math.round(opCostRemaining * 100) / 100,
+          surcharges: Math.round(surcharges * 100) / 100,
           endBalance,
         });
 
