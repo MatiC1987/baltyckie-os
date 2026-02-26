@@ -89,7 +89,7 @@ function CostInvoicesTab() {
           <tbody>
             {invoices.map((inv: any) => (
               <tr key={inv.id} className="border-b hover:bg-muted/30">
-                <td className="p-2 flex items-center gap-1"><FileText className="h-3 w-3" />{inv.originalFilename}</td>
+                <td className="p-2 flex items-center gap-1"><FileText className="h-3 w-3" />{inv.originalFileName || inv.fileName}</td>
                 <td className="p-2">{inv.invoiceDate}</td>
                 <td className="p-2 text-center"><Badge variant="secondary">{inv.status}</Badge></td>
                 <td className="p-2 text-muted-foreground">{inv.uploadedBy || '-'}</td>

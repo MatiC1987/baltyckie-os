@@ -228,7 +228,7 @@ export function registerRecepcjaRoutes(app: Express) {
   // ==================== DOKUMENTY KSIĘGOWE (upload) + NOTY (download) ====================
   app.get('/api/recepcja/cost-invoices', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const invoices = await db.select().from(costInvoices).orderBy(desc(costInvoices.createdAt));
+      const invoices = await db.select().from(costInvoices).orderBy(desc(costInvoices.uploadedAt));
       res.json(invoices);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
@@ -247,8 +247,10 @@ export function registerRecepcjaRoutes(app: Express) {
       const parts = invoiceDate.split('-');
 
       const [invoice] = await db.insert(costInvoices).values({
-        originalFilename: req.file.originalname,
-        objectPath,
+        fileName: req.file.originalname,
+        originalFileName: req.file.originalname,
+        mimeType: req.file.mimetype || 'application/pdf',
+        objectStoragePath: objectPath,
         invoiceDate,
         invoiceMonth: Number(parts[1]),
         invoiceYear: Number(parts[0]),
