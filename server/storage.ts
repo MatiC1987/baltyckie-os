@@ -2163,8 +2163,6 @@ export class DatabaseStorage implements IStorage {
 
   // RCP - Employee PIN
   async getEmployeeByPin(pin: string): Promise<Employee | undefined> {
-    const allWithPin = await db.select({ id: employees.id, pin: employees.pin, status: employees.status, firstName: employees.firstName }).from(employees).where(isNotNull(employees.pin));
-    console.log('[RCP-DEBUG] All employees with PINs:', allWithPin.map(e => ({ id: e.id, name: e.firstName, pinLen: e.pin?.length, status: e.status, pinMatch: e.pin === pin })));
     const [emp] = await db.select().from(employees)
       .where(and(eq(employees.pin, pin), eq(employees.status, 'AKTYWNY')));
     return emp;
