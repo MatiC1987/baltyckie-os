@@ -357,7 +357,7 @@ function EmployeeDashboard({
       };
 
       sendLocation();
-      gpsIntervalRef.current = setInterval(sendLocation, 5 * 60 * 1000);
+      gpsIntervalRef.current = setInterval(sendLocation, 30 * 1000);
 
       return () => {
         if (gpsIntervalRef.current) {
