@@ -161,18 +161,13 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
 
   return (
     <>
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 border-b border-white/10 z-50 flex items-center px-4 justify-between gap-2">
-        {companyLogoUrl ? (
-          <img src={companyLogoUrl} alt={companyName || "Logo"} className="h-6 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = logoSrc; }} />
-        ) : (
-          <img src={logoSrc} alt="Bałtyckie Finanse" className="h-6" />
-        )}
-        {isOpen && (
-          <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="text-white" data-testid="button-close-sidebar">
-            <X className="h-6 w-6" />
+      {isOpen && (
+        <div className="lg:hidden fixed top-0 right-0 z-50 p-3">
+          <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="text-white bg-slate-900/80 backdrop-blur-sm rounded-full" data-testid="button-close-sidebar">
+            <X className="h-5 w-5" />
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <aside className={cn(
         "fixed inset-y-0 left-0 z-40 bg-slate-900 text-white transform transition-all duration-200 ease-in-out lg:translate-x-0 lg:static lg:h-screen shadow-xl",
@@ -261,20 +256,8 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
             })}
           </nav>
 
-          {!compact && (
-            <div className="px-3 py-3">
-              <button
-                onClick={() => setShowQuickActions(true)}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors bg-[#5ADBFA] text-slate-900 hover:bg-[#5ADBFA]/85"
-                data-testid="button-quick-actions"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Dodaj</span>
-              </button>
-            </div>
-          )}
-          {compact && (
-            <div className="px-1 py-2 flex justify-center">
+          <div className={cn("flex justify-center", compact ? "px-1 py-2" : "px-3 py-2")}>
+            {compact ? (
               <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -289,8 +272,17 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                   <TooltipContent side="right" className="text-xs">Dodaj</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            </div>
-          )}
+            ) : (
+              <button
+                onClick={() => setShowQuickActions(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-[#5ADBFA] text-slate-900 hover:bg-[#5ADBFA]/85"
+                data-testid="button-quick-actions"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Dodaj</span>
+              </button>
+            )}
+          </div>
 
           <div className={cn("pb-3 pt-2 border-t border-white/10", compact ? "px-1" : "px-3")}>
             {!compact && (
@@ -381,38 +373,52 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
               </div>
             ) : (
               <>
-                <Link href="/ustawienia">
-                  <div
-                    onClick={() => setIsOpen(false)}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors mb-0.5 cursor-pointer",
-                      location === "/ustawienia" || location === "/ustawienia-menu"
-                        ? "text-[#5ADBFA]"
-                        : "text-slate-400 hover:text-white hover:bg-white/5"
-                    )}
-                    data-testid="link-nav-ustawienia"
-                  >
-                    <Settings className={cn("h-3.5 w-3.5", location === "/ustawienia" || location === "/ustawienia-menu" ? "text-[#5ADBFA]" : "")} />
-                    <span className="text-xs font-medium">Ustawienia</span>
-                  </div>
-                </Link>
-                <button
-                  onClick={toggleCompact}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors mb-0.5"
-                  data-testid="button-toggle-compact"
-                >
-                  <PanelLeftClose className="h-3.5 w-3.5" />
-                  <span className="text-xs font-medium">Zwiń menu</span>
-                </button>
-                <div className="flex items-center gap-2.5 px-3 py-1.5 mb-0.5">
-                  <Sun className="h-3.5 w-3.5 text-slate-400" />
-                  <Switch
-                    checked={theme === "dark"}
-                    onCheckedChange={toggleTheme}
-                    data-testid="switch-toggle-theme"
-                    className="data-[state=checked]:bg-slate-600 data-[state=unchecked]:bg-slate-600"
-                  />
-                  <Moon className="h-3.5 w-3.5 text-slate-400" />
+                <div className="flex items-center justify-between px-1 mb-1">
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link href="/ustawienia">
+                          <div
+                            onClick={() => setIsOpen(false)}
+                            className={cn(
+                              "flex items-center justify-center w-10 h-10 rounded-lg transition-colors cursor-pointer",
+                              location === "/ustawienia" || location === "/ustawienia-menu"
+                                ? "text-[#5ADBFA] bg-[#5ADBFA]/10"
+                                : "text-slate-400 hover:text-white hover:bg-white/5"
+                            )}
+                            data-testid="link-nav-ustawienia"
+                          >
+                            <Settings className="h-3.5 w-3.5" />
+                          </div>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">Ustawienia</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={toggleCompact}
+                          className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                          data-testid="button-toggle-compact"
+                        >
+                          <PanelLeftClose className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">Zwiń menu</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={toggleTheme}
+                          className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                          data-testid="button-toggle-theme"
+                        >
+                          {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">{theme === "dark" ? "Tryb jasny" : "Tryb ciemny"}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
                 <button
                   onClick={() => logout()}
