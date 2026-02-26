@@ -8643,6 +8643,10 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         const amt = Number(sp.amount || 0);
         if (!revActualMap[y]) revActualMap[y] = {};
         revActualMap[y][m] = (revActualMap[y][m] || 0) + amt;
+        if (sp.status === 'do_oplacenia') {
+          if (!surchargeMap[y]) surchargeMap[y] = {};
+          surchargeMap[y][m] = (surchargeMap[y][m] || 0) + amt;
+        }
       }
 
       const aptCostRows = await db.select({
