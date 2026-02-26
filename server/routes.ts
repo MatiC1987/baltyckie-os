@@ -8924,7 +8924,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         return res.status(429).json({ message: `Zbyt wiele prób. Spróbuj za ${remaining}s`, lockedUntil: attempt.lockedUntil });
       }
 
+      console.log(`[RCP LOGIN] PIN length=${pin.length}, chars=${pin.split('').map((c: string) => c.charCodeAt(0)).join(',')}`);
       const employee = await storage.getEmployeeByPin(pin);
+      console.log(`[RCP LOGIN] Employee found: ${!!employee}${employee ? `, name=${employee.firstName} ${employee.lastName}` : ''}`);
       if (!employee) {
         const current = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
         current.count++;

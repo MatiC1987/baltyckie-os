@@ -21,6 +21,11 @@ import {
   CalendarDays,
   Plus,
   Send,
+  RefreshCw,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Smartphone,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -244,6 +249,67 @@ function PinLoginScreen({ onLogin }: { onLogin: (employee: Employee, entry: Time
           </form>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function GpsErrorPanel({ onRetry }: { onRetry: () => void }) {
+  const [showHelp, setShowHelp] = useState(false);
+
+  return (
+    <div className="w-full space-y-2" data-testid="panel-gps-error">
+      <div className="flex items-center gap-2 text-sm text-destructive">
+        <MapPin className="h-4 w-4 flex-shrink-0" />
+        <span>GPS niedostępny</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRetry}
+          className="ml-auto h-7 px-2 text-xs"
+          data-testid="button-gps-retry"
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Spróbuj ponownie
+        </Button>
+      </div>
+      <button
+        onClick={() => setShowHelp(!showHelp)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        data-testid="button-gps-help-toggle"
+      >
+        <Info className="h-3 w-3" />
+        <span>Jak włączyć GPS?</span>
+        {showHelp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+      {showHelp && (
+        <div className="rounded-md border bg-muted/50 p-3 text-xs text-muted-foreground space-y-3" data-testid="panel-gps-help">
+          <div>
+            <div className="flex items-center gap-1.5 font-medium text-foreground mb-1">
+              <Smartphone className="h-3.5 w-3.5" />
+              iPhone (Safari):
+            </div>
+            <ol className="list-decimal list-inside space-y-0.5 pl-1">
+              <li>Otwórz <b>Ustawienia</b> → <b>Prywatność</b> → <b>Usługi lokalizacji</b> → włącz</li>
+              <li>W Safari kliknij <b>aA</b> w pasku adresu</li>
+              <li>Wybierz <b>Ustawienia witryny</b></li>
+              <li>Przy <b>Lokalizacja</b> ustaw <b>Zezwalaj</b></li>
+              <li>Odśwież stronę i kliknij <b>Spróbuj ponownie</b></li>
+            </ol>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5 font-medium text-foreground mb-1">
+              <Smartphone className="h-3.5 w-3.5" />
+              Android (Chrome):
+            </div>
+            <ol className="list-decimal list-inside space-y-0.5 pl-1">
+              <li>Otwórz <b>Ustawienia</b> telefonu → <b>Lokalizacja</b> → włącz</li>
+              <li>W Chrome kliknij ikonę <b>kłódki</b> obok adresu</li>
+              <li>Przy <b>Lokalizacja</b> wybierz <b>Zezwalaj</b></li>
+              <li>Odśwież stronę i kliknij <b>Spróbuj ponownie</b></li>
+            </ol>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -647,10 +713,7 @@ function EmployeeDashboard({
               )}
 
               {gpsStatus === "error" && (
-                <div className="flex items-center gap-2 text-sm text-destructive" data-testid="text-gps-error">
-                  <MapPin className="h-4 w-4" />
-                  <span>GPS niedostepny</span>
-                </div>
+                <GpsErrorPanel onRetry={() => getGps().catch(() => {})} />
               )}
 
               <div className="flex flex-col gap-3 w-full mt-2">
