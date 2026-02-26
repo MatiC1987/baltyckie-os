@@ -8913,6 +8913,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
   app.post('/api/time-clock/login', async (req, res) => {
     try {
       const { pin } = req.body;
+      console.log('[RCP-DEBUG] Login attempt:', {
+        pinType: typeof pin,
+        pinLength: pin?.length,
+        pinValue: pin ? `${pin.slice(0, 2)}****` : 'null',
+        pinCharCodes: pin ? [...pin].map((c: string) => c.charCodeAt(0)) : [],
+        bodyKeys: Object.keys(req.body),
+      });
       if (!pin || typeof pin !== 'string' || pin.length !== 6) {
         return res.status(400).json({ message: 'PIN musi mieć 6 cyfr' });
       }
@@ -8925,6 +8932,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       }
 
       const employee = await storage.getEmployeeByPin(pin);
+      console.log('[RCP-DEBUG] getEmployeeByPin result:', employee ? `Found: ${employee.firstName} ${employee.lastName} (id=${employee.id})` : 'NOT FOUND');
       if (!employee) {
         const current = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
         current.count++;
