@@ -44,11 +44,14 @@ Auto-migration: on first load, if DB is empty and localStorage has data, it migr
 -   **Task Management**: Things 3-inspired task system with projects, sections, tasks (priority, due date, recurring), smart views, and a dashboard widget.
 -   **Architectural Patterns**: Zod schemas for API validation, TanStack Query for data fetching/caching, and an `IStorage` interface for database abstraction.
 
+-   **Recepcja Panel** (`/recepcja`): Independent reception manager panel ("Bałtyckie - Recepcja") for Małgorzata Latasiewicz with its own JWT authentication (bcrypt + jsonwebtoken, 24hr sessions). Separate route tree, layout, sidebar, and mobile bottom nav. Seeded user: gosia@baltyckie.pl / Recepcja2025!. Features: Dashboard with notification cards (arrivals/departures/overdue payments/tasks/pending submissions), Saldo CRUD (locked to personName="Małgorzata Latasiewicz"), read-only Umowy/Terminarz/Rezerwacje/Przeglądy, payment toggle on Rozliczenia, cost invoice upload in Dokumenty, accounting note download, meter reading submission (Liczniki), handover protocols, new tenant data submission workflow (NOWE→UMOWA_WYGENEROWANA→DO_PODPISANIA→PODPISANA_SKAN→ZATWIERDZONA), tenant contact list, sublease change history timeline, daily report, full RCP admin (7 tabs), task management with virtual 'recepcja-user' userId. All write operations logged to `recepcja_audit_log` (invisible to user). DB tables: `recepcja_users`, `recepcja_audit_log`, `tenant_data_submissions`, `meter_readings_log`, `sublease_change_history`, `push_subscriptions`. Backend: `server/recepcja-routes.ts` (800+ lines). Frontend: `client/src/pages/recepcja/` (16 page components + RecepcjaApp.tsx + RecepcjaLayout.tsx + RecepcjaLogin.tsx). API prefix: `/api/recepcja/*`. Lazy-loaded via React.lazy in App.tsx.
+
 ## External Dependencies
--   **Replit Auth**: User authentication.
+-   **Replit Auth**: User authentication (main app).
 -   **PostgreSQL (Neon)**: Primary database.
 -   **xlsx library**: Excel file parsing.
 -   **date-fns**: Date formatting and manipulation with Polish locale.
 -   **HotRes**: CSV export integration for reservation data import.
 -   **jsPDF + jspdf-autotable**: PDF report generation.
 -   **Leaflet + react-leaflet**: Interactive maps for GPS location management in RCP module.
+-   **jsonwebtoken + bcryptjs**: Recepcja panel JWT authentication.

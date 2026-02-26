@@ -1332,3 +1332,89 @@ export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
 export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({ id: true, createdAt: true });
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
 export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;
+
+export const recepcjaUsers = pgTable("recepcja_users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  avatarUrl: text("avatar_url"),
+  role: text("role").default("kierownik_recepcji"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRecepcjaUserSchema = createInsertSchema(recepcjaUsers).omit({ id: true, createdAt: true });
+export type RecepcjaUser = typeof recepcjaUsers.$inferSelect;
+export type InsertRecepcjaUser = z.infer<typeof insertRecepcjaUserSchema>;
+
+export const recepcjaAuditLog = pgTable("recepcja_audit_log", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => recepcjaUsers.id),
+  action: text("action").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type RecepcjaAuditLog = typeof recepcjaAuditLog.$inferSelect;
+
+export const tenantDataSubmissions = pgTable("tenant_data_submissions", {
+  id: serial("id").primaryKey(),
+  submittedBy: integer("submitted_by").references(() => recepcjaUsers.id),
+  tenantName: text("tenant_name").notNull(),
+  tenantPesel: text("tenant_pesel"),
+  tenantNip: text("tenant_nip"),
+  tenantEmail: text("tenant_email"),
+  tenantPhone: text("tenant_phone"),
+  tenantAddress: text("tenant_address"),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  moveInDate: date("move_in_date"),
+  rentAmount: numeric("rent_amount", { precision: 10, scale: 2 }),
+  depositAmount: numeric("deposit_amount", { precision: 10, scale: 2 }),
+  notes: text("notes"),
+  status: text("status").notNull().default("NOWE"),
+  contractPdfPath: text("contract_pdf_path"),
+  signedPdfPath: text("signed_pdf_path"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTenantDataSubmissionSchema = createInsertSchema(tenantDataSubmissions).omit({ id: true, createdAt: true, updatedAt: true });
+export type TenantDataSubmission = typeof tenantDataSubmissions.$inferSelect;
+export type InsertTenantDataSubmission = z.infer<typeof insertTenantDataSubmissionSchema>;
+
+export const meterReadingsLog = pgTable("meter_readings_log", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id),
+  meterType: text("meter_type").notNull(),
+  readingDate: date("reading_date").notNull(),
+  readingValue: numeric("reading_value", { precision: 12, scale: 3 }).notNull(),
+  submittedBy: integer("submitted_by").references(() => recepcjaUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type MeterReadingsLog = typeof meterReadingsLog.$inferSelect;
+
+export const subleaseChangeHistory = pgTable("sublease_change_history", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id),
+  changedBy: text("changed_by"),
+  fieldName: text("field_name").notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type SubleaseChangeHistory = typeof subleaseChangeHistory.$inferSelect;
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id"),
+  userType: text("user_type").notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
