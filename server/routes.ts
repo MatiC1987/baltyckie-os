@@ -8854,5 +8854,451 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // ==================== RCP - SESSION TOKENS & RATE LIMITING ====================
+  const crypto = await import('crypto');
+  const rcpSessions = new Map<string, { employeeId: number; expiresAt: number }>();
+  const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
+  const RCP_SESSION_TTL = 12 * 60 * 60 * 1000;
+  const RCP_MAX_ATTEMPTS = 3;
+  const RCP_LOCKOUT_MS = 60 * 1000;
+
+  function createRcpToken(employeeId: number): string {
+    const token = crypto.randomBytes(32).toString('hex');
+    rcpSessions.set(token, { employeeId, expiresAt: Date.now() + RCP_SESSION_TTL });
+    return token;
+  }
+
+  function validateRcpToken(token: string): number | null {
+    const session = rcpSessions.get(token);
+    if (!session) return null;
+    if (Date.now() > session.expiresAt) { rcpSessions.delete(token); return null; }
+    return session.employeeId;
+  }
+
+  function getRcpEmployeeId(req: any): number | null {
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Bearer ')) return null;
+    return validateRcpToken(auth.slice(7));
+  }
+
+  function safeEmployee(emp: any) {
+    const { pin, pesel, email, phone, ...safe } = emp;
+    return safe;
+  }
+
+  // ==================== RCP - HAVERSINE HELPER ====================
+  function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function findNearestLocation(lat: number, lng: number, locs: any[]): { location: any; distance: number; inside: boolean } | null {
+    let nearest: { location: any; distance: number; inside: boolean } | null = null;
+    for (const loc of locs) {
+      if (!loc.latitude || !loc.longitude) continue;
+      const dist = haversineDistance(lat, lng, Number(loc.latitude), Number(loc.longitude));
+      const radius = loc.gpsRadius || 200;
+      if (!nearest || dist < nearest.distance) {
+        nearest = { location: loc, distance: dist, inside: dist <= radius };
+      }
+    }
+    return nearest;
+  }
+
+  // ==================== RCP - TIME CLOCK (public, no auth) ====================
+  app.post('/api/time-clock/login', async (req, res) => {
+    try {
+      const { pin } = req.body;
+      if (!pin || typeof pin !== 'string' || pin.length !== 6) {
+        return res.status(400).json({ message: 'PIN musi mieć 6 cyfr' });
+      }
+
+      const ip = req.ip || 'unknown';
+      const attempt = loginAttempts.get(ip);
+      if (attempt && attempt.lockedUntil > Date.now()) {
+        const remaining = Math.ceil((attempt.lockedUntil - Date.now()) / 1000);
+        return res.status(429).json({ message: `Zbyt wiele prób. Spróbuj za ${remaining}s`, lockedUntil: attempt.lockedUntil });
+      }
+
+      const employee = await storage.getEmployeeByPin(pin);
+      if (!employee) {
+        const current = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
+        current.count++;
+        if (current.count >= RCP_MAX_ATTEMPTS) {
+          current.lockedUntil = Date.now() + RCP_LOCKOUT_MS;
+          current.count = 0;
+        }
+        loginAttempts.set(ip, current);
+        return res.status(401).json({ message: 'Nieprawidłowy PIN' });
+      }
+
+      loginAttempts.delete(ip);
+      const token = createRcpToken(employee.id);
+      const activeEntry = await storage.getActiveTimeEntry(employee.id);
+      res.json({ employee: safeEmployee(employee), activeEntry: activeEntry || null, token });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/time-clock/clock-in', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const { lat, lng } = req.body;
+
+      const existing = await storage.getActiveTimeEntry(employeeId);
+      if (existing) return res.status(400).json({ message: 'Masz już aktywne wejście' });
+
+      const locs = await storage.getLocationsWithGps();
+      let locationId: number | null = null;
+      let isOutsideZone = false;
+      let nearestInfo: any = null;
+
+      if (lat && lng) {
+        nearestInfo = findNearestLocation(Number(lat), Number(lng), locs);
+        if (nearestInfo) {
+          locationId = nearestInfo.location.id;
+          isOutsideZone = !nearestInfo.inside;
+        }
+      }
+
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const entry = await storage.createTimeEntry({
+        employeeId,
+        date: dateStr,
+        clockIn: now,
+        clockInLat: lat ? String(lat) : null,
+        clockInLng: lng ? String(lng) : null,
+        clockInLocationId: locationId,
+        status: isOutsideZone ? 'WARUNKOWA' : 'AKTYWNA',
+        isOutsideZone,
+      });
+      res.json({ entry, nearestLocation: nearestInfo });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/time-clock/clock-out', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const { lat, lng } = req.body;
+
+      const active = await storage.getActiveTimeEntry(employeeId);
+      if (!active) return res.status(400).json({ message: 'Brak aktywnego wejścia' });
+
+      if (active.status === 'PRZERWA' && active.breakStart) {
+        const breakEnd = new Date();
+        const breakMs = breakEnd.getTime() - new Date(active.breakStart).getTime();
+        const addedMinutes = Math.round(breakMs / 60000);
+        await storage.updateTimeEntry(active.id, {
+          breakEnd,
+          breakMinutes: (active.breakMinutes || 0) + addedMinutes,
+          status: active.isOutsideZone ? 'WARUNKOWA' : 'AKTYWNA',
+        });
+      }
+
+      const locs = await storage.getLocationsWithGps();
+      let clockOutLocationId: number | null = null;
+      if (lat && lng) {
+        const nearest = findNearestLocation(Number(lat), Number(lng), locs);
+        if (nearest) clockOutLocationId = nearest.location.id;
+      }
+
+      const now = new Date();
+      const finalStatus = active.isOutsideZone ? 'WARUNKOWA' : 'ZAKONCZONA';
+      const entry = await storage.updateTimeEntry(active.id, {
+        clockOut: now,
+        clockOutLat: lat ? String(lat) : null,
+        clockOutLng: lng ? String(lng) : null,
+        clockOutLocationId,
+        status: finalStatus,
+      });
+      res.json({ entry });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/time-clock/break-start', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const active = await storage.getActiveTimeEntry(employeeId);
+      if (!active || active.status === 'PRZERWA') {
+        return res.status(400).json({ message: 'Nie możesz rozpocząć przerwy' });
+      }
+      const entry = await storage.updateTimeEntry(active.id, {
+        breakStart: new Date(),
+        status: 'PRZERWA',
+      });
+      res.json({ entry });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/time-clock/break-end', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const active = await storage.getActiveTimeEntry(employeeId);
+      if (!active || active.status !== 'PRZERWA' || !active.breakStart) {
+        return res.status(400).json({ message: 'Nie jesteś na przerwie' });
+      }
+      const breakEnd = new Date();
+      const breakMs = breakEnd.getTime() - new Date(active.breakStart).getTime();
+      const addedMinutes = Math.round(breakMs / 60000);
+      const entry = await storage.updateTimeEntry(active.id, {
+        breakEnd,
+        breakMinutes: (active.breakMinutes || 0) + addedMinutes,
+        breakStart: null,
+        status: active.isOutsideZone ? 'WARUNKOWA' : 'AKTYWNA',
+      });
+      res.json({ entry });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-clock/locations', async (_req, res) => {
+    try {
+      const locs = await storage.getLocationsWithGps();
+      res.json(locs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-clock/history/:employeeId', async (req, res) => {
+    try {
+      const tokenEmployeeId = getRcpEmployeeId(req);
+      if (!tokenEmployeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const employeeId = Number(req.params.employeeId);
+      if (employeeId !== tokenEmployeeId) return res.status(403).json({ message: 'Brak dostępu' });
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const entries = await storage.getTimeEntries({
+        employeeId,
+        from: weekAgo.toISOString().split('T')[0],
+        to: now.toISOString().split('T')[0],
+      });
+      res.json(entries);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-clock/team-status', async (_req, res) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const allEmployees = await storage.getEmployees();
+      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY');
+      const todayEntries = await storage.getTimeEntriesByDay(today);
+
+      let working = 0, onBreak = 0;
+      const workingIds = new Set<number>();
+      for (const entry of todayEntries) {
+        if (entry.status === 'AKTYWNA' || entry.status === 'WARUNKOWA') {
+          working++;
+          workingIds.add(entry.employeeId);
+        } else if (entry.status === 'PRZERWA') {
+          onBreak++;
+          workingIds.add(entry.employeeId);
+        }
+      }
+      const absent = activeEmployees.length - workingIds.size;
+      res.json({ working, onBreak, absent, total: activeEmployees.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP - ADMIN (authenticated) ====================
+  app.get('/api/rcp/dashboard', isAuthenticated, async (_req, res) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const allEmployees = await storage.getEmployees();
+      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY');
+      const todayEntries = await storage.getTimeEntriesByDay(today);
+
+      const pendingEntries = await storage.getTimeEntries({ status: 'WARUNKOWA' });
+
+      let working = 0, onBreak = 0;
+      const employeeStatuses: any[] = [];
+      const workingIds = new Set<number>();
+
+      for (const entry of todayEntries) {
+        const emp = entry.employee;
+        if (entry.status === 'AKTYWNA' || entry.status === 'WARUNKOWA') {
+          working++;
+          workingIds.add(entry.employeeId);
+          employeeStatuses.push({
+            employee: emp,
+            status: 'working',
+            clockIn: entry.clockIn,
+            entryId: entry.id,
+            isOutsideZone: entry.isOutsideZone,
+          });
+        } else if (entry.status === 'PRZERWA') {
+          onBreak++;
+          workingIds.add(entry.employeeId);
+          employeeStatuses.push({
+            employee: emp,
+            status: 'break',
+            clockIn: entry.clockIn,
+            breakStart: entry.breakStart,
+            entryId: entry.id,
+          });
+        } else if (entry.status === 'ZAKONCZONA' || entry.status === 'ZAAKCEPTOWANA') {
+          if (!workingIds.has(entry.employeeId)) {
+            employeeStatuses.push({
+              employee: emp,
+              status: 'finished',
+              clockIn: entry.clockIn,
+              clockOut: entry.clockOut,
+              entryId: entry.id,
+            });
+            workingIds.add(entry.employeeId);
+          }
+        }
+      }
+
+      for (const emp of activeEmployees) {
+        if (!workingIds.has(emp.id)) {
+          employeeStatuses.push({ employee: emp, status: 'absent' });
+        }
+      }
+
+      res.json({
+        working,
+        onBreak,
+        absent: activeEmployees.length - workingIds.size,
+        pendingCount: pendingEntries.length,
+        pendingEntries,
+        employeeStatuses,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-entries', isAuthenticated, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.employeeId) filters.employeeId = Number(req.query.employeeId);
+      if (req.query.from) filters.from = String(req.query.from);
+      if (req.query.to) filters.to = String(req.query.to);
+      if (req.query.status) filters.status = String(req.query.status);
+      const entries = await storage.getTimeEntries(filters);
+      res.json(entries);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-entries/day', isAuthenticated, async (req, res) => {
+    try {
+      const date = String(req.query.date || new Date().toISOString().split('T')[0]);
+      const entries = await storage.getTimeEntriesByDay(date);
+      res.json(entries);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/time-entries/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const user = (req as any).user;
+      const data = { ...req.body, editedBy: user?.username || user?.email || 'admin', editedAt: new Date() };
+      const entry = await storage.updateTimeEntry(id, data);
+      res.json(entry);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/time-entries/:id/approve', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { adminNote } = req.body;
+      const user = (req as any).user;
+      const entry = await storage.updateTimeEntry(id, {
+        status: 'ZAAKCEPTOWANA',
+        adminNote: adminNote || null,
+        editedBy: user?.username || user?.email || 'admin',
+        editedAt: new Date(),
+      });
+      res.json(entry);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/time-entries/:id/reject', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { adminNote } = req.body;
+      const user = (req as any).user;
+      const entry = await storage.updateTimeEntry(id, {
+        status: 'ODRZUCONA',
+        adminNote: adminNote || null,
+        editedBy: user?.username || user?.email || 'admin',
+        editedAt: new Date(),
+      });
+      res.json(entry);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/time-entries/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTimeEntry(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/locations/:id/gps', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { latitude, longitude, gpsRadius } = req.body;
+      const loc = await storage.updateLocationGps(id, String(latitude), String(longitude), Number(gpsRadius) || 200);
+      res.json(loc);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/employees/:id/pin', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { pin } = req.body;
+      if (pin && (typeof pin !== 'string' || pin.length !== 6 || !/^\d{6}$/.test(pin))) {
+        return res.status(400).json({ message: 'PIN musi mieć dokładnie 6 cyfr' });
+      }
+      if (pin) {
+        const existing = await storage.getEmployeeByPin(pin);
+        if (existing && existing.id !== id) {
+          return res.status(400).json({ message: 'Ten PIN jest już przypisany do innego pracownika' });
+        }
+      }
+      const emp = await storage.updateEmployeePin(id, pin || null);
+      res.json(emp);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

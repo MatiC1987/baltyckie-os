@@ -132,12 +132,13 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "year-comparison": { id: "year-comparison", href: "/year-comparison", label: "Porównanie r/r", iconName: "BarChart3" },
   "apartment-comparison": { id: "apartment-comparison", href: "/apartment-comparison", label: "Porównanie apartamentów", iconName: "ArrowUpDown" },
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
+  "rcp": { id: "rcp", href: "/rcp/admin", label: "RCP", iconName: "Clock" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks"], color: "violet" },
+  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp"], color: "violet" },
   { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "saldo-firmowe", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality"], color: "blue" },
 ];
@@ -156,7 +157,7 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const STORAGE_KEY = "sidebar-config-v13";
+const STORAGE_KEY = "sidebar-config-v14";
 
 export function loadConfigFromStorage(): SidebarConfig | null {
   try {

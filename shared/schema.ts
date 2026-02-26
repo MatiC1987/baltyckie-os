@@ -121,6 +121,7 @@ export const employees = pgTable("employees", {
   comment: text("comment"),
   status: text("status").notNull().default("AKTYWNY"), // 'AKTYWNY', 'NIEAKTYWNY'
   photoUrl: text("photo_url"),
+  pin: text("pin"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -184,6 +185,9 @@ export const locations = pgTable("locations", {
   address: text("address"),
   photoUrl: text("photo_url"),
   sortOrder: integer("sort_order").default(0),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  gpsRadius: integer("gps_radius").default(200),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -265,6 +269,9 @@ export const attachmentsRelations = relations(attachments, ({ one }) => ({
 
 export const employeesRelations = relations(employees, ({ many }) => ({
   medicalExams: many(medicalExams),
+  timeEntries: many(timeEntries),
+  workSchedules: many(workSchedules),
+  leaveRequests: many(leaveRequests),
 }));
 
 export const medicalExamsRelations = relations(medicalExams, ({ one }) => ({
@@ -1247,3 +1254,81 @@ export const opCostData = pgTable("op_cost_data", {
 export const insertOpCostDataSchema = createInsertSchema(opCostData).omit({ id: true });
 export type OpCostData = typeof opCostData.$inferSelect;
 export type InsertOpCostData = z.infer<typeof insertOpCostDataSchema>;
+
+export const timeEntries = pgTable("time_entries", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  date: date("date").notNull(),
+  clockIn: timestamp("clock_in").notNull(),
+  clockOut: timestamp("clock_out"),
+  breakStart: timestamp("break_start"),
+  breakEnd: timestamp("break_end"),
+  breakMinutes: integer("break_minutes").default(0),
+  clockInLocationId: integer("clock_in_location_id").references(() => locations.id),
+  clockOutLocationId: integer("clock_out_location_id").references(() => locations.id),
+  clockInLat: decimal("clock_in_lat", { precision: 10, scale: 7 }),
+  clockInLng: decimal("clock_in_lng", { precision: 10, scale: 7 }),
+  clockOutLat: decimal("clock_out_lat", { precision: 10, scale: 7 }),
+  clockOutLng: decimal("clock_out_lng", { precision: 10, scale: 7 }),
+  status: text("status").notNull().default("AKTYWNA"),
+  isOutsideZone: boolean("is_outside_zone").default(false),
+  note: text("note"),
+  adminNote: text("admin_note"),
+  editedBy: text("edited_by"),
+  editedAt: timestamp("edited_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const timeEntriesRelations = relations(timeEntries, ({ one }) => ({
+  employee: one(employees, { fields: [timeEntries.employeeId], references: [employees.id] }),
+  clockInLocation: one(locations, { fields: [timeEntries.clockInLocationId], references: [locations.id] }),
+}));
+
+export const insertTimeEntrySchema = createInsertSchema(timeEntries).omit({ id: true, createdAt: true });
+export type TimeEntry = typeof timeEntries.$inferSelect;
+export type InsertTimeEntry = z.infer<typeof insertTimeEntrySchema>;
+
+export const workSchedules = pgTable("work_schedules", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id),
+  date: date("date").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  shiftName: text("shift_name"),
+  shiftColor: text("shift_color"),
+  allowEarlyStart: boolean("allow_early_start").default(false),
+  allowOvertime: boolean("allow_overtime").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const workSchedulesRelations = relations(workSchedules, ({ one }) => ({
+  employee: one(employees, { fields: [workSchedules.employeeId], references: [employees.id] }),
+  location: one(locations, { fields: [workSchedules.locationId], references: [locations.id] }),
+}));
+
+export const insertWorkScheduleSchema = createInsertSchema(workSchedules).omit({ id: true, createdAt: true });
+export type WorkSchedule = typeof workSchedules.$inferSelect;
+export type InsertWorkSchedule = z.infer<typeof insertWorkScheduleSchema>;
+
+export const leaveRequests = pgTable("leave_requests", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  days: integer("days").notNull(),
+  comment: text("comment"),
+  status: text("status").notNull().default("OCZEKUJACY"),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
+  employee: one(employees, { fields: [leaveRequests.employeeId], references: [employees.id] }),
+}));
+
+export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({ id: true, createdAt: true });
+export type LeaveRequest = typeof leaveRequests.$inferSelect;
+export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;

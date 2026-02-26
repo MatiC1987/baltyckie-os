@@ -42,6 +42,8 @@ import SaldoFirmowe from "@/pages/SaldoFirmowe";
 import V2Przychody from "@/pages/V2Przychody";
 import V2Koszty from "@/pages/V2Koszty";
 import PriorityRevenueForecast from "@/pages/PriorityRevenueForecast";
+import TimeClock from "@/pages/TimeClock";
+import TimeAdmin from "@/pages/TimeAdmin";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -84,6 +86,11 @@ function useRouteRestoration() {
 
 function Router() {
   const { user, isLoading } = useAuth();
+  const [location] = useLocation();
+
+  if (location === "/rcp") {
+    return <TimeClock />;
+  }
 
   if (isLoading) {
     return (
@@ -170,6 +177,7 @@ function AuthenticatedRouter() {
       <Route path="/apartment-schedule" component={() => <Redirect to="/v2/koszty" />} />
       <Route path="/v2/prognoza" component={() => <Redirect to="/ustawienia" />} />
       <Route path="/v2/realizacja" component={() => <Redirect to="/v2/przychody" />} />
+      <Route path="/rcp/admin" component={() => <AuthenticatedRoute component={TimeAdmin} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

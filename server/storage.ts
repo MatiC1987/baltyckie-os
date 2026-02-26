@@ -65,6 +65,9 @@ import {
   opCostData, OpCostData, InsertOpCostData,
   appConfig, AppConfig,
   insertImportMetadataSchema,
+  timeEntries, TimeEntry, InsertTimeEntry,
+  workSchedules, WorkSchedule, InsertWorkSchedule,
+  leaveRequests, LeaveRequest, InsertLeaveRequest,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, type SQL } from "drizzle-orm";
@@ -447,6 +450,22 @@ export interface IStorage {
 
   // Backup log
   logBackup(recordCount: number, details: string): Promise<ImportMetadata>;
+
+  // RCP - Time Entries
+  getActiveTimeEntry(employeeId: number): Promise<TimeEntry | undefined>;
+  createTimeEntry(data: InsertTimeEntry): Promise<TimeEntry>;
+  updateTimeEntry(id: number, data: Partial<InsertTimeEntry>): Promise<TimeEntry>;
+  deleteTimeEntry(id: number): Promise<void>;
+  getTimeEntries(filters?: { employeeId?: number; from?: string; to?: string; status?: string }): Promise<TimeEntry[]>;
+  getTimeEntriesByDay(date: string): Promise<(TimeEntry & { employee: Employee })[]>;
+
+  // RCP - Employee PIN
+  getEmployeeByPin(pin: string): Promise<Employee | undefined>;
+  updateEmployeePin(id: number, pin: string | null): Promise<Employee>;
+
+  // RCP - Location GPS
+  updateLocationGps(id: number, lat: string, lng: string, radius: number): Promise<Location>;
+  getLocationsWithGps(): Promise<Location[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2079,6 +2098,80 @@ export class DatabaseStorage implements IStorage {
       .values({ importType: 'data_backup', recordsImported: recordCount, details })
       .returning();
     return result;
+  }
+
+  // RCP - Time Entries
+  async getActiveTimeEntry(employeeId: number): Promise<TimeEntry | undefined> {
+    const [entry] = await db.select().from(timeEntries)
+      .where(and(
+        eq(timeEntries.employeeId, employeeId),
+        or(eq(timeEntries.status, 'AKTYWNA'), eq(timeEntries.status, 'PRZERWA'), eq(timeEntries.status, 'WARUNKOWA'))
+      ))
+      .orderBy(desc(timeEntries.clockIn))
+      .limit(1);
+    return entry;
+  }
+
+  async createTimeEntry(data: InsertTimeEntry): Promise<TimeEntry> {
+    const [entry] = await db.insert(timeEntries).values(data).returning();
+    return entry;
+  }
+
+  async updateTimeEntry(id: number, data: Partial<InsertTimeEntry>): Promise<TimeEntry> {
+    const [entry] = await db.update(timeEntries).set(data).where(eq(timeEntries.id, id)).returning();
+    return entry;
+  }
+
+  async deleteTimeEntry(id: number): Promise<void> {
+    await db.delete(timeEntries).where(eq(timeEntries.id, id));
+  }
+
+  async getTimeEntries(filters?: { employeeId?: number; from?: string; to?: string; status?: string }): Promise<TimeEntry[]> {
+    const conditions: SQL[] = [];
+    if (filters?.employeeId) conditions.push(eq(timeEntries.employeeId, filters.employeeId));
+    if (filters?.from) conditions.push(gte(timeEntries.date, filters.from));
+    if (filters?.to) conditions.push(lte(timeEntries.date, filters.to));
+    if (filters?.status) conditions.push(eq(timeEntries.status, filters.status));
+    return db.select().from(timeEntries)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(timeEntries.clockIn));
+  }
+
+  async getTimeEntriesByDay(date: string): Promise<(TimeEntry & { employee: Employee })[]> {
+    const rows = await db.select({
+      timeEntry: timeEntries,
+      employee: employees,
+    }).from(timeEntries)
+      .innerJoin(employees, eq(timeEntries.employeeId, employees.id))
+      .where(eq(timeEntries.date, date))
+      .orderBy(employees.lastName);
+    return rows.map(r => ({ ...r.timeEntry, employee: r.employee }));
+  }
+
+  // RCP - Employee PIN
+  async getEmployeeByPin(pin: string): Promise<Employee | undefined> {
+    const [emp] = await db.select().from(employees)
+      .where(and(eq(employees.pin, pin), eq(employees.status, 'AKTYWNY')));
+    return emp;
+  }
+
+  async updateEmployeePin(id: number, pin: string | null): Promise<Employee> {
+    const [emp] = await db.update(employees).set({ pin }).where(eq(employees.id, id)).returning();
+    return emp;
+  }
+
+  // RCP - Location GPS
+  async updateLocationGps(id: number, lat: string, lng: string, radius: number): Promise<Location> {
+    const [loc] = await db.update(locations)
+      .set({ latitude: lat, longitude: lng, gpsRadius: radius })
+      .where(eq(locations.id, id))
+      .returning();
+    return loc;
+  }
+
+  async getLocationsWithGps(): Promise<Location[]> {
+    return db.select().from(locations)
+      .where(and(isNotNull(locations.latitude), isNotNull(locations.longitude)));
   }
 }
 
