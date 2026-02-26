@@ -466,6 +466,19 @@ export interface IStorage {
   // RCP - Location GPS
   updateLocationGps(id: number, lat: string, lng: string, radius: number): Promise<Location>;
   getLocationsWithGps(): Promise<Location[]>;
+
+  // RCP - Work Schedules
+  getWorkSchedules(filters?: { employeeId?: number; locationId?: number; from?: string; to?: string }): Promise<WorkSchedule[]>;
+  createWorkSchedule(data: InsertWorkSchedule): Promise<WorkSchedule>;
+  createWorkSchedulesBulk(data: InsertWorkSchedule[]): Promise<WorkSchedule[]>;
+  updateWorkSchedule(id: number, data: Partial<InsertWorkSchedule>): Promise<WorkSchedule>;
+  deleteWorkSchedule(id: number): Promise<void>;
+
+  // RCP - Leave Requests
+  getLeaveRequests(filters?: { employeeId?: number; status?: string }): Promise<LeaveRequest[]>;
+  createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest>;
+  updateLeaveRequest(id: number, data: Partial<InsertLeaveRequest>): Promise<LeaveRequest>;
+  deleteLeaveRequest(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2172,6 +2185,61 @@ export class DatabaseStorage implements IStorage {
   async getLocationsWithGps(): Promise<Location[]> {
     return db.select().from(locations)
       .where(and(isNotNull(locations.latitude), isNotNull(locations.longitude)));
+  }
+
+  // RCP - Work Schedules
+  async getWorkSchedules(filters?: { employeeId?: number; locationId?: number; from?: string; to?: string }): Promise<WorkSchedule[]> {
+    const conditions: SQL[] = [];
+    if (filters?.employeeId) conditions.push(eq(workSchedules.employeeId, filters.employeeId));
+    if (filters?.locationId) conditions.push(eq(workSchedules.locationId, filters.locationId));
+    if (filters?.from) conditions.push(gte(workSchedules.date, filters.from));
+    if (filters?.to) conditions.push(lte(workSchedules.date, filters.to));
+    return db.select().from(workSchedules)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(workSchedules.date);
+  }
+
+  async createWorkSchedule(data: InsertWorkSchedule): Promise<WorkSchedule> {
+    const [schedule] = await db.insert(workSchedules).values(data).returning();
+    return schedule;
+  }
+
+  async createWorkSchedulesBulk(data: InsertWorkSchedule[]): Promise<WorkSchedule[]> {
+    if (data.length === 0) return [];
+    return db.insert(workSchedules).values(data).returning();
+  }
+
+  async updateWorkSchedule(id: number, data: Partial<InsertWorkSchedule>): Promise<WorkSchedule> {
+    const [schedule] = await db.update(workSchedules).set(data).where(eq(workSchedules.id, id)).returning();
+    return schedule;
+  }
+
+  async deleteWorkSchedule(id: number): Promise<void> {
+    await db.delete(workSchedules).where(eq(workSchedules.id, id));
+  }
+
+  // RCP - Leave Requests
+  async getLeaveRequests(filters?: { employeeId?: number; status?: string }): Promise<LeaveRequest[]> {
+    const conditions: SQL[] = [];
+    if (filters?.employeeId) conditions.push(eq(leaveRequests.employeeId, filters.employeeId));
+    if (filters?.status) conditions.push(eq(leaveRequests.status, filters.status));
+    return db.select().from(leaveRequests)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(leaveRequests.createdAt));
+  }
+
+  async createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest> {
+    const [request] = await db.insert(leaveRequests).values(data).returning();
+    return request;
+  }
+
+  async updateLeaveRequest(id: number, data: Partial<InsertLeaveRequest>): Promise<LeaveRequest> {
+    const [request] = await db.update(leaveRequests).set(data).where(eq(leaveRequests.id, id)).returning();
+    return request;
+  }
+
+  async deleteLeaveRequest(id: number): Promise<void> {
+    await db.delete(leaveRequests).where(eq(leaveRequests.id, id));
   }
 }
 

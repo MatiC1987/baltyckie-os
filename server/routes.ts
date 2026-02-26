@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -9295,6 +9295,266 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       }
       const emp = await storage.updateEmployeePin(id, pin || null);
       res.json(emp);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP - WORK SCHEDULES ====================
+  app.get('/api/work-schedules', isAuthenticated, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.employeeId) filters.employeeId = Number(req.query.employeeId);
+      if (req.query.locationId) filters.locationId = Number(req.query.locationId);
+      if (req.query.from) filters.from = String(req.query.from);
+      if (req.query.to) filters.to = String(req.query.to);
+      const schedules = await storage.getWorkSchedules(filters);
+      res.json(schedules);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/work-schedules', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertWorkScheduleSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const schedule = await storage.createWorkSchedule(parsed.data);
+      res.json(schedule);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/work-schedules/bulk', isAuthenticated, async (req, res) => {
+    try {
+      const { schedules, deleteFrom, deleteTo, deleteEmployeeId } = req.body;
+      if (deleteFrom && deleteTo) {
+        const existing = await storage.getWorkSchedules({
+          from: deleteFrom,
+          to: deleteTo,
+          employeeId: deleteEmployeeId || undefined,
+        });
+        for (const s of existing) {
+          await storage.deleteWorkSchedule(s.id);
+        }
+      }
+      const created = await storage.createWorkSchedulesBulk(schedules || []);
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/work-schedules/:id', isAuthenticated, async (req, res) => {
+    try {
+      const schedule = await storage.updateWorkSchedule(Number(req.params.id), req.body);
+      res.json(schedule);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/work-schedules/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteWorkSchedule(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP - LEAVE REQUESTS ====================
+  app.get('/api/leave-requests', isAuthenticated, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.employeeId) filters.employeeId = Number(req.query.employeeId);
+      if (req.query.status) filters.status = String(req.query.status);
+      const requests = await storage.getLeaveRequests(filters);
+      res.json(requests);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/leave-requests', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertLeaveRequestSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const request = await storage.createLeaveRequest(parsed.data);
+      res.json(request);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/leave-requests/:id', isAuthenticated, async (req, res) => {
+    try {
+      const request = await storage.updateLeaveRequest(Number(req.params.id), req.body);
+      res.json(request);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/leave-requests/:id/approve', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const user = (req as any).user;
+      const request = await storage.updateLeaveRequest(id, {
+        status: 'ZAAKCEPTOWANY',
+        reviewedBy: user?.username || user?.email || 'admin',
+        reviewedAt: new Date(),
+      });
+      res.json(request);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/leave-requests/:id/reject', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const user = (req as any).user;
+      const { comment } = req.body;
+      const request = await storage.updateLeaveRequest(id, {
+        status: 'ODRZUCONY',
+        comment: comment || undefined,
+        reviewedBy: user?.username || user?.email || 'admin',
+        reviewedAt: new Date(),
+      });
+      res.json(request);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/leave-requests/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteLeaveRequest(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP - MONTHLY REPORT ====================
+  app.get('/api/rcp/report', isAuthenticated, async (req, res) => {
+    try {
+      const employeeId = Number(req.query.employeeId);
+      const year = Number(req.query.year);
+      const month = Number(req.query.month);
+      if (!employeeId || !year || !month) {
+        return res.status(400).json({ message: 'Wymagane: employeeId, year, month' });
+      }
+
+      const employee = await storage.getEmployee(employeeId);
+      if (!employee) return res.status(404).json({ message: 'Pracownik nie znaleziony' });
+
+      const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      const entries = await storage.getTimeEntries({ employeeId, from: firstDay, to: lastDayStr });
+      const leaveReqs = await storage.getLeaveRequests({ employeeId, status: 'ZAAKCEPTOWANY' });
+
+      const days: any[] = [];
+      let totalWorkMinutes = 0;
+      let totalBreakMinutes = 0;
+      let workDays = 0;
+
+      for (let d = 1; d <= lastDay; d++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const dateObj = new Date(dateStr + 'T12:00:00');
+        const dayOfWeek = dateObj.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const dayNames = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
+
+        const dayEntries = entries.filter(e => e.date === dateStr);
+        const leave = leaveReqs.find(lr =>
+          lr.startDate <= dateStr && lr.endDate >= dateStr
+        );
+
+        if (dayEntries.length > 0) {
+          let dayWorkMin = 0;
+          let dayBreakMin = 0;
+          let clockInStr = '';
+          let clockOutStr = '';
+          let status = '';
+
+          for (const entry of dayEntries) {
+            if (entry.clockIn && entry.clockOut) {
+              const workMs = new Date(entry.clockOut).getTime() - new Date(entry.clockIn).getTime();
+              const breakMin = entry.breakMinutes || 0;
+              dayWorkMin += Math.round(workMs / 60000) - breakMin;
+              dayBreakMin += breakMin;
+            }
+            if (!clockInStr && entry.clockIn) {
+              clockInStr = new Date(entry.clockIn).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+            }
+            if (entry.clockOut) {
+              clockOutStr = new Date(entry.clockOut).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+            }
+            status = entry.status;
+          }
+
+          totalWorkMinutes += dayWorkMin;
+          totalBreakMinutes += dayBreakMin;
+          workDays++;
+
+          days.push({
+            date: dateStr,
+            dayName: dayNames[dayOfWeek],
+            isWeekend,
+            clockIn: clockInStr,
+            clockOut: clockOutStr,
+            breakMinutes: dayBreakMin,
+            workMinutes: dayWorkMin,
+            status,
+            type: 'work',
+          });
+        } else if (leave) {
+          const typeLabels: Record<string, string> = {
+            URLOP_WYPOCZYNKOWY: 'Urlop wypoczynkowy',
+            URLOP_NA_ZADANIE: 'Urlop na żądanie',
+            ZWOLNIENIE_LEKARSKIE: 'Zwolnienie lekarskie',
+            INNY: 'Inny',
+          };
+          days.push({
+            date: dateStr,
+            dayName: dayNames[dayOfWeek],
+            isWeekend,
+            type: 'leave',
+            leaveType: typeLabels[leave.type] || leave.type,
+          });
+        } else {
+          days.push({
+            date: dateStr,
+            dayName: dayNames[dayOfWeek],
+            isWeekend,
+            type: isWeekend ? 'weekend' : 'absent',
+          });
+        }
+      }
+
+      const hourlyRate = employee.hourlyRate ? parseFloat(employee.hourlyRate) : 0;
+      const totalHours = Math.round(totalWorkMinutes / 6) / 10;
+      const grossPay = Math.round(totalHours * hourlyRate * 100) / 100;
+
+      res.json({
+        employee: { id: employee.id, firstName: employee.firstName, lastName: employee.lastName, position: employee.position, hourlyRate: employee.hourlyRate },
+        year,
+        month,
+        days,
+        summary: {
+          workDays,
+          totalWorkMinutes,
+          totalBreakMinutes,
+          totalHours,
+          hourlyRate,
+          grossPay,
+        },
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

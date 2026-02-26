@@ -35,9 +35,12 @@ import {
 import {
   Clock, Users, Coffee, AlertTriangle, ChevronLeft, ChevronRight,
   Check, X, Eye, EyeOff, RefreshCw, MapPin, Pencil, Trash2, Plus,
-  KeyRound,
+  KeyRound, CalendarRange, Palmtree, FileBarChart,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import GrafikTab from "@/pages/rcp/GrafikTab";
+import UrlopyTab from "@/pages/rcp/UrlopyTab";
+import RaportyTab from "@/pages/rcp/RaportyTab";
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -928,9 +931,18 @@ export default function TimeAdmin() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList data-testid="tabs-rcp-admin">
+        <TabsList className="flex-wrap h-auto" data-testid="tabs-rcp-admin">
           <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="obecnosci" data-testid="tab-obecnosci">Obecności</TabsTrigger>
+          <TabsTrigger value="grafik" data-testid="tab-grafik">
+            <CalendarRange className="h-4 w-4 mr-1 hidden sm:inline" />Grafik
+          </TabsTrigger>
+          <TabsTrigger value="urlopy" data-testid="tab-urlopy">
+            <Palmtree className="h-4 w-4 mr-1 hidden sm:inline" />Urlopy
+          </TabsTrigger>
+          <TabsTrigger value="raporty" data-testid="tab-raporty">
+            <FileBarChart className="h-4 w-4 mr-1 hidden sm:inline" />Raporty
+          </TabsTrigger>
           <TabsTrigger value="lokalizacje" data-testid="tab-lokalizacje">Lokalizacje GPS</TabsTrigger>
           <TabsTrigger value="piny" data-testid="tab-piny">PINy</TabsTrigger>
         </TabsList>
@@ -939,6 +951,15 @@ export default function TimeAdmin() {
         </TabsContent>
         <TabsContent value="obecnosci" className="mt-4">
           <ObecnosciTab />
+        </TabsContent>
+        <TabsContent value="grafik" className="mt-4">
+          <GrafikTab />
+        </TabsContent>
+        <TabsContent value="urlopy" className="mt-4">
+          <UrlopyTab />
+        </TabsContent>
+        <TabsContent value="raporty" className="mt-4">
+          <RaportyTab />
         </TabsContent>
         <TabsContent value="lokalizacje" className="mt-4">
           <LokalizacjeGPSTab />
