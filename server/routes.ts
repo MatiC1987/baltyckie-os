@@ -8656,34 +8656,119 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         aptActualMap[row.year][row.month] = (aptActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
       }
 
+      const opForecastMap: Record<number, Record<number, number>> = {};
+      const opActualMap: Record<number, Record<number, number>> = {};
+
+      const opCategoriesRow = await db.select({ value: appConfig.value }).from(appConfig).where(eq(appConfig.key, 'op-cost-categories')).limit(1);
+      let opCategories: Array<{ id: string; items: Array<{ archived?: boolean }>; archived?: boolean }> = [];
+      if (opCategoriesRow.length > 0) {
+        try { opCategories = JSON.parse(opCategoriesRow[0].value); } catch {}
+      }
+
       const opCostRows = await db.select({
         year: opCostData.year,
+        catId: opCostData.catId,
+        itemIdx: opCostData.itemIdx,
         month: opCostData.month,
         prognoza: opCostData.prognoza,
         realized: opCostData.realized,
       }).from(opCostData).where(
         and(gte(opCostData.year, fetchStartYear - 1), lte(opCostData.year, fetchEndYear))
       );
-      const opForecastMap: Record<number, Record<number, number>> = {};
-      const opActualMap: Record<number, Record<number, number>> = {};
-      if (opCostRows.length > 0) {
+      const opCellData: Record<string, number> = {};
+      for (const row of opCostRows) {
+        const pKey = `${row.year}__${row.catId}__${row.itemIdx}__${row.month}__p`;
+        const rKey = `${row.year}__${row.catId}__${row.itemIdx}__${row.month}__r`;
+        opCellData[pKey] = (opCellData[pKey] || 0) + Number(row.prognoza || 0);
+        opCellData[rKey] = (opCellData[rKey] || 0) + Number(row.realized || 0);
+      }
+
+      const opServerForecasts = await db.select({
+        year: operationalCostForecasts.year,
+        categoryId: operationalCostForecasts.categoryId,
+        itemIndex: operationalCostForecasts.itemIndex,
+        month: operationalCostForecasts.month,
+        forecast: operationalCostForecasts.forecast,
+      }).from(operationalCostForecasts).where(
+        and(gte(operationalCostForecasts.year, fetchStartYear - 1), lte(operationalCostForecasts.year, fetchEndYear))
+      );
+      const opServerForecastLookup: Record<string, number> = {};
+      for (const f of opServerForecasts) {
+        const key = `${f.year}__${f.categoryId}__${f.itemIndex}__${f.month}__p`;
+        opServerForecastLookup[key] = Number(f.forecast || 0);
+      }
+
+      const allCostSchedulesForOp = await db.select().from(costSchedules).where(eq(costSchedules.active, true));
+      const allCostSchedulePaymentsForOp = await db.select().from(costSchedulePayments);
+      const opScheduleOverlay: Record<string, number> = {};
+      const paymentsByScheduleOp: Record<number, typeof allCostSchedulePaymentsForOp> = {};
+      for (const p of allCostSchedulePaymentsForOp) {
+        if (!paymentsByScheduleOp[p.scheduleId]) paymentsByScheduleOp[p.scheduleId] = [];
+        paymentsByScheduleOp[p.scheduleId].push(p);
+      }
+      for (const schedule of allCostSchedulesForOp) {
+        if (!schedule.linkCategoryId || schedule.linkItemIndex === null || schedule.linkItemIndex === undefined) continue;
+        const catId = schedule.linkCategoryId;
+        const itemIdx = schedule.linkItemIndex;
+        const schPayments = paymentsByScheduleOp[schedule.id] || [];
+        for (const p of schPayments) {
+          const dd = new Date(p.dueDate);
+          const y = dd.getFullYear();
+          const m = dd.getMonth();
+          if (y < fetchStartYear - 1 || y > fetchEndYear) continue;
+          const amt = parseFloat(p.amount || "0");
+          const forecast = p.forecastAmount ? parseFloat(p.forecastAmount) : amt;
+          const pKey = `${y}__${catId}__${itemIdx}__${m}__p`;
+          const rKey = `${y}__${catId}__${itemIdx}__${m}__r`;
+          if (!isNaN(forecast) && forecast !== 0) opScheduleOverlay[pKey] = (opScheduleOverlay[pKey] || 0) + (isNaN(forecast) ? amt : forecast);
+          if (p.status === "OPLACONE" && amt !== 0) opScheduleOverlay[rKey] = (opScheduleOverlay[rKey] || 0) + amt;
+        }
+      }
+
+      if (opCategories.length > 0) {
+        for (let y = fetchStartYear - 1; y <= fetchEndYear; y++) {
+          opForecastMap[y] = {};
+          opActualMap[y] = {};
+          for (const cat of opCategories) {
+            if (cat.archived) continue;
+            for (let itemIdx = 0; itemIdx < cat.items.length; itemIdx++) {
+              if (cat.items[itemIdx].archived) continue;
+              for (let m = 0; m < 12; m++) {
+                const cellKey = `${y}__${cat.id}__${itemIdx}__${m}`;
+                let prognoza = 0;
+                if (`${cellKey}__p` in opServerForecastLookup) {
+                  prognoza = opServerForecastLookup[`${cellKey}__p`];
+                } else if (`${cellKey}__p` in opScheduleOverlay) {
+                  prognoza = opScheduleOverlay[`${cellKey}__p`];
+                } else if (`${cellKey}__p` in opCellData) {
+                  prognoza = opCellData[`${cellKey}__p`];
+                }
+
+                let realized = 0;
+                if (`${cellKey}__r` in opScheduleOverlay) {
+                  realized = opScheduleOverlay[`${cellKey}__r`];
+                } else if (`${cellKey}__r` in opCellData) {
+                  realized = opCellData[`${cellKey}__r`];
+                }
+
+                opForecastMap[y][m] = (opForecastMap[y][m] || 0) + prognoza;
+                opActualMap[y][m] = (opActualMap[y][m] || 0) + realized;
+              }
+            }
+          }
+        }
+      } else {
         for (const row of opCostRows) {
           if (!opForecastMap[row.year]) opForecastMap[row.year] = {};
           if (!opActualMap[row.year]) opActualMap[row.year] = {};
           opForecastMap[row.year][row.month] = (opForecastMap[row.year][row.month] || 0) + Number(row.prognoza || 0);
           opActualMap[row.year][row.month] = (opActualMap[row.year][row.month] || 0) + Number(row.realized || 0);
         }
-      } else {
-        const opFallbackRows = await db.select({
-          year: operationalCostForecasts.year,
-          month: operationalCostForecasts.month,
-          forecast: operationalCostForecasts.forecast,
-        }).from(operationalCostForecasts).where(
-          and(gte(operationalCostForecasts.year, fetchStartYear - 1), lte(operationalCostForecasts.year, fetchEndYear))
-        );
-        for (const row of opFallbackRows) {
-          if (!opForecastMap[row.year]) opForecastMap[row.year] = {};
-          opForecastMap[row.year][row.month] = (opForecastMap[row.year][row.month] || 0) + Number(row.forecast || 0);
+        for (const f of opServerForecasts) {
+          const y = f.year;
+          const m = f.month;
+          if (!opForecastMap[y]) opForecastMap[y] = {};
+          opForecastMap[y][m] = (opForecastMap[y][m] || 0) + Number(f.forecast || 0);
         }
       }
 
