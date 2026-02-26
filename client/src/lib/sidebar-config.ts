@@ -16,6 +16,7 @@ import {
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
   Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map as MapIcon, Navigation,
   Compass, Anchor, Sun, Moon, CloudRain, Wind, Droplet, Flame,
+  GraduationCap, FileCheck,
   type LucideIcon
 } from "lucide-react";
 
@@ -64,6 +65,7 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
   Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map: MapIcon, Navigation,
   Compass, Anchor, Sun, Moon, CloudRain, Wind, Droplet, Flame,
+  GraduationCap, FileCheck,
 };
 
 export const ICON_CATEGORIES: { label: string; icons: string[] }[] = [
@@ -134,12 +136,14 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
   "rcp": { id: "rcp", href: "/rcp/admin", label: "RCP", iconName: "Clock" },
   "usterki": { id: "usterki", href: "/usterki", label: "Usterki", iconName: "AlertTriangle" },
+  "szkolenia": { id: "szkolenia", href: "/szkolenia", label: "Szkolenia", iconName: "GraduationCap" },
+  "umowy-pracownicze": { id: "umowy-pracownicze", href: "/umowy-pracownicze", label: "Umowy pracownicze", iconName: "FileCheck" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp", "usterki"], color: "violet" },
+  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp", "usterki", "szkolenia", "umowy-pracownicze"], color: "violet" },
   { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "saldo-firmowe", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality"], color: "blue" },
 ];
@@ -158,7 +162,7 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const STORAGE_KEY = "sidebar-config-v14";
+const STORAGE_KEY = "sidebar-config-v15";
 
 export function loadConfigFromStorage(): SidebarConfig | null {
   try {
@@ -289,7 +293,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
     sections: [
       { id: "main", itemIds: ["kokpit"] },
       { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "podnajem", "customers"], color: "cyan" },
-      { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "contracts-services", "przeglady"], color: "violet" },
+      { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "contracts-services", "przeglady", "szkolenia", "umowy-pracownicze"], color: "violet" },
       { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe"], color: "emerald" },
     ],
   },

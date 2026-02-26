@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -9886,6 +9886,251 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     try {
       await storage.setAppConfig('recepcja-sidebar-visibility', JSON.stringify(req.body));
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== EMPLOYEE TRAININGS ====================
+  function computeTrainingStatus(expiryDate: string | null): string {
+    if (!expiryDate) return "AKTUALNE";
+    const now = new Date();
+    const expiry = new Date(expiryDate);
+    const diffDays = Math.floor((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return "WYGASŁE";
+    if (diffDays <= 30) return "WYGASAJĄCE";
+    return "AKTUALNE";
+  }
+
+  app.get('/api/employee-trainings', isAuthenticated, async (req, res) => {
+    try {
+      const { employeeId } = req.query;
+      let rows;
+      if (employeeId) {
+        rows = await db.select().from(employeeTrainings).where(eq(employeeTrainings.employeeId, Number(employeeId))).orderBy(desc(employeeTrainings.completedDate));
+      } else {
+        rows = await db.select().from(employeeTrainings).orderBy(desc(employeeTrainings.completedDate));
+      }
+      const allEmployees = await db.select().from(employees);
+      const empMap = new Map(allEmployees.map(e => [e.id, e]));
+      const result = rows.map(r => ({
+        ...r,
+        status: computeTrainingStatus(r.expiryDate),
+        employeeName: empMap.has(r.employeeId) ? `${empMap.get(r.employeeId)!.firstName} ${empMap.get(r.employeeId)!.lastName}` : "—",
+      }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/employee-trainings/expiring', isAuthenticated, async (_req, res) => {
+    try {
+      const rows = await db.select().from(employeeTrainings);
+      const allEmployees = await db.select().from(employees);
+      const empMap = new Map(allEmployees.map(e => [e.id, e]));
+      const result = rows
+        .map(r => ({
+          ...r,
+          status: computeTrainingStatus(r.expiryDate),
+          employeeName: empMap.has(r.employeeId) ? `${empMap.get(r.employeeId)!.firstName} ${empMap.get(r.employeeId)!.lastName}` : "—",
+        }))
+        .filter(r => r.status === "WYGASAJĄCE" || r.status === "WYGASŁE");
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/employee-trainings', isAuthenticated, async (req, res) => {
+    try {
+      const data = insertEmployeeTrainingSchema.parse(req.body);
+      const [created] = await db.insert(employeeTrainings).values(data).returning();
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/employee-trainings/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const data = insertEmployeeTrainingSchema.partial().parse(req.body);
+      const [updated] = await db.update(employeeTrainings).set(data).where(eq(employeeTrainings.id, id)).returning();
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/employee-trainings/:id', isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(employeeTrainings).where(eq(employeeTrainings.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== EMPLOYEE CONTRACTS ====================
+  function computeContractStatus(status: string, endDate: string | null): string {
+    if (status === "WYPOWIEDZIANA") return "WYPOWIEDZIANA";
+    if (status === "ZAKOŃCZONA") return "ZAKOŃCZONA";
+    if (!endDate) return "AKTYWNA";
+    const now = new Date();
+    const end = new Date(endDate);
+    if (end < now) return "ZAKOŃCZONA";
+    return "AKTYWNA";
+  }
+
+  app.get('/api/employee-contracts', isAuthenticated, async (req, res) => {
+    try {
+      const { employeeId } = req.query;
+      let rows;
+      if (employeeId) {
+        rows = await db.select().from(employeeContracts).where(eq(employeeContracts.employeeId, Number(employeeId))).orderBy(desc(employeeContracts.startDate));
+      } else {
+        rows = await db.select().from(employeeContracts).orderBy(desc(employeeContracts.startDate));
+      }
+      const allEmployees = await db.select().from(employees);
+      const empMap = new Map(allEmployees.map(e => [e.id, e]));
+      const result = rows.map(r => ({
+        ...r,
+        computedStatus: computeContractStatus(r.status, r.endDate),
+        employeeName: empMap.has(r.employeeId) ? `${empMap.get(r.employeeId)!.firstName} ${empMap.get(r.employeeId)!.lastName}` : "—",
+      }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/employee-contracts/expiring', isAuthenticated, async (_req, res) => {
+    try {
+      const rows = await db.select().from(employeeContracts);
+      const allEmployees = await db.select().from(employees);
+      const empMap = new Map(allEmployees.map(e => [e.id, e]));
+      const now = new Date();
+      const in30days = new Date(now);
+      in30days.setDate(in30days.getDate() + 30);
+      const result = rows
+        .filter(r => {
+          if (r.status === "ZAKOŃCZONA" || r.status === "WYPOWIEDZIANA") return false;
+          if (!r.endDate) return false;
+          const end = new Date(r.endDate);
+          return end <= in30days && end >= now;
+        })
+        .map(r => ({
+          ...r,
+          computedStatus: "KOŃCZĄCA_SIĘ",
+          employeeName: empMap.has(r.employeeId) ? `${empMap.get(r.employeeId)!.firstName} ${empMap.get(r.employeeId)!.lastName}` : "—",
+        }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/employee-contracts', isAuthenticated, async (req, res) => {
+    try {
+      const data = insertEmployeeContractSchema.parse(req.body);
+      const [created] = await db.insert(employeeContracts).values(data).returning();
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/employee-contracts/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const data = insertEmployeeContractSchema.partial().parse(req.body);
+      const [updated] = await db.update(employeeContracts).set(data).where(eq(employeeContracts.id, id)).returning();
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/employee-contracts/:id', isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(employeeContracts).where(eq(employeeContracts.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/employee-contracts/:id/generate-pdf', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const [contract] = await db.select().from(employeeContracts).where(eq(employeeContracts.id, id));
+      if (!contract) return res.status(404).json({ message: "Not found" });
+      const [emp] = await db.select().from(employees).where(eq(employees.id, contract.employeeId));
+
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ format: "a4" });
+
+      doc.setFontSize(10);
+      doc.text("Bałtyckie Apartamenty", 105, 15, { align: "center" });
+      doc.setFontSize(16);
+      doc.text(contract.title, 105, 30, { align: "center" });
+      doc.setFontSize(10);
+
+      let y = 50;
+      const addLine = (label: string, value: string) => {
+        doc.text(`${label}: ${value}`, 20, y);
+        y += 7;
+      };
+
+      const typeLabels: Record<string, string> = {
+        UMOWA_O_PRACE: "Umowa o prac\u0119",
+        UMOWA_ZLECENIE: "Umowa zlecenie",
+        UMOWA_O_DZIELO: "Umowa o dzie\u0142o",
+        ANEKS: "Aneks",
+        WYPOWIEDZENIE: "Wypowiedzenie",
+      };
+
+      addLine("Typ umowy", typeLabels[contract.type] || contract.type);
+      if (emp) {
+        addLine("Pracownik", `${emp.firstName} ${emp.lastName}`);
+        if (emp.pesel) addLine("PESEL", emp.pesel);
+      }
+      addLine("Data rozpocz\u0119cia", contract.startDate);
+      if (contract.endDate) addLine("Data zako\u0144czenia", contract.endDate);
+      if (contract.position) addLine("Stanowisko", contract.position);
+      if (contract.workHours) addLine("Wymiar czasu pracy", contract.workHours);
+      if (contract.salary) addLine("Wynagrodzenie brutto", `${contract.salary} PLN`);
+      if (contract.hourlyRate) addLine("Stawka godzinowa", `${contract.hourlyRate} PLN/h`);
+      if (contract.trialPeriod) {
+        addLine("Okres pr\u00f3bny", "Tak");
+        if (contract.trialEndDate) addLine("Koniec okresu pr\u00f3bnego", contract.trialEndDate);
+      }
+      if (contract.signedDate) addLine("Data podpisania", contract.signedDate);
+      if (contract.notes) {
+        y += 5;
+        doc.text("Uwagi:", 20, y);
+        y += 7;
+        doc.setFontSize(9);
+        const lines = doc.splitTextToSize(contract.notes, 170);
+        doc.text(lines, 20, y);
+        y += lines.length * 5;
+        doc.setFontSize(10);
+      }
+
+      y += 20;
+      doc.text("_______________________", 20, y);
+      doc.text("_______________________", 120, y);
+      y += 5;
+      doc.text("Pracodawca", 35, y);
+      doc.text("Pracownik", 140, y);
+
+      const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${contract.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf"`);
+      res.send(pdfBuffer);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

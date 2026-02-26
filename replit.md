@@ -1,7 +1,7 @@
 # Baltyckie Finanse - Apartment Rental Financial Management
 
 ## Overview
-Baltyckie Finanse is a comprehensive Polish-language application designed for financial management of apartment rentals, covering both short-term and long-term leases. It offers tools for expense tracking, bank account management, and financial dashboards, operating exclusively with PLN currency. The system aims to provide property owners and managers with a unified platform to monitor financial health, streamline operations, and manage various aspects of property and tenant administration, including reservations, leases, financial reporting, employee management, and document handling.
+Baltyckie Finanse is a comprehensive Polish-language application for financial management of apartment rentals (short-term and long-term). It provides property owners and managers with tools for expense tracking, bank account management, and financial dashboards, exclusively in PLN currency. The system streamlines operations and manages various aspects of property and tenant administration, including reservations, leases, financial reporting, employee management, and document handling. The project aims to unify financial oversight and operational tasks for rental properties.
 
 ## User Preferences
 - Language: Polish (all UI text in Polish)
@@ -10,48 +10,64 @@ Baltyckie Finanse is a comprehensive Polish-language application designed for fi
 - Auth: Replit Auth integration
 
 ## System Architecture
-The application features a modern full-stack architecture.
--   **Frontend**: React, Vite, TypeScript, Tailwind CSS, shadcn/ui, Recharts, and Framer Motion.
--   **Backend**: Express.js with TypeScript.
--   **Database**: PostgreSQL on Neon, accessed via Drizzle ORM.
--   **Authentication**: Replit Auth (OIDC).
--   **Data Import**: `xlsx` library for Excel, and CSV imports from HotRes.
--   **File Storage**: Object Storage with presigned URLs for attachments.
+The application utilizes a modern full-stack architecture.
 
-**V2Koszty Top Tiles Architecture**: The 3 top tiles (Koszty apartamenty, Koszty operacyjne, Razem) receive their values via `onTotalsChange` callbacks from child components (`CostsApartmentsContent`, `CostsExpensesContent`). This ensures tiles show identical numbers to the tables below. Both TabsContent use `forceMount` to guarantee children mount on page load. Apartment costs come from DB table `apt_cost_data` via `GET /api/apt-cost-data?year=X`; operational costs from DB table `op_cost_data` via `GET /api/op-cost-data?year=X` + server forecasts (same as what `grandTotal` in each child computes). Both use 600ms debounced batch writes via `POST /api/apt-cost-data/bulk` and `POST /api/op-cost-data/bulk`.
+**Frontend:** React, Vite, TypeScript, Tailwind CSS, shadcn/ui, Recharts, and Framer Motion for a responsive and intuitive user experience with dark mode support. UI elements like collapsible sidebars, global search, and breadcrumbs ensure ease of navigation. Mobile responsiveness is a priority, featuring a bottom navigation bar and adaptive table layouts.
+**Backend:** Express.js with TypeScript, providing robust API endpoints for data management.
+**Database:** PostgreSQL on Neon, accessed via Drizzle ORM.
+**Authentication:** Replit Auth for the main application, with a separate JWT-based system for the Recepcja Panel.
+**Data Import:** Supports `xlsx` for Excel and CSV imports from HotRes.
+**File Storage:** Object Storage with presigned URLs for attachments.
+**Architectural Patterns:** Zod schemas for API validation, TanStack Query for data fetching/caching, and an `IStorage` interface for database abstraction.
 
-**Shared Data Architecture (DB, not localStorage)**: All business data is stored in PostgreSQL and shared across all users:
-- `apt_cost_data` (year, entryId, category, month, prognoza, realized) — apartment cost grid
-- `apt_cost_settings` (entryId PK, categories, colors, entryColor, sortOrder) — apartment settings/colors
-- `op_cost_data` (year, catId, itemIdx, month, prognoza, realized) — operational cost grid
-- `app_config` key `op-cost-categories` — operational cost categories structure
-- `app_config` key `terminarz-colors` — Terminarz apartment color map
-- `import_metadata` type `data_backup` — tracks last backup time (shared across users)
-Auto-migration: on first load, if DB is empty and localStorage has data, it migrates automatically then clears localStorage.
+**Core Features:**
 
-**Core Features and Design:**
--   **Financial Management**: Dashboard overview, detailed expense tracking, bank account management, balance snapshots, and owner payments. The FINANSE section contains: Przychody (V2Przychody), Koszty (V2Koszty with 2 tabs: Apartamenty + Operacyjne), Saldo Firmowe. V2Prognoza, V2Realizacja, Analizy, ApartmentSchedule, and CashFlowForecast pages have been removed; their routes redirect to current equivalents. CostsApartments.tsx and CostsExpenses.tsx files are retained as embedded components within V2Koszty. A dedicated Prognoza Przychodów page (`/v2/prognoza-przychodow`) allows per-apartment monthly revenue forecasting using DB `revenue_forecasts` table — accessible via Ustawienia only (not in sidebar). Sidebar storage key is `sidebar-config-v14`.
--   **Saldo Firmowe** (`/saldo-firmowe`): 60-month rolling company balance forecast. API: `GET /api/balance-forecast` — starting balance = full company balance from Dashboard (bank accounts + saldo entries + crypto + loans via `storage.getCompanyBalance()` with auto_saldo and auto_loans calculations). Data sources: revenue_forecasts (0-indexed months, apartment-level only; RAZEM fallback if no apartment entries for a year), actual revenue from reservations.price (status != ANULOWANA) + sublease_payments.amount (excluding kaucja), apt_cost_data, op_cost_data, surcharges (price - paidAmount per reservation by check-in month). Year fallback: if year Y has no data, uses Y−1 same month. Formula per month: `saldo = prev_saldo + remaining_rev + surcharges - remaining_apt_costs - remaining_op_costs` where all remainings = `max(0, prognoza - realizacja)`. UI: 3 tiles (current/max/min balance), Recharts AreaChart with gradient, monthly table grouped by year with 2-row header (Przychody/Koszty apt/Koszty op groups, each with Prognoza/Realizacja/Pozostało sub-columns + Dopłaty column + Saldo firmowe). Dopłaty = sum of (price - paidAmount) for non-cancelled reservations grouped by check-in month + unpaid sublease payments (status='do_oplacenia', excluding kaucja) grouped by dueDate month — auto-updates after HotRes import. View toggle: Oba/Wykres/Tabela.
--   **Property & Rental Management**: CRUD operations for apartments, reservation management (short-term bookings with status tracking, group support), and lease management (long-term contracts). A Gantt-chart-style calendar (Terminarz) visualizes reservations, blockades, and subleases with drag-and-drop functionality.
--   **Document & Workflow Automation**: AI-powered PDF contract import (scanned PDF via GPT-4o vision OCR for data extraction), Word contract generation, invoice generation (with detailed items, VAT, payment tracking, PDF export), and cost invoice management (Dokumenty Księgowe) with drag-drop upload, status tracking, and expense linking. Handover protocols for subleases (Protokoły zdawczo-odbiorcze) with PDF generation.
--   **User & Employee Management**: Internal user account management with role-based permissions, and full CRUD for employee records including medical exam tracking.
--   **RCP (Rejestrator Czasu Pracy)**: GPS-based time tracking module (Moniti-inspired). Employee panel (`/rcp`, public, no auth) with 6-digit PIN login (60s lockout after 3 attempts), live clock, shift timer, clock-in/out/break buttons, GPS zone validation (AKTYWNA/WARUNKOWA status), team status card, 7-day history, **automatic GPS tracking** (sends location every 5 min during active shift via `POST /api/time-clock/location-log`, visual indicator showing tracking status), **"Moje wnioski urlopowe"** panel. Admin panel (`/rcp/admin`, authenticated, in ZARZĄDZANIE sidebar section) with **8 tabs**: Dashboard, Obecności (with Sheet detail panel, edit hours, delete entries), Grafik, Urlopy (with "Bilans urlopowy"), Raporty, Lokalizacje GPS, **Śledzenie GPS** (employee+date selector, Leaflet map with chronological path, green/red markers for in/out zone, zone circles, summary tiles, log table — `client/src/pages/rcp/GpsTrackingTab.tsx`), PINy. DB tables: `time_entries`, `work_schedules`, `leave_requests`, `location_logs` (employeeId, timeEntryId, lat/lng, accuracy, timestamp, locationId, distanceFromZone). API: `POST /api/time-clock/location-log`, `GET /api/location-logs?employeeId=X&date=Y`, `GET /api/location-logs/summary?date=Y`. Haversine distance calculation for zone proximity. Fields: `employees.pin`, `locations.latitude/longitude/gpsRadius`. Sidebar key: `sidebar-config-v14`. Tab components in `client/src/pages/rcp/` (GrafikTab.tsx, UrlopyTab.tsx, RaportyTab.tsx, GpsTrackingTab.tsx). API endpoints for leave_requests`. Fields added: `employees.pin`, `locations.latitude/longitude/gpsRadius`. Sidebar key bumped to `sidebar-config-v14`. Tab components in `client/src/pages/rcp/` (GrafikTab.tsx, UrlopyTab.tsx, RaportyTab.tsx). API endpoints: `GET/POST/PUT/DELETE /api/work-schedules`, `POST /api/work-schedules/bulk`, `GET/POST/PUT/DELETE /api/leave-requests`, `PUT /api/leave-requests/:id/approve|reject`, `GET /api/rcp/report`, `GET /api/rcp/leave-balance?year=`, `GET/POST /api/time-clock/leave-requests` (Bearer token).
--   **Reporting & Analytics**: Aggregated sublease settlements, revenue forecasting, apartment cost analysis, detailed revenue pages, occupancy rates (including subleases as 100% occupancy), profitability rankings (with sublease revenue, apartment costs from costForecasts, and rentowność column; Grand Baltic grouped as one entry), year-over-year comparison (including sublease revenue), apartment comparison (with sublease revenue and costForecasts-based expenses), cash flow forecast (costs sourced from costForecasts + operationalCostForecasts + variableCostForecasts; no installments), and price seasonality analysis. PDF report exports for various financial summaries.
--   **Notifications & Reminders**: Dashboard reminders for overdue payments, expiring medical exams, leases/subleases. An internal notification center for critical alerts.
--   **Mobile / PWA**: Fully responsive design. Bottom navigation bar on mobile (`BottomNav.tsx`, `lg:hidden`) with 5 items: Dashboard, Terminarz, Koszty, Przychody, Menu (opens sidebar). Tiles stack 1-col on small screens (`grid-cols-1 sm:grid-cols-3`). Tables use scroll indicator gradient, sticky first columns, and smaller fonts on mobile (`text-[10px] sm:text-xs`). Dialogs/sheets go full-width on mobile. Touch targets minimum 44px via `@media (pointer: coarse)`. Terminarz auto-uses 1-month view and 18px dayWidth on mobile. PWA: `manifest.json` (standalone, portrait), `sw.js` (cache-first static, network-first API), registered in `main.tsx`. SaldoFirmowe table hides P/R columns on mobile (`hidden sm:table-cell`), showing only Pozostało per group + Saldo (5 cols vs 11 on desktop).
--   **UI/UX**: Collapsible sidebar, consistent Polish language UI, clean design with Tailwind CSS and shadcn/ui, dark mode support, global search, breadcrumbs, and sticky table headers. CostsApartments page features location-based tabs (Grand Baltic, Bulwar Portowy, Wczasowa, Na Wydmie, Przewłoka + "Wszystkie") for filtering by location, with per-apartment colored rows and color picker dialog. Default tab is "GRAND BALTIC"; "Wszystkie" is at the end. Tab selection persists in localStorage (`costs-apartments-location-tab`). V2Koszty top tiles show prognoza + "Zrealizowane: X PLN" (apt costs from localStorage, op costs from actualExpensesByMonth). CostsApartments has 3 annual tiles (removed "Lokalizacje", added % realizacji to "Zrealizowane koszty"), 3 monthly tiles (bieżący miesiąc) with click→scroll+highlight to current month column, Sheet sidebars for apartment summary and category monthly breakdown, Palette icon for color dialog. CostsExpenses has 3 tiles (down from 5, removed "Zaległe płatności" and "Koszty miesięczne", simplified counts, "Zrealizowane" instead of "Saldo"). V2Przychody has per-apartment expandable year comparison table (BarChart3 toggle, lazy-fetches /api/v2/apartment-trend/{id}, shows months × years). SourceComparison: "Booking.com" key (was "Booking") in SOURCE_COLORS fixes classification bug.
--   **CRM**: Customer database with CRUD, segmentation, search, filtering, and tracking of total stays and revenue.
--   **Task Management**: Things 3-inspired task system with projects, sections, tasks (priority, due date, recurring), smart views, and a dashboard widget.
--   **Architectural Patterns**: Zod schemas for API validation, TanStack Query for data fetching/caching, and an `IStorage` interface for database abstraction.
-
--   **Recepcja Panel** (`/recepcja`): Independent reception manager panel ("Bałtyckie - Recepcja") for Małgorzata Latasiewicz with its own JWT authentication (bcrypt + jsonwebtoken, 24hr sessions). Separate route tree, layout, sidebar, and mobile bottom nav. Seeded user: gosia@baltyckie.pl / Recepcja2025!. Features: Dashboard with notification cards (arrivals/departures/overdue payments/tasks/pending submissions/**open issues count**), Saldo CRUD (locked to personName="Małgorzata Latasiewicz"), read-only Umowy/Terminarz/Rezerwacje/Przeglądy, payment toggle on Rozliczenia, cost invoice upload in Dokumenty, accounting note download, meter reading submission (Liczniki), handover protocols, new tenant data submission workflow, tenant contact list, sublease change history timeline, daily report, full RCP admin (7 tabs with delete/edit entries in Obecności), **Usterki** (`/recepcja/usterki` — issue/fault reporting for apartments with priority/status/category/photos, admin manages via `/usterki`), task management with virtual 'recepcja-user' userId. **Admin-controlled sidebar visibility**: `recepcja-sidebar-visibility` key in `app_config`, admin toggles items in Ustawienia, Gosia's sidebar auto-filters hidden items. All write operations logged to `recepcja_audit_log` (invisible to user). DB tables: `recepcja_users`, `recepcja_audit_log`, `tenant_data_submissions`, `meter_readings_log`, `sublease_change_history`, `push_subscriptions`, `issues` (apartmentId, title, description, priority, status, category, photoUrls, cost, reportedBy, assignedTo, notes, resolvedAt), `location_logs`. Backend: `server/recepcja-routes.ts` (900+ lines). Frontend: `client/src/pages/recepcja/` (17 page components incl. RecepcjaUsterki.tsx + RecepcjaApp.tsx + RecepcjaLayout.tsx + RecepcjaLogin.tsx). API prefix: `/api/recepcja/*`. Lazy-loaded via React.lazy in App.tsx. Admin issues page: `/usterki` (Usterki.tsx) in ZARZĄDZANIE sidebar section.
+*   **Financial Management:**
+    *   Dashboard provides an overview of financial health.
+    *   Detailed expense tracking (apartment and operational costs).
+    *   Bank account management and balance snapshots.
+    *   Owner payments and comprehensive financial reporting.
+    *   `V2Koszty` features top tiles reflecting child component data for consistency.
+    *   `Saldo Firmowe` provides a 60-month rolling company balance forecast, incorporating various revenue and cost sources, with UI for tiles, charts, and detailed tables.
+    *   `V2Przychody` includes per-apartment expandable year comparison tables.
+    *   Dedicated revenue forecasting (`/v2/prognoza-przychodow`) per apartment.
+*   **Property & Rental Management:**
+    *   CRUD operations for apartments, reservations (short-term, group support, status tracking), and leases (long-term contracts).
+    *   Gantt-chart-style calendar (Terminarz) for visualizing reservations, blockades, and subleases with drag-and-drop.
+*   **Document & Workflow Automation:**
+    *   AI-powered PDF contract import (GPT-4o vision OCR for data extraction).
+    *   Word contract generation and invoice generation (with PDF export).
+    *   Cost invoice management (Dokumenty Księgowe) with drag-drop upload and status tracking.
+    *   Handover protocols for subleases with PDF generation.
+*   **User & Employee Management:**
+    *   Internal user accounts with role-based permissions.
+    *   CRUD for employee records including medical exam tracking.
+    *   `Employee Trainings` for certification tracking with expiry alerts.
+    *   `Employee Contracts` for managing various contract types with PDF generation and expiry reminders.
+*   **RCP (Rejestrator Czasu Pracy):**
+    *   GPS-based time tracking module with employee (public) and admin (authenticated) panels.
+    *   Employee panel features PIN login, live clock, shift timer, clock-in/out/break, GPS zone validation, automatic GPS tracking, and leave request management.
+    *   Admin panel (`/rcp/admin`) includes dashboard, presence management, work schedules, leave management with balance, reports, GPS locations, and detailed GPS tracking with map visualization.
+*   **Reporting & Analytics:**
+    *   Aggregated sublease settlements, revenue forecasting, cost analysis, occupancy rates.
+    *   Profitability rankings and year-over-year/apartment comparisons.
+    *   Cash flow forecasts and price seasonality analysis.
+    *   PDF report exports for various financial summaries.
+*   **Notifications & Reminders:**
+    *   Dashboard reminders for overdue payments, expiring documents (medical exams, leases).
+    *   Internal notification center for critical alerts.
+*   **Recepcja Panel (`/recepcja`):**
+    *   Independent panel for reception managers with separate JWT authentication.
+    *   Features include a dashboard with notifications, Saldo CRUD, read-only access to key modules, payment toggling, cost invoice upload, meter reading submission, handover protocols, tenant data submission workflow, tenant contact list, and full RCP admin.
+    *   Includes `Usterki` module for issue/fault reporting with priority, status, and photo management, with an admin interface at `/usterki`.
+    *   Admin-controlled sidebar visibility. All write operations are logged to `recepcja_audit_log`.
 
 ## External Dependencies
--   **Replit Auth**: User authentication (main app).
--   **PostgreSQL (Neon)**: Primary database.
--   **xlsx library**: Excel file parsing.
--   **date-fns**: Date formatting and manipulation with Polish locale.
--   **HotRes**: CSV export integration for reservation data import.
--   **jsPDF + jspdf-autotable**: PDF report generation.
--   **Leaflet + react-leaflet**: Interactive maps for GPS location management in RCP module.
--   **jsonwebtoken + bcryptjs**: Recepcja panel JWT authentication.
+*   **Replit Auth:** Main application authentication.
+*   **PostgreSQL (Neon):** Primary database.
+*   **xlsx library:** Excel file parsing.
+*   **date-fns:** Date formatting and manipulation with Polish locale.
+*   **HotRes:** CSV export integration for reservation data import.
+*   **jsPDF + jspdf-autotable:** PDF report generation.
+*   **Leaflet + react-leaflet:** Interactive maps for GPS location management in RCP module.
+*   **jsonwebtoken + bcryptjs:** Recepcja panel JWT authentication.

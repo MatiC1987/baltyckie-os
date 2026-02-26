@@ -1456,3 +1456,45 @@ export const locationLogs = pgTable("location_logs", {
 export const insertLocationLogSchema = createInsertSchema(locationLogs).omit({ id: true });
 export type LocationLog = typeof locationLogs.$inferSelect;
 export type InsertLocationLog = z.infer<typeof insertLocationLogSchema>;
+
+export const employeeTrainings = pgTable("employee_trainings", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  provider: text("provider"),
+  completedDate: date("completed_date").notNull(),
+  expiryDate: date("expiry_date"),
+  certificateNumber: text("certificate_number"),
+  certificateFileUrl: text("certificate_file_url"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmployeeTrainingSchema = createInsertSchema(employeeTrainings).omit({ id: true, createdAt: true });
+export type EmployeeTraining = typeof employeeTrainings.$inferSelect;
+export type InsertEmployeeTraining = z.infer<typeof insertEmployeeTrainingSchema>;
+
+export const employeeContracts = pgTable("employee_contracts", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  salary: decimal("salary", { precision: 12, scale: 2 }),
+  hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }),
+  position: text("position"),
+  workHours: text("work_hours"),
+  trialPeriod: boolean("trial_period").default(false),
+  trialEndDate: date("trial_end_date"),
+  signedDate: date("signed_date"),
+  fileUrl: text("file_url"),
+  status: text("status").notNull().default("AKTYWNA"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmployeeContractSchema = createInsertSchema(employeeContracts).omit({ id: true, createdAt: true });
+export type EmployeeContract = typeof employeeContracts.$inferSelect;
+export type InsertEmployeeContract = z.infer<typeof insertEmployeeContractSchema>;

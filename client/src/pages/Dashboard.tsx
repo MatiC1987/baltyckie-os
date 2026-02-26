@@ -25,8 +25,9 @@ import { differenceInDays, format } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
   ArrowUp, ArrowDown, ArrowUpDown, Plane, PlaneTakeoff, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target, Scale,
-  Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench, Settings, Eye, EyeOff, ChevronUp, ChevronDown as ChevronDownIcon,
+  Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench, Settings, Eye, EyeOff, ChevronUp, ChevronDown as ChevronDownIcon, Upload, GraduationCap,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -220,6 +221,8 @@ export default function Dashboard() {
   const { data: allSubleasePayments } = useQuery<SubleasePaymentExtended[]>({ queryKey: ["/api/dashboard/all-sublease-payments"] });
   const { data: forecastData } = useQuery<ForecastMonth[]>({ queryKey: ["/api/dashboard/revenue-forecast"] });
   const { data: subleases } = useQuery<any[]>({ queryKey: ["/api/subleases"] });
+  const { data: expiringTrainings } = useQuery<{ id: number; name: string; status: string; employeeName: string; expiryDate: string | null }[]>({ queryKey: ["/api/employee-trainings/expiring"] });
+  const { data: expiringContracts } = useQuery<{ id: number; title: string; employeeName: string; endDate: string | null }[]>({ queryKey: ["/api/employee-contracts/expiring"] });
   const { data: reminders } = useQuery<{
     expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[];
     overdueCosts: number;
@@ -233,6 +236,12 @@ export default function Dashboard() {
   const [editingBalance, setEditingBalance] = useState("");
   const [widgetPrefs, setWidgetPrefs] = useState(loadWidgetPrefs);
   const [showWidgetSettings, setShowWidgetSettings] = useState(false);
+  const hotresReminderKey = `hotres-import-reminder-${format(new Date(), "yyyy-MM-dd")}`;
+  const [hotresReminderDismissed, setHotresReminderDismissed] = useState(() => !!localStorage.getItem(hotresReminderKey));
+  const dismissHotresReminder = () => {
+    localStorage.setItem(hotresReminderKey, "1");
+    setHotresReminderDismissed(true);
+  };
 
   const handlePrefsChange = (prefs: WidgetPrefs) => {
     saveWidgetPrefs(prefs);
@@ -364,6 +373,29 @@ export default function Dashboard() {
         </Button>
       </div>
 
+      {!hotresReminderDismissed && (
+        <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800" data-testid="alert-hotres-reminder">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
+                Pamiętaj o codziennym imporcie rezerwacji z HotRes
+              </AlertDescription>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href="/import-export">
+                <Button variant="outline" size="sm" className="h-7 text-xs border-amber-300 dark:border-amber-700" data-testid="button-hotres-import">
+                  Przejdź do importu
+                </Button>
+              </Link>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={dismissHotresReminder} data-testid="button-hotres-dismiss">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </Alert>
+      )}
+
       {widgetPrefs.order.map(widgetId => {
         if (!isVisible(widgetId)) return null;
         switch (widgetId) {
@@ -469,7 +501,7 @@ export default function Dashboard() {
           case "forecast":
             return <RevenueForecastSection key="forecast" forecastData={forecastData || []} />;
           case "unpaid-arrivals":
-            return <UnpaidArrivalsTab key="unpaid-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} />;
+            return <UnpaidArrivalsTab key="unpaid-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} expiringTrainings={expiringTrainings} expiringContracts={expiringContracts} />;
           case "upcoming-arrivals":
             return <UpcomingArrivalsTab key="upcoming-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} />;
           case "upcoming-departures":
@@ -1151,7 +1183,7 @@ function CompanyBalanceCard({
   );
 }
 
-function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean; reminders?: { expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[]; overdueCosts: number; overdueSubleasePayments: number; upcomingArrivals: number; expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; upcomingInspections?: { id: number; inspectionType: string; nextDate: string; apartmentId: number | null; isOverdue: boolean }[] } }) {
+function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders, expiringTrainings, expiringContracts }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean; reminders?: { expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[]; overdueCosts: number; overdueSubleasePayments: number; upcomingArrivals: number; expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; upcomingInspections?: { id: number; inspectionType: string; nextDate: string; apartmentId: number | null; isOverdue: boolean }[] }; expiringTrainings?: { id: number; name: string; status: string; employeeName: string; expiryDate: string | null }[]; expiringContracts?: { id: number; title: string; employeeName: string; endDate: string | null }[] }) {
   const [sortField, setSortField] = useState<SortField>("endDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showAll, setShowAll] = useState(false);
@@ -1193,14 +1225,14 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
 
   if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}</div>;
 
-  const hasReminders = reminders && (
+  const hasReminders = (reminders && (
     reminders.expiringExams.length > 0 ||
     reminders.overdueCosts > 0 ||
     reminders.overdueSubleasePayments > 0 ||
     reminders.expiringLeases.length > 0 ||
     reminders.expiringSubleases.length > 0 ||
     (reminders.upcomingInspections && reminders.upcomingInspections.length > 0)
-  );
+  )) || (expiringTrainings && expiringTrainings.length > 0) || (expiringContracts && expiringContracts.length > 0);
 
   return (
     <div className="space-y-3">
@@ -1213,23 +1245,23 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {reminders!.overdueCosts > 0 && (
+            {reminders?.overdueCosts && reminders.overdueCosts > 0 && (
               <Link href="/v2/koszty">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-overdue-costs">
                   <FileWarning className="h-4 w-4 text-red-500 shrink-0" />
-                  <span>Zaległe opłaty kosztów: <strong>{reminders!.overdueCosts}</strong></span>
+                  <span>Zaległe opłaty kosztów: <strong>{reminders.overdueCosts}</strong></span>
                 </div>
               </Link>
             )}
-            {reminders!.overdueSubleasePayments > 0 && (
+            {reminders?.overdueSubleasePayments && reminders.overdueSubleasePayments > 0 && (
               <Link href="/podnajem">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-overdue-sublease">
                   <FileWarning className="h-4 w-4 text-red-500 shrink-0" />
-                  <span>Zaległe płatności podnajmu: <strong>{reminders!.overdueSubleasePayments}</strong></span>
+                  <span>Zaległe płatności podnajmu: <strong>{reminders.overdueSubleasePayments}</strong></span>
                 </div>
               </Link>
             )}
-            {reminders!.expiringExams.map(exam => (
+            {(reminders?.expiringExams || []).map(exam => (
               <Link key={exam.id} href="/employees">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-exam-${exam.id}`}>
                   <CalendarClock className="h-4 w-4 text-amber-500 shrink-0" />
@@ -1237,7 +1269,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
                 </div>
               </Link>
             ))}
-            {reminders!.expiringLeases.map(lease => (
+            {(reminders?.expiringLeases || []).map(lease => (
               <Link key={lease.id} href="/apartment-schedule">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-lease-${lease.id}`}>
                   <CalendarClock className="h-4 w-4 text-amber-500 shrink-0" />
@@ -1245,7 +1277,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
                 </div>
               </Link>
             ))}
-            {reminders!.expiringSubleases.map(sub => (
+            {(reminders?.expiringSubleases || []).map(sub => (
               <Link key={sub.id} href="/podnajem">
                 <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid={`reminder-sublease-${sub.id}`}>
                   <CalendarClock className="h-4 w-4 text-amber-500 shrink-0" />
@@ -1253,7 +1285,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
                 </div>
               </Link>
             ))}
-            {reminders!.upcomingInspections?.map(insp => {
+            {(reminders?.upcomingInspections || []).map(insp => {
               const typeLabels: Record<string, string> = {
                 GAZOWY: "gazowy", ELEKTRYCZNY: "elektryczny", KOMINIARSKI: "kominiarski",
                 WENTYLACYJNY: "wentylacyjny", BUDOWLANY: "budowlany", PPOZ: "p.poż.", INNE: "inny"
@@ -1269,6 +1301,22 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
                 </Link>
               );
             })}
+            {(expiringTrainings || []).length > 0 && (
+              <Link href="/szkolenia">
+                <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-expiring-trainings">
+                  <GraduationCap className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span><strong>{(expiringTrainings || []).length}</strong> szkoleń wygasa w ciągu 30 dni</span>
+                </div>
+              </Link>
+            )}
+            {(expiringContracts || []).length > 0 && (
+              <Link href="/umowy-pracownicze">
+                <div className="flex items-center gap-2 text-sm p-2 rounded-md hover-elevate cursor-pointer" data-testid="reminder-expiring-contracts">
+                  <FileSignature className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span><strong>{(expiringContracts || []).length}</strong> umów pracowniczych kończy się w ciągu 30 dni</span>
+                </div>
+              </Link>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1284,7 +1332,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders }: {
           </Badge>
         )}
       </div>
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto max-h-[50vh] lg:max-h-none">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
@@ -1377,7 +1425,7 @@ function UpcomingArrivalsTab({ reservations, apartments, isLoading }: { reservat
         <h3 className="text-lg font-semibold" data-testid="text-upcoming-arrivals-title">Najbliższe przyjazdy</h3>
         <p className="text-sm text-muted-foreground">Rezerwacje rozpoczynające się w ciągu najbliższych 7 dni.</p>
       </div>
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto max-h-[50vh] lg:max-h-none">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
@@ -1472,7 +1520,7 @@ function UpcomingDeparturesTab({ reservations, apartments, isLoading }: { reserv
         <h3 className="text-lg font-semibold" data-testid="text-upcoming-departures-title">Najbliższe wyjazdy</h3>
         <p className="text-sm text-muted-foreground">Rezerwacje kończące się w ciągu najbliższych 7 dni.</p>
       </div>
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto max-h-[50vh] lg:max-h-none">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">

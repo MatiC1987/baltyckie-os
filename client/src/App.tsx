@@ -46,6 +46,8 @@ import PriorityRevenueForecast from "@/pages/PriorityRevenueForecast";
 import TimeClock from "@/pages/TimeClock";
 import TimeAdmin from "@/pages/TimeAdmin";
 import Usterki from "@/pages/Usterki";
+import Szkolenia from "@/pages/Szkolenia";
+import UmowyPracownicze from "@/pages/UmowyPracownicze";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
@@ -189,6 +191,8 @@ function AuthenticatedRouter() {
       <Route path="/v2/realizacja" component={() => <Redirect to="/v2/przychody" />} />
       <Route path="/rcp/admin" component={() => <AuthenticatedRoute component={TimeAdmin} />} />
       <Route path="/usterki" component={() => <AuthenticatedRoute component={Usterki} />} />
+      <Route path="/szkolenia" component={() => <AuthenticatedRoute component={Szkolenia} />} />
+      <Route path="/umowy-pracownicze" component={() => <AuthenticatedRoute component={UmowyPracownicze} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>
