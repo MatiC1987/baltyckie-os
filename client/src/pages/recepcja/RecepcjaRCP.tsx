@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import GrafikEnhanced from "@/components/GrafikEnhanced";
 import { useToast } from "@/hooks/use-toast";
 import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit } from "lucide-react";
 
@@ -311,70 +312,7 @@ function RCPObecnosci() {
 }
 
 function RCPGrafik() {
-  const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-
-  const { data: schedules = [] } = useQuery({
-    queryKey: [`/api/recepcja/rcp/work-schedules?month=${month}&year=${year}`],
-    queryFn: async () => { const r = await recepcjaFetch("GET", `/api/recepcja/rcp/work-schedules?month=${month}&year=${year}`); return r.json(); },
-  });
-
-  const { data: employees = [] } = useQuery({
-    queryKey: ["/api/recepcja/rcp/employees"],
-    queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees"); return r.json(); },
-  });
-
-  const daysInMonth = new Date(year, month, 0).getDate();
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
-          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <SelectItem key={m} value={String(m)}>{m}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-          <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {[2025,2026,2027].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <Card className="overflow-x-auto">
-        <table className="text-xs">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="p-1 text-left sticky left-0 bg-muted/50 min-w-[120px]">Pracownik</th>
-              {Array.from({ length: daysInMonth }, (_, i) => (
-                <th key={i} className="p-1 text-center min-w-[28px]">{i + 1}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {employees.map((emp: any) => (
-              <tr key={emp.id} className="border-b">
-                <td className="p-1 font-medium sticky left-0 bg-card">{emp.firstName} {emp.lastName?.charAt(0)}.</td>
-                {Array.from({ length: daysInMonth }, (_, i) => {
-                  const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
-                  const sched = schedules.find((s: any) => s.employeeId === emp.id && s.date === d);
-                  const label = sched?.shiftType?.charAt(0) || '';
-                  const colors: Record<string, string> = { R: 'bg-yellow-200 dark:bg-yellow-900', D: 'bg-blue-200 dark:bg-blue-900', P: 'bg-purple-200 dark:bg-purple-900', N: 'bg-gray-300 dark:bg-gray-700' };
-                  return (
-                    <td key={i} className={`p-1 text-center ${colors[label] || ''}`}>
-                      {label}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-    </div>
-  );
+  return <GrafikEnhanced apiPrefix="/api/recepcja/rcp" fetchFn={recepcjaFetch} />;
 }
 
 function RCPUrlopy() {

@@ -539,9 +539,27 @@ export function registerRecepcjaRoutes(app: Express) {
 
   app.get('/api/recepcja/rcp/work-schedules', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const { month, year } = req.query;
-      const schedules = await storage.getWorkSchedules(Number(month), Number(year));
-      res.json(schedules);
+      const { month, year, from, to, employeeId, locationId } = req.query;
+      if (from && to) {
+        const schedules = await storage.getWorkSchedules({
+          from: from as string,
+          to: to as string,
+          employeeId: employeeId ? Number(employeeId) : undefined,
+          locationId: locationId ? Number(locationId) : undefined,
+        });
+        res.json(schedules);
+      } else if (month && year) {
+        const m = Number(month);
+        const y = Number(year);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const fromDate = `${y}-${String(m).padStart(2, "0")}-01`;
+        const toDate = `${y}-${String(m).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+        const schedules = await storage.getWorkSchedules({ from: fromDate, to: toDate });
+        res.json(schedules);
+      } else {
+        const schedules = await storage.getWorkSchedules();
+        res.json(schedules);
+      }
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
@@ -555,20 +573,19 @@ export function registerRecepcjaRoutes(app: Express) {
 
   app.post('/api/recepcja/rcp/work-schedules/bulk', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const { schedules } = req.body;
-      const created = [];
-      for (const s of schedules) {
-        const existing = await db.select().from(workSchedules)
-          .where(and(eq(workSchedules.employeeId, s.employeeId), eq(workSchedules.date, s.date)));
-        if (existing.length) {
-          const [u] = await db.update(workSchedules).set(s).where(eq(workSchedules.id, existing[0].id)).returning();
-          created.push(u);
-        } else {
-          const r = await storage.createWorkSchedule(s);
-          created.push(r);
+      const { schedules, deleteFrom, deleteTo, deleteEmployeeId } = req.body;
+      if (deleteFrom && deleteTo) {
+        const existing = await storage.getWorkSchedules({
+          from: deleteFrom,
+          to: deleteTo,
+          employeeId: deleteEmployeeId || undefined,
+        });
+        for (const s of existing) {
+          await storage.deleteWorkSchedule(s.id);
         }
       }
-      await logRecepcjaAction(req.recepcjaUser.id, 'BULK_CREATE', 'work_schedules', '', { count: schedules.length });
+      const created = await storage.createWorkSchedulesBulk(schedules || []);
+      await logRecepcjaAction(req.recepcjaUser.id, 'BULK_CREATE', 'work_schedules', '', { count: (schedules || []).length, deleteFrom, deleteTo });
       res.json(created);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
