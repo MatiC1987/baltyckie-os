@@ -67,7 +67,7 @@
 }
 
 .dark {
-  --background: 222 47% 8%;
+  --background: 222 44% 10%;
   --foreground: 210 40% 92%;
 
   --card: 222 40% 11%;
@@ -406,7 +406,11 @@ main[data-page-fs] .text-4xl {
 }
 
 aside[data-sidebar-fs] {
-  background: linear-gradient(180deg, hsl(222 47% 12%) 0%, hsl(222 47% 8%) 100%);
+  background: linear-gradient(180deg, hsl(222 47% 14%) 0%, hsl(222 47% 10%) 100%);
+}
+.dark aside[data-sidebar-fs] {
+  background: linear-gradient(180deg, hsl(222 50% 12%) 0%, hsl(222 50% 7%) 100%);
+  border-right: 1px solid rgba(90, 219, 250, 0.1);
 }
 aside[data-sidebar-fs]::before {
   content: '';
@@ -418,6 +422,9 @@ aside[data-sidebar-fs]::before {
   background: linear-gradient(180deg, rgba(90, 219, 250, 0.06) 0%, transparent 100%);
   pointer-events: none;
   z-index: 0;
+}
+.dark aside[data-sidebar-fs]::before {
+  background: linear-gradient(180deg, rgba(90, 219, 250, 0.08) 0%, transparent 100%);
 }
 aside[data-sidebar-fs] > * {
   position: relative;
@@ -433,6 +440,9 @@ aside[data-sidebar-fs]::after {
   background: linear-gradient(180deg, rgba(90, 219, 250, 0.15) 0%, rgba(90, 219, 250, 0.03) 50%, transparent 100%);
   pointer-events: none;
   z-index: 2;
+}
+.dark aside[data-sidebar-fs]::after {
+  background: linear-gradient(180deg, rgba(90, 219, 250, 0.2) 0%, rgba(90, 219, 250, 0.06) 50%, transparent 100%);
 }
 
 @media print {
