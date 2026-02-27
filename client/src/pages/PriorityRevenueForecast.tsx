@@ -94,6 +94,9 @@ export default function PriorityRevenueForecast() {
   const [showCopyAptDialog, setShowCopyAptDialog] = useState(false);
   const [copySourceApt, setCopySourceApt] = useState<string>("");
   const [copyTargetApt, setCopyTargetApt] = useState<string>("");
+  const [copySourceYear, setCopySourceYear] = useState<number | null>(null);
+  const [copyTargetYear, setCopyTargetYear] = useState<number | null>(null);
+  const [isCopying, setIsCopying] = useState(false);
   const { toast } = useToast();
 
   const { data: forecasts = [] } = useQuery<RevenueForecast[]>({
@@ -149,26 +152,62 @@ export default function PriorityRevenueForecast() {
   }, [year, upsertMutation]);
 
   const copyToNextYear = async () => {
-    const nextYear = year + 1;
-    let count = 0;
-    for (const apt of activeApts) {
-      for (let m = 0; m < 12; m++) {
-        const val = forecastMap[`${apt.id}__${m}`] || 0;
-        if (val > 0) {
-          await apiRequest("PUT", "/api/revenue-forecasts", {
-            year: nextYear,
-            month: m,
-            apartmentId: apt.id,
-            forecast: String(val),
-          });
-          count++;
+    const srcYear = copySourceYear ?? year;
+    const tgtYear = copyTargetYear ?? year + 1;
+    if (srcYear === tgtYear) {
+      toast({ title: "Błąd", description: "Rok źródłowy i docelowy nie mogą być takie same", variant: "destructive" });
+      return;
+    }
+    setIsCopying(true);
+    try {
+      let sourceForecasts: RevenueForecast[];
+      if (srcYear === year) {
+        sourceForecasts = forecasts;
+      } else {
+        const res = await apiRequest("GET", `/api/revenue-forecasts?year=${srcYear}`);
+        sourceForecasts = await res.json();
+      }
+      const srcMap: Record<string, number> = {};
+      for (const f of sourceForecasts) {
+        if (f.apartmentId) {
+          srcMap[`${f.apartmentId}__${f.month}`] = parseFloat(f.forecast || "0");
         }
       }
+      let count = 0;
+      let errors = 0;
+      for (const apt of activeApts) {
+        for (let m = 0; m < 12; m++) {
+          const val = srcMap[`${apt.id}__${m}`] || 0;
+          if (val > 0) {
+            try {
+              await apiRequest("PUT", "/api/revenue-forecasts", {
+                year: tgtYear,
+                month: m,
+                apartmentId: apt.id,
+                forecast: String(val),
+              });
+              count++;
+            } catch {
+              errors++;
+            }
+          }
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${tgtYear}`] });
+      if (errors > 0) {
+        toast({ title: "Częściowo skopiowano", description: `Skopiowano ${count} wartości, ${errors} błędów`, variant: "destructive" });
+      } else if (count === 0) {
+        toast({ title: "Brak danych", description: `Nie znaleziono prognoz na rok ${srcYear} do skopiowania`, variant: "destructive" });
+      } else {
+        toast({ title: "Skopiowano prognozy", description: `Skopiowano ${count} wartości z ${srcYear} na ${tgtYear}` });
+      }
+      setShowCopyDialog(false);
+      setYear(tgtYear);
+    } catch (err: any) {
+      toast({ title: "Błąd kopiowania", description: err?.message || "Nieznany błąd", variant: "destructive" });
+    } finally {
+      setIsCopying(false);
     }
-    queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${nextYear}`] });
-    toast({ title: "Skopiowano prognozy", description: `Skopiowano ${count} wartości na rok ${nextYear}` });
-    setShowCopyDialog(false);
-    setYear(nextYear);
   };
 
   const copyFromApartment = async () => {
@@ -243,8 +282,8 @@ export default function PriorityRevenueForecast() {
           <Button variant="outline" size="sm" onClick={() => setShowCopyAptDialog(true)} data-testid="button-copy-from-apt">
             <Copy className="h-4 w-4 mr-1" /> Kopiuj z apt.
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-to-next-year">
-            <ArrowRight className="h-4 w-4 mr-1" /> Kopiuj na {year + 1}
+          <Button variant="outline" size="sm" onClick={() => { setCopySourceYear(year); setCopyTargetYear(year + 1); setShowCopyDialog(true); }} data-testid="button-copy-to-next-year">
+            <ArrowRight className="h-4 w-4 mr-1" /> Kopiuj rok → rok
           </Button>
         </div>
       </div>
@@ -355,15 +394,41 @@ export default function PriorityRevenueForecast() {
       <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Kopiuj prognozy na rok {year + 1}</DialogTitle>
+            <DialogTitle>Kopiuj prognozy między latami</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Wszystkie wartości prognozowane za rok <strong>{year}</strong> zostaną skopiowane na rok <strong>{year + 1}</strong>. Istniejące prognozy na rok {year + 1} zostaną nadpisane.
-          </p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-medium mb-1">Rok źródłowy (skąd)</p>
+                <Select value={String(copySourceYear ?? year)} onValueChange={v => setCopySourceYear(Number(v))}>
+                  <SelectTrigger data-testid="select-copy-source-year"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <p className="text-xs font-medium mb-1">Rok docelowy (dokąd)</p>
+                <Select value={String(copyTargetYear ?? year + 1)} onValueChange={v => setCopyTargetYear(Number(v))}>
+                  <SelectTrigger data-testid="select-copy-target-year"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Wszystkie prognozy przychodów z roku <strong>{copySourceYear ?? year}</strong> zostaną skopiowane na rok <strong>{copyTargetYear ?? year + 1}</strong>. Istniejące wartości w roku docelowym zostaną nadpisane.
+            </p>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCopyDialog(false)}>Anuluj</Button>
-            <Button onClick={copyToNextYear} data-testid="button-confirm-copy-year">
-              <ArrowRight className="h-4 w-4 mr-1" /> Kopiuj na {year + 1}
+            <Button variant="outline" onClick={() => setShowCopyDialog(false)} disabled={isCopying}>Anuluj</Button>
+            <Button onClick={copyToNextYear} disabled={isCopying || (copySourceYear ?? year) === (copyTargetYear ?? year + 1)} data-testid="button-confirm-copy-year">
+              {isCopying ? (
+                <><span className="animate-spin mr-2">⏳</span> Kopiowanie...</>
+              ) : (
+                <><ArrowRight className="h-4 w-4 mr-1" /> Kopiuj {copySourceYear ?? year} → {copyTargetYear ?? year + 1}</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
