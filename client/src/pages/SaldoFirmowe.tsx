@@ -230,25 +230,25 @@ export default function SaldoFirmowe() {
                   <thead>
                     <tr>
                       <th className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-left px-2 sm:px-4 py-2.5 sm:py-3 font-bold w-20 sm:w-32 border-r border-slate-200 dark:border-slate-700" rowSpan={2}>Miesiąc</th>
-                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/60 border-b border-emerald-200 dark:border-emerald-800" colSpan={3}>Przychody</th>
-                      <th className="sm:hidden text-center px-1 py-2 font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/60" rowSpan={2}>Poz.<br/>przych.</th>
-                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-orange-800 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/60 border-b border-orange-200 dark:border-orange-800" colSpan={3}>Koszty apartamentów</th>
-                      <th className="sm:hidden text-center px-1 py-2 font-bold text-orange-800 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/60" rowSpan={2}>Poz.<br/>apt.</th>
-                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60 border-b border-red-200 dark:border-red-800" colSpan={3}>Koszty operacyjne</th>
-                      <th className="sm:hidden text-center px-1 py-2 font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60" rowSpan={2}>Poz.<br/>op.</th>
-                      <th className="text-center px-1 sm:px-2 py-2 font-bold text-cyan-800 dark:text-cyan-200 bg-cyan-100 dark:bg-cyan-900/60" rowSpan={2}>Dopłaty</th>
+                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/50 border-b border-teal-200 dark:border-teal-700" colSpan={3}>Przychody</th>
+                      <th className="sm:hidden text-center px-1 py-2 font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/50" rowSpan={2}>Poz.<br/>przych.</th>
+                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/50 border-b border-indigo-200 dark:border-indigo-700" colSpan={3}>Koszty apartamentów</th>
+                      <th className="sm:hidden text-center px-1 py-2 font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/50" rowSpan={2}>Poz.<br/>apt.</th>
+                      <th className="hidden sm:table-cell text-center px-1 sm:px-2 py-2 font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/50 border-b border-rose-200 dark:border-rose-700" colSpan={3}>Koszty operacyjne</th>
+                      <th className="sm:hidden text-center px-1 py-2 font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/50" rowSpan={2}>Poz.<br/>op.</th>
+                      <th className="text-center px-1 sm:px-2 py-2 font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/50" rowSpan={2}>Dopłaty</th>
                       <th className="text-center px-1 sm:px-4 py-2 font-bold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700" rowSpan={2}>Saldo<br/>firmowe</th>
                     </tr>
                     <tr>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40">Prognoza</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40">Realizacja</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/60">Pozostało</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/40">Prognoza</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/40">Realizacja</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-orange-800 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/60">Pozostało</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/40">Prognoza</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/40">Realizacja</th>
-                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60">Pozostało</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-teal-600 dark:text-teal-400 bg-teal-50/60 dark:bg-teal-900/30">Prognoza</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-teal-600 dark:text-teal-400 bg-teal-50/60 dark:bg-teal-900/30">Realizacja</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/50">Pozostało</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-900/30">Prognoza</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-900/30">Realizacja</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/50">Pozostało</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50/60 dark:bg-rose-900/30">Prognoza</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50/60 dark:bg-rose-900/30">Realizacja</th>
+                      <th className="hidden sm:table-cell text-right px-1 sm:px-2 py-1.5 text-[11px] sm:text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/50">Pozostało</th>
                     </tr>
                   </thead>
                   <tbody>

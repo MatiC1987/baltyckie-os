@@ -638,7 +638,7 @@ export default function V2Przychody() {
               <YAxis className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
               <Tooltip formatter={(v: number) => `${formatNum(v)} PLN`} />
               <Legend />
-              <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Prognoza" fill="#6366f1" radius={[4, 4, 0, 0]} />
               <Bar dataKey="Realizacja" fill="#00CCFF" radius={[4, 4, 0, 0]} />
             </ComposedChart>
           </ResponsiveContainer>

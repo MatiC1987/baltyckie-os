@@ -172,7 +172,7 @@ export default function PriceSeasonality() {
                 yAxisId="right"
                 type="monotone"
                 dataKey="reservationCount"
-                stroke="hsl(222, 47%, 11%)"
+                stroke="#6366f1"
                 strokeWidth={2}
                 dot={false}
                 name="Liczba rezerwacji"

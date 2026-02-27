@@ -12,11 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 import {
   ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight,
-  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3, Archive, RotateCcw,
+  Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3, Archive, RotateCcw, MoreHorizontal,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
@@ -1274,7 +1275,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                 <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Prognoza" fill="#6366f1" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="Rzeczywiste" fill="#00CCFF" radius={[2, 2, 0, 0]} />
               </RechartsBarChart>
             </ResponsiveContainer>
@@ -1297,7 +1298,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                   <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Line type="monotone" dataKey={selectedYear.toString()} stroke="#00CCFF" strokeWidth={2} dot={{ r: 3 }} name={`${selectedYear}`} />
-                  <Line type="monotone" dataKey={compareYear.toString()} stroke="hsl(222, 47%, 11%)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} name={`${compareYear}`} />
+                  <Line type="monotone" dataKey={compareYear.toString()} stroke="#6366f1" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} name={`${compareYear}`} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -1362,7 +1363,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1400px" }}>
           <thead className="sticky top-0 z-20">
             <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[140px] min-w-[140px] sm:w-[220px] sm:min-w-[220px]" rowSpan={2}>
                 Pozycja
               </th>
               {MONTHS_SHORT.map((m, i) => (
@@ -1427,27 +1428,21 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                         >
                           <Plus className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleArchiveCategory(cat.id); }}
-                          className="opacity-40 hover:opacity-100 p-0.5 rounded shrink-0"
-                          title="Archiwizuj kategorię"
-                          data-testid={`btn-archive-${cat.id}`}
-                        >
-                          <Archive className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Usunąć kategorię "${cat.title}" i wszystkie jej pozycje?`)) {
-                              handleDeleteCategory(cat.id);
-                            }
-                          }}
-                          className="opacity-40 hover:opacity-100 p-0.5 rounded shrink-0"
-                          title="Usuń kategorię"
-                          data-testid={`button-delete-category-${cat.id}`}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="p-0.5 rounded shrink-0 text-muted-foreground hover:text-foreground sm:opacity-40 sm:hover:opacity-100" onClick={(e) => e.stopPropagation()} data-testid={`button-options-cat-${cat.id}`}>
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[140px]">
+                            <DropdownMenuItem onClick={() => handleArchiveCategory(cat.id)} data-testid={`btn-archive-${cat.id}`}>
+                              <Archive className="h-3 w-3 mr-2" /> Archiwizuj
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć kategorię "${cat.title}" i wszystkie jej pozycje?`)) handleDeleteCategory(cat.id); }} className="text-destructive" data-testid={`button-delete-category-${cat.id}`}>
+                              <Trash2 className="h-3 w-3 mr-2" /> Usuń
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                     {Array.from({ length: 12 }, (_, m) => {
@@ -1531,25 +1526,21 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                                 {hasLinkedSchedule && <Link2 className="inline h-2.5 w-2.5 ml-1 text-muted-foreground" />}
                                 <Sparkline data={getItemSparklineData(cat.id, idx)} width={50} height={14} color="rgb(239, 68, 68)" />
                               </div>
-                              <button
-                                onClick={() => handleArchiveItem(cat.id, idx)}
-                                className="invisible group-hover:visible text-muted-foreground hover:text-amber-600 p-0.5 shrink-0"
-                                title="Archiwizuj pozycję"
-                                data-testid={`button-archive-item-${cat.id}-${idx}`}
-                              >
-                                <Archive className="h-3 w-3" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`Usunąć pozycję "${item.name}"?`)) {
-                                    handleDeleteItem(cat.id, idx);
-                                  }
-                                }}
-                                className="invisible group-hover:visible text-muted-foreground hover:text-destructive p-0.5 shrink-0"
-                                data-testid={`button-delete-item-${cat.id}-${idx}`}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button className="p-0.5 rounded shrink-0 text-muted-foreground hover:text-foreground sm:invisible sm:group-hover:visible" data-testid={`button-options-item-${cat.id}-${idx}`}>
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[140px]">
+                                  <DropdownMenuItem onClick={() => handleArchiveItem(cat.id, idx)} data-testid={`button-archive-item-${cat.id}-${idx}`}>
+                                    <Archive className="h-3 w-3 mr-2" /> Archiwizuj
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć pozycję "${item.name}"?`)) handleDeleteItem(cat.id, idx); }} className="text-destructive" data-testid={`button-delete-item-${cat.id}-${idx}`}>
+                                    <Trash2 className="h-3 w-3 mr-2" /> Usuń
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           )}
                         </td>
@@ -1659,7 +1650,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-muted/80 dark:bg-muted/50">
-                    <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+                    <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[140px] min-w-[140px] sm:w-[220px] sm:min-w-[220px]" rowSpan={2}>
                       Pozycja
                     </th>
                     {MONTHS_SHORT.map((m, i) => (

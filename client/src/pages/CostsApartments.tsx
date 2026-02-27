@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChevronDown, ChevronRight, Plus, X, Calculator,
   BarChart3, GripVertical, Trash2, Pencil, Archive, RotateCcw,
-  Copy, ArrowRight, Eraser, DatabaseBackup, Palette,
+  Copy, ArrowRight, Eraser, DatabaseBackup, Palette, MoreHorizontal,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/PageHeader";
@@ -1106,7 +1107,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                 <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Prognoza" fill="#6366f1" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="Rzeczywiste" fill="#00CCFF" radius={[2, 2, 0, 0]} />
               </RechartsBarChart>
             </ResponsiveContainer>
@@ -1129,7 +1130,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1400px" }}>
           <thead className="sticky top-0 z-20">
             <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>
+              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[140px] min-w-[140px] sm:w-[220px] sm:min-w-[220px]" rowSpan={2}>
                 Pozycja
               </th>
               {MONTHS.map((m, i) => (
@@ -1284,34 +1285,25 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                                   >
                                     {cat}
                                   </span>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); openEditCatDialog(entry.id, cat); }}
-                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0 text-muted-foreground"
-                                    title="Edytuj nazwę / kolor"
-                                    data-testid={`btn-edit-cat-${entry.id}-${cat}`}
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                  </button>
                                   <Sparkline data={getCatSparklineData(entry.id, cat)} width={40} height={12} color="rgb(239, 68, 68)" />
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleArchiveCategory(entry.id, cat); }}
-                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0 text-muted-foreground"
-                                    title="Archiwizuj"
-                                    data-testid={`btn-archive-${entry.id}-${cat}`}
-                                  >
-                                    <Archive className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (window.confirm(`Usunąć kategorię "${cat}"?`)) handleDeleteCategory(entry.id, cat);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded shrink-0 text-muted-foreground"
-                                    title="Usuń"
-                                    data-testid={`btn-delete-${entry.id}-${cat}`}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button className="p-0.5 rounded shrink-0 text-muted-foreground hover:text-foreground sm:opacity-0 sm:group-hover:opacity-60 sm:hover:!opacity-100" data-testid={`btn-options-${entry.id}-${cat}`}>
+                                        <MoreHorizontal className="h-3.5 w-3.5" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="min-w-[140px]">
+                                      <DropdownMenuItem onClick={() => openEditCatDialog(entry.id, cat)} data-testid={`btn-edit-cat-${entry.id}-${cat}`}>
+                                        <Pencil className="h-3 w-3 mr-2" /> Edytuj
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleArchiveCategory(entry.id, cat)} data-testid={`btn-archive-${entry.id}-${cat}`}>
+                                        <Archive className="h-3 w-3 mr-2" /> Archiwizuj
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"?`)) handleDeleteCategory(entry.id, cat); }} className="text-destructive" data-testid={`btn-delete-${entry.id}-${cat}`}>
+                                        <Trash2 className="h-3 w-3 mr-2" /> Usuń
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </td>
                               {MONTHS.map((_, mi) => {
@@ -1415,7 +1407,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-muted/80 dark:bg-muted/50">
-                    <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[220px] min-w-[220px]" rowSpan={2}>Pozycja</th>
+                    <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[140px] min-w-[140px] sm:w-[220px] sm:min-w-[220px]" rowSpan={2}>Pozycja</th>
                     {MONTHS.map((m, i) => (
                       <th key={i} colSpan={3} className="border-b border-r-2 border-border px-1 py-1 text-center font-bold">{m}</th>
                     ))}
@@ -1524,7 +1516,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                     <Tooltip formatter={(value: number) => [`${value.toLocaleString("pl-PL")} zł`]} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Line type="monotone" dataKey={String(year)} stroke="#00CCFF" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey={String(compareYear)} stroke="hsl(222, 47%, 11%)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey={String(compareYear)} stroke="#6366f1" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>

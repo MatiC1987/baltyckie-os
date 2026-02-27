@@ -199,7 +199,7 @@ export default function V2Koszty() {
                   <YAxis yAxisId="right" orientation="right" className="text-xs" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v: number) => `${v.toLocaleString("pl-PL")} zł`} />
                   <Legend />
-                  <Bar yAxisId="left" dataKey="Prognoza" fill="hsl(222, 47%, 11%)" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="Prognoza" fill="#6366f1" radius={[4, 4, 0, 0]} />
                   <Bar yAxisId="left" dataKey="Realizacja" fill="#00CCFF" radius={[4, 4, 0, 0]} />
                   <Line yAxisId="right" dataKey="Kumulatywna" stroke="#f59e0b" strokeWidth={2} dot={false} type="monotone" name="Kumulatywna (realizacja)" />
                 </ComposedChart>

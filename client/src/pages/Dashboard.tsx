@@ -570,11 +570,11 @@ function WidgetSettingsSheet({ open, onOpenChange, prefs, onPrefsChange }: {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[350px] sm:w-[400px]" data-testid="sheet-widget-settings">
+      <SheetContent className="w-[350px] sm:w-[400px] flex flex-col" data-testid="sheet-widget-settings">
         <SheetHeader>
           <SheetTitle>Konfiguracja widżetów</SheetTitle>
         </SheetHeader>
-        <div className="py-4 space-y-2">
+        <div className="py-4 space-y-2 flex-1 overflow-y-auto">
           <p className="text-xs text-muted-foreground mb-3">Włącz/wyłącz widżety i zmień ich kolejność strzałkami.</p>
           {orderedWidgets.map((w, idx) => (
             <div key={w.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-md border border-border" data-testid={`widget-toggle-${w.id}`}>

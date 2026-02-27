@@ -137,7 +137,7 @@ export default function ApartmentComparison() {
                   />
                   <Bar
                     dataKey="koszty"
-                    fill="hsl(222, 47%, 11%)"
+                    fill="#6366f1"
                     radius={[2, 2, 0, 0]}
                   />
                 </BarChart>

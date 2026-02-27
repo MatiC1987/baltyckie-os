@@ -827,7 +827,7 @@ function ApartmentDashboard({ apartment }: { apartment: Apartment }) {
               <Tooltip formatter={(v: number) => fmtPLN(v)} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="Przychody" fill="#00CCFF" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="Koszty" fill="hsl(222, 47%, 11%)" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Koszty" fill="#6366f1" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

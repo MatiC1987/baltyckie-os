@@ -20,7 +20,7 @@ type YearComparisonData = {
 
 const MONTH_NAMES = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 const MONTH_FULL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
-const YEAR_COLORS = ["hsl(222, 47%, 11%)", "#00CCFF80", "#00CCFF"];
+const YEAR_COLORS = ["#6366f1", "#00CCFF80", "#00CCFF"];
 
 function fmt(v: number) {
   return v.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 });

@@ -63,7 +63,7 @@ export function ApartmentTrendSheet({ apartmentId, open, onOpenChange }: {
   const monthlyAvg = currentYearData ? Math.round(currentYearData.totalActual / Math.max(new Date().getMonth() + 1, 1)) : 0;
   const profit = currentYearData ? currentYearData.totalActual - currentYearData.totalCost : 0;
 
-  const colors = ["#00CCFF", "hsl(222, 47%, 11%)", "hsl(142, 71%, 45%)", "#f59e0b", "#ef4444"];
+  const colors = ["#00CCFF", "#6366f1", "hsl(142, 71%, 45%)", "#f59e0b", "#ef4444"];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -136,7 +136,7 @@ export function ApartmentTrendSheet({ apartmentId, open, onOpenChange }: {
                     <Tooltip formatter={(v: number) => `${formatNum(v)} PLN`} />
                     <Legend />
                     <Bar dataKey="Przychód" fill="#00CCFF" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Prognoza" fill="hsl(222, 47%, 11%)" opacity={0.4} radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Prognoza" fill="#6366f1" opacity={0.4} radius={[3, 3, 0, 0]} />
                     <Bar dataKey="Koszty" fill="#ef4444" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
