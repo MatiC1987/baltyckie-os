@@ -26,6 +26,11 @@ import {
   ChevronDown,
   ChevronUp,
   Smartphone,
+  Calendar,
+  BarChart3,
+  TreePalm,
+  Timer,
+  Briefcase,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -329,6 +334,8 @@ function EmployeeDashboard({
   const [gpsTrackingActive, setGpsTrackingActive] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLeaves, setShowLeaves] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
   const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
@@ -504,6 +511,32 @@ function EmployeeDashboard({
     },
   });
 
+  type ScheduleEntry = { id: number; date: string; startTime: string; endTime: string; shiftName?: string; shiftColor?: string };
+  const scheduleQuery = useQuery<ScheduleEntry[]>({
+    queryKey: ["/api/time-clock/my-schedule"],
+    enabled: showSchedule,
+    queryFn: async () => {
+      const res = await rcpFetch("GET", "/api/time-clock/my-schedule");
+      return await res.json();
+    },
+  });
+
+  type MonthlySummary = {
+    year: number; month: number;
+    workedMinutes: number; workedHours: number;
+    scheduledMinutes: number; scheduledHours: number;
+    normHours: number; daysWorked: number;
+    leaveBalance: { allocated: number; used: number; pending: number; remaining: number };
+  };
+  const summaryQuery = useQuery<MonthlySummary>({
+    queryKey: ["/api/time-clock/my-summary"],
+    enabled: showSummary,
+    queryFn: async () => {
+      const res = await rcpFetch("GET", "/api/time-clock/my-summary");
+      return await res.json();
+    },
+  });
+
   const createLeaveMutation = useMutation({
     mutationFn: async (data: { type: string; startDate: string; endDate: string; days: number; comment: string }) => {
       const res = await rcpFetch("POST", "/api/time-clock/leave-requests", data);
@@ -596,6 +629,163 @@ function EmployeeDashboard({
     );
   }
 
+  if (showSchedule) {
+    const dayNames = ["Nd", "Pn", "Wt", "Śr", "Cz", "Pt", "So"];
+    const schedulesByDate = (scheduleQuery.data || []).reduce<Record<string, ScheduleEntry[]>>((acc, s) => {
+      (acc[s.date] = acc[s.date] || []).push(s);
+      return acc;
+    }, {});
+    const sortedDates = Object.keys(schedulesByDate).sort();
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
+          <Button variant="ghost" size="icon" onClick={() => setShowSchedule(false)} data-testid="button-back-from-schedule">
+            <ChevronLeft />
+          </Button>
+          <span className="font-semibold text-sm">Mój grafik (14 dni)</span>
+          <div className="w-9" />
+        </header>
+        <div className="flex-1 overflow-auto p-4">
+          {scheduleQuery.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : sortedDates.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <Calendar className="h-10 w-10 text-muted-foreground" />
+              <p className="text-center text-muted-foreground" data-testid="text-no-schedule">Brak zaplanowanych zmian</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 max-w-lg mx-auto">
+              {sortedDates.map((date) => {
+                const d = new Date(date + "T12:00:00");
+                const dayName = dayNames[d.getDay()];
+                const isToday = date === new Date().toISOString().split("T")[0];
+                return (
+                  <Card key={date} className={`p-4 ${isToday ? "ring-2 ring-primary" : ""}`} data-testid={`card-schedule-${date}`}>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm">{dayName}</span>
+                        <span className="text-sm text-muted-foreground">{formatDateShort(date)}</span>
+                        {isToday && <Badge variant="outline" className="text-xs bg-primary/10 text-primary">Dziś</Badge>}
+                      </div>
+                    </div>
+                    {schedulesByDate[date].map((shift) => (
+                      <div key={shift.id} className="flex items-center gap-3 py-1">
+                        {shift.shiftColor && (
+                          <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: shift.shiftColor }} />
+                        )}
+                        <span className="text-sm font-medium">{shift.startTime} - {shift.endTime}</span>
+                        {shift.shiftName && (
+                          <span className="text-xs text-muted-foreground">{shift.shiftName}</span>
+                        )}
+                      </div>
+                    ))}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (showSummary) {
+    const s = summaryQuery.data;
+    const monthNames = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+    const progressPct = s ? Math.min(100, Math.round((s.workedHours / s.normHours) * 100)) : 0;
+    const progressColor = progressPct >= 100 ? "bg-red-500" : progressPct >= 80 ? "bg-yellow-500" : "bg-green-500";
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
+          <Button variant="ghost" size="icon" onClick={() => setShowSummary(false)} data-testid="button-back-from-summary">
+            <ChevronLeft />
+          </Button>
+          <span className="font-semibold text-sm">Podsumowanie miesiąca</span>
+          <div className="w-9" />
+        </header>
+        <div className="flex-1 overflow-auto p-4">
+          {summaryQuery.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : s ? (
+            <div className="flex flex-col gap-4 max-w-lg mx-auto">
+              <p className="text-center text-sm text-muted-foreground" data-testid="text-summary-period">
+                {monthNames[s.month - 1]} {s.year}
+              </p>
+
+              <Card className="p-4" data-testid="card-hours-summary">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Timer className="h-4 w-4" />
+                  Godziny pracy
+                </h3>
+                <div className="mb-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Przepracowano</span>
+                    <span className="font-semibold">{s.workedHours}h / {s.normHours}h</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-3">
+                    <div className={`h-3 rounded-full transition-all ${progressColor}`} style={{ width: `${progressPct}%` }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{progressPct}% normy miesięcznej</p>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <div className="text-xl font-bold text-primary" data-testid="text-worked-hours">{s.workedHours}</div>
+                    <p className="text-xs text-muted-foreground">Przepracowano (h)</p>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold" data-testid="text-scheduled-hours">{s.scheduledHours}</div>
+                    <p className="text-xs text-muted-foreground">Zaplanowano (h)</p>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold" data-testid="text-days-worked">{s.daysWorked}</div>
+                    <p className="text-xs text-muted-foreground">Dni pracy</p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-4" data-testid="card-leave-balance">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <TreePalm className="h-4 w-4" />
+                  Urlop {s.year}
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center p-3 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-leave-remaining">
+                      {s.leaveBalance.remaining}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Pozostało dni</p>
+                  </div>
+                  <div className="text-center p-3 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold" data-testid="text-leave-used">{s.leaveBalance.used}</div>
+                    <p className="text-xs text-muted-foreground">Wykorzystano</p>
+                  </div>
+                  <div className="text-center p-3 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400" data-testid="text-leave-pending">
+                      {s.leaveBalance.pending}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Oczekujące</p>
+                  </div>
+                  <div className="text-center p-3 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-muted-foreground" data-testid="text-leave-allocated">
+                      {s.leaveBalance.allocated}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Przysługuje</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground py-8">Brak danych</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (showHistory) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -662,10 +852,16 @@ function EmployeeDashboard({
           <span className="font-semibold text-sm hidden sm:inline">RCP</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => setShowLeaves(true)} data-testid="button-show-leaves">
+          <Button variant="ghost" size="icon" onClick={() => setShowSchedule(true)} data-testid="button-show-schedule" title="Mój grafik">
+            <Calendar />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setShowSummary(true)} data-testid="button-show-summary" title="Podsumowanie">
+            <BarChart3 />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setShowLeaves(true)} data-testid="button-show-leaves" title="Urlopy">
             <CalendarDays />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowHistory(true)} data-testid="button-show-history">
+          <Button variant="ghost" size="icon" onClick={() => setShowHistory(true)} data-testid="button-show-history" title="Historia">
             <History />
           </Button>
           <Button variant="ghost" size="icon" onClick={onLogout} data-testid="button-logout">

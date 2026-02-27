@@ -9924,6 +9924,94 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // ==================== RCP - EMPLOYEE SCHEDULE (Bearer token) ====================
+  app.get('/api/time-clock/my-schedule', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Brak autoryzacji' });
+      const now = new Date();
+      const from = now.toISOString().split('T')[0];
+      const toDate = new Date(now.getTime() + 13 * 24 * 60 * 60 * 1000);
+      const to = toDate.toISOString().split('T')[0];
+      const schedules = await storage.getWorkSchedules({ employeeId, from, to });
+      res.json(schedules);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP - EMPLOYEE MONTHLY SUMMARY (Bearer token) ====================
+  app.get('/api/time-clock/my-summary', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Brak autoryzacji' });
+
+      const now = new Date();
+      let year = Number(req.query.year) || now.getFullYear();
+      let month = Number(req.query.month) || (now.getMonth() + 1);
+      if (!Number.isInteger(month) || month < 1 || month > 12) return res.status(400).json({ message: 'Nieprawidłowy miesiąc (1-12)' });
+      if (!Number.isInteger(year) || year < 2020 || year > 2100) return res.status(400).json({ message: 'Nieprawidłowy rok' });
+
+      const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+      const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(new Date(nextMonth).getTime() - 86400000).toISOString().split('T')[0];
+
+      const entries = await storage.getTimeEntries({ employeeId, from: monthStart, to: lastDay });
+      const completedEntries = entries.filter(e => e.status === 'ZAKONCZONA' || e.status === 'ZAAKCEPTOWANA');
+
+      let totalMinutes = 0;
+      for (const entry of completedEntries) {
+        if (entry.clockIn && entry.clockOut) {
+          const dur = new Date(String(entry.clockOut)).getTime() - new Date(String(entry.clockIn)).getTime();
+          const breakMin = entry.breakMinutes || 0;
+          totalMinutes += Math.max(0, Math.round(dur / 60000) - breakMin);
+        }
+      }
+
+      const allLeaves = await storage.getLeaveRequests({ employeeId });
+      const yearLeaves = allLeaves.filter(lr => {
+        const startYear = new Date(lr.startDate + 'T12:00:00').getFullYear();
+        return startYear === year;
+      });
+      const usedDays = yearLeaves.filter(lr => lr.status === 'ZAAKCEPTOWANY').reduce((s, lr) => s + lr.days, 0);
+      const pendingDays = yearLeaves.filter(lr => lr.status === 'OCZEKUJACY').reduce((s, lr) => s + lr.days, 0);
+      const allocated = 26;
+
+      const schedules = await storage.getWorkSchedules({ employeeId, from: monthStart, to: lastDay });
+      let scheduledMinutes = 0;
+      for (const s of schedules) {
+        if (s.startTime && s.endTime) {
+          const [sh, sm] = s.startTime.split(':').map(Number);
+          const [eh, em] = s.endTime.split(':').map(Number);
+          let diff = (eh * 60 + em) - (sh * 60 + sm);
+          if (diff < 0) diff += 24 * 60;
+          scheduledMinutes += diff;
+        }
+      }
+
+      const normHours = 168;
+
+      res.json({
+        year,
+        month,
+        workedMinutes: totalMinutes,
+        workedHours: Math.round(totalMinutes / 6) / 10,
+        scheduledMinutes,
+        scheduledHours: Math.round(scheduledMinutes / 6) / 10,
+        normHours,
+        daysWorked: completedEntries.length,
+        leaveBalance: {
+          allocated,
+          used: usedDays,
+          pending: pendingDays,
+          remaining: allocated - usedDays,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== LOCATION LOGS (GPS tracking) ====================
   app.post('/api/time-clock/location-log', async (req, res) => {
     try {

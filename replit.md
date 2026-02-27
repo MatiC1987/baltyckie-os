@@ -49,7 +49,7 @@ The application utilizes a modern full-stack architecture.
     *   `Employee Contracts` for managing various contract types with PDF generation and expiry reminders.
 *   **RCP (Rejestrator Czasu Pracy):**
     *   GPS-based time tracking module with employee (public) and admin (authenticated) panels.
-    *   Employee panel features PIN login, live clock, shift timer, clock-in/out/break, GPS zone validation, automatic GPS tracking, and leave request management.
+    *   Employee panel features PIN login, live clock, shift timer, clock-in/out/break, GPS zone validation, automatic GPS tracking, leave request management, 14-day schedule view ("Mój grafik"), monthly hours summary with progress bar, and leave balance display. Endpoints: `GET /api/time-clock/my-schedule`, `GET /api/time-clock/my-summary`.
     *   Admin panel (`/rcp/admin`) includes dashboard, presence management, work schedules, leave management with balance, reports, GPS locations, and detailed GPS tracking with map visualization.
     *   **GrafikEnhanced** (`client/src/components/GrafikEnhanced.tsx`): Shared work schedule component used by both admin and Recepcja panels. Features: (1) HTML5 drag & drop shifts between days/employees with conflict validation, (2) weekly templates — define Mon-Sun pattern and auto-fill the month, (3) hours summary with 168h monthly norm comparison (color-coded green/yellow/red), (4) conflict validation — overlapping shifts and 11h rest period checks (warns, doesn't block), (5) weekly view toggle alongside monthly grid, (6) bulk assignment — multi-select employees × days with preset shifts. Props: `apiPrefix` and optional `fetchFn` for JWT auth.
 *   **Reporting & Analytics:**
