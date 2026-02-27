@@ -65,10 +65,10 @@ function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: N
                   "relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 cursor-pointer mx-auto",
                   isActive
                     ? "!text-[#5ADBFA] bg-[#5ADBFA]/10"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
                 )}
               >
-                <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "text-slate-400")} />
+                <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "")} />
                 {badgeCount && badgeCount > 0 ? (
                   <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5" data-testid={`badge-overdue-${item.id}`}>
                     {badgeCount > 99 ? "99+" : badgeCount}
@@ -93,10 +93,10 @@ function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: N
           "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
           isActive
             ? "!text-[#5ADBFA] bg-[#5ADBFA]/5 shadow-[inset_2px_0_0_#5ADBFA]"
-            : "text-slate-400 hover:text-white hover:bg-white/5 hover:shadow-[inset_2px_0_0_rgba(255,255,255,0.15)]"
+            : "text-slate-400 hover:text-slate-200 hover:bg-white/5 hover:shadow-[inset_2px_0_0_rgba(90,219,250,0.25)]"
         )}
       >
-        <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "text-slate-400")} />
+        <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "")} />
         <span className="font-medium text-xs leading-tight">{item.label}</span>
         {badgeCount && badgeCount > 0 ? (
           <span className="ml-auto shrink-0 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" data-testid={`badge-overdue-${item.id}`}>
@@ -335,7 +335,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                           onClick={() => setIsOpen(false)}
                           className={cn(
                             "flex items-center justify-center w-10 h-10 rounded-lg transition-colors cursor-pointer",
-                            location === "/ustawienia" ? "text-[#5ADBFA] bg-[#5ADBFA]/10" : "text-slate-400 hover:text-white hover:bg-white/5"
+                            location === "/ustawienia" ? "text-[#5ADBFA] bg-[#5ADBFA]/10" : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
                           )}
                           data-testid="link-nav-ustawienia"
                         >
@@ -349,7 +349,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                     <TooltipTrigger asChild>
                       <button
                         onClick={toggleCompact}
-                        className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                        className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
                         data-testid="button-toggle-compact"
                       >
                         <PanelLeft className="h-3.5 w-3.5" />
@@ -384,7 +384,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                               "flex items-center justify-center w-10 h-10 rounded-lg transition-colors cursor-pointer",
                               location === "/ustawienia" || location === "/ustawienia-menu"
                                 ? "text-[#5ADBFA] bg-[#5ADBFA]/10"
-                                : "text-slate-400 hover:text-white hover:bg-white/5"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
                             )}
                             data-testid="link-nav-ustawienia"
                           >
@@ -398,7 +398,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                       <TooltipTrigger asChild>
                         <button
                           onClick={toggleCompact}
-                          className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                          className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
                           data-testid="button-toggle-compact"
                         >
                           <PanelLeftClose className="h-3.5 w-3.5" />
@@ -410,7 +410,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                       <TooltipTrigger asChild>
                         <button
                           onClick={toggleTheme}
-                          className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                          className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
                           data-testid="button-toggle-theme"
                         >
                           {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
