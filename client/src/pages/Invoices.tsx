@@ -2,12 +2,12 @@ import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DataTable } from "@/components/DataTable";
 import { Plus, FileDown, Trash2, Loader2, FileSpreadsheet, Pencil, Copy, ChevronDown, ChevronUp, X, Search, FileWarning } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -93,7 +93,6 @@ export default function Invoices() {
   const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(defaultForm());
@@ -141,12 +140,8 @@ export default function Invoices() {
     let list = invoicesData;
     if (statusFilter !== "all") list = list.filter(i => i.status === statusFilter);
     if (paymentFilter !== "all") list = list.filter(i => i.paymentStatus === paymentFilter);
-    if (searchTerm) {
-      const s = searchTerm.toLowerCase();
-      list = list.filter(i => i.invoiceNumber.toLowerCase().includes(s) || i.buyerName.toLowerCase().includes(s));
-    }
     return list;
-  }, [invoicesData, statusFilter, paymentFilter, searchTerm]);
+  }, [invoicesData, statusFilter, paymentFilter]);
 
   const { netAmount, vatAmount, grossAmount } = useMemo(() => {
     let net = 0, vat = 0;
@@ -305,8 +300,6 @@ export default function Invoices() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-[400px]" data-testid="loading-invoices"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-
   const SectionHeader = ({ title, open, toggle }: { title: string; open: boolean; toggle: () => void }) => (
     <button onClick={toggle} className="flex items-center justify-between w-full py-2 text-left font-semibold text-sm" data-testid={`toggle-section-${title.toLowerCase().replace(/\s/g, "-")}`}>
       {title} {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -322,10 +315,6 @@ export default function Invoices() {
     <div className="p-6 space-y-6" data-testid="page-invoices">
       <PageHeader title="Faktury" description="Zarządzanie fakturami i dokumentami sprzedaży." icon={FileSpreadsheet} actions={
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Szukaj..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-8 w-[180px]" data-testid="input-search" />
-          </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[150px]" data-testid="select-status-filter"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
@@ -481,57 +470,36 @@ export default function Invoices() {
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardHeader><CardTitle>Lista faktur</CardTitle></CardHeader>
-        <CardContent>
-          {filtered.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8" data-testid="text-no-invoices">Brak faktur do wyświetlenia</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table data-testid="table-invoices">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Numer</TableHead>
-                    <TableHead>Typ</TableHead>
-                    <TableHead>Data wystawienia</TableHead>
-                    <TableHead>Nabywca</TableHead>
-                    <TableHead>Netto</TableHead>
-                    <TableHead>VAT</TableHead>
-                    <TableHead>Brutto</TableHead>
-                    <TableHead>Płatność</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Akcje</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map(inv => (
-                    <TableRow key={inv.id} data-testid={`row-invoice-${inv.id}`}>
-                      <TableCell data-testid={`text-invoice-number-${inv.id}`}>{inv.invoiceNumber}</TableCell>
-                      <TableCell><Badge variant="outline" data-testid={`badge-type-${inv.id}`}>{DOC_TYPES[inv.documentType || "FAKTURA_VAT"] || inv.documentType}</Badge></TableCell>
-                      <TableCell data-testid={`text-issue-date-${inv.id}`}>{inv.issueDate}</TableCell>
-                      <TableCell data-testid={`text-buyer-name-${inv.id}`}>{inv.buyerName}</TableCell>
-                      <TableCell data-testid={`text-net-amount-${inv.id}`}>{formatPLN(inv.netAmount)}</TableCell>
-                      <TableCell data-testid={`text-vat-amount-${inv.id}`}>{formatPLN(inv.vatAmount)}</TableCell>
-                      <TableCell data-testid={`text-gross-amount-${inv.id}`}>{formatPLN(inv.grossAmount)}</TableCell>
-                      <TableCell>{paymentBadge(inv.paymentStatus || "NIEOPLACONA")}</TableCell>
-                      <TableCell>{statusBadge(inv.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(inv)} data-testid={`button-edit-${inv.id}`} title="Edytuj"><Pencil className="h-4 w-4" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => duplicate(inv)} data-testid={`button-duplicate-${inv.id}`} title="Duplikuj"><Copy className="h-4 w-4" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => correct(inv)} data-testid={`button-correct-${inv.id}`} title="Korekta"><FileWarning className="h-4 w-4" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => generatePDF(inv)} data-testid={`button-pdf-${inv.id}`} title="PDF"><FileDown className="h-4 w-4" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => { if (confirm("Czy na pewno chcesz usunąć tę fakturę?")) deleteMutation.mutate(inv.id); }} data-testid={`button-delete-${inv.id}`} title="Usuń"><Trash2 className="h-4 w-4" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+      <DataTable<Invoice>
+        data={filtered}
+        columns={[
+          { header: "Numer", accessorKey: "invoiceNumber", cell: (inv) => <span data-testid={`text-invoice-number-${inv.id}`}>{inv.invoiceNumber}</span> },
+          { header: "Typ", cell: (inv) => <Badge variant="outline" data-testid={`badge-type-${inv.id}`}>{DOC_TYPES[inv.documentType || "FAKTURA_VAT"] || inv.documentType}</Badge>, sortable: false },
+          { header: "Data wystawienia", accessorKey: "issueDate", cell: (inv) => <span data-testid={`text-issue-date-${inv.id}`}>{inv.issueDate}</span> },
+          { header: "Nabywca", accessorKey: "buyerName", cell: (inv) => <span data-testid={`text-buyer-name-${inv.id}`}>{inv.buyerName}</span> },
+          { header: "Netto", accessorKey: "netAmount", cell: (inv) => <span data-testid={`text-net-amount-${inv.id}`}>{formatPLN(inv.netAmount)}</span> },
+          { header: "VAT", accessorKey: "vatAmount", cell: (inv) => <span data-testid={`text-vat-amount-${inv.id}`}>{formatPLN(inv.vatAmount)}</span> },
+          { header: "Brutto", accessorKey: "grossAmount", cell: (inv) => <span data-testid={`text-gross-amount-${inv.id}`}>{formatPLN(inv.grossAmount)}</span> },
+          { header: "Płatność", cell: (inv) => paymentBadge(inv.paymentStatus || "NIEOPLACONA"), sortable: false },
+          { header: "Status", cell: (inv) => statusBadge(inv.status), sortable: false },
+          { header: "Akcje", sortable: false, cell: (inv) => (
+            <div className="flex items-center gap-1">
+              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(inv); }} data-testid={`button-edit-${inv.id}`} title="Edytuj"><Pencil className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); duplicate(inv); }} data-testid={`button-duplicate-${inv.id}`} title="Duplikuj"><Copy className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); correct(inv); }} data-testid={`button-correct-${inv.id}`} title="Korekta"><FileWarning className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); generatePDF(inv); }} data-testid={`button-pdf-${inv.id}`} title="PDF"><FileDown className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); if (confirm("Czy na pewno chcesz usunąć tę fakturę?")) deleteMutation.mutate(inv.id); }} data-testid={`button-delete-${inv.id}`} title="Usuń"><Trash2 className="h-4 w-4" /></Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          ) },
+        ]}
+        searchable={true}
+        searchKeys={["invoiceNumber", "buyerName"]}
+        exportable={true}
+        exportFileName="faktury"
+        pageSize={25}
+        emptyMessage="Brak faktur do wyświetlenia"
+        isLoading={isLoading}
+      />
     </div>
   );
 }

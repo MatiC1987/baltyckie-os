@@ -1095,13 +1095,38 @@ export async function registerRoutes(
 
   // Reservations
   app.get(api.reservations.list.path, isAuthenticated, async (req, res) => {
-    const filters = {
-      apartmentId: req.query.apartmentId ? Number(req.query.apartmentId) : undefined,
-      startDate: req.query.startDate as string | undefined,
-      endDate: req.query.endDate as string | undefined,
-    };
-    const reservations = await storage.getReservations(filters);
-    res.json(reservations);
+    const pageParam = req.query.page ? Number(req.query.page) : undefined;
+    const limitParam = req.query.limit ? Number(req.query.limit) : undefined;
+
+    if (pageParam && limitParam) {
+      try {
+        const page = Math.max(1, pageParam);
+        const limit = Math.min(100, Math.max(1, limitParam));
+        const result = await storage.getReservationsPaginated({
+          page,
+          limit,
+          sortField: 'startDate',
+          sortDir: 'desc',
+          status: req.query.status as string | undefined,
+          dateFrom: req.query.startDate as string | undefined,
+          dateTo: req.query.endDate as string | undefined,
+          search: req.query.search as string | undefined,
+          source: req.query.source as string | undefined,
+        });
+        res.json({ data: result.data, total: result.total, page: result.page, limit });
+      } catch (err) {
+        console.error("Error fetching paginated reservations:", err);
+        res.status(500).json({ message: "Nie udało się pobrać rezerwacji" });
+      }
+    } else {
+      const filters = {
+        apartmentId: req.query.apartmentId ? Number(req.query.apartmentId) : undefined,
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+      };
+      const reservationsList = await storage.getReservations(filters);
+      res.json(reservationsList);
+    }
   });
 
   app.get("/api/reservations-paginated", isAuthenticated, async (req, res) => {

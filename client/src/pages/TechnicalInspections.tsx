@@ -14,8 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DataTable } from "@/components/DataTable";
 import {
   Plus, Pencil, Trash2, Search, AlertTriangle, CheckCircle2,
   Clock, ChevronLeft, ChevronRight, CalendarDays, List, Phone
@@ -94,7 +94,6 @@ export default function TechnicalInspections() {
   const [showDialog, setShowDialog] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
-  const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterApartment, setFilterApartment] = useState("all");
@@ -201,20 +200,9 @@ export default function TechnicalInspections() {
         } else if (insp.status !== filterStatus) return false;
       }
       if (filterApartment !== "all" && String(insp.apartmentId) !== filterApartment) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const apt = apartments.find(a => a.id === insp.apartmentId);
-        const haystack = [
-          getTypeLabel(insp.inspectionType),
-          insp.contractor || "",
-          apt?.name || "",
-          insp.notes || "",
-        ].join(" ").toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
       return true;
     });
-  }, [inspections, filterType, filterStatus, filterApartment, searchQuery, apartments]);
+  }, [inspections, filterType, filterStatus, filterApartment]);
 
   const getApartmentName = (id: number | null) => {
     if (!id) return "—";
@@ -254,14 +242,6 @@ export default function TechnicalInspections() {
     const done = inspections.filter(i => i.status === 'WYKONANY').length;
     return { overdue, upcoming30, done, total: inspections.length };
   }, [inspections]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
 
   return (
     <div className="p-4 md:p-6 space-y-4" data-testid="page-technical-inspections">
@@ -317,16 +297,6 @@ export default function TechnicalInspections() {
 
         <TabsContent value="lista" className="mt-4 space-y-3">
           <div className="flex flex-wrap gap-2">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Szukaj..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-8"
-                data-testid="input-search-inspections"
-              />
-            </div>
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="w-[180px]" data-testid="select-filter-type">
                 <SelectValue placeholder="Typ przeglądu" />
@@ -362,76 +332,54 @@ export default function TechnicalInspections() {
             </Select>
           </div>
 
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Typ</TableHead>
-                  <TableHead>Mieszkanie</TableHead>
-                  <TableHead>Następny przegląd</TableHead>
-                  <TableHead>Ostatni przegląd</TableHead>
-                  <TableHead>Wykonawca</TableHead>
-                  <TableHead>Koszt</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Akcje</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredInspections.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                      Brak przeglądów
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredInspections.map(insp => (
-                    <TableRow key={insp.id} data-testid={`row-inspection-${insp.id}`}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${TYPE_COLORS[insp.inspectionType] || 'bg-gray-400'}`} />
-                          <span className="font-medium">{getTypeLabel(insp.inspectionType)}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell data-testid={`text-apartment-${insp.id}`}>{getApartmentName(insp.apartmentId)}</TableCell>
-                      <TableCell data-testid={`text-next-date-${insp.id}`}>
-                        {insp.nextDate ? format(parseISO(insp.nextDate), "dd.MM.yyyy") : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {insp.lastDate ? format(parseISO(insp.lastDate), "dd.MM.yyyy") : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {insp.contractor && (
-                          <div className="flex items-center gap-1">
-                            <span>{insp.contractor}</span>
-                            {insp.contractorPhone && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                                <Phone className="h-3 w-3" />{insp.contractorPhone}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {!insp.contractor && "—"}
-                      </TableCell>
-                      <TableCell>
-                        {insp.cost ? `${Number(insp.cost).toFixed(2)} PLN` : "—"}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(insp.status, insp.nextDate)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center gap-1 justify-end">
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(insp)} data-testid={`button-edit-${insp.id}`}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => setDeleteId(insp.id)} data-testid={`button-delete-${insp.id}`}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </Card>
+          <DataTable<TechnicalInspection>
+            data={filteredInspections}
+            columns={[
+              { header: "Typ", accessorKey: "inspectionType", cell: (insp) => (
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${TYPE_COLORS[insp.inspectionType] || 'bg-gray-400'}`} />
+                  <span className="font-medium">{getTypeLabel(insp.inspectionType)}</span>
+                </div>
+              ) },
+              { header: "Apartament", cell: (insp) => <span data-testid={`text-apartment-${insp.id}`}>{getApartmentName(insp.apartmentId)}</span>, sortable: false },
+              { header: "Status", cell: (insp) => getStatusBadge(insp.status, insp.nextDate), sortable: false },
+              { header: "Data planowana", accessorKey: "nextDate", cell: (insp) => <span data-testid={`text-next-date-${insp.id}`}>{insp.nextDate ? format(parseISO(insp.nextDate), "dd.MM.yyyy") : "—"}</span> },
+              { header: "Data wykonania", accessorKey: "lastDate", cell: (insp) => insp.lastDate ? format(parseISO(insp.lastDate), "dd.MM.yyyy") : "—" },
+              { header: "Koszt", cell: (insp) => insp.cost ? `${Number(insp.cost).toFixed(2)} PLN` : "—", sortable: false },
+              { header: "Uwagi", cell: (insp) => (
+                <>
+                  {insp.contractor && (
+                    <div className="flex items-center gap-1">
+                      <span>{insp.contractor}</span>
+                      {insp.contractorPhone && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                          <Phone className="h-3 w-3" />{insp.contractorPhone}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {!insp.contractor && "—"}
+                </>
+              ), sortable: false },
+              { header: "Akcje", sortable: false, className: "text-right", cell: (insp) => (
+                <div className="flex items-center gap-1 justify-end">
+                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(insp); }} data-testid={`button-edit-${insp.id}`}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteId(insp.id); }} data-testid={`button-delete-${insp.id}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) },
+            ]}
+            searchable={true}
+            searchKeys={["inspectionType", "contractor", "notes"]}
+            exportable={true}
+            exportFileName="przeglady"
+            pageSize={25}
+            emptyMessage="Brak przeglądów"
+            isLoading={isLoading}
+          />
         </TabsContent>
 
         <TabsContent value="kalendarz" className="mt-4">

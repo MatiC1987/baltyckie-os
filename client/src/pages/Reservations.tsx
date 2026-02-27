@@ -34,7 +34,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 type SortField = "reservationNumber" | "addDate" | "startDate" | "endDate" | "guestName" | "price" | "prepayment" | "paidAmount" | "status" | "source";
 type SortDir = "asc" | "desc";
 
-const ITEMS_PER_PAGE = 40;
+const ITEMS_PER_PAGE = 50;
 
 const SOURCE_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   "Booking.com": { label: "Booking", color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-950 border-blue-200 dark:border-blue-800", icon: "B" },
@@ -486,43 +486,48 @@ function Pagination({ page, totalPages, total, onPageChange }: { page: number; t
   }
 
   return (
-    <div className="flex items-center gap-1" data-testid="pagination">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        disabled={page <= 1}
-        onClick={() => onPageChange(page - 1)}
-        data-testid="button-prev-page"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      {pages.map((p, i) =>
-        typeof p === "string" ? (
-          <span key={`dots-${i}`} className="text-xs text-muted-foreground px-1">…</span>
-        ) : (
-          <Button
-            key={p}
-            variant={p === page ? "default" : "ghost"}
-            size="sm"
-            className={`h-8 w-8 text-xs ${p === page ? "" : "text-muted-foreground"}`}
-            onClick={() => onPageChange(p)}
-            data-testid={`button-page-${p}`}
-          >
-            {p}
-          </Button>
-        )
-      )}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        disabled={page >= totalPages}
-        onClick={() => onPageChange(page + 1)}
-        data-testid="button-next-page"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
+    <div className="flex items-center gap-2" data-testid="pagination">
+      <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid="text-pagination-info">
+        Strona {page} z {totalPages} ({total} rekordów)
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          data-testid="button-prev-page"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        {pages.map((p, i) =>
+          typeof p === "string" ? (
+            <span key={`dots-${i}`} className="text-xs text-muted-foreground px-1">…</span>
+          ) : (
+            <Button
+              key={p}
+              variant={p === page ? "default" : "ghost"}
+              size="sm"
+              className={`h-8 w-8 text-xs ${p === page ? "" : "text-muted-foreground"}`}
+              onClick={() => onPageChange(p)}
+              data-testid={`button-page-${p}`}
+            >
+              {p}
+            </Button>
+          )
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          data-testid="button-next-page"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }

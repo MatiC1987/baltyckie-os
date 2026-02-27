@@ -3,6 +3,7 @@ import { BottomNav } from "./BottomNav";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationBell } from "./NotificationBell";
 import { PageTransition } from "./PageTransition";
+import { NavigationProgress } from "./NavigationProgress";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { useState, useEffect, useMemo } from "react";
@@ -59,6 +60,7 @@ export function Layout({ children }: LayoutProps) {
   return (
     <SidebarProvider>
     <div className="flex min-h-screen bg-background">
+      <NavigationProgress />
       <Sidebar style={sidebarStyle} />
       <main className="flex-1 p-4 md:p-6 pt-4 pb-20 lg:pb-4 overflow-y-auto h-screen" style={mainStyle} data-page-fs>
         <Breadcrumbs />
