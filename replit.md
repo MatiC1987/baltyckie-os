@@ -64,6 +64,30 @@ The application utilizes a modern full-stack architecture.
     *   Includes `Usterki` module for issue/fault reporting with priority, status, and photo management, with an admin interface at `/usterki`.
     *   Admin-controlled sidebar visibility. All write operations are logged to `recepcja_audit_log`.
 
+## Zaplanowane funkcjonalności (Roadmap)
+
+### Nowe moduły:
+1. Import wyciągów bankowych (CSV/MT940 + AI kategoryzacja)
+2. Rozliczenie wynagrodzeń (Lista płac z RCP)
+3. Historia pobytów w CRM (powiązanie gościa z rezerwacjami)
+4. Rozliczenie końcowe podnajmu (checkout settlement)
+5. Panel statystyk dla pracowników RCP
+6. Harmonogram przeglądów technicznych z automatycznymi przypomnieniami
+7. Dynamiczne dashboardowe widżety (konfigurowalne)
+
+### UI/UX i wydajność:
+8. Eksport do Excel z dowolnej tabeli
+9. Lazy loading wszystkich stron (code splitting)
+10. Ujednolicenie tabel w całej aplikacji
+11. Paginacja po stronie serwera
+12. Animacje i mikro-interakcje
+13. Poprawienie spójności wizualnej sidebara (subtelne gradienty/efekty)
+14. Wskaźniki postępu i stany ładowania
+15. Tryb drukowania (print-friendly CSS)
+
+### Odłożone na później:
+- Ulepszone widoki mobilne (karty zamiast tabel na małych ekranach)
+
 ## External Dependencies
 *   **Replit Auth:** Main application authentication.
 *   **PostgreSQL (Neon):** Primary database.
