@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, ChevronLeft, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye, Copy, RefreshCw, Eraser } from "lucide-react";
+import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, ChevronLeft, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye, Copy, RefreshCw, Eraser, FileUp, Download, CheckCircle2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -961,6 +961,20 @@ function ContractCard({ contract, ownerName, onEdit, onDelete }: {
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {contract.pdfPath && (
+              <Button size="icon" variant="ghost" onClick={async () => {
+                try {
+                  const res = await fetch(`/api/owner-contracts/${contract.id}/pdf`, { credentials: 'include' });
+                  if (!res.ok) throw new Error();
+                  const { url } = await res.json();
+                  window.open(url, '_blank');
+                } catch {
+                  toast({ title: "Błąd", description: "Nie udało się pobrać PDF", variant: "destructive" });
+                }
+              }} data-testid={`btn-download-contract-pdf-${contract.id}`} title="Pobierz PDF">
+                <Download className="h-4 w-4" />
+              </Button>
+            )}
             <Button size="icon" variant="ghost" onClick={onEdit} data-testid={`btn-edit-apt-contract-${contract.id}`}>
               <Pencil className="h-4 w-4" />
             </Button>
@@ -1056,6 +1070,14 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
   const [showCostsDialog, setShowCostsDialog] = useState(false);
   const [showRevenueDialog, setShowRevenueDialog] = useState(false);
   const [savedContractData, setSavedContractData] = useState<any>(null);
+  const [pdfImportOpen, setPdfImportOpen] = useState(false);
+  const [pdfParsing, setPdfParsing] = useState(false);
+  const [pdfParsed, setPdfParsed] = useState<any>(null);
+  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
+  const [pdfFormOwnerId, setPdfFormOwnerId] = useState("");
+  const [pdfFormApartmentIds, setPdfFormApartmentIds] = useState<number[]>([apartment.id]);
+  const [pdfFormAllocations, setPdfFormAllocations] = useState<{apartmentId: number; rentAmount: string}[]>([]);
+  const [pdfSaving, setPdfSaving] = useState(false);
 
   function openContractForm(contract: OwnerContract | null) {
     setEditingContract(contract);
@@ -1074,6 +1096,157 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
     setFormPaymentFrequency(contract?.paymentFrequency || "MIESIECZNIE");
     setFormPaymentDay(String(contract?.paymentDay || "10"));
     setContractFormOpen(true);
+  }
+
+  async function handlePdfUpload(files: File[]) {
+    if (files.length === 0) return;
+    setPdfFiles(files);
+    setPdfParsing(true);
+    setPdfParsed(null);
+    try {
+      const formData = new FormData();
+      for (const f of files) formData.append('files', f);
+      const response = await fetch('/api/parse-owner-contract-pdf', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Błąd parsowania');
+      }
+      const result = await response.json();
+      const ext = result.extracted;
+      setPdfParsed(ext);
+
+      if (ext.ownerFirstName || ext.ownerLastName || ext.ownerCompanyName) {
+        const searchName = ext.ownerCompanyName || `${ext.ownerFirstName || ''} ${ext.ownerLastName || ''}`.trim();
+        const matchedOwner = ownersList?.find(o => {
+          const oName = o.name?.toLowerCase() || '';
+          return oName.includes(searchName.toLowerCase()) || searchName.toLowerCase().includes(oName);
+        });
+        if (matchedOwner) setPdfFormOwnerId(String(matchedOwner.id));
+      }
+
+      if (ext.apartments && ext.apartments.length > 0) {
+        const matchedIds: number[] = [];
+        for (const extApt of ext.apartments) {
+          const searchStr = (extApt.name || extApt.address || '').toLowerCase();
+          const matched = allApartments.find(a =>
+            a.name.toLowerCase().includes(searchStr) || searchStr.includes(a.name.toLowerCase()) ||
+            (extApt.address && a.address && a.address.toLowerCase().includes(extApt.address.toLowerCase()))
+          );
+          if (matched) matchedIds.push(matched.id);
+        }
+        if (matchedIds.length > 0) setPdfFormApartmentIds(matchedIds);
+      }
+
+      toast({ title: "Sukces", description: `Przeanalizowano ${result.pages} stron dokumentu` });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message || "Nie udało się sparsować PDF", variant: "destructive" });
+    } finally {
+      setPdfParsing(false);
+    }
+  }
+
+  async function handlePdfImportSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!pdfFormOwnerId) {
+      toast({ title: "Błąd", description: "Wybierz właściciela", variant: "destructive" });
+      return;
+    }
+    if (pdfFormApartmentIds.length === 0) {
+      toast({ title: "Błąd", description: "Wybierz przynajmniej jeden apartament", variant: "destructive" });
+      return;
+    }
+    setPdfSaving(true);
+    try {
+      const fd = new FormData(e.currentTarget);
+      const rentVal = fd.get("pdfMonthlyRent");
+      const startVal = fd.get("pdfStartDate");
+      if (!rentVal || !String(rentVal).trim()) {
+        toast({ title: "Błąd", description: "Podaj kwotę czynszu miesięcznego", variant: "destructive" });
+        setPdfSaving(false);
+        return;
+      }
+      if (!startVal || !String(startVal).trim()) {
+        toast({ title: "Błąd", description: "Podaj datę rozpoczęcia umowy", variant: "destructive" });
+        setPdfSaving(false);
+        return;
+      }
+      const body: any = {
+        ownerId: Number(pdfFormOwnerId),
+        apartmentId: pdfFormApartmentIds[0] || apartment.id,
+        monthlyRent: rentVal,
+        additionalFees: fd.get("pdfAdditionalFees") || null,
+        startDate: startVal,
+        endDate: fd.get("pdfEndDate") || null,
+        contractType: fd.get("pdfContractType") || "UMOWA",
+        notes: fd.get("pdfNotes") || null,
+        status: "AKTYWNA",
+        paymentFrequency: fd.get("pdfPaymentFrequency") || "MIESIECZNIE",
+        paymentDay: fd.get("pdfPaymentDay") ? Number(fd.get("pdfPaymentDay")) : 10,
+        extractedData: JSON.stringify(pdfParsed),
+      };
+      if (pdfFormApartmentIds.length > 1) {
+        const totalRent = parseFloat(String(body.monthlyRent) || '0');
+        const totalFees = parseFloat(String(body.additionalFees) || '0');
+        const equalRent = Math.round((totalRent / pdfFormApartmentIds.length) * 100) / 100;
+        const equalFees = Math.round((totalFees / pdfFormApartmentIds.length) * 100) / 100;
+        body.allocations = pdfFormApartmentIds.map(aptId => {
+          const alloc = pdfFormAllocations.find(a => a.apartmentId === aptId);
+          return {
+            apartmentId: aptId,
+            rentAmount: alloc?.rentAmount || String(equalRent),
+            additionalFeesAmount: String(equalFees),
+          };
+        });
+      } else {
+        body.allocations = [{
+          apartmentId: pdfFormApartmentIds[0] || apartment.id,
+          rentAmount: body.monthlyRent,
+          additionalFeesAmount: body.additionalFees || '0',
+        }];
+      }
+
+      const res = await apiRequest("POST", "/api/owner-contracts", body);
+      const contractData = await res.json();
+
+      let pdfUploaded = false;
+      if (contractData?.id && pdfFiles.length > 0) {
+        try {
+          const uploadForm = new FormData();
+          uploadForm.append('file', pdfFiles[0]);
+          const uploadRes = await fetch(`/api/owner-contracts/${contractData.id}/upload-pdf`, {
+            method: 'POST',
+            body: uploadForm,
+            credentials: 'include',
+          });
+          pdfUploaded = uploadRes.ok;
+        } catch {
+          pdfUploaded = false;
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/owner-contracts"] });
+      setPdfImportOpen(false);
+      setPdfParsed(null);
+      setPdfFiles([]);
+      if (!pdfUploaded && pdfFiles.length > 0) {
+        toast({ title: "Umowa zapisana", description: "Dane umowy zostały zapisane, ale nie udało się załączyć pliku PDF. Możesz dodać go później.", variant: "default" });
+      } else {
+        toast({ title: "Zapisano", description: "Umowa została zaimportowana z PDF" });
+      }
+
+      if (contractData?.id) {
+        setSavedContractData(contractData);
+        setShowCostsDialog(true);
+      }
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message || "Nie udało się zapisać umowy", variant: "destructive" });
+    } finally {
+      setPdfSaving(false);
+    }
   }
 
   const contractMutation = useMutation({
@@ -1643,9 +1816,14 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
       <div className="border-t pt-4 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-semibold" data-testid="text-current-contracts-title">Aktualna umowa</h3>
-          <Button size="sm" onClick={() => openContractForm(null)} data-testid="btn-add-contract-apt">
-            <Plus className="h-4 w-4 mr-1" /> Dodaj nową umowę
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setPdfImportOpen(true); setPdfParsed(null); setPdfFiles([]); setPdfFormOwnerId(String(apartment.ownerId || "")); setPdfFormApartmentIds([apartment.id]); setPdfFormAllocations([]); }} data-testid="btn-import-contract-pdf">
+              <FileUp className="h-4 w-4 mr-1" /> Importuj z PDF
+            </Button>
+            <Button size="sm" onClick={() => openContractForm(null)} data-testid="btn-add-contract-apt">
+              <Plus className="h-4 w-4 mr-1" /> Dodaj nową umowę
+            </Button>
+          </div>
         </div>
 
         {activeContracts.length === 0 ? (
@@ -1693,6 +1871,218 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
           </div>
         )}
       </div>
+
+      <Dialog open={pdfImportOpen} onOpenChange={v => { setPdfImportOpen(v); if (!v) { setPdfParsed(null); setPdfFiles([]); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-pdf-import-title">
+              <FileUp className="h-5 w-5 inline mr-2" />
+              Importuj umowę właściciela z PDF
+            </DialogTitle>
+          </DialogHeader>
+
+          {!pdfParsed && !pdfParsing && (
+            <div className="space-y-4">
+              <div
+                className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-all"
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const files = Array.from(e.dataTransfer.files);
+                  if (files.length > 0) handlePdfUpload(files);
+                }}
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.pdf,.jpg,.jpeg,.png,.webp';
+                  input.multiple = true;
+                  input.onchange = () => {
+                    if (input.files) handlePdfUpload(Array.from(input.files));
+                  };
+                  input.click();
+                }}
+                data-testid="dropzone-pdf-import"
+              >
+                <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                <p className="text-sm font-medium">Przeciągnij plik PDF lub kliknij aby wybrać</p>
+                <p className="text-xs text-muted-foreground mt-1">Obsługiwane formaty: PDF, JPG, PNG, WEBP</p>
+              </div>
+            </div>
+          )}
+
+          {pdfParsing && (
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="text-sm font-medium">Analizuję dokument za pomocą AI...</p>
+                <p className="text-xs text-muted-foreground mt-1">To może potrwać kilka sekund</p>
+              </div>
+            </div>
+          )}
+
+          {pdfParsed && !pdfParsing && (
+            <form onSubmit={handlePdfImportSave} className="space-y-4">
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  Dane wyciągnięte z PDF. Sprawdź i skoryguj przed zapisem.
+                </p>
+              </div>
+
+              {(pdfParsed.ownerFirstName || pdfParsed.ownerLastName || pdfParsed.ownerCompanyName) && (
+                <div className="p-3 rounded-lg bg-muted/30 border text-xs space-y-1">
+                  <p className="font-semibold text-sm">Dane właściciela z PDF:</p>
+                  {pdfParsed.ownerCompanyName && <p>Firma: {pdfParsed.ownerCompanyName}</p>}
+                  {(pdfParsed.ownerFirstName || pdfParsed.ownerLastName) && <p>Imię i nazwisko: {pdfParsed.ownerFirstName} {pdfParsed.ownerLastName}</p>}
+                  {pdfParsed.ownerNip && <p>NIP: {pdfParsed.ownerNip}</p>}
+                  {pdfParsed.ownerAddress && <p>Adres: {pdfParsed.ownerAddress}</p>}
+                  {pdfParsed.ownerPhone && <p>Tel: {pdfParsed.ownerPhone}</p>}
+                  {pdfParsed.ownerEmail && <p>Email: {pdfParsed.ownerEmail}</p>}
+                  {pdfParsed.ownerBankAccount && <p>Konto: {pdfParsed.ownerBankAccount}</p>}
+                </div>
+              )}
+
+              <div>
+                <Label>Właściciel w systemie</Label>
+                <Select value={pdfFormOwnerId} onValueChange={setPdfFormOwnerId}>
+                  <SelectTrigger data-testid="select-pdf-owner"><SelectValue placeholder="Wybierz właściciela" /></SelectTrigger>
+                  <SelectContent>
+                    {ownersList?.map(o => <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Apartamenty</Label>
+                {pdfParsed.apartments?.length > 0 && (
+                  <div className="text-xs text-muted-foreground mb-1">
+                    Z PDF: {pdfParsed.apartments.map((a: any) => a.name || a.address).join(", ")}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {allApartments.map(a => (
+                    <Badge
+                      key={a.id}
+                      variant={pdfFormApartmentIds.includes(a.id) ? "default" : "outline"}
+                      className="cursor-pointer text-xs"
+                      onClick={() => {
+                        setPdfFormApartmentIds(prev =>
+                          prev.includes(a.id) ? prev.filter(x => x !== a.id) : [...prev, a.id]
+                        );
+                      }}
+                      data-testid={`badge-pdf-apt-${a.id}`}
+                    >
+                      {a.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Czynsz miesięczny (brutto)</Label>
+                  <Input name="pdfMonthlyRent" type="number" step="0.01" defaultValue={pdfParsed.monthlyRent || ""} data-testid="input-pdf-rent" />
+                </div>
+                <div>
+                  <Label>Opłaty dodatkowe</Label>
+                  <Input name="pdfAdditionalFees" type="number" step="0.01" defaultValue={pdfParsed.additionalFees || ""} data-testid="input-pdf-fees" />
+                </div>
+              </div>
+
+              {pdfFormApartmentIds.length > 1 && (
+                <div className="space-y-2 p-3 rounded-lg border bg-muted/20">
+                  <Label className="text-xs font-semibold">Alokacja czynszu na apartamenty</Label>
+                  {pdfFormApartmentIds.map(aptId => {
+                    const apt = allApartments.find(a => a.id === aptId);
+                    const alloc = pdfFormAllocations.find(a => a.apartmentId === aptId);
+                    return (
+                      <div key={aptId} className="flex items-center gap-2">
+                        <span className="text-xs min-w-[120px]">{apt?.name || aptId}</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Czynsz"
+                          value={alloc?.rentAmount || ""}
+                          onChange={e => {
+                            setPdfFormAllocations(prev => {
+                              const next = prev.filter(a => a.apartmentId !== aptId);
+                              next.push({ apartmentId: aptId, rentAmount: e.target.value });
+                              return next;
+                            });
+                          }}
+                          className="h-8 text-xs"
+                          data-testid={`input-pdf-alloc-${aptId}`}
+                        />
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] text-muted-foreground">Puste pola = równy podział łącznego czynszu</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Data od</Label>
+                  <Input name="pdfStartDate" type="date" defaultValue={pdfParsed.startDate || ""} data-testid="input-pdf-start" />
+                </div>
+                <div>
+                  <Label>Data do</Label>
+                  <Input name="pdfEndDate" type="date" defaultValue={pdfParsed.endDate || ""} data-testid="input-pdf-end" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label>Typ umowy</Label>
+                  <select name="pdfContractType" defaultValue={pdfParsed.contractType || "UMOWA"} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" data-testid="select-pdf-contract-type">
+                    <option value="UMOWA">Umowa</option>
+                    <option value="ANEKS">Aneks</option>
+                    <option value="POROZUMIENIE">Porozumienie</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>Częstotliwość płatności</Label>
+                  <select name="pdfPaymentFrequency" defaultValue={pdfParsed.paymentFrequency || "MIESIECZNIE"} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" data-testid="select-pdf-frequency">
+                    <option value="MIESIECZNIE">Miesięcznie</option>
+                    <option value="KWARTALNIE">Kwartalnie</option>
+                    <option value="POLROCZNIE">Półrocznie</option>
+                    <option value="ROCZNIE">Rocznie</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>Dzień płatności</Label>
+                  <Input name="pdfPaymentDay" type="number" min={1} max={31} defaultValue={pdfParsed.paymentDay || "10"} data-testid="input-pdf-payment-day" />
+                </div>
+              </div>
+
+              {(pdfParsed.depositAmount || pdfParsed.vatRate || pdfParsed.noticePeriod) && (
+                <div className="p-3 rounded-lg bg-muted/20 border text-xs space-y-1">
+                  <p className="font-semibold text-sm">Dodatkowe informacje z PDF:</p>
+                  {pdfParsed.depositAmount && <p>Kaucja: {pdfParsed.depositAmount} zł</p>}
+                  {pdfParsed.vatRate && <p>Stawka VAT: {pdfParsed.vatRate}</p>}
+                  {pdfParsed.noticePeriod && <p>Okres wypowiedzenia: {pdfParsed.noticePeriod}</p>}
+                </div>
+              )}
+
+              <div>
+                <Label>Notatki / uwagi</Label>
+                <Textarea name="pdfNotes" defaultValue={pdfParsed.notes || ""} rows={3} className="text-xs" data-testid="textarea-pdf-notes" />
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setPdfImportOpen(false); setPdfParsed(null); setPdfFiles([]); }}>
+                  Anuluj
+                </Button>
+                <Button type="submit" disabled={pdfSaving || !pdfFormOwnerId} data-testid="btn-save-pdf-import">
+                  {pdfSaving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Zapisz umowę
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={contractFormOpen} onOpenChange={v => { setContractFormOpen(v); if (!v) { setEditingContract(null); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">

@@ -6265,6 +6265,183 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.post('/api/parse-owner-contract-pdf', isAuthenticated, contractUpload.array('files', 20), async (req, res) => {
+    const tmpFiles: string[] = [];
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "Brak plików" });
+      }
+
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+      for (const file of files) {
+        const ext = file.originalname.toLowerCase();
+        const isAllowed = allowedTypes.includes(file.mimetype) ||
+          ext.endsWith('.pdf') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') ||
+          ext.endsWith('.png') || ext.endsWith('.webp') || ext.endsWith('.heic');
+        if (!isAllowed) {
+          return res.status(400).json({ message: `Nieobsługiwany format pliku: ${file.originalname}. Dozwolone: PDF, JPG, PNG, WEBP` });
+        }
+      }
+
+      const tmpDir = os.tmpdir();
+      const pageImages: string[] = [];
+
+      for (const file of files) {
+        if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+          const pdfPath = path.join(tmpDir, `owner_contract_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+          fs.writeFileSync(pdfPath, file.buffer);
+          tmpFiles.push(pdfPath);
+
+          const prefix = path.join(tmpDir, `owner_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+          try {
+            execSync('which pdftoppm', { timeout: 5000 });
+          } catch {
+            return res.status(500).json({ message: "Brak narzędzia pdftoppm na serwerze. Obsługiwane są pliki graficzne (JPG, PNG, WEBP). Skonwertuj PDF na obrazy przed uploadem." });
+          }
+          execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+
+          const pageFiles = fs.readdirSync(tmpDir)
+            .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+            .sort();
+
+          for (const pageFile of pageFiles) {
+            const pagePath = path.join(tmpDir, pageFile);
+            tmpFiles.push(pagePath);
+            const imgBuffer = fs.readFileSync(pagePath);
+            pageImages.push(imgBuffer.toString('base64'));
+          }
+        } else {
+          pageImages.push(file.buffer.toString('base64'));
+        }
+      }
+
+      if (pageImages.length === 0) {
+        return res.status(400).json({ message: "Nie udało się odczytać plików" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const maxPages = Math.min(pageImages.length, 8);
+      const content: any[] = [
+        {
+          type: 'text',
+          text: `Przeanalizuj te zdjecia/strony umowy najmu z wlascicielem nieruchomosci (umowa miedzy agencja/firma zarzadzajaca a wlascicielem mieszkania/apartamentu). Wyciagnij nastepujace dane w formacie JSON.
+Jesli dane nie wystepuja w dokumencie, wpisz null.
+{
+  "ownerFirstName": "imie wlasciciela",
+  "ownerLastName": "nazwisko wlasciciela",
+  "ownerCompanyName": "nazwa firmy wlasciciela (jesli jest firma)",
+  "ownerNip": "NIP wlasciciela",
+  "ownerPesel": "PESEL wlasciciela",
+  "ownerAddress": "pelny adres wlasciciela (ulica, numer, kod pocztowy, miasto)",
+  "ownerPhone": "telefon wlasciciela",
+  "ownerEmail": "email wlasciciela",
+  "ownerBankAccount": "numer konta bankowego wlasciciela",
+  "apartments": [
+    {
+      "name": "nazwa/numer apartamentu/lokalu (np. 'Studio Superior 305' lub 'Apartament 12A')",
+      "address": "pelny adres apartamentu (ulica, numer, kod pocztowy, miasto)",
+      "floor": "pietro (jesli podane)",
+      "area": "powierzchnia w m2 (jesli podana, jako liczba)"
+    }
+  ],
+  "startDate": "YYYY-MM-DD data rozpoczecia umowy",
+  "endDate": "YYYY-MM-DD data zakonczenia umowy (null jesli bezterminowa)",
+  "monthlyRent": kwota czynszu miesiecznego BRUTTO jako liczba. Jesli na umowie widnieje kwota netto + VAT, ZAWSZE podaj kwote brutto lacznie z podatkiem,
+  "additionalFees": dodatkowe oplaty miesieczne BRUTTO (administracja, wspolnota, itp.) jako liczba lub null,
+  "paymentFrequency": "MIESIECZNIE" lub "KWARTALNIE" lub "POLROCZNIE" lub "ROCZNIE",
+  "paymentDay": dzien miesiaca do kiedy nalezy oplacic (jako liczba, np. 10),
+  "contractType": "UMOWA" lub "ANEKS" lub "POROZUMIENIE",
+  "depositAmount": kwota kaucji jako liczba lub null,
+  "vatRate": "stawka VAT np. 23% lub zw (zwolniony)",
+  "noticePeriod": "okres wypowiedzenia (np. '3 miesiace', '1 miesiac')" lub null,
+  "notes": "istotne uwagi, warunki szczegolne, dodatkowe ustalenia z umowy (krotko, max 500 znakow)" lub null
+}
+WAZNE:
+- Pole "apartments" to TABLICA - jesli umowa dotyczy jednego mieszkania, zwroc tablice z jednym elementem. Jesli wielu - wypisz wszystkie.
+- Jesli czynsz jest podany lacznie dla wielu mieszkan, podaj laczna kwote w monthlyRent.
+- Kwoty zawsze BRUTTO (z VAT). Jesli kwota netto + VAT, oblicz brutto.
+Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
+        }
+      ];
+
+      for (let i = 0; i < maxPages; i++) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:image/png;base64,${pageImages[i]}` }
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content }],
+        max_tokens: 4000,
+      });
+
+      const rawText = response.choices[0]?.message?.content || '';
+      const jsonMatch = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+      let extracted;
+      try {
+        extracted = JSON.parse(jsonMatch);
+      } catch {
+        return res.status(422).json({ message: "Nie udało się sparsować odpowiedzi AI", raw: rawText });
+      }
+
+      res.json({ extracted, pages: pageImages.length });
+    } catch (err: any) {
+      console.error("Owner contract parse error:", err);
+      res.status(500).json({ message: "Błąd parsowania: " + (err.message || "Nieznany błąd") });
+    } finally {
+      for (const f of tmpFiles) {
+        try { fs.unlinkSync(f); } catch {}
+      }
+    }
+  });
+
+  app.post('/api/owner-contracts/:id/upload-pdf', isAuthenticated, contractUpload.single('file'), async (req, res) => {
+    try {
+      const contractId = Number(req.params.id);
+      const file = req.file;
+      if (!file) return res.status(400).json({ message: "Brak pliku" });
+
+      const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
+      const fileName = `owner_contract_${contractId}_${Date.now()}.pdf`;
+      const objectPath = `${privateDir}/owner-contracts/${fileName}`;
+
+      await osService.uploadObject(objectPath, file.buffer, file.mimetype || 'application/pdf');
+
+      await db.update(ownerContracts).set({ pdfPath: objectPath }).where(eq(ownerContracts.id, contractId));
+
+      res.json({ pdfPath: objectPath });
+    } catch (err: any) {
+      console.error("Upload owner contract PDF error:", err);
+      res.status(500).json({ message: err.message || "Błąd uploadu" });
+    }
+  });
+
+  app.get('/api/owner-contracts/:id/pdf', isAuthenticated, async (req, res) => {
+    try {
+      const contractId = Number(req.params.id);
+      const [contract] = await db.select().from(ownerContracts).where(eq(ownerContracts.id, contractId)).limit(1);
+      if (!contract || !contract.pdfPath) return res.status(404).json({ message: "Brak PDF" });
+
+      const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const url = await osService.getPresignedDownloadUrl(contract.pdfPath, 300);
+      res.json({ url });
+    } catch (err: any) {
+      console.error("Get owner contract PDF error:", err);
+      res.status(500).json({ message: err.message || "Błąd pobierania" });
+    }
+  });
+
   // ============ Handover Protocols (Protokoły zdawczo-odbiorcze) ============
 
   app.get('/api/handover-protocols', isAuthenticated, async (req, res) => {

@@ -35,7 +35,8 @@ The application utilizes a modern full-stack architecture.
     *   CRUD operations for apartments, reservations (short-term, group support, status tracking), and leases (long-term contracts).
     *   Gantt-chart-style calendar (Terminarz) for visualizing reservations, blockades, and subleases with drag-and-drop.
 *   **Document & Workflow Automation:**
-    *   AI-powered PDF contract import (GPT-4o vision OCR for data extraction).
+    *   AI-powered PDF contract import (GPT-4o vision OCR for data extraction) for subleases and owner contracts.
+    *   Owner contract PDF import: drag-drop upload → GPT-4o vision parsing → auto-matching owner/apartments → editable form → save with PDF in Object Storage. Endpoints: `POST /api/parse-owner-contract-pdf`, `POST /api/owner-contracts/:id/upload-pdf`, `GET /api/owner-contracts/:id/pdf`.
     *   Word contract generation and invoice generation (with PDF export).
     *   Cost invoice management (Dokumenty Księgowe) with drag-drop upload and status tracking.
     *   Document templates page (`/document-templates`) with categories: "Umowy" (lease templates), "Dokumenty księgowe" (accounting note template). Templates generated via `server/generate-templates.ts` using `docx` library, uploaded to Object Storage.
