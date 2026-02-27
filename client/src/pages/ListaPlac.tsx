@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Banknote, Plus, Play, CheckCircle, Trash2, Pencil, Users, DollarSign, Receipt } from "lucide-react";
+import { Banknote, Plus, Play, CheckCircle, Trash2, Pencil, Users, DollarSign, Receipt, Undo2 } from "lucide-react";
 import type { PayrollPeriod, PayrollEntry, Employee } from "@shared/schema";
 
 const MONTHS = [
@@ -129,6 +129,20 @@ export default function ListaPlac() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payroll-periods"] });
       toast({ title: "Okres zatwierdzony" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const revertApprovalMutation = useMutation({
+    mutationFn: async (periodId: number) => {
+      const res = await apiRequest("PATCH", `/api/payroll-periods/${periodId}`, { status: "WYGENEROWANY", approvedAt: null, approvedBy: null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payroll-periods"] });
+      toast({ title: "Cofnięto zatwierdzenie", description: "Okres wrócił do statusu 'Wygenerowany'" });
     },
     onError: (err: Error) => {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
@@ -268,21 +282,37 @@ export default function ListaPlac() {
                         onClick={(e) => { e.stopPropagation(); approveMutation.mutate(period.id); }}
                         data-testid={`button-approve-${period.id}`}
                         disabled={approveMutation.isPending}
+                        title="Zatwierdź"
                       >
                         <CheckCircle className="h-4 w-4" />
                       </Button>
                     )}
-                    {period.status !== "ZATWIERDZONY" && (
+                    {period.status === "ZATWIERDZONY" && (
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={(e) => { e.stopPropagation(); deletePeriodMutation.mutate(period.id); }}
-                        data-testid={`button-delete-period-${period.id}`}
-                        disabled={deletePeriodMutation.isPending}
+                        onClick={(e) => { e.stopPropagation(); revertApprovalMutation.mutate(period.id); }}
+                        data-testid={`button-revert-${period.id}`}
+                        disabled={revertApprovalMutation.isPending}
+                        title="Cofnij zatwierdzenie"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Undo2 className="h-4 w-4" />
                       </Button>
                     )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (period.status === "ZATWIERDZONY" && !confirm("Ten okres jest zatwierdzony. Czy na pewno chcesz go usunąć?")) return;
+                        deletePeriodMutation.mutate(period.id);
+                      }}
+                      data-testid={`button-delete-period-${period.id}`}
+                      disabled={deletePeriodMutation.isPending}
+                      title="Usuń okres"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               ))

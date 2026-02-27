@@ -10289,7 +10289,15 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
 
   app.patch("/api/payroll-periods/:id", async (req, res) => {
     try {
-      const period = await storage.updatePayrollPeriod(parseInt(req.params.id), req.body);
+      const updateData: any = { ...req.body };
+      if (updateData.status === "ZATWIERDZONY" && !updateData.approvedAt) {
+        updateData.approvedAt = new Date();
+      }
+      if (updateData.approvedAt === null) {
+        updateData.approvedAt = null;
+        updateData.approvedBy = null;
+      }
+      const period = await storage.updatePayrollPeriod(parseInt(req.params.id), updateData);
       res.json(period);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

@@ -498,7 +498,7 @@ export interface IStorage {
   getPayrollPeriods(): Promise<PayrollPeriod[]>;
   getPayrollPeriod(id: number): Promise<PayrollPeriod | undefined>;
   createPayrollPeriod(data: InsertPayrollPeriod): Promise<PayrollPeriod>;
-  updatePayrollPeriod(id: number, data: Partial<InsertPayrollPeriod>): Promise<PayrollPeriod>;
+  updatePayrollPeriod(id: number, data: Record<string, any>): Promise<PayrollPeriod>;
   deletePayrollPeriod(id: number): Promise<void>;
   getPayrollEntries(periodId: number): Promise<(PayrollEntry & { employee: Employee })[]>;
   createPayrollEntry(data: InsertPayrollEntry): Promise<PayrollEntry>;
@@ -2327,7 +2327,7 @@ export class DatabaseStorage implements IStorage {
     return period;
   }
 
-  async updatePayrollPeriod(id: number, data: Partial<InsertPayrollPeriod>): Promise<PayrollPeriod> {
+  async updatePayrollPeriod(id: number, data: Record<string, any>): Promise<PayrollPeriod> {
     const [period] = await db.update(payrollPeriods).set(data).where(eq(payrollPeriods.id, id)).returning();
     return period;
   }
