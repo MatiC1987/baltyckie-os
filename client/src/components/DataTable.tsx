@@ -203,7 +203,7 @@ export function DataTable<T>({
                       {col.header}
                       {col.sortable !== false && (col.accessorKey || col.sortFn) && (
                         sortCol === index ? (
-                          sortDir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-primary" /> : <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                          <ChevronUp className={`h-3.5 w-3.5 text-primary sort-indicator ${sortDir === "asc" ? "sort-indicator-asc" : "sort-indicator-desc"}`} />
                         ) : (
                           <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/40" />
                         )

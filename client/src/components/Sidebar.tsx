@@ -64,7 +64,7 @@ function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: N
                 className={cn(
                   "relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 cursor-pointer mx-auto",
                   isActive
-                    ? "!text-[#5ADBFA] bg-[#5ADBFA]/10"
+                    ? "!text-[#5ADBFA] bg-[#5ADBFA]/10 shadow-[0_0_10px_rgba(90,219,250,0.15)]"
                     : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
                 )}
               >
@@ -92,7 +92,7 @@ function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: N
         className={cn(
           "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
           isActive
-            ? "!text-[#5ADBFA] bg-[#5ADBFA]/5 shadow-[inset_2px_0_0_#5ADBFA]"
+            ? "!text-[#5ADBFA] sidebar-active-glow rounded-lg"
             : "text-slate-400 hover:text-slate-200 hover:bg-white/5 hover:shadow-[inset_2px_0_0_rgba(90,219,250,0.25)]"
         )}
       >

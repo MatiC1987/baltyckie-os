@@ -6,6 +6,7 @@ import { useReservations } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
 import { useAuth } from "@/hooks/use-auth";
 import { UserAvatar } from "@/components/UserAvatar";
+import { AnimatedCounter } from "@/components/AnimatedCounter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -422,8 +423,8 @@ export default function Dashboard() {
                         <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
                     </div>
-                    <p className="text-lg sm:text-xl font-bold mt-1 animate-count-up">
-                      {kpiStats.monthRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+                    <p className="text-lg sm:text-xl font-bold mt-1">
+                      <AnimatedCounter value={kpiStats.monthRevenue} suffix=" zł" />
                     </p>
                     {kpiStats.lastMonthRevenue > 0 && (
                       <p className={`text-xs mt-1 flex items-center gap-1 ${kpiStats.revenueChange >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
@@ -468,7 +469,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <p className={`text-lg sm:text-xl font-bold mt-1 ${Number(companyBalance?.totalBalance || 0) < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                      {Number(companyBalance?.totalBalance || 0).toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} zł
+                      <AnimatedCounter value={Number(companyBalance?.totalBalance || 0)} suffix=" zł" />
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">łączne saldo kont</p>
                   </CardContent>

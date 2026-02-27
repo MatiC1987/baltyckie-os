@@ -52,7 +52,7 @@ export function UserAvatar({ userId, firstName, lastName, photoUrl, size = "md",
       <img
         src={imgSrc}
         alt={`${firstName || ""} ${lastName || ""}`.trim() || "Avatar"}
-        className={cn("rounded-full object-cover shrink-0", sizeClass, className)}
+        className={cn("rounded-full object-cover shrink-0 ring-2 ring-[#5ADBFA]/30 ring-offset-1 ring-offset-background", sizeClass, className)}
         onError={() => setImgError(true)}
         data-testid={`avatar-${userId}`}
       />
@@ -61,7 +61,7 @@ export function UserAvatar({ userId, firstName, lastName, photoUrl, size = "md",
 
   return (
     <div
-      className={cn("rounded-full flex items-center justify-center text-white font-semibold shrink-0", sizeClass, colorClass, className)}
+      className={cn("rounded-full flex items-center justify-center text-white font-semibold shrink-0 ring-2 ring-white/20 ring-offset-1 ring-offset-background", sizeClass, colorClass, className)}
       data-testid={`avatar-${userId}`}
     >
       {initials}
