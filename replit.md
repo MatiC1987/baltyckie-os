@@ -38,6 +38,8 @@ The application utilizes a modern full-stack architecture.
     *   AI-powered PDF contract import (GPT-4o vision OCR for data extraction).
     *   Word contract generation and invoice generation (with PDF export).
     *   Cost invoice management (Dokumenty Księgowe) with drag-drop upload and status tracking.
+    *   Document templates page (`/document-templates`) with categories: "Umowy" (lease templates), "Dokumenty księgowe" (accounting note template). Templates generated via `server/generate-templates.ts` using `docx` library, uploaded to Object Storage.
+    *   Accounting note (Nota księgowa) PDF generation from media settlement reports via `POST /api/accounting-notes/generate` (jsPDF + jspdf-autotable). Includes company logo, QR code, issuer/tenant details, media consumption table, and total.
     *   Handover protocols for subleases with PDF generation.
 *   **User & Employee Management:**
     *   Internal user accounts with role-based permissions.

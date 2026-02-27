@@ -7,7 +7,7 @@ import fs from "fs";
 import path from "path";
 import { objectStorageClient, ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { db } from "./db";
-import { documentTemplates } from "@shared/schema";
+import { documentTemplates, documentCategories } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const logoPath = path.join(process.cwd(), "attached_assets/base_logo_white_background_1771500821040.png");
@@ -435,6 +435,176 @@ function generateCompanyTemplate(): Document {
   });
 }
 
+function createTableCell(text: string, opts?: { bold?: boolean; shading?: string; width?: number; alignment?: typeof AlignmentType[keyof typeof AlignmentType] }): TableCell {
+  return new TableCell({
+    width: opts?.width ? { size: opts.width, type: WidthType.PERCENTAGE } : undefined,
+    shading: opts?.shading ? { type: ShadingType.SOLID, color: opts.shading, fill: opts.shading } : undefined,
+    children: [
+      new Paragraph({
+        alignment: opts?.alignment,
+        children: [
+          new TextRun({ text, bold: opts?.bold, size: 20, font: "Calibri" }),
+        ],
+      }),
+    ],
+  });
+}
+
+function createPlaceholderCell(label: string, suffix?: string, opts?: { width?: number; alignment?: typeof AlignmentType[keyof typeof AlignmentType] }): TableCell {
+  return new TableCell({
+    width: opts?.width ? { size: opts.width, type: WidthType.PERCENTAGE } : undefined,
+    children: [
+      new Paragraph({
+        alignment: opts?.alignment,
+        children: [
+          createPlaceholder(label),
+          ...(suffix ? [new TextRun({ text: suffix, size: 20, font: "Calibri" })] : []),
+        ],
+      }),
+    ],
+  });
+}
+
+function generateAccountingNoteTemplate(): Document {
+  const headerTable = new Table({
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 50, type: WidthType.PERCENTAGE },
+            borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
+            children: [
+              createBoldParagraph("Wystawca:"),
+              mixed([{ text: "NAZWA_FIRMY", placeholder: true }]),
+              mixed([{ text: "NIP: " }, { text: "NIP_FIRMY", placeholder: true }]),
+              mixed([{ text: "ADRES_FIRMY", placeholder: true }]),
+              mixed([{ text: "Konto: " }, { text: "KONTO_BANKOWE", placeholder: true }]),
+            ],
+          }),
+          new TableCell({
+            width: { size: 50, type: WidthType.PERCENTAGE },
+            borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
+            children: [
+              createBoldParagraph("Obciążony:"),
+              mixed([{ text: "NAZWA_NAJEMCY", placeholder: true }]),
+              mixed([{ text: "NIP: " }, { text: "NIP_NAJEMCY", placeholder: true }]),
+              mixed([{ text: "ADRES_NAJEMCY", placeholder: true }]),
+            ],
+          }),
+        ],
+      }),
+    ],
+    width: { size: 100, type: WidthType.PERCENTAGE },
+  });
+
+  const mediaTable = new Table({
+    rows: [
+      new TableRow({
+        children: [
+          createTableCell("Medium", { bold: true, shading: "2980B9", width: 40 }),
+          createTableCell("Zużycie", { bold: true, shading: "2980B9", width: 30, alignment: AlignmentType.RIGHT }),
+          createTableCell("Koszt", { bold: true, shading: "2980B9", width: 30, alignment: AlignmentType.RIGHT }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          createTableCell("Energia elektryczna", { width: 40 }),
+          createPlaceholderCell("ZUZYCIE_PRAD", " kWh", { width: 30, alignment: AlignmentType.RIGHT }),
+          createPlaceholderCell("KOSZT_PRAD", " PLN", { width: 30, alignment: AlignmentType.RIGHT }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          createTableCell("Woda zimna", { width: 40 }),
+          createPlaceholderCell("ZUZYCIE_WODA_ZIMNA", " m³", { width: 30, alignment: AlignmentType.RIGHT }),
+          createPlaceholderCell("KOSZT_WODA_ZIMNA", " PLN", { width: 30, alignment: AlignmentType.RIGHT }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          createTableCell("Woda ciepła", { width: 40 }),
+          createPlaceholderCell("ZUZYCIE_WODA_CIEPLA", " m³", { width: 30, alignment: AlignmentType.RIGHT }),
+          createPlaceholderCell("KOSZT_WODA_CIEPLA", " PLN", { width: 30, alignment: AlignmentType.RIGHT }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          createTableCell("RAZEM DO ZAPŁATY", { bold: true, shading: "ECF0F1", width: 40 }),
+          createTableCell("", { shading: "ECF0F1", width: 30 }),
+          new TableCell({
+            width: { size: 30, type: WidthType.PERCENTAGE },
+            shading: { type: ShadingType.SOLID, color: "ECF0F1", fill: "ECF0F1" },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                children: [
+                  createPlaceholder("KWOTA_RAZEM"),
+                  new TextRun({ text: " PLN", bold: true, size: 20, font: "Calibri" }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+    width: { size: 100, type: WidthType.PERCENTAGE },
+  });
+
+  return new Document({
+    sections: [{
+      properties: {
+        page: { margin: { top: 1000, right: 1200, bottom: 1000, left: 1200 } },
+      },
+      children: [
+        createLogo(),
+        createTitle("NOTA KSIĘGOWA"),
+        mixed([
+          { text: "Nr: " },
+          { text: "NUMER_NOTY", placeholder: true },
+        ]),
+        mixed([
+          { text: "Data wystawienia: " },
+          { text: "DATA_WYSTAWIENIA", placeholder: true },
+        ]),
+        emptyLine(),
+        headerTable,
+        emptyLine(),
+        mixed([
+          { text: "Rozliczenie mediów - ", bold: true },
+          { text: "NAZWA_APARTAMENTU", placeholder: true },
+        ]),
+        mixed([
+          { text: "Okres: " },
+          { text: "OKRES_OD", placeholder: true },
+          { text: " - " },
+          { text: "OKRES_DO", placeholder: true },
+        ]),
+        emptyLine(),
+        mediaTable,
+        emptyLine(),
+        emptyLine(),
+        createParagraph("Nota księgowa nie jest fakturą VAT."),
+        createParagraph("Termin płatności: 14 dni od daty wystawienia."),
+        emptyLine(),
+        emptyLine(),
+        emptyLine(),
+        new Paragraph({
+          spacing: { before: 600, after: 100 },
+          children: [
+            new TextRun({ text: "________________________                                          ________________________", size: 20, font: "Calibri" }),
+          ],
+        }),
+        new Paragraph({
+          spacing: { after: 100 },
+          children: [
+            new TextRun({ text: "           Wystawca                                                                      Odbiorca", size: 18, font: "Calibri", italics: true }),
+          ],
+        }),
+      ],
+    }],
+  });
+}
+
 async function uploadToObjectStorage(buffer: Buffer, fileName: string): Promise<string> {
   const service = new ObjectStorageService();
   const privateDir = service.getPrivateObjectDir();
@@ -458,8 +628,35 @@ async function uploadToObjectStorage(buffer: Buffer, fileName: string): Promise<
   return `/objects/${objectName}`;
 }
 
+async function ensureCategory(name: string): Promise<number> {
+  const existing = await db.select().from(documentCategories).where(eq(documentCategories.name, name));
+  if (existing.length > 0) {
+    console.log(`Category "${name}" already exists (id: ${existing[0].id})`);
+    return existing[0].id;
+  }
+  const maxOrder = await db.select().from(documentCategories);
+  const nextOrder = maxOrder.length > 0 ? Math.max(...maxOrder.map(c => c.sortOrder ?? 0)) + 1 : 0;
+  const [inserted] = await db.insert(documentCategories).values({ name, sortOrder: nextOrder }).returning();
+  console.log(`Created category "${name}" (id: ${inserted.id})`);
+  return inserted.id;
+}
+
+async function upsertTemplate(name: string, categoryId: number, fileName: string, objectPath: string, description: string) {
+  const existing = await db.select().from(documentTemplates).where(eq(documentTemplates.name, name));
+  if (existing.length > 0) {
+    await db.update(documentTemplates).set({ objectPath, fileName, categoryId, description }).where(eq(documentTemplates.id, existing[0].id));
+    console.log(`Updated existing template "${name}" (id: ${existing[0].id})`);
+  } else {
+    const [inserted] = await db.insert(documentTemplates).values({ name, categoryId, fileName, objectPath, description }).returning();
+    console.log(`Inserted template "${name}" (id: ${inserted.id})`);
+  }
+}
+
 async function main() {
   try {
+    const umowyCategoryId = await ensureCategory("Umowy");
+    const dokumentyCategoryId = await ensureCategory("Dokumenty księgowe");
+
     console.log("Generating physical person template...");
     const physDoc = generatePhysicalPersonTemplate();
     const physBuffer = await Packer.toBuffer(physDoc);
@@ -470,6 +667,11 @@ async function main() {
     const compBuffer = await Packer.toBuffer(compDoc);
     console.log(`Company template: ${compBuffer.length} bytes`);
 
+    console.log("Generating accounting note template...");
+    const noteDoc = generateAccountingNoteTemplate();
+    const noteBuffer = await Packer.toBuffer(noteDoc);
+    console.log(`Accounting note template: ${noteBuffer.length} bytes`);
+
     console.log("Uploading to Object Storage...");
     const physPath = await uploadToObjectStorage(Buffer.from(physBuffer), "umowa_najem_osoba_fizyczna.docx");
     console.log(`Physical person uploaded: ${physPath}`);
@@ -477,37 +679,34 @@ async function main() {
     const compPath = await uploadToObjectStorage(Buffer.from(compBuffer), "umowa_najem_firma.docx");
     console.log(`Company uploaded: ${compPath}`);
 
-    const existingPhys = await db.select().from(documentTemplates).where(eq(documentTemplates.name, "Umowa najmu - osoba fizyczna"));
-    if (existingPhys.length > 0) {
-      await db.update(documentTemplates).set({ objectPath: physPath, fileName: "umowa_najem_osoba_fizyczna.docx" }).where(eq(documentTemplates.id, existingPhys[0].id));
-      console.log(`Updated existing physical person template (id: ${existingPhys[0].id})`);
-    } else {
-      const [inserted] = await db.insert(documentTemplates).values({
-        name: "Umowa najmu - osoba fizyczna",
-        categoryId: 3,
-        fileName: "umowa_najem_osoba_fizyczna.docx",
-        objectPath: physPath,
-        description: "Szablon umowy najmu mieszkania dla osoby fizycznej z placeholderami do edycji",
-      }).returning();
-      console.log(`Inserted physical person template (id: ${inserted.id})`);
-    }
+    const notePath = await uploadToObjectStorage(Buffer.from(noteBuffer), "nota_ksiegowa.docx");
+    console.log(`Accounting note uploaded: ${notePath}`);
 
-    const existingComp = await db.select().from(documentTemplates).where(eq(documentTemplates.name, "Umowa najmu - firma"));
-    if (existingComp.length > 0) {
-      await db.update(documentTemplates).set({ objectPath: compPath, fileName: "umowa_najem_firma.docx" }).where(eq(documentTemplates.id, existingComp[0].id));
-      console.log(`Updated existing company template (id: ${existingComp[0].id})`);
-    } else {
-      const [inserted] = await db.insert(documentTemplates).values({
-        name: "Umowa najmu - firma",
-        categoryId: 3,
-        fileName: "umowa_najem_firma.docx",
-        objectPath: compPath,
-        description: "Szablon umowy najmu pod warunkiem zawieszającym dla firmy z placeholderami do edycji",
-      }).returning();
-      console.log(`Inserted company template (id: ${inserted.id})`);
-    }
+    await upsertTemplate(
+      "Umowa najmu - osoba fizyczna",
+      umowyCategoryId,
+      "umowa_najem_osoba_fizyczna.docx",
+      physPath,
+      "Szablon umowy najmu mieszkania dla osoby fizycznej z placeholderami do edycji",
+    );
 
-    console.log("Done! Both templates generated, uploaded and registered.");
+    await upsertTemplate(
+      "Umowa najmu - firma",
+      umowyCategoryId,
+      "umowa_najem_firma.docx",
+      compPath,
+      "Szablon umowy najmu pod warunkiem zawieszającym dla firmy z placeholderami do edycji",
+    );
+
+    await upsertTemplate(
+      "Nota księgowa - rozliczenie mediów",
+      dokumentyCategoryId,
+      "nota_ksiegowa.docx",
+      notePath,
+      "Szablon noty księgowej do rozliczenia zużycia mediów (prąd, woda) z placeholderami do edycji",
+    );
+
+    console.log("Done! All templates generated, uploaded and registered.");
     process.exit(0);
   } catch (error) {
     console.error("Error:", error);

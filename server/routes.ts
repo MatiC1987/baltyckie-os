@@ -3808,7 +3808,7 @@ export async function registerRoutes(
       if (companyAddress) { y += 5; doc.text(rd(companyAddress), 14, y); }
       if (companyData?.bankAccount) { y += 5; doc.text(rd(`Konto: ${companyData.bankAccount}`), 14, y); }
 
-      let y2 = 46;
+      let y2 = headerY + 30;
       doc.setFont("helvetica", "bold");
       doc.text(rd("Obciazony:"), 110, y2);
       doc.setFont("helvetica", "normal");
