@@ -68,6 +68,14 @@ const TYPE_COLORS: Record<string, string> = {
   INNE: "bg-purple-500",
 };
 
+const RECURRENCE_OPTIONS = [
+  { value: 6, label: "Co 6 miesięcy" },
+  { value: 12, label: "Co 12 miesięcy (rocznie)" },
+  { value: 24, label: "Co 24 miesiące" },
+  { value: 36, label: "Co 36 miesięcy" },
+  { value: 60, label: "Co 60 miesięcy" },
+];
+
 const emptyForm = {
   apartmentId: null as number | null,
   inspectionType: "GAZOWY",
@@ -78,6 +86,7 @@ const emptyForm = {
   cost: "",
   contractor: "",
   contractorPhone: "",
+  recurrenceMonths: null as number | null,
 };
 
 export default function TechnicalInspections() {
@@ -154,6 +163,7 @@ export default function TechnicalInspections() {
       cost: insp.cost || "",
       contractor: insp.contractor || "",
       contractorPhone: insp.contractorPhone || "",
+      recurrenceMonths: (insp as any).recurrenceMonths || null,
     });
     setEditId(insp.id);
     setShowDialog(true);
@@ -172,6 +182,7 @@ export default function TechnicalInspections() {
       notes: form.notes || null,
       contractor: form.contractor || null,
       contractorPhone: form.contractorPhone || null,
+      recurrenceMonths: form.recurrenceMonths || null,
     };
     if (editId) {
       updateMutation.mutate({ id: editId, data: payload });
@@ -591,6 +602,23 @@ export default function TechnicalInspections() {
                 placeholder="0.00"
                 data-testid="input-cost"
               />
+            </div>
+            <div>
+              <Label>Cykliczność przeglądu</Label>
+              <Select
+                value={form.recurrenceMonths ? String(form.recurrenceMonths) : "none"}
+                onValueChange={v => setForm(f => ({ ...f, recurrenceMonths: v === "none" ? null : parseInt(v) }))}
+              >
+                <SelectTrigger data-testid="select-recurrence">
+                  <SelectValue placeholder="Brak cykliczności" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Brak cykliczności</SelectItem>
+                  {RECURRENCE_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Uwagi</Label>

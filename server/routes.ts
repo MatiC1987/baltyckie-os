@@ -10136,5 +10136,439 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // ==================== BANK STATEMENTS ====================
+  app.get("/api/bank-statements", async (_req, res) => {
+    try {
+      const statements = await storage.getBankStatements();
+      res.json(statements);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-statements", async (req, res) => {
+    try {
+      const statement = await storage.createBankStatement(req.body);
+      res.json(statement);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bank-statements/:id", async (req, res) => {
+    try {
+      await storage.deleteBankStatement(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bank-transactions", async (req, res) => {
+    try {
+      const statementId = req.query.statementId ? parseInt(req.query.statementId as string) : undefined;
+      const transactions = await storage.getBankTransactions(statementId);
+      res.json(transactions);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/bulk", async (req, res) => {
+    try {
+      const transactions = await storage.createBankTransactionsBulk(req.body);
+      res.json(transactions);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/bank-transactions/:id", async (req, res) => {
+    try {
+      const transaction = await storage.updateBankTransaction(parseInt(req.params.id), req.body);
+      res.json(transaction);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-statements/parse-csv", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const content = req.file.buffer.toString("utf-8");
+      const lines = content.split("\n").filter(l => l.trim());
+      const transactions: any[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(";").map(p => p.replace(/"/g, "").trim());
+        if (parts.length >= 4) {
+          transactions.push({
+            date: parts[0] || new Date().toISOString().split("T")[0],
+            description: parts[1] || parts[2] || "Transakcja",
+            amount: parts[3]?.replace(",", ".") || "0",
+            balance: parts[4]?.replace(",", ".") || null,
+            counterparty: parts[2] || null,
+          });
+        }
+      }
+      res.json({ transactions, rowCount: transactions.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/ai-categorize", async (req, res) => {
+    try {
+      const { transactions } = req.body;
+      if (!transactions || !Array.isArray(transactions)) {
+        return res.status(400).json({ message: "Brak transakcji" });
+      }
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI();
+      const prompt = `Jesteś asystentem finansowym zarządzającym wynajmem apartamentów. Kategoryzuj poniższe transakcje bankowe. Dostępne kategorie:
+- CZYNSZ (opłaty czynszowe, wynajem)
+- MEDIA (prąd, gaz, woda, ogrzewanie, internet)
+- WYNAGRODZENIA (pensje, zlecenia)
+- PODATKI (PIT, CIT, ZUS, składki)
+- NAPRAWY (konserwacja, remonty, materiały)
+- PRZYCHOD_REZERWACJA (wpływy od gości, Booking, Airbnb)
+- PRZYCHOD_PODNAJEM (wpływy od podnajemców)
+- UBEZPIECZENIE (polisy)
+- ADMINISTRACJA (opłaty administracyjne, biuro, materiały biurowe)
+- INNE (pozostałe)
+
+Transakcje do kategoryzacji:
+${transactions.map((t: any, i: number) => `${i + 1}. ${t.date} | ${t.amount} PLN | ${t.description} | ${t.counterparty || ""}`).join("\n")}
+
+Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": string, "confidence": number (0-1) }. Bez dodatkowego tekstu.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        max_tokens: 2000,
+      });
+
+      const text = response.choices[0]?.message?.content || "[]";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      const categories = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      res.json({ categories });
+    } catch (err: any) {
+      console.error("AI categorization error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== PAYROLL ====================
+  app.get("/api/payroll-periods", async (_req, res) => {
+    try {
+      const periods = await storage.getPayrollPeriods();
+      res.json(periods);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/payroll-periods/:id", async (req, res) => {
+    try {
+      const period = await storage.getPayrollPeriod(parseInt(req.params.id));
+      if (!period) return res.status(404).json({ message: "Nie znaleziono" });
+      res.json(period);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payroll-periods", async (req, res) => {
+    try {
+      const period = await storage.createPayrollPeriod(req.body);
+      res.json(period);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/payroll-periods/:id", async (req, res) => {
+    try {
+      const period = await storage.updatePayrollPeriod(parseInt(req.params.id), req.body);
+      res.json(period);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/payroll-periods/:id", async (req, res) => {
+    try {
+      await storage.deletePayrollPeriod(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/payroll-entries/:periodId", async (req, res) => {
+    try {
+      const entries = await storage.getPayrollEntries(parseInt(req.params.periodId));
+      res.json(entries);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payroll-entries", async (req, res) => {
+    try {
+      const entry = await storage.createPayrollEntry(req.body);
+      res.json(entry);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/payroll-entries/:id", async (req, res) => {
+    try {
+      const entry = await storage.updatePayrollEntry(parseInt(req.params.id), req.body);
+      res.json(entry);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/payroll-entries/:id", async (req, res) => {
+    try {
+      await storage.deletePayrollEntry(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payroll-periods/:id/generate", async (req, res) => {
+    try {
+      const periodId = parseInt(req.params.id);
+      const period = await storage.getPayrollPeriod(periodId);
+      if (!period) return res.status(404).json({ message: "Nie znaleziono okresu" });
+
+      const allEmployees = await storage.getEmployees();
+      const activeEmployees = allEmployees.filter(e => e.status === "AKTYWNY");
+      const { startDate, endDate } = req.body;
+
+      const entries: any[] = [];
+      for (const emp of activeEmployees) {
+        const timeEntries = await storage.getTimeEntries({ employeeId: emp.id, from: startDate, to: endDate });
+        let totalMinutes = 0;
+        for (const te of timeEntries) {
+          if (te.clockOut) {
+            const diff = new Date(te.clockOut).getTime() - new Date(te.clockIn).getTime();
+            totalMinutes += diff / 60000 - (te.breakMinutes || 0);
+          }
+        }
+        const totalHours = Math.round(totalMinutes / 60 * 100) / 100;
+        const overtimeHours = Math.max(0, totalHours - 160);
+        const rate = parseFloat(emp.hourlyRate || "0");
+        const basePay = Math.round(Math.min(totalHours, 160) * rate * 100) / 100;
+        const overtimePay = Math.round(overtimeHours * rate * 1.5 * 100) / 100;
+        const grossPay = basePay + overtimePay;
+        const netPay = Math.round(grossPay * 0.77 * 100) / 100;
+
+        entries.push({
+          periodId,
+          employeeId: emp.id,
+          totalHours: String(totalHours),
+          overtimeHours: String(overtimeHours),
+          hourlyRate: emp.hourlyRate || "0",
+          basePay: String(basePay),
+          overtimePay: String(overtimePay),
+          bonus: "0",
+          deductions: "0",
+          grossPay: String(grossPay),
+          netPay: String(netPay),
+        });
+      }
+
+      const created = await storage.createPayrollEntriesBulk(entries);
+      const totalGross = entries.reduce((s, e) => s + parseFloat(e.grossPay), 0);
+      const totalNet = entries.reduce((s, e) => s + parseFloat(e.netPay), 0);
+      await storage.updatePayrollPeriod(periodId, {
+        totalGross: String(totalGross),
+        totalNet: String(totalNet),
+        status: "WYGENEROWANY",
+      });
+
+      res.json({ entries: created, totalGross, totalNet });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== CHECKOUT SETTLEMENTS ====================
+  app.get("/api/checkout-settlements", async (_req, res) => {
+    try {
+      const settlements = await storage.getCheckoutSettlements();
+      res.json(settlements);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/checkout-settlements/:id", async (req, res) => {
+    try {
+      const settlement = await storage.getCheckoutSettlement(parseInt(req.params.id));
+      if (!settlement) return res.status(404).json({ message: "Nie znaleziono" });
+      res.json(settlement);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/checkout-settlements", async (req, res) => {
+    try {
+      const settlement = await storage.createCheckoutSettlement(req.body);
+      res.json(settlement);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/checkout-settlements/:id", async (req, res) => {
+    try {
+      const settlement = await storage.updateCheckoutSettlement(parseInt(req.params.id), req.body);
+      res.json(settlement);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/checkout-settlements/:id", async (req, res) => {
+    try {
+      await storage.deleteCheckoutSettlement(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== DASHBOARD WIDGETS ====================
+  app.get("/api/dashboard-widgets", async (req, res) => {
+    try {
+      const userId = (req as any).user?.id || "default";
+      const widgets = await storage.getDashboardWidgets(userId);
+      res.json(widgets);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/dashboard-widgets", async (req, res) => {
+    try {
+      const userId = (req as any).user?.id || "default";
+      const result = await storage.saveDashboardWidgets(userId, req.body.widgets);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== CRM STAY HISTORY ====================
+  app.get("/api/customers/:id/stay-history", async (req, res) => {
+    try {
+      const customer = await storage.getCustomer(parseInt(req.params.id));
+      if (!customer) return res.status(404).json({ message: "Nie znaleziono klienta" });
+
+      const allReservations = await storage.getReservations({});
+      const fullName = `${customer.firstName} ${customer.lastName}`.toLowerCase();
+      const matched = allReservations.filter(r => {
+        const gn = (r.guestName || "").toLowerCase();
+        return gn === fullName || gn.includes(customer.lastName.toLowerCase());
+      });
+
+      const apartments = await storage.getApartments();
+      const aptMap = new Map(apartments.map(a => [a.id, a.name]));
+
+      const history = matched.map(r => ({
+        id: r.id,
+        reservationNumber: r.reservationNumber,
+        apartmentId: r.apartmentId,
+        apartmentName: r.apartmentId ? aptMap.get(r.apartmentId) || "Nieznane" : "Nieznane",
+        startDate: r.startDate,
+        endDate: r.endDate,
+        price: r.price,
+        status: r.status,
+        source: r.source,
+      })).sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+      const totalRevenue = matched.reduce((s, r) => s + parseFloat(r.price || "0"), 0);
+      const totalStays = matched.length;
+
+      res.json({ history, totalRevenue, totalStays });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== RCP EMPLOYEE STATS ====================
+  app.get("/api/rcp/employee-stats", async (req, res) => {
+    try {
+      const { from, to, employeeId } = req.query;
+      const filters: any = {};
+      if (from) filters.from = from as string;
+      if (to) filters.to = to as string;
+      if (employeeId) filters.employeeId = parseInt(employeeId as string);
+
+      const allEntries = await storage.getTimeEntries(filters);
+      const allEmployees = await storage.getEmployees();
+      const activeEmps = employeeId
+        ? allEmployees.filter(e => e.id === parseInt(employeeId as string))
+        : allEmployees.filter(e => e.status === "AKTYWNY");
+
+      const stats = activeEmps.map(emp => {
+        const empEntries = allEntries.filter(e => e.employeeId === emp.id);
+        const completedEntries = empEntries.filter(e => e.clockOut);
+
+        let totalMinutes = 0;
+        let lateCount = 0;
+        let earlyLeaveCount = 0;
+        const dailyHours: number[] = [];
+
+        for (const entry of completedEntries) {
+          const clockIn = new Date(entry.clockIn);
+          const clockOut = new Date(entry.clockOut!);
+          const mins = (clockOut.getTime() - clockIn.getTime()) / 60000 - (entry.breakMinutes || 0);
+          totalMinutes += mins;
+          dailyHours.push(mins / 60);
+
+          const hour = clockIn.getHours();
+          const minute = clockIn.getMinutes();
+          if (hour > 8 || (hour === 8 && minute > 5)) lateCount++;
+          const outHour = clockOut.getHours();
+          if (outHour < 16) earlyLeaveCount++;
+        }
+
+        const totalHours = Math.round(totalMinutes / 60 * 100) / 100;
+        const avgHoursPerDay = completedEntries.length > 0
+          ? Math.round(totalHours / completedEntries.length * 100) / 100 : 0;
+        const overtimeHours = Math.max(0, totalHours - (completedEntries.length * 8));
+        const punctualityRate = completedEntries.length > 0
+          ? Math.round(((completedEntries.length - lateCount) / completedEntries.length) * 100) : 100;
+
+        return {
+          employeeId: emp.id,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          position: emp.position,
+          totalDays: completedEntries.length,
+          totalHours,
+          avgHoursPerDay,
+          overtimeHours: Math.round(overtimeHours * 100) / 100,
+          lateCount,
+          earlyLeaveCount,
+          punctualityRate,
+          outsideZoneCount: empEntries.filter(e => e.isOutsideZone).length,
+        };
+      });
+
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

@@ -413,6 +413,28 @@ function CustomerForm({
 }
 
 function CustomerDetail({ customer: c }: { customer: Customer }) {
+  const { data: stayData, isLoading: stayLoading } = useQuery<{
+    history: Array<{
+      id: number;
+      reservationNumber: string;
+      apartmentName: string;
+      startDate: string;
+      endDate: string;
+      price: string;
+      status: string;
+      source: string | null;
+    }>;
+    totalRevenue: number;
+    totalStays: number;
+  }>({
+    queryKey: ["/api/customers", c.id, "stay-history"],
+    queryFn: async () => {
+      const res = await fetch(`/api/customers/${c.id}/stay-history`);
+      if (!res.ok) throw new Error("Błąd pobierania historii");
+      return res.json();
+    },
+  });
+
   const fields: [string, string | number | null | undefined][] = [
     ["Imię", c.firstName],
     ["Nazwisko", c.lastName],
@@ -425,14 +447,11 @@ function CustomerDetail({ customer: c }: { customer: Customer }) {
     ["Kod pocztowy", c.postalCode],
     ["Kraj", c.country],
     ["Segment", c.segment],
-    ["Pobyty", c.totalStays ?? 0],
-    ["Przychód", Number(c.totalRevenue ?? 0).toLocaleString("pl-PL", { style: "currency", currency: "PLN" })],
-    ["Ostatni pobyt", c.lastStayDate],
     ["Notatki", c.notes],
   ];
 
   return (
-    <div className="space-y-4 py-2">
+    <div className="space-y-4 py-2 max-h-[75vh] overflow-y-auto">
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         {fields.map(([label, val]) => (
           <div key={label}>
@@ -443,9 +462,65 @@ function CustomerDetail({ customer: c }: { customer: Customer }) {
           </div>
         ))}
       </div>
+
       <div className="border-t pt-3">
-        <h4 className="text-sm font-medium mb-2">Historia pobytów</h4>
-        <p className="text-xs text-muted-foreground">Brak danych historycznych. Funkcja w przygotowaniu.</p>
+        <h4 className="text-sm font-semibold mb-3">Historia pobytów</h4>
+        {stayLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => <div key={i} className="h-8 loading-shimmer rounded" />)}
+          </div>
+        ) : stayData && stayData.history.length > 0 ? (
+          <>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-muted/50 text-center">
+                <p className="text-xs text-muted-foreground">Pobyty</p>
+                <p className="text-lg font-bold" data-testid="text-total-stays">{stayData.totalStays}</p>
+              </div>
+              <div className="p-2 rounded-lg bg-muted/50 text-center">
+                <p className="text-xs text-muted-foreground">Przychód</p>
+                <p className="text-lg font-bold" data-testid="text-total-revenue">
+                  {stayData.totalRevenue.toLocaleString("pl-PL", { style: "currency", currency: "PLN" })}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-muted/50 text-center">
+                <p className="text-xs text-muted-foreground">Ostatni pobyt</p>
+                <p className="text-sm font-medium" data-testid="text-last-stay">
+                  {stayData.history[0]?.startDate || "—"}
+                </p>
+              </div>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Nr rezerwacji</TableHead>
+                  <TableHead className="text-xs">Apartament</TableHead>
+                  <TableHead className="text-xs">Od</TableHead>
+                  <TableHead className="text-xs">Do</TableHead>
+                  <TableHead className="text-xs text-right">Cena</TableHead>
+                  <TableHead className="text-xs">Źródło</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stayData.history.map((stay) => (
+                  <TableRow key={stay.id} data-testid={`row-stay-${stay.id}`}>
+                    <TableCell className="text-xs font-mono">{stay.reservationNumber}</TableCell>
+                    <TableCell className="text-xs">{stay.apartmentName}</TableCell>
+                    <TableCell className="text-xs">{stay.startDate}</TableCell>
+                    <TableCell className="text-xs">{stay.endDate}</TableCell>
+                    <TableCell className="text-xs text-right font-medium">
+                      {Number(stay.price).toLocaleString("pl-PL")} PLN
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {stay.source ? <Badge variant="outline" className="text-[10px]">{stay.source}</Badge> : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">Brak dopasowanych rezerwacji dla tego klienta.</p>
+        )}
       </div>
     </div>
   );

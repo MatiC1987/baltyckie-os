@@ -6,55 +6,71 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
-const RecepcjaApp = lazy(() => import("@/pages/recepcja/RecepcjaApp"));
-import Dashboard from "@/pages/Dashboard";
-import Apartments from "@/pages/Apartments";
-import Owners from "@/pages/Owners";
-import RezerwacjeAll from "@/pages/RezerwacjeAll";
-import Leases from "@/pages/Leases";
-import Finance from "@/pages/Finance";
-import ImportBackup from "@/pages/ImportBackup";
 import Landing from "@/pages/Landing";
-import Employees from "@/pages/Employees";
-import Terminarz from "@/pages/Terminarz";
-import Lokalizacje from "@/pages/Lokalizacje";
-import ServiceContracts from "@/pages/ServiceContracts";
-import Podnajem from "@/pages/Podnajem";
-import UserAccounts from "@/pages/UserAccounts";
-import Saldo from "@/pages/Saldo";
-import DocumentTemplates from "@/pages/DocumentTemplates";
-import ActivityLog from "@/pages/ActivityLog";
-import PlaceholderPage from "@/pages/Placeholder";
-import ReportExport from "@/pages/ReportExport";
-import Invoices from "@/pages/Invoices";
-import CompanySettings from "@/pages/CompanySettings";
-import DokumentyKsiegowe from "@/pages/DokumentyKsiegowe";
-import TechnicalInspections from "@/pages/TechnicalInspections";
-import Ustawienia from "@/pages/Ustawienia";
-import Customers from "@/pages/Customers";
-import Tasks from "@/pages/Tasks";
-import SourceComparison from "@/pages/SourceComparison";
-import OccupancyRates from "@/pages/OccupancyRates";
-import Profitability from "@/pages/Profitability";
-import YearComparison from "@/pages/YearComparison";
-import ApartmentComparison from "@/pages/ApartmentComparison";
-import PriceSeasonality from "@/pages/PriceSeasonality";
-import SaldoFirmowe from "@/pages/SaldoFirmowe";
-import V2Przychody from "@/pages/V2Przychody";
-import V2Koszty from "@/pages/V2Koszty";
-import PriorityRevenueForecast from "@/pages/PriorityRevenueForecast";
-import TimeClock from "@/pages/TimeClock";
-import TimeAdmin from "@/pages/TimeAdmin";
-import Usterki from "@/pages/Usterki";
-import Szkolenia from "@/pages/Szkolenia";
-import UmowyPracownicze from "@/pages/UmowyPracownicze";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { TablePageSkeleton, DashboardSkeleton, AnalyticsSkeleton } from "@/components/PageSkeleton";
 
-function AuthenticatedRoute({ component: Component }: { component: () => JSX.Element }) {
+const RecepcjaApp = lazy(() => import("@/pages/recepcja/RecepcjaApp"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Apartments = lazy(() => import("@/pages/Apartments"));
+const Owners = lazy(() => import("@/pages/Owners"));
+const RezerwacjeAll = lazy(() => import("@/pages/RezerwacjeAll"));
+const Leases = lazy(() => import("@/pages/Leases"));
+const Finance = lazy(() => import("@/pages/Finance"));
+const ImportBackup = lazy(() => import("@/pages/ImportBackup"));
+const Employees = lazy(() => import("@/pages/Employees"));
+const Terminarz = lazy(() => import("@/pages/Terminarz"));
+const Lokalizacje = lazy(() => import("@/pages/Lokalizacje"));
+const ServiceContracts = lazy(() => import("@/pages/ServiceContracts"));
+const Podnajem = lazy(() => import("@/pages/Podnajem"));
+const UserAccounts = lazy(() => import("@/pages/UserAccounts"));
+const Saldo = lazy(() => import("@/pages/Saldo"));
+const DocumentTemplates = lazy(() => import("@/pages/DocumentTemplates"));
+const ActivityLog = lazy(() => import("@/pages/ActivityLog"));
+const PlaceholderPage = lazy(() => import("@/pages/Placeholder"));
+const ReportExport = lazy(() => import("@/pages/ReportExport"));
+const Invoices = lazy(() => import("@/pages/Invoices"));
+const CompanySettings = lazy(() => import("@/pages/CompanySettings"));
+const DokumentyKsiegowe = lazy(() => import("@/pages/DokumentyKsiegowe"));
+const TechnicalInspections = lazy(() => import("@/pages/TechnicalInspections"));
+const Ustawienia = lazy(() => import("@/pages/Ustawienia"));
+const Customers = lazy(() => import("@/pages/Customers"));
+const Tasks = lazy(() => import("@/pages/Tasks"));
+const SourceComparison = lazy(() => import("@/pages/SourceComparison"));
+const OccupancyRates = lazy(() => import("@/pages/OccupancyRates"));
+const Profitability = lazy(() => import("@/pages/Profitability"));
+const YearComparison = lazy(() => import("@/pages/YearComparison"));
+const ApartmentComparison = lazy(() => import("@/pages/ApartmentComparison"));
+const PriceSeasonality = lazy(() => import("@/pages/PriceSeasonality"));
+const SaldoFirmowe = lazy(() => import("@/pages/SaldoFirmowe"));
+const V2Przychody = lazy(() => import("@/pages/V2Przychody"));
+const V2Koszty = lazy(() => import("@/pages/V2Koszty"));
+const PriorityRevenueForecast = lazy(() => import("@/pages/PriorityRevenueForecast"));
+const TimeClock = lazy(() => import("@/pages/TimeClock"));
+const TimeAdmin = lazy(() => import("@/pages/TimeAdmin"));
+const Usterki = lazy(() => import("@/pages/Usterki"));
+const Szkolenia = lazy(() => import("@/pages/Szkolenia"));
+const UmowyPracownicze = lazy(() => import("@/pages/UmowyPracownicze"));
+const RcpStatystyki = lazy(() => import("@/pages/RcpStatystyki"));
+const CheckoutSettlement = lazy(() => import("@/pages/CheckoutSettlement"));
+const BankStatementImport = lazy(() => import("@/pages/BankStatementImport"));
+const ListaPlac = lazy(() => import("@/pages/ListaPlac"));
+
+function LazyFallback() {
+  return (
+    <div className="p-6 space-y-6">
+      <DashboardSkeleton />
+    </div>
+  );
+}
+
+function AuthenticatedRoute({ component: Component }: { component: React.LazyExoticComponent<any> | (() => JSX.Element) }) {
   return (
     <Layout>
-      <Component />
+      <Suspense fallback={<LazyFallback />}>
+        <Component />
+      </Suspense>
     </Layout>
   );
 }
@@ -62,7 +78,9 @@ function AuthenticatedRoute({ component: Component }: { component: () => JSX.Ele
 function AuthenticatedPlaceholder({ title, description }: { title: string; description?: string }) {
   return (
     <Layout>
-      <PlaceholderPage title={title} description={description} />
+      <Suspense fallback={<LazyFallback />}>
+        <PlaceholderPage title={title} description={description} />
+      </Suspense>
     </Layout>
   );
 }
@@ -93,7 +111,11 @@ function Router() {
   const [location] = useLocation();
 
   if (location === "/rcp") {
-    return <TimeClock />;
+    return (
+      <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
+        <TimeClock />
+      </Suspense>
+    );
   }
 
   if (location.startsWith("/recepcja")) {
@@ -140,9 +162,9 @@ function AuthenticatedRouter() {
       <Route path="/przeglady" component={() => <AuthenticatedRoute component={TechnicalInspections} />} />
       <Route path="/dokumenty-ksiegowe" component={() => <AuthenticatedRoute component={DokumentyKsiegowe} />} />
       <Route path="/salda" component={() => <AuthenticatedRoute component={Saldo} />} />
-      <Route path="/saldo-ml" component={() => <Layout><Saldo personName="Małgorzata Latasiewicz" /></Layout>} />
-      <Route path="/saldo-jg" component={() => <Layout><Saldo personName="Jolanta Głodkowska" /></Layout>} />
-      <Route path="/saldo-mc" component={() => <Layout><Saldo personName="Mateusz Cieślak" /></Layout>} />
+      <Route path="/saldo-ml" component={() => <Layout><Suspense fallback={<LazyFallback />}><Saldo personName="Małgorzata Latasiewicz" /></Suspense></Layout>} />
+      <Route path="/saldo-jg" component={() => <Layout><Suspense fallback={<LazyFallback />}><Saldo personName="Jolanta Głodkowska" /></Suspense></Layout>} />
+      <Route path="/saldo-mc" component={() => <Layout><Suspense fallback={<LazyFallback />}><Saldo personName="Mateusz Cieślak" /></Suspense></Layout>} />
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
 
       <Route path="/podnajem" component={() => <AuthenticatedRoute component={Podnajem} />} />
@@ -193,6 +215,10 @@ function AuthenticatedRouter() {
       <Route path="/usterki" component={() => <AuthenticatedRoute component={Usterki} />} />
       <Route path="/szkolenia" component={() => <AuthenticatedRoute component={Szkolenia} />} />
       <Route path="/umowy-pracownicze" component={() => <AuthenticatedRoute component={UmowyPracownicze} />} />
+      <Route path="/rcp/statystyki" component={() => <AuthenticatedRoute component={RcpStatystyki} />} />
+      <Route path="/rozliczenie-checkout" component={() => <AuthenticatedRoute component={CheckoutSettlement} />} />
+      <Route path="/import-bankowy" component={() => <AuthenticatedRoute component={BankStatementImport} />} />
+      <Route path="/lista-plac" component={() => <AuthenticatedRoute component={ListaPlac} />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

@@ -68,6 +68,12 @@ import {
   timeEntries, TimeEntry, InsertTimeEntry,
   workSchedules, WorkSchedule, InsertWorkSchedule,
   leaveRequests, LeaveRequest, InsertLeaveRequest,
+  bankStatements, BankStatement, InsertBankStatement,
+  bankTransactions, BankTransaction, InsertBankTransaction,
+  payrollPeriods, PayrollPeriod, InsertPayrollPeriod,
+  payrollEntries, PayrollEntry, InsertPayrollEntry,
+  checkoutSettlements, CheckoutSettlement, InsertCheckoutSettlement,
+  dashboardWidgetConfigs,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, type SQL } from "drizzle-orm";
@@ -479,6 +485,37 @@ export interface IStorage {
   createLeaveRequest(data: InsertLeaveRequest): Promise<LeaveRequest>;
   updateLeaveRequest(id: number, data: Partial<InsertLeaveRequest>): Promise<LeaveRequest>;
   deleteLeaveRequest(id: number): Promise<void>;
+
+  // Bank Statements
+  getBankStatements(): Promise<BankStatement[]>;
+  createBankStatement(data: InsertBankStatement): Promise<BankStatement>;
+  deleteBankStatement(id: number): Promise<void>;
+  getBankTransactions(statementId?: number): Promise<BankTransaction[]>;
+  createBankTransactionsBulk(data: InsertBankTransaction[]): Promise<BankTransaction[]>;
+  updateBankTransaction(id: number, data: Partial<InsertBankTransaction>): Promise<BankTransaction>;
+
+  // Payroll
+  getPayrollPeriods(): Promise<PayrollPeriod[]>;
+  getPayrollPeriod(id: number): Promise<PayrollPeriod | undefined>;
+  createPayrollPeriod(data: InsertPayrollPeriod): Promise<PayrollPeriod>;
+  updatePayrollPeriod(id: number, data: Partial<InsertPayrollPeriod>): Promise<PayrollPeriod>;
+  deletePayrollPeriod(id: number): Promise<void>;
+  getPayrollEntries(periodId: number): Promise<(PayrollEntry & { employee: Employee })[]>;
+  createPayrollEntry(data: InsertPayrollEntry): Promise<PayrollEntry>;
+  createPayrollEntriesBulk(data: InsertPayrollEntry[]): Promise<PayrollEntry[]>;
+  updatePayrollEntry(id: number, data: Partial<InsertPayrollEntry>): Promise<PayrollEntry>;
+  deletePayrollEntry(id: number): Promise<void>;
+
+  // Checkout Settlements
+  getCheckoutSettlements(): Promise<CheckoutSettlement[]>;
+  getCheckoutSettlement(id: number): Promise<CheckoutSettlement | undefined>;
+  createCheckoutSettlement(data: InsertCheckoutSettlement): Promise<CheckoutSettlement>;
+  updateCheckoutSettlement(id: number, data: Partial<InsertCheckoutSettlement>): Promise<CheckoutSettlement>;
+  deleteCheckoutSettlement(id: number): Promise<void>;
+
+  // Dashboard Widgets
+  getDashboardWidgets(userId: string): Promise<any>;
+  saveDashboardWidgets(userId: string, widgets: any): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2240,6 +2277,135 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLeaveRequest(id: number): Promise<void> {
     await db.delete(leaveRequests).where(eq(leaveRequests.id, id));
+  }
+
+  // Bank Statements
+  async getBankStatements(): Promise<BankStatement[]> {
+    return db.select().from(bankStatements).orderBy(desc(bankStatements.importDate));
+  }
+
+  async createBankStatement(data: InsertBankStatement): Promise<BankStatement> {
+    const [stmt] = await db.insert(bankStatements).values(data).returning();
+    return stmt;
+  }
+
+  async deleteBankStatement(id: number): Promise<void> {
+    await db.delete(bankStatements).where(eq(bankStatements.id, id));
+  }
+
+  async getBankTransactions(statementId?: number): Promise<BankTransaction[]> {
+    if (statementId) {
+      return db.select().from(bankTransactions)
+        .where(eq(bankTransactions.statementId, statementId))
+        .orderBy(desc(bankTransactions.date));
+    }
+    return db.select().from(bankTransactions).orderBy(desc(bankTransactions.date));
+  }
+
+  async createBankTransactionsBulk(data: InsertBankTransaction[]): Promise<BankTransaction[]> {
+    if (data.length === 0) return [];
+    return db.insert(bankTransactions).values(data).returning();
+  }
+
+  async updateBankTransaction(id: number, data: Partial<InsertBankTransaction>): Promise<BankTransaction> {
+    const [tx] = await db.update(bankTransactions).set(data).where(eq(bankTransactions.id, id)).returning();
+    return tx;
+  }
+
+  // Payroll
+  async getPayrollPeriods(): Promise<PayrollPeriod[]> {
+    return db.select().from(payrollPeriods).orderBy(desc(payrollPeriods.year), desc(payrollPeriods.month));
+  }
+
+  async getPayrollPeriod(id: number): Promise<PayrollPeriod | undefined> {
+    const [period] = await db.select().from(payrollPeriods).where(eq(payrollPeriods.id, id));
+    return period;
+  }
+
+  async createPayrollPeriod(data: InsertPayrollPeriod): Promise<PayrollPeriod> {
+    const [period] = await db.insert(payrollPeriods).values(data).returning();
+    return period;
+  }
+
+  async updatePayrollPeriod(id: number, data: Partial<InsertPayrollPeriod>): Promise<PayrollPeriod> {
+    const [period] = await db.update(payrollPeriods).set(data).where(eq(payrollPeriods.id, id)).returning();
+    return period;
+  }
+
+  async deletePayrollPeriod(id: number): Promise<void> {
+    await db.delete(payrollPeriods).where(eq(payrollPeriods.id, id));
+  }
+
+  async getPayrollEntries(periodId: number): Promise<(PayrollEntry & { employee: Employee })[]> {
+    const entries = await db.select().from(payrollEntries).where(eq(payrollEntries.periodId, periodId));
+    const emps = await db.select().from(employees);
+    const empMap = new Map(emps.map(e => [e.id, e]));
+    return entries.map(e => ({
+      ...e,
+      employee: empMap.get(e.employeeId) as Employee,
+    })).filter(e => e.employee);
+  }
+
+  async createPayrollEntry(data: InsertPayrollEntry): Promise<PayrollEntry> {
+    const [entry] = await db.insert(payrollEntries).values(data).returning();
+    return entry;
+  }
+
+  async createPayrollEntriesBulk(data: InsertPayrollEntry[]): Promise<PayrollEntry[]> {
+    if (data.length === 0) return [];
+    return db.insert(payrollEntries).values(data).returning();
+  }
+
+  async updatePayrollEntry(id: number, data: Partial<InsertPayrollEntry>): Promise<PayrollEntry> {
+    const [entry] = await db.update(payrollEntries).set(data).where(eq(payrollEntries.id, id)).returning();
+    return entry;
+  }
+
+  async deletePayrollEntry(id: number): Promise<void> {
+    await db.delete(payrollEntries).where(eq(payrollEntries.id, id));
+  }
+
+  // Checkout Settlements
+  async getCheckoutSettlements(): Promise<CheckoutSettlement[]> {
+    return db.select().from(checkoutSettlements).orderBy(desc(checkoutSettlements.createdAt));
+  }
+
+  async getCheckoutSettlement(id: number): Promise<CheckoutSettlement | undefined> {
+    const [s] = await db.select().from(checkoutSettlements).where(eq(checkoutSettlements.id, id));
+    return s;
+  }
+
+  async createCheckoutSettlement(data: InsertCheckoutSettlement): Promise<CheckoutSettlement> {
+    const [s] = await db.insert(checkoutSettlements).values(data).returning();
+    return s;
+  }
+
+  async updateCheckoutSettlement(id: number, data: Partial<InsertCheckoutSettlement>): Promise<CheckoutSettlement> {
+    const [s] = await db.update(checkoutSettlements).set(data).where(eq(checkoutSettlements.id, id)).returning();
+    return s;
+  }
+
+  async deleteCheckoutSettlement(id: number): Promise<void> {
+    await db.delete(checkoutSettlements).where(eq(checkoutSettlements.id, id));
+  }
+
+  // Dashboard Widgets
+  async getDashboardWidgets(userId: string): Promise<any> {
+    const [config] = await db.select().from(dashboardWidgetConfigs).where(eq(dashboardWidgetConfigs.userId, userId));
+    return config?.widgets || null;
+  }
+
+  async saveDashboardWidgets(userId: string, widgets: any): Promise<any> {
+    const existing = await db.select().from(dashboardWidgetConfigs).where(eq(dashboardWidgetConfigs.userId, userId));
+    if (existing.length > 0) {
+      const [updated] = await db.update(dashboardWidgetConfigs)
+        .set({ widgets, updatedAt: new Date() })
+        .where(eq(dashboardWidgetConfigs.userId, userId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(dashboardWidgetConfigs).values({ userId, widgets }).returning();
+    return created;
   }
 }
 

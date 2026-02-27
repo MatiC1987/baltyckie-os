@@ -138,13 +138,17 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "usterki": { id: "usterki", href: "/usterki", label: "Usterki", iconName: "AlertTriangle" },
   "szkolenia": { id: "szkolenia", href: "/szkolenia", label: "Szkolenia", iconName: "GraduationCap" },
   "umowy-pracownicze": { id: "umowy-pracownicze", href: "/umowy-pracownicze", label: "Umowy pracownicze", iconName: "FileCheck" },
+  "rcp-statystyki": { id: "rcp-statystyki", href: "/rcp/statystyki", label: "Statystyki RCP", iconName: "Activity" },
+  "checkout-settlement": { id: "checkout-settlement", href: "/rozliczenie-checkout", label: "Rozliczenie końcowe", iconName: "Calculator" },
+  "import-bankowy": { id: "import-bankowy", href: "/import-bankowy", label: "Import bankowy", iconName: "Upload" },
+  "lista-plac": { id: "lista-plac", href: "/lista-plac", label: "Lista płac", iconName: "Coins" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp", "usterki", "szkolenia", "umowy-pracownicze"], color: "violet" },
-  { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "saldo-firmowe", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady"], color: "emerald" },
+  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp", "rcp-statystyki", "usterki", "szkolenia", "umowy-pracownicze", "lista-plac"], color: "violet" },
+  { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "saldo-firmowe", "import-bankowy", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady", "checkout-settlement"], color: "emerald" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality"], color: "blue" },
 ];
 

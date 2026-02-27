@@ -1014,6 +1014,7 @@ export const technicalInspections = pgTable("technical_inspections", {
   cost: numeric("cost", { precision: 12, scale: 2 }),
   contractor: text("contractor"),
   contractorPhone: text("contractor_phone"),
+  recurrenceMonths: integer("recurrence_months"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1498,3 +1499,112 @@ export const employeeContracts = pgTable("employee_contracts", {
 export const insertEmployeeContractSchema = createInsertSchema(employeeContracts).omit({ id: true, createdAt: true });
 export type EmployeeContract = typeof employeeContracts.$inferSelect;
 export type InsertEmployeeContract = z.infer<typeof insertEmployeeContractSchema>;
+
+// ==================== BANK STATEMENT IMPORT ====================
+export const bankStatements = pgTable("bank_statements", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => accounts.id),
+  fileName: text("file_name").notNull(),
+  importDate: timestamp("import_date").defaultNow(),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  transactionCount: integer("transaction_count").default(0),
+  status: text("status").notNull().default("ZAIMPORTOWANY"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const bankTransactions = pgTable("bank_transactions", {
+  id: serial("id").primaryKey(),
+  statementId: integer("statement_id").references(() => bankStatements.id, { onDelete: "cascade" }).notNull(),
+  accountId: integer("account_id").references(() => accounts.id),
+  date: date("date").notNull(),
+  description: text("description").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  balance: decimal("balance", { precision: 12, scale: 2 }),
+  counterparty: text("counterparty"),
+  category: text("category"),
+  aiCategory: text("ai_category"),
+  matched: boolean("matched").default(false),
+  matchedExpenseId: integer("matched_expense_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBankStatementSchema = createInsertSchema(bankStatements).omit({ id: true, createdAt: true, importDate: true });
+export type BankStatement = typeof bankStatements.$inferSelect;
+export type InsertBankStatement = z.infer<typeof insertBankStatementSchema>;
+
+export const insertBankTransactionSchema = createInsertSchema(bankTransactions).omit({ id: true, createdAt: true });
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
+
+// ==================== PAYROLL ====================
+export const payrollPeriods = pgTable("payroll_periods", {
+  id: serial("id").primaryKey(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  status: text("status").notNull().default("OTWARTY"),
+  totalGross: decimal("total_gross", { precision: 12, scale: 2 }).default("0"),
+  totalNet: decimal("total_net", { precision: 12, scale: 2 }).default("0"),
+  generatedAt: timestamp("generated_at"),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: text("approved_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const payrollEntries = pgTable("payroll_entries", {
+  id: serial("id").primaryKey(),
+  periodId: integer("period_id").references(() => payrollPeriods.id, { onDelete: "cascade" }).notNull(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  totalHours: decimal("total_hours", { precision: 8, scale: 2 }).default("0"),
+  overtimeHours: decimal("overtime_hours", { precision: 8, scale: 2 }).default("0"),
+  hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }),
+  basePay: decimal("base_pay", { precision: 12, scale: 2 }).default("0"),
+  overtimePay: decimal("overtime_pay", { precision: 12, scale: 2 }).default("0"),
+  bonus: decimal("bonus", { precision: 12, scale: 2 }).default("0"),
+  deductions: decimal("deductions", { precision: 12, scale: 2 }).default("0"),
+  grossPay: decimal("gross_pay", { precision: 12, scale: 2 }).default("0"),
+  netPay: decimal("net_pay", { precision: 12, scale: 2 }).default("0"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPayrollPeriodSchema = createInsertSchema(payrollPeriods).omit({ id: true, createdAt: true, generatedAt: true, approvedAt: true });
+export type PayrollPeriod = typeof payrollPeriods.$inferSelect;
+export type InsertPayrollPeriod = z.infer<typeof insertPayrollPeriodSchema>;
+
+export const insertPayrollEntrySchema = createInsertSchema(payrollEntries).omit({ id: true, createdAt: true });
+export type PayrollEntry = typeof payrollEntries.$inferSelect;
+export type InsertPayrollEntry = z.infer<typeof insertPayrollEntrySchema>;
+
+// ==================== CHECKOUT SETTLEMENT ====================
+export const checkoutSettlements = pgTable("checkout_settlements", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  settlementDate: date("settlement_date").notNull(),
+  depositAmount: decimal("deposit_amount", { precision: 12, scale: 2 }).default("0"),
+  depositReturned: decimal("deposit_returned", { precision: 12, scale: 2 }).default("0"),
+  depositDeductions: decimal("deposit_deductions", { precision: 12, scale: 2 }).default("0"),
+  outstandingRent: decimal("outstanding_rent", { precision: 12, scale: 2 }).default("0"),
+  mediaCost: decimal("media_cost", { precision: 12, scale: 2 }).default("0"),
+  damageCost: decimal("damage_cost", { precision: 12, scale: 2 }).default("0"),
+  otherCosts: decimal("other_costs", { precision: 12, scale: 2 }).default("0"),
+  finalBalance: decimal("final_balance", { precision: 12, scale: 2 }).default("0"),
+  notes: text("notes"),
+  damageDescription: text("damage_description"),
+  status: text("status").notNull().default("SZKIC"),
+  items: jsonb("items"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCheckoutSettlementSchema = createInsertSchema(checkoutSettlements).omit({ id: true, createdAt: true });
+export type CheckoutSettlement = typeof checkoutSettlements.$inferSelect;
+export type InsertCheckoutSettlement = z.infer<typeof insertCheckoutSettlementSchema>;
+
+// ==================== DASHBOARD WIDGETS ====================
+export const dashboardWidgetConfigs = pgTable("dashboard_widget_configs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  widgets: jsonb("widgets").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});

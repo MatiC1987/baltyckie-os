@@ -246,6 +246,11 @@ export default function Dashboard() {
   const handlePrefsChange = (prefs: WidgetPrefs) => {
     saveWidgetPrefs(prefs);
     setWidgetPrefs(prefs);
+    fetch("/api/dashboard-widgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ widgets: prefs }),
+    }).catch(() => {});
   };
 
   const isVisible = (id: string) => widgetPrefs.visible[id] !== false;
