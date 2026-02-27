@@ -23,7 +23,7 @@ The application utilizes a modern full-stack architecture.
 **Core Features:**
 
 *   **Financial Management:**
-    *   Dashboard provides an overview of financial health.
+    *   Dashboard provides an overview of financial health, including a 36-month company balance forecast chart widget (`BalanceForecastChartWidget`) with summary tiles and interactive Recharts area chart.
     *   Detailed expense tracking (apartment and operational costs).
     *   Bank account management and balance snapshots.
     *   Owner payments and comprehensive financial reporting.

@@ -40,6 +40,10 @@ import { Label } from "@/components/ui/label";
 import { Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import RevenueForecastSection, { type ForecastMonth } from "@/components/RevenueForecastSection";
+import {
+  ComposedChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip as RTooltip, ReferenceLine, ResponsiveContainer,
+} from "recharts";
 
 type WidgetDef = {
   id: string;
@@ -53,6 +57,7 @@ const WIDGET_REGISTRY: WidgetDef[] = [
   { id: "kpi", label: "Wskaźniki KPI", category: "financial", defaultVisible: true, description: "Przychód, rezerwacje, nieopłacone, saldo" },
   { id: "balance", label: "Saldo firmowe", category: "financial", defaultVisible: true, description: "Salda kont bankowych" },
   { id: "forecast", label: "Prognoza przychodów", category: "financial", defaultVisible: true, description: "Realizacja prognozy miesięcznej" },
+  { id: "balance-forecast-chart", label: "Saldo firmowe — prognoza", category: "financial", defaultVisible: true, description: "Wykres salda firmowego na 36 miesięcy" },
   { id: "unpaid-subleases", label: "Nieopłacone podnajmy", category: "financial", defaultVisible: true, description: "Zaległe płatności podnajmu" },
   { id: "quick-actions", label: "Szybkie akcje", category: "operational", defaultVisible: true, description: "Skróty do tworzenia rezerwacji, wydatków" },
   { id: "unpaid-arrivals", label: "Nieopłacone przyjazdy", category: "operational", defaultVisible: true, description: "Zakończone rezerwacje z dopłatą" },
@@ -223,6 +228,8 @@ export default function Dashboard() {
   const { data: subleases } = useQuery<any[]>({ queryKey: ["/api/subleases"] });
   const { data: expiringTrainings } = useQuery<{ id: number; name: string; status: string; employeeName: string; expiryDate: string | null }[]>({ queryKey: ["/api/employee-trainings/expiring"] });
   const { data: expiringContracts } = useQuery<{ id: number; title: string; employeeName: string; endDate: string | null }[]>({ queryKey: ["/api/employee-contracts/expiring"] });
+  const { data: balanceForecastData } = useQuery<{ currentBalance: number; months: { year: number; month: number; endBalance: number; revenueForecast: number; revenueActual: number; aptCostRemaining: number; opCostRemaining: number; surcharges: number }[] }>({ queryKey: ["/api/balance-forecast"] });
+
   const { data: reminders } = useQuery<{
     expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[];
     overdueCosts: number;
@@ -505,6 +512,8 @@ export default function Dashboard() {
             );
           case "forecast":
             return <RevenueForecastSection key="forecast" forecastData={forecastData || []} />;
+          case "balance-forecast-chart":
+            return <BalanceForecastChartWidget key="balance-forecast-chart" data={balanceForecastData} />;
           case "unpaid-arrivals":
             return <UnpaidArrivalsTab key="unpaid-arrivals" reservations={reservations || []} apartments={apartments || []} isLoading={reservationsLoading} reminders={reminders} expiringTrainings={expiringTrainings} expiringContracts={expiringContracts} />;
           case "upcoming-arrivals":
@@ -1875,6 +1884,156 @@ function TodayTasksWidget() {
             )}
           </div>
         ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+const BALANCE_MONTH_NAMES = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+const BALANCE_MONTH_NAMES_FULL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+function BalanceForecastChartWidget({ data }: { data?: { currentBalance: number; months: { year: number; month: number; endBalance: number; revenueForecast: number; revenueActual: number; aptCostRemaining: number; opCostRemaining: number; surcharges: number }[] } }) {
+  const chartData = useMemo(() => {
+    if (!data?.months) return [];
+    return data.months.slice(0, 36).map(m => ({
+      ...m,
+      label: `${BALANCE_MONTH_NAMES[m.month - 1]} '${String(m.year).slice(2)}`,
+    }));
+  }, [data]);
+
+  const minBalance = useMemo(() => chartData.length ? Math.min(...chartData.map(m => m.endBalance)) : 0, [chartData]);
+  const maxBalance = useMemo(() => chartData.length ? Math.max(...chartData.map(m => m.endBalance)) : 0, [chartData]);
+  const endBalance = chartData.length ? chartData[chartData.length - 1].endBalance : 0;
+
+  function plnFmt(value: number): string {
+    if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(0)}k`;
+    return String(Math.round(value));
+  }
+
+  function plnFull(value: number): string {
+    return `${value.toLocaleString("pl-PL", { maximumFractionDigits: 0, minimumFractionDigits: 0 })} zł`;
+  }
+
+  const BalanceForecastTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0]?.payload;
+    if (!d) return null;
+    return (
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-xs space-y-1 min-w-48">
+        <p className="font-semibold text-sm mb-1.5">{BALANCE_MONTH_NAMES_FULL[d.month - 1]} {d.year}</p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <span className="text-muted-foreground">Prognoza przych.:</span>
+          <span className="text-right">{plnFull(d.revenueForecast)}</span>
+          <span className="text-muted-foreground">Realizacja przych.:</span>
+          <span className="text-right">{plnFull(d.revenueActual)}</span>
+          <span className="text-muted-foreground">Koszty apt:</span>
+          <span className="text-right text-orange-600">−{plnFull(d.aptCostRemaining)}</span>
+          <span className="text-muted-foreground">Koszty oper.:</span>
+          <span className="text-right text-red-600">−{plnFull(d.opCostRemaining)}</span>
+          {d.surcharges > 0 && (
+            <>
+              <span className="text-muted-foreground">Dopłaty:</span>
+              <span className="text-right text-cyan-600">+{plnFull(d.surcharges)}</span>
+            </>
+          )}
+        </div>
+        <div className="border-t border-border mt-1.5 pt-1.5">
+          <div className="flex justify-between font-semibold">
+            <span>Saldo:</span>
+            <span className={d.endBalance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+              {plnFull(d.endBalance)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (!data) {
+    return (
+      <Card data-testid="widget-balance-forecast-chart">
+        <CardContent className="py-8">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="widget-balance-forecast-chart">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-green-500" />
+            Prognoza salda firmowego — 36 miesięcy
+          </CardTitle>
+          <Link href="/saldo-firmowe">
+            <Button variant="ghost" size="sm" className="text-xs h-7" data-testid="link-saldo-firmowe-details">
+              Szczegóły →
+            </Button>
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Aktualne saldo</p>
+            <p className={`text-sm font-bold ${data.currentBalance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-balance-current">
+              {plnFull(data.currentBalance)}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Min (36 mies.)</p>
+            <p className={`text-sm font-bold ${minBalance >= 0 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-balance-min">
+              {plnFull(minBalance)}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Saldo za 36 mies.</p>
+            <p className={`text-sm font-bold ${endBalance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-balance-end">
+              {plnFull(endBalance)}
+            </p>
+          </div>
+        </div>
+
+        <ResponsiveContainer width="100%" height={280}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 12, bottom: 0, left: 12 }}>
+            <defs>
+              <linearGradient id="dashBalanceGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.2} />
+                <stop offset="95%" stopColor="#22c55e" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 10 }}
+              interval={5}
+              className="text-muted-foreground"
+            />
+            <YAxis
+              tickFormatter={plnFmt}
+              tick={{ fontSize: 10 }}
+              width={56}
+              className="text-muted-foreground"
+            />
+            <RTooltip content={<BalanceForecastTooltip />} />
+            <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1.5} />
+            <Area
+              type="monotone"
+              dataKey="endBalance"
+              name="Saldo firmowe"
+              stroke="#22c55e"
+              strokeWidth={2}
+              fill="url(#dashBalanceGrad)"
+              dot={false}
+              activeDot={{ r: 4, fill: "#22c55e" }}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
