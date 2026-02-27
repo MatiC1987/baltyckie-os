@@ -47,7 +47,7 @@ export default function RevenueForecastSection({ forecastData }: { forecastData:
           const isCurrentMonth = c.year === now.getFullYear() && c.month === now.getMonth();
           const isPastMonth = c.year < now.getFullYear() || (c.year === now.getFullYear() && c.month < now.getMonth());
           return (
-            <Card key={`${c.year}-${c.month}`} className={isCurrentMonth ? "border-primary/30" : isPastMonth ? "opacity-75" : ""} data-testid={`card-forecast-${c.year}-${c.month}`}>
+            <Card key={`${c.year}-${c.month}`} className={isCurrentMonth ? "border-primary/30 bg-cyan-50/40 dark:bg-cyan-950/20 ring-1 ring-cyan-300/30 dark:ring-cyan-600/20" : isPastMonth ? "opacity-75" : ""} data-testid={`card-forecast-${c.year}-${c.month}`}>
               <CardHeader className="pb-2 pt-3">
                 <CardTitle className="text-sm flex items-center justify-between gap-2 flex-wrap">
                   <span>{c.monthName}</span>

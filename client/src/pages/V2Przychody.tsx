@@ -331,6 +331,111 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
   );
 }
 
+function GrandTotalTable({ apartments, currentMonth }: { apartments: AptRevenueData[]; currentMonth: number }) {
+  const totals = useMemo(() => {
+    const t: Record<number, { forecast: number; actual: number }> = {};
+    for (let m = 0; m < 12; m++) {
+      t[m] = { forecast: 0, actual: 0 };
+      for (const apt of apartments) {
+        t[m].forecast += apt.months[m]?.forecast || 0;
+        t[m].actual += apt.months[m]?.actual || 0;
+      }
+    }
+    return t;
+  }, [apartments]);
+
+  const yearTotalFc = Object.values(totals).reduce((s, t) => s + t.forecast, 0);
+  const yearTotalAct = Object.values(totals).reduce((s, t) => s + t.actual, 0);
+
+  return (
+    <div data-testid="grand-total-section">
+      <div className="flex items-center gap-2 py-2 px-3 font-semibold text-sm mb-1">
+        <span>Podsumowanie łączne — wszystkie lokalizacje</span>
+        <Badge variant="secondary">{apartments.length} apartamentów</Badge>
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+          Plan: {formatNum(yearTotalFc)} PLN | Realizacja: {formatNum(yearTotalAct)} PLN
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[10px] sm:text-xs border-collapse" data-testid="revenue-table-grand-total">
+          <thead>
+            <tr className="border-b bg-muted/30 sticky top-0 z-10">
+              <th className="sticky left-0 z-20 bg-muted/30 text-left p-1.5 sm:p-2 min-w-[120px] sm:min-w-[160px] font-medium"></th>
+              <th className="text-left p-1.5 sm:p-2 min-w-[45px] sm:min-w-[60px] font-medium">Wiersz</th>
+              {MONTHS.map((m, i) => (
+                <th key={i} className={`text-right p-1.5 sm:p-2 min-w-[60px] sm:min-w-[80px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                  {m}
+                </th>
+              ))}
+              <th className="text-right p-1.5 sm:p-2 min-w-[70px] sm:min-w-[90px] font-bold">Razem</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-t-2 font-bold bg-primary/5">
+              <td className="sticky left-0 z-10 bg-primary/5 p-1.5 sm:p-2 font-bold">RAZEM WSZYSTKIE</td>
+              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Plan</td>
+              {MONTHS.map((_, i) => (
+                <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                  {formatNum(totals[i]?.forecast || 0)}
+                </td>
+              ))}
+              <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalFc)} PLN</td>
+            </tr>
+            <tr className="font-bold bg-primary/5">
+              <td className="sticky left-0 z-10 bg-primary/5 p-1.5 sm:p-2"></td>
+              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Rzecz.</td>
+              {MONTHS.map((_, i) => (
+                <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                  {formatNum(totals[i]?.actual || 0)}
+                </td>
+              ))}
+              <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalAct)} PLN</td>
+            </tr>
+            <tr className="font-bold bg-primary/5 border-t">
+              <td className="sticky left-0 z-10 bg-primary/5 p-1.5 sm:p-2"></td>
+              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Odch.</td>
+              {MONTHS.map((_, i) => {
+                const fc = totals[i]?.forecast || 0;
+                const act = totals[i]?.actual || 0;
+                const dev = act - fc;
+                const mPct = pctVal(act, fc);
+                return (
+                  <td key={i} className={`p-1.5 sm:p-2 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                    {fc === 0 && act === 0 ? "—" : (
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1 justify-end">
+                          <div className="w-12"><MiniProgress value={mPct} colorClass={deviationBgColor(dev)} /></div>
+                          <span className="text-[10px] tabular-nums whitespace-nowrap">{mPct.toFixed(0)}%</span>
+                        </div>
+                        <span className={`block text-[10px] tabular-nums ${deviationColor(dev)}`}>
+                          {dev >= 0 ? "+" : ""}{formatNum(dev)}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+              <td className="p-1.5 sm:p-2 text-right">
+                {yearTotalFc === 0 && yearTotalAct === 0 ? "—" : (
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1 justify-end">
+                      <div className="w-14"><MiniProgress value={pctVal(yearTotalAct, yearTotalFc)} colorClass={deviationBgColor(yearTotalAct - yearTotalFc)} /></div>
+                      <span className="text-[10px] tabular-nums font-semibold whitespace-nowrap">{pctVal(yearTotalAct, yearTotalFc).toFixed(0)}%</span>
+                    </div>
+                    <span className={`block text-[10px] tabular-nums font-semibold ${deviationColor(yearTotalAct - yearTotalFc)}`}>
+                      {yearTotalAct - yearTotalFc >= 0 ? "+" : ""}{formatNum(yearTotalAct - yearTotalFc)} PLN
+                    </span>
+                  </div>
+                )}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function V2Przychody() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -552,6 +657,14 @@ export default function V2Przychody() {
           </CardContent>
         </Card>
       ))}
+
+      {grouped.size > 1 && (
+        <Card data-testid="revenue-grand-total">
+          <CardContent className="pt-4">
+            <GrandTotalTable apartments={apartments} currentMonth={year === currentYear ? currentMonth : -1} />
+          </CardContent>
+        </Card>
+      )}
 
       <CopyForecastDialog open={showCopyDialog} onOpenChange={setShowCopyDialog} currentYear={year} defaultTypes={["revenue"]} />
       <AutoFillDialog open={showAutoFill} onOpenChange={setShowAutoFill} currentYear={year} />

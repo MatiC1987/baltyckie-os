@@ -4208,7 +4208,8 @@ export async function registerRoutes(
     for (const s of subleases) {
       const payments = await storage.getSubleasePayments(s.id);
       for (const p of payments) {
-        allPayments.push({ ...p, subleaseTenantName: s.tenantName, subleaseApartmentIds: s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []) });
+        const tenantDisplayName = s.tenantType === "firma" ? (s.companyName || "Firma") : `${s.firstName || ""} ${s.lastName || ""}`.trim() || "—";
+        allPayments.push({ ...p, subleaseTenantName: tenantDisplayName, subleaseApartmentIds: s.apartmentIds || (s.apartmentId ? [s.apartmentId] : []) });
       }
     }
     res.json(allPayments);
