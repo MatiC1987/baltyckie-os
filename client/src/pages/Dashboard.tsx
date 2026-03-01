@@ -22,11 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { differenceInDays, format } from "date-fns";
+import { differenceInDays, format, formatDistanceToNow } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
   ArrowUp, ArrowDown, ArrowUpDown, Plane, PlaneTakeoff, Wallet, Landmark, Banknote, Bitcoin, HandCoins, Pencil, Check, X, AlertCircle, CalendarClock, FileWarning, TrendingUp, Target, Scale,
   Plus, Receipt, FileSignature, Download, LayoutDashboard, Wrench, Settings, Eye, EyeOff, ChevronUp, ChevronDown as ChevronDownIcon, Upload, GraduationCap,
+  Users, Activity, Clock, PlusCircle, Trash2 as Trash2Icon, Coffee, MapPin, Home, FileText,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -66,6 +67,8 @@ const WIDGET_REGISTRY: WidgetDef[] = [
   { id: "upcoming-departures", label: "Najbliższe wyjazdy", category: "operational", defaultVisible: true, description: "Wyjazdy w ciągu 7 dni" },
   { id: "expiring-leases", label: "Kończące się umowy", category: "admin", defaultVisible: true, description: "Umowy najmu kończące się w 6 miesięcy" },
   { id: "today-tasks", label: "Zadania na dziś", category: "operational", defaultVisible: true, description: "Zadania z terminem na dziś" },
+  { id: "rcp-summary", label: "RCP — Pracownicy", category: "operational", defaultVisible: true, description: "Obecność i godziny pracowników" },
+  { id: "recent-activity", label: "Ostatnia aktywność", category: "operational", defaultVisible: true, description: "Feed ostatnich zdarzeń w systemie" },
 ];
 
 const PREFS_KEY = "dashboard-widget-prefs";
@@ -527,6 +530,10 @@ export default function Dashboard() {
             return <ExpiringLeasesTab key="expiring-leases" leases={leases || []} apartments={apartments || []} />;
           case "today-tasks":
             return <TodayTasksWidget key="today-tasks" />;
+          case "rcp-summary":
+            return <RcpSummaryWidget key="rcp-summary" />;
+          case "recent-activity":
+            return <RecentActivityWidget key="recent-activity" />;
           default:
             return null;
         }
@@ -2035,6 +2042,262 @@ function BalanceForecastChartWidget({ data }: { data?: { currentBalance: number;
             />
           </ComposedChart>
         </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+type TeamStatus = { working: number; onBreak: number; absent: number; total: number };
+type EmployeeStat = { employeeId: number; employeeName: string; totalHours: number; lateCount: number; outsideZoneCount: number };
+
+function RcpSummaryWidget() {
+  const [, setLocation] = useLocation();
+  const now = new Date();
+  const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+  const today = format(now, "yyyy-MM-dd");
+
+  const { data: teamStatus, isLoading: teamLoading } = useQuery<TeamStatus>({
+    queryKey: ["/api/time-clock/team-status"],
+    refetchInterval: 30000,
+  });
+
+  const { data: stats, isLoading: statsLoading } = useQuery<EmployeeStat[]>({
+    queryKey: ["/api/rcp/employee-stats", monthStart, today],
+    queryFn: async () => {
+      const res = await fetch(`/api/rcp/employee-stats?from=${monthStart}&to=${today}`);
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      return res.json();
+    },
+  });
+
+  const totalHours = useMemo(() => stats?.reduce((s, e) => s + (e.totalHours || 0), 0) || 0, [stats]);
+  const totalLate = useMemo(() => stats?.reduce((s, e) => s + (e.lateCount || 0), 0) || 0, [stats]);
+  const totalOutsideZone = useMemo(() => stats?.reduce((s, e) => s + (e.outsideZoneCount || 0), 0) || 0, [stats]);
+
+  if (teamLoading && statsLoading) {
+    return (
+      <Card data-testid="widget-rcp-summary">
+        <CardContent className="py-6">
+          <div className="space-y-3">
+            <div className="h-5 w-40 bg-muted animate-pulse rounded" />
+            <div className="grid grid-cols-3 gap-3">
+              {[1, 2, 3].map(i => <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />)}
+            </div>
+            <div className="h-12 bg-muted animate-pulse rounded" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="widget-rcp-summary">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary" />
+            RCP — Pracownicy
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/rcp/admin")} data-testid="link-rcp-details">
+            Szczegóły →
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg border bg-card p-3 text-center" data-testid="rcp-working">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs text-muted-foreground">Pracują</span>
+            </div>
+            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{teamStatus?.working ?? 0}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3 text-center" data-testid="rcp-on-break">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Coffee className="h-3 w-3 text-amber-500" />
+              <span className="text-xs text-muted-foreground">Przerwa</span>
+            </div>
+            <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{teamStatus?.onBreak ?? 0}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3 text-center" data-testid="rcp-absent">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+              <span className="text-xs text-muted-foreground">Nieobecni</span>
+            </div>
+            <p className="text-xl font-bold text-muted-foreground">{teamStatus?.absent ?? 0}</p>
+          </div>
+        </div>
+
+        <div className="border-t pt-3">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Podsumowanie miesiąca</p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-sm">Łączne godziny</span>
+              </div>
+              <span className="text-sm font-semibold" data-testid="rcp-total-hours">{totalHours.toFixed(1)}h</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className={`h-3.5 w-3.5 ${totalLate > 0 ? "text-amber-500" : "text-muted-foreground/40"}`} />
+                <span className="text-sm">Spóźnienia</span>
+              </div>
+              <span className={`text-sm font-semibold ${totalLate > 0 ? "text-amber-600 dark:text-amber-400" : ""}`} data-testid="rcp-late-count">
+                {totalLate}
+              </span>
+            </div>
+            {totalOutsideZone > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5 text-red-500" />
+                  <span className="text-sm">Poza strefą GPS</span>
+                </div>
+                <Badge variant="destructive" className="text-xs" data-testid="rcp-outside-zone">{totalOutsideZone}</Badge>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  create: "utworzył/a",
+  update: "zaktualizował/a",
+  delete: "usunął/ęła",
+  import: "zaimportował/a",
+};
+
+const ENTITY_LABELS: Record<string, string> = {
+  reservation: "rezerwację",
+  apartment: "apartament",
+  sublease: "podnajem",
+  invoice: "fakturę",
+  cost: "koszt",
+  lease: "umowę najmu",
+  cost_invoice: "fakturę kosztową",
+  payment: "płatność",
+  employee: "pracownika",
+  task: "zadanie",
+  owner_contract: "umowę właściciela",
+  owner_payment: "płatność właściciela",
+  saldo: "saldo",
+  bank_account: "konto bankowe",
+};
+
+function getActionIcon(action: string) {
+  switch (action) {
+    case "create": return <PlusCircle className="h-4 w-4 text-emerald-500" />;
+    case "update": return <Pencil className="h-4 w-4 text-blue-500" />;
+    case "delete": return <Trash2Icon className="h-4 w-4 text-red-500" />;
+    case "import": return <Download className="h-4 w-4 text-purple-500" />;
+    default: return <Activity className="h-4 w-4 text-muted-foreground" />;
+  }
+}
+
+function getEntityIcon(entityType: string) {
+  switch (entityType) {
+    case "reservation": return <Plane className="h-3.5 w-3.5 text-muted-foreground" />;
+    case "apartment": return <Home className="h-3.5 w-3.5 text-muted-foreground" />;
+    case "invoice":
+    case "cost_invoice": return <Receipt className="h-3.5 w-3.5 text-muted-foreground" />;
+    case "sublease":
+    case "lease":
+    case "owner_contract": return <FileText className="h-3.5 w-3.5 text-muted-foreground" />;
+    case "cost":
+    case "payment":
+    case "owner_payment": return <Banknote className="h-3.5 w-3.5 text-muted-foreground" />;
+    default: return <FileText className="h-3.5 w-3.5 text-muted-foreground" />;
+  }
+}
+
+type ActivityLog = { id: number; userId?: string; userName?: string; action: string; entityType: string; entityId?: string; entityName?: string; details?: string; createdAt: string };
+
+function RecentActivityWidget() {
+  const [, setLocation] = useLocation();
+  const { data, isLoading } = useQuery<{ logs: ActivityLog[]; total: number }>({
+    queryKey: ["/api/activity-logs", { limit: 10 }],
+    queryFn: async () => {
+      const res = await fetch("/api/activity-logs?limit=10");
+      if (!res.ok) throw new Error("Failed to fetch activity logs");
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
+  const logs = data?.logs || [];
+
+  if (isLoading) {
+    return (
+      <Card data-testid="widget-recent-activity">
+        <CardContent className="py-6">
+          <div className="space-y-3">
+            <div className="h-5 w-44 bg-muted animate-pulse rounded" />
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="h-8 w-8 bg-muted animate-pulse rounded-full" />
+                <div className="flex-1 space-y-1">
+                  <div className="h-3.5 w-3/4 bg-muted animate-pulse rounded" />
+                  <div className="h-3 w-1/3 bg-muted animate-pulse rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="widget-recent-activity">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Ostatnia aktywność
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/activity-log")} data-testid="link-activity-log">
+            Zobacz wszystko →
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {logs.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center" data-testid="text-no-activity">Brak ostatniej aktywności</p>
+        ) : (
+          <div className="space-y-1">
+            {logs.map((log) => (
+              <div key={log.id} className="flex items-start gap-3 py-2 border-b last:border-0" data-testid={`activity-entry-${log.id}`}>
+                <div className="mt-0.5 flex-shrink-0">
+                  {getActionIcon(log.action)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {getEntityIcon(log.entityType)}
+                    <p className="text-sm leading-tight">
+                      <span className="font-medium">{log.userName || "System"}</span>
+                      {" "}
+                      <span className="text-muted-foreground">{ACTION_LABELS[log.action] || log.action}</span>
+                      {" "}
+                      <span className="text-muted-foreground">{ENTITY_LABELS[log.entityType] || log.entityType}</span>
+                      {log.entityName && (
+                        <>
+                          {" — "}
+                          <span className="font-medium truncate">{log.entityName}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true, locale: pl })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

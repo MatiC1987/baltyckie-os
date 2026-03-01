@@ -75,7 +75,7 @@ The application utilizes a modern full-stack architecture.
 4. Rozliczenie końcowe podnajmu (checkout settlement)
 5. Panel statystyk dla pracowników RCP
 6. Harmonogram przeglądów technicznych z automatycznymi przypomnieniami
-7. Dynamiczne dashboardowe widżety (konfigurowalne)
+7. ~~Dynamiczne dashboardowe widżety (konfigurowalne)~~ ✅ Widget RCP (obecność pracowników + statystyki miesięczne) i Ostatnia aktywność (feed zdarzeń z activity_logs) dodane do Dashboard z pełną obsługą toggle/reorder
 
 ### UI/UX i wydajność:
 8. Eksport do Excel z dowolnej tabeli
