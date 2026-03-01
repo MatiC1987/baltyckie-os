@@ -1,17 +1,25 @@
 import { lazy, Suspense, useState } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useSidebar } from "@/contexts/SidebarContext";
+import { serializeForServer } from "@/lib/sidebar-config";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Building2, Users, UserCog, MapPin, Briefcase, Files,
   FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
   Type, Menu, ChevronDown, ChevronRight, PanelLeft, TrendingUp,
-  Monitor,
+  Monitor, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -290,6 +298,55 @@ function RecepcjaSidebarConfig() {
   );
 }
 
+function ForceMenuButton() {
+  const { config } = useSidebar();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+
+  const forceMutation = useMutation({
+    mutationFn: async () => {
+      const sidebarLayout = serializeForServer(config);
+      const res = await apiRequest("POST", "/api/force-menu-config", { sidebarLayout });
+      return res.json();
+    },
+    onSuccess: (data: { success: boolean; updatedCount: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-preferences"] });
+      toast({ title: "Układ wymuszony", description: `Układ menu został nadpisany dla ${data.updatedCount} użytkowników.` });
+      setOpen(false);
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się wymusić układu menu.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border">
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" className="gap-2 border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10" data-testid="button-force-menu">
+            <Shield className="h-4 w-4" />
+            Wymuś aktualny układ dla wszystkich użytkowników
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Wymuś układ menu</AlertDialogTitle>
+            <AlertDialogDescription>
+              Czy na pewno chcesz nadpisać układ menu u wszystkich użytkowników? Ta operacja zastąpi ich indywidualne ustawienia Twoim aktualnym układem.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-force-menu-cancel">Anuluj</AlertDialogCancel>
+            <AlertDialogAction onClick={() => forceMutation.mutate()} disabled={forceMutation.isPending} data-testid="button-force-menu-confirm">
+              {forceMutation.isPending ? "Wymuszanie..." : "Tak, wymuś"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
 export default function Ustawienia() {
   return (
     <div className="p-4 lg:p-6 space-y-6" data-testid="page-ustawienia">
@@ -322,6 +379,7 @@ export default function Ustawienia() {
         <Suspense fallback={<div className="py-8 text-center text-sm text-muted-foreground">Ładowanie...</div>}>
           <MenuCustomizationPanel />
         </Suspense>
+        <ForceMenuButton />
       </CollapsibleSection>
 
       <CollapsibleSection title="Menu panelu Recepcja" icon={Monitor} testId="toggle-recepcja-menu-config">

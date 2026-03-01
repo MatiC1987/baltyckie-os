@@ -498,6 +498,30 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/force-menu-config", isAuthenticated, async (req: any, res) => {
+    try {
+      const { sidebarLayout } = req.body;
+      if (!sidebarLayout || typeof sidebarLayout !== "string") {
+        return res.status(400).json({ message: "sidebarLayout is required" });
+      }
+
+      const [existing] = await db.select().from(appConfig).where(eq(appConfig.key, "forced_menu_config"));
+      if (existing) {
+        await db.update(appConfig).set({ value: sidebarLayout, updatedAt: new Date() }).where(eq(appConfig.key, "forced_menu_config"));
+      } else {
+        await db.insert(appConfig).values({ key: "forced_menu_config", value: sidebarLayout });
+      }
+
+      const result = await db.update(userPreferences).set({ sidebarLayout, updatedAt: new Date() }).returning();
+      const updatedCount = result.length;
+
+      res.json({ success: true, updatedCount });
+    } catch (err) {
+      console.error("Failed to force menu config:", err);
+      res.status(500).json({ message: "Failed to force menu config" });
+    }
+  });
+
   app.get("/api/overdue-counts", isAuthenticated, async (_req, res) => {
     try {
       const today = new Date().toISOString().split("T")[0];
