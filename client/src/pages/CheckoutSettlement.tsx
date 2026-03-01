@@ -1,9 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardCheck, Plus, Pencil, Trash2, Eye, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +31,7 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { CheckoutSettlement, Sublease } from "@shared/schema";
+import type { CheckoutSettlement as CheckoutSettlementType, Sublease } from "@shared/schema";
 
 function fmt(v: string | number | null | undefined): string {
   const n = Number(v ?? 0);
@@ -86,15 +85,16 @@ function subleaseName(s: Sublease): string {
   return [s.firstName, s.lastName].filter(Boolean).join(" ") || `Podnajem #${s.id}`;
 }
 
+export { CheckoutSettlementPage as CheckoutSettlement };
 export default function CheckoutSettlementPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [detailDialog, setDetailDialog] = useState<CheckoutSettlement | null>(null);
+  const [detailDialog, setDetailDialog] = useState<CheckoutSettlementType | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormValues>(defaultForm);
 
-  const { data: settlements = [], isLoading } = useQuery<CheckoutSettlement[]>({
+  const { data: settlements = [], isLoading } = useQuery<CheckoutSettlementType[]>({
     queryKey: ["/api/checkout-settlements"],
   });
 
@@ -150,7 +150,7 @@ export default function CheckoutSettlementPage() {
     setDialogOpen(true);
   }
 
-  function openEdit(s: CheckoutSettlement) {
+  function openEdit(s: CheckoutSettlementType) {
     setEditingId(s.id);
     setForm({
       subleaseId: s.subleaseId,
@@ -203,17 +203,12 @@ export default function CheckoutSettlementPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <PageHeader
-        title="Rozliczenia wykwaterowania"
-        description="Rozliczenia kaucji i kosztów przy wykwaterowaniu"
-        icon={ClipboardCheck}
-        actions={
-          <Button onClick={openCreate} data-testid="button-create-settlement">
-            <Plus className="w-4 h-4 mr-2" />
-            Nowe rozliczenie
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Button onClick={openCreate} data-testid="button-create-settlement">
+          <Plus className="w-4 h-4 mr-2" />
+          Nowe rozliczenie
+        </Button>
+      </div>
 
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-sm">

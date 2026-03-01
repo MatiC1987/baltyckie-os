@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileSignature, HandCoins, Gauge } from "lucide-react";
+import { FileSignature, HandCoins, Gauge, ClipboardCheck } from "lucide-react";
 import Subleases from "@/pages/Subleases";
 import SubrentSettlement from "@/pages/SubrentSettlement";
 import MediaSettlement from "@/pages/MediaSettlement";
+import CheckoutSettlement from "@/pages/CheckoutSettlement";
 
 const TABS = [
   { value: "umowy", label: "Umowy", icon: FileSignature },
   { value: "rozliczenia", label: "Rozliczenia", icon: HandCoins },
   { value: "media", label: "Rozliczenie mediów", icon: Gauge },
+  { value: "checkout", label: "Rozliczenie końcowe", icon: ClipboardCheck },
 ];
 
 export default function Podnajem() {
@@ -42,6 +44,9 @@ export default function Podnajem() {
           </TabsContent>
           <TabsContent value="media" className="mt-0">
             <MediaSettlement />
+          </TabsContent>
+          <TabsContent value="checkout" className="mt-0">
+            <CheckoutSettlement />
           </TabsContent>
         </Tabs>
       </div>

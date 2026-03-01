@@ -26,7 +26,6 @@ import {
   Upload, FileText, Image, Trash2, Download, Package, ChevronDown, ChevronUp,
   X, AlertTriangle, Clock, Search, Filter, Eye, History, Plus, CheckCircle2
 } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
 
 const EXPENSE_CATEGORIES = [
   "WYNAGRODZENIA",
@@ -900,13 +899,9 @@ function AccountingNotesTab() {
   );
 }
 
-export default function DokumentyKsiegowe() {
+export function DokumentyKsiegowe() {
   return (
     <div>
-      <PageHeader
-        title="Dokumenty księgowe"
-        description="Faktury kosztowe i noty księgowe w jednym miejscu"
-      />
       <Tabs defaultValue="faktury" className="mt-4">
         <TabsList data-testid="tabs-documents">
           <TabsTrigger value="faktury" data-testid="tab-faktury">Faktury kosztowe</TabsTrigger>
@@ -922,3 +917,5 @@ export default function DokumentyKsiegowe() {
     </div>
   );
 }
+
+export default DokumentyKsiegowe;

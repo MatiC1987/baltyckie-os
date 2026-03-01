@@ -47,7 +47,6 @@ import {
   FileText,
   Trash2,
 } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 
@@ -93,6 +92,7 @@ const emptyForm = {
   notes: "",
 };
 
+export { Szkolenia };
 export default function Szkolenia() {
   const { toast } = useToast();
   const [filterType, setFilterType] = useState<string>("all");
@@ -248,16 +248,11 @@ export default function Szkolenia() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Szkolenia"
-        description="Zarządzanie szkoleniami i certyfikatami pracowników"
-        icon={GraduationCap}
-        actions={
-          <Button onClick={openAdd} data-testid="button-add-training">
-            <Plus className="mr-2 h-4 w-4" /> Dodaj szkolenie
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button onClick={openAdd} data-testid="button-add-training">
+          <Plus className="mr-2 h-4 w-4" /> Dodaj szkolenie
+        </Button>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>

@@ -1,13 +1,12 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Location } from "@shared/schema";
-import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Wallet, ChevronDown, ChevronRight, Copy, Sparkles, BarChart3 } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Sparkles, BarChart3 } from "lucide-react";
 import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
@@ -436,7 +435,7 @@ function GrandTotalTable({ apartments, currentMonth }: { apartments: AptRevenueD
   );
 }
 
-export default function V2Przychody() {
+export function V2Przychody() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const [year, setYear] = useState(currentYear);
@@ -515,7 +514,6 @@ export default function V2Przychody() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Przychody" icon={Wallet} description="Przychody — prognoza vs realizacja" />
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -523,42 +521,35 @@ export default function V2Przychody() {
 
   return (
     <div className="space-y-4" data-testid="v2-przychody-page">
-      <PageHeader
-        title="Przychody"
-        icon={Wallet}
-        description="Przychody — prognoza vs realizacja"
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-location-filter">
-                <SelectValue placeholder="Lokalizacja" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Wszystkie</SelectItem>
-                {locations.map(l => (
-                  <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-              <SelectTrigger className="w-[100px]" data-testid="select-year">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map(y => (
-                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={() => setShowAutoFill(true)} data-testid="button-auto-fill">
-              <Sparkles className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Auto-uzup.</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-forecasts">
-              <Copy className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Kopiuj</span>
-            </Button>
-          </div>
-        }
-      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select value={locationFilter} onValueChange={setLocationFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-location-filter">
+            <SelectValue placeholder="Lokalizacja" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Wszystkie</SelectItem>
+            {locations.map(l => (
+              <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
+          <SelectTrigger className="w-[100px]" data-testid="select-year">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {years.map(y => (
+              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={() => setShowAutoFill(true)} data-testid="button-auto-fill">
+          <Sparkles className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Auto-uzup.</span>
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setShowCopyDialog(true)} data-testid="button-copy-forecasts">
+          <Copy className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Kopiuj</span>
+        </Button>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="card-gradient from-emerald-500/10" data-testid="kpi-forecast">
@@ -672,3 +663,5 @@ export default function V2Przychody() {
     </div>
   );
 }
+
+export default V2Przychody;

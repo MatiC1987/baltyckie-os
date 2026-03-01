@@ -23,6 +23,7 @@ function useLocations() {
   });
 }
 
+export { Lokalizacje };
 export default function Lokalizacje() {
   const { data: locations, isLoading } = useLocations();
   const { toast } = useToast();
@@ -70,16 +71,11 @@ export default function Lokalizacje() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Lokalizacje"
-        description="Zarządzanie kategoriami lokalizacji apartamentów."
-        icon={MapPin}
-        actions={
-          <Button onClick={() => setShowAdd(true)} data-testid="button-add-location">
-            <Plus className="mr-2 h-4 w-4" /> Dodaj lokalizację
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button onClick={() => setShowAdd(true)} data-testid="button-add-location">
+          <Plus className="mr-2 h-4 w-4" /> Dodaj lokalizację
+        </Button>
+      </div>
 
       <Card>
         <CardContent className="p-0">

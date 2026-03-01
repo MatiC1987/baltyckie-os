@@ -79,6 +79,7 @@ function formatDate(d: string | Date | null | undefined): string {
   return date.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+export { Usterki };
 export default function Usterki() {
   const { toast } = useToast();
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -175,10 +176,6 @@ export default function Usterki() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Usterki"
-        description="Zarządzanie zgłoszeniami usterek w apartamentach"
-      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>

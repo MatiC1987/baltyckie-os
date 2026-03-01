@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Apartment, Location } from "@shared/schema";
-import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -9,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TrendingUp, ChevronLeft, ChevronRight, Copy, ArrowRight, Layers, FileSpreadsheet, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, ArrowRight, Layers, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
@@ -117,7 +116,7 @@ const SEASON_PRESETS = [
 
 type BulkMode = "SET" | "PERCENT" | "LONG_TERM" | "SHORT_TERM";
 
-export default function PriorityRevenueForecast() {
+export function PriorityRevenueForecast() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const [year, setYear] = useState(currentYear);
@@ -445,11 +444,6 @@ export default function PriorityRevenueForecast() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <PageHeader
-          title="Prognoza Przychodów"
-          description="Planowane przychody dla każdego apartamentu w ujęciu miesięcznym"
-          icon={TrendingUp}
-        />
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="icon" className="h-9 w-9" disabled={year <= years[0]} onClick={() => setYear(y => y - 1)} data-testid="button-prev-year">
             <ChevronLeft className="h-4 w-4" />
@@ -832,3 +826,5 @@ export default function PriorityRevenueForecast() {
     </div>
   );
 }
+
+export default PriorityRevenueForecast;

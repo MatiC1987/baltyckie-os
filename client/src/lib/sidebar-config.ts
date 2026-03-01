@@ -116,40 +116,34 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   calendar: { id: "calendar", href: "/calendar", label: "Terminarz", iconName: "CalendarDays" },
   reservations: { id: "reservations", href: "/reservations", label: "Rezerwacje", iconName: "ClipboardList" },
   podnajem: { id: "podnajem", href: "/podnajem", label: "Podnajem", iconName: "FileSignature" },
-  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
-  invoices: { id: "invoices", href: "/invoices", label: "Faktury", iconName: "FileSpreadsheet" },
-  "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty księgowe", iconName: "FileText" },
-  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Umowy", iconName: "Briefcase" },
-  "przeglady": { id: "przeglady", href: "/przeglady", label: "Przeglądy", iconName: "Wrench" },
-  "customers": { id: "customers", href: "/customers", label: "Klienci", iconName: "Users" },
-  "tasks": { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },
-  "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
-  "apartments": { id: "apartments", href: "/apartments", label: "Apartamenty", iconName: "Building2" },
-  "owners": { id: "owners", href: "/owners", label: "Właściciele", iconName: "Users" },
+  customers: { id: "customers", href: "/customers", label: "Klienci", iconName: "Users" },
+  apartments: { id: "apartments", href: "/apartments", label: "Apartamenty", iconName: "Building2" },
+  owners: { id: "owners", href: "/owners", label: "Właściciele", iconName: "Users" },
+  "saldo-firmowe": { id: "saldo-firmowe", href: "/saldo-firmowe", label: "Saldo firmowe", iconName: "Landmark" },
   "v2-przychody": { id: "v2-przychody", href: "/v2/przychody", label: "Przychody", iconName: "Wallet" },
   "v2-koszty": { id: "v2-koszty", href: "/v2/koszty", label: "Koszty", iconName: "Calculator" },
-  "saldo-firmowe": { id: "saldo-firmowe", href: "/saldo-firmowe", label: "Saldo firmowe", iconName: "Landmark" },
-  "occupancy": { id: "occupancy", href: "/occupancy", label: "Obłożenie", iconName: "Gauge" },
-  "profitability": { id: "profitability", href: "/profitability", label: "Rentowność", iconName: "TrendingUp" },
+  salda: { id: "salda", href: "/salda", label: "Salda", iconName: "Scale" },
+  "import-bankowy": { id: "import-bankowy", href: "/import-bankowy", label: "Import bankowy", iconName: "Upload" },
+  "dokumenty-ksiegowe": { id: "dokumenty-ksiegowe", href: "/dokumenty-ksiegowe", label: "Dokumenty", iconName: "FileText" },
+  "contracts-services": { id: "contracts-services", href: "/contracts-services", label: "Umowy usługowe", iconName: "Briefcase" },
+  rcp: { id: "rcp", href: "/rcp/admin", label: "RCP", iconName: "Clock" },
+  pracownicy: { id: "pracownicy", href: "/pracownicy", label: "Pracownicy", iconName: "UserCog" },
+  occupancy: { id: "occupancy", href: "/occupancy", label: "Obłożenie", iconName: "Gauge" },
+  profitability: { id: "profitability", href: "/profitability", label: "Rentowność", iconName: "TrendingUp" },
   "year-comparison": { id: "year-comparison", href: "/year-comparison", label: "Porównanie r/r", iconName: "BarChart3" },
   "apartment-comparison": { id: "apartment-comparison", href: "/apartment-comparison", label: "Porównanie apartamentów", iconName: "ArrowUpDown" },
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
-  "rcp": { id: "rcp", href: "/rcp/admin", label: "RCP", iconName: "Clock" },
-  "usterki": { id: "usterki", href: "/usterki", label: "Usterki", iconName: "AlertTriangle" },
-  "szkolenia": { id: "szkolenia", href: "/szkolenia", label: "Szkolenia", iconName: "GraduationCap" },
-  "umowy-pracownicze": { id: "umowy-pracownicze", href: "/umowy-pracownicze", label: "Umowy pracownicze", iconName: "FileCheck" },
-  "rcp-statystyki": { id: "rcp-statystyki", href: "/rcp/statystyki", label: "Statystyki RCP", iconName: "Activity" },
-  "checkout-settlement": { id: "checkout-settlement", href: "/rozliczenie-checkout", label: "Rozliczenie końcowe", iconName: "Calculator" },
-  "import-bankowy": { id: "import-bankowy", href: "/import-bankowy", label: "Import bankowy", iconName: "Upload" },
-  "lista-plac": { id: "lista-plac", href: "/lista-plac", label: "Lista płac", iconName: "Coins" },
+  "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
+  tasks: { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
-  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "podnajem", "reservations", "customers"], color: "cyan" },
-  { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "rcp", "rcp-statystyki", "usterki", "szkolenia", "umowy-pracownicze", "lista-plac"], color: "violet" },
-  { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "saldo-firmowe", "import-bankowy", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services", "przeglady", "checkout-settlement"], color: "emerald" },
-  { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality"], color: "blue" },
+  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "customers", "podnajem"], color: "cyan" },
+  { id: "nieruchomosci", title: "NIERUCHOMOŚCI", itemIds: ["apartments", "owners"], color: "orange" },
+  { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services"], color: "emerald" },
+  { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy"], color: "pink" },
+  { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "source-comparison"], color: "blue" },
 ];
 
 export const DEFAULT_CONFIG: SidebarConfig = {
@@ -166,7 +160,7 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const STORAGE_KEY = "sidebar-config-v15";
+const STORAGE_KEY = "sidebar-config-v16";
 
 export function loadConfigFromStorage(): SidebarConfig | null {
   try {
@@ -277,7 +271,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
   {
     id: "default",
     label: "Domyślny",
-    description: "Standardowy układ z trzema sekcjami: Rezerwacje, Zarządzanie i Finanse",
+    description: "Standardowy układ z 6 sekcjami: Rezerwacje, Nieruchomości, Finanse, Kadry, Analityka",
     sections: DEFAULT_SECTIONS.map(s => ({ ...s })),
   },
   {
@@ -286,20 +280,15 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
     description: "Uproszczony układ z najważniejszymi elementami w jednej sekcji",
     sections: [
       { id: "main", itemIds: ["kokpit"] },
-      { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "apartments", "tasks", "v2-przychody", "v2-koszty", "invoices"], color: "cyan" },
+      { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "apartments", "v2-przychody", "v2-koszty", "dokumenty-ksiegowe", "rcp"], color: "cyan" },
     ],
-    hiddenItems: ["source-comparison", "salda", "dokumenty-ksiegowe", "contracts-services", "przeglady", "customers", "owners"],
+    hiddenItems: ["source-comparison", "salda", "contracts-services", "customers", "owners", "tasks"],
   },
   {
     id: "full",
     label: "Pełny",
     description: "Wszystkie elementy widoczne, pogrupowane tematycznie",
-    sections: [
-      { id: "main", itemIds: ["kokpit"] },
-      { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "podnajem", "customers"], color: "cyan" },
-      { id: "zarzadzanie", title: "ZARZĄDZANIE", itemIds: ["apartments", "owners", "tasks", "contracts-services", "przeglady", "szkolenia", "umowy-pracownicze"], color: "violet" },
-      { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe"], color: "emerald" },
-    ],
+    sections: DEFAULT_SECTIONS.map(s => ({ ...s })),
   },
   {
     id: "finance",
@@ -308,8 +297,8 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
     sections: [
       { id: "main", itemIds: ["kokpit"] },
       { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations"], color: "cyan" },
-      { id: "finanse", title: "FINANSE", itemIds: ["v2-przychody", "v2-koszty", "source-comparison", "salda", "invoices", "dokumenty-ksiegowe", "contracts-services"], color: "emerald" },
-      { id: "inne", title: "INNE", itemIds: ["apartments", "owners", "podnajem", "customers", "tasks", "przeglady"], color: "violet" },
+      { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "source-comparison"], color: "emerald" },
+      { id: "inne", title: "INNE", itemIds: ["apartments", "owners", "podnajem", "customers", "rcp", "pracownicy", "tasks"], color: "violet" },
     ],
   },
 ];

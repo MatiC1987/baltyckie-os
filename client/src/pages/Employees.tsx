@@ -27,7 +27,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X, Eye, AlertTriangle, CheckCircle, UserCog } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 
@@ -116,6 +115,7 @@ interface ExamWithEmployee extends MedicalExam {
   employeeName: string;
 }
 
+export { Employees };
 export default function Employees() {
   const { data: employees, isLoading } = useEmployees();
   const queryClient = useQueryClient();
@@ -332,27 +332,22 @@ export default function Employees() {
 
   if (employees && employees.length === 0) return (
     <div className="space-y-6">
-      <PageHeader title="Pracownicy" description="Zarządzanie danymi pracowników i badaniami lekarskimi." icon={UserCog} actions={
+      <div className="flex items-center justify-end">
         <Button onClick={openAdd} data-testid="button-add-employee">
           <Plus className="mr-2 h-4 w-4" /> Dodaj pracownika
         </Button>
-      } />
+      </div>
       <EmptyState icon={UserCog} title="Brak pracowników" description="Dodaj pierwszego pracownika." actionLabel="Dodaj pracownika" onAction={openAdd} />
     </div>
   );
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Pracownicy"
-        description="Zarządzanie danymi pracowników i badaniami lekarskimi."
-        icon={UserCog}
-        actions={
-          <Button onClick={openAdd} data-testid="button-add-employee">
-            <Plus className="mr-2 h-4 w-4" /> Dodaj pracownika
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button onClick={openAdd} data-testid="button-add-employee">
+          <Plus className="mr-2 h-4 w-4" /> Dodaj pracownika
+        </Button>
+      </div>
 
       {expiringExams.length > 0 && (
         <Card className="border-amber-300 dark:border-amber-700">

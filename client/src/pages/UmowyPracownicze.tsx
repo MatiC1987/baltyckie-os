@@ -50,7 +50,6 @@ import {
   CheckCircle,
   Clock,
 } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 
@@ -109,6 +108,7 @@ const emptyForm = {
   notes: "",
 };
 
+export { UmowyPracownicze };
 export default function UmowyPracownicze() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -285,16 +285,11 @@ export default function UmowyPracownicze() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Umowy pracownicze"
-        description="Zarządzanie umowami pracowników — generowanie, przechowywanie i monitorowanie terminów."
-        icon={FileCheck}
-        actions={
-          <Button onClick={openAdd} data-testid="button-add-contract">
-            <Plus className="mr-2 h-4 w-4" /> Dodaj umowę
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button onClick={openAdd} data-testid="button-add-contract">
+          <Plus className="mr-2 h-4 w-4" /> Dodaj umowę
+        </Button>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>

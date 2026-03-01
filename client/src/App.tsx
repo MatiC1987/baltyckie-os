@@ -13,15 +13,13 @@ import { TablePageSkeleton, DashboardSkeleton, AnalyticsSkeleton } from "@/compo
 
 const RecepcjaApp = lazy(() => import("@/pages/recepcja/RecepcjaApp"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
-const Apartments = lazy(() => import("@/pages/Apartments"));
+const ApartamentyHub = lazy(() => import("@/pages/ApartamentyHub"));
 const Owners = lazy(() => import("@/pages/Owners"));
 const RezerwacjeAll = lazy(() => import("@/pages/RezerwacjeAll"));
 const Leases = lazy(() => import("@/pages/Leases"));
 const Finance = lazy(() => import("@/pages/Finance"));
 const ImportBackup = lazy(() => import("@/pages/ImportBackup"));
-const Employees = lazy(() => import("@/pages/Employees"));
 const Terminarz = lazy(() => import("@/pages/Terminarz"));
-const Lokalizacje = lazy(() => import("@/pages/Lokalizacje"));
 const ServiceContracts = lazy(() => import("@/pages/ServiceContracts"));
 const Podnajem = lazy(() => import("@/pages/Podnajem"));
 const UserAccounts = lazy(() => import("@/pages/UserAccounts"));
@@ -30,10 +28,8 @@ const DocumentTemplates = lazy(() => import("@/pages/DocumentTemplates"));
 const ActivityLog = lazy(() => import("@/pages/ActivityLog"));
 const PlaceholderPage = lazy(() => import("@/pages/Placeholder"));
 const ReportExport = lazy(() => import("@/pages/ReportExport"));
-const Invoices = lazy(() => import("@/pages/Invoices"));
 const CompanySettings = lazy(() => import("@/pages/CompanySettings"));
-const DokumentyKsiegowe = lazy(() => import("@/pages/DokumentyKsiegowe"));
-const TechnicalInspections = lazy(() => import("@/pages/TechnicalInspections"));
+const DokumentyHub = lazy(() => import("@/pages/DokumentyHub"));
 const Ustawienia = lazy(() => import("@/pages/Ustawienia"));
 const Customers = lazy(() => import("@/pages/Customers"));
 const Tasks = lazy(() => import("@/pages/Tasks"));
@@ -44,18 +40,12 @@ const YearComparison = lazy(() => import("@/pages/YearComparison"));
 const ApartmentComparison = lazy(() => import("@/pages/ApartmentComparison"));
 const PriceSeasonality = lazy(() => import("@/pages/PriceSeasonality"));
 const SaldoFirmowe = lazy(() => import("@/pages/SaldoFirmowe"));
-const V2Przychody = lazy(() => import("@/pages/V2Przychody"));
+const PrzychodyHub = lazy(() => import("@/pages/PrzychodyHub"));
 const V2Koszty = lazy(() => import("@/pages/V2Koszty"));
-const PriorityRevenueForecast = lazy(() => import("@/pages/PriorityRevenueForecast"));
 const TimeClock = lazy(() => import("@/pages/TimeClock"));
 const TimeAdmin = lazy(() => import("@/pages/TimeAdmin"));
-const Usterki = lazy(() => import("@/pages/Usterki"));
-const Szkolenia = lazy(() => import("@/pages/Szkolenia"));
-const UmowyPracownicze = lazy(() => import("@/pages/UmowyPracownicze"));
-const RcpStatystyki = lazy(() => import("@/pages/RcpStatystyki"));
-const CheckoutSettlement = lazy(() => import("@/pages/CheckoutSettlement"));
+const PracownicyHub = lazy(() => import("@/pages/PracownicyHub"));
 const BankStatementImport = lazy(() => import("@/pages/BankStatementImport"));
-const ListaPlac = lazy(() => import("@/pages/ListaPlac"));
 
 function LazyFallback() {
   return (
@@ -83,6 +73,18 @@ function AuthenticatedPlaceholder({ title, description }: { title: string; descr
       </Suspense>
     </Layout>
   );
+}
+
+function NavRedirect({ to, tab }: { to: string; tab: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.pathname = to;
+    url.searchParams.set("tab", tab);
+    window.history.replaceState({}, "", url.toString());
+    setLocation(to);
+  }, [to, tab, setLocation]);
+  return null;
 }
 
 const LAST_PATH_KEY = "baltyckie_last_path";
@@ -157,10 +159,8 @@ function AuthenticatedRouter() {
       <Route path="/reservations" component={() => <AuthenticatedRoute component={RezerwacjeAll} />} />
       <Route path="/leases" component={() => <AuthenticatedRoute component={Leases} />} />
 
-      <Route path="/invoices" component={() => <AuthenticatedRoute component={Invoices} />} />
+      <Route path="/dokumenty-ksiegowe" component={() => <AuthenticatedRoute component={DokumentyHub} />} />
       <Route path="/contracts-services" component={() => <AuthenticatedRoute component={ServiceContracts} />} />
-      <Route path="/przeglady" component={() => <AuthenticatedRoute component={TechnicalInspections} />} />
-      <Route path="/dokumenty-ksiegowe" component={() => <AuthenticatedRoute component={DokumentyKsiegowe} />} />
       <Route path="/salda" component={() => <AuthenticatedRoute component={Saldo} />} />
       <Route path="/saldo-ml" component={() => <Layout><Suspense fallback={<LazyFallback />}><Saldo personName="Małgorzata Latasiewicz" /></Suspense></Layout>} />
       <Route path="/saldo-jg" component={() => <Layout><Suspense fallback={<LazyFallback />}><Saldo personName="Jolanta Głodkowska" /></Suspense></Layout>} />
@@ -170,10 +170,9 @@ function AuthenticatedRouter() {
       <Route path="/podnajem" component={() => <AuthenticatedRoute component={Podnajem} />} />
 
       <Route path="/ustawienia" component={() => <AuthenticatedRoute component={Ustawienia} />} />
-      <Route path="/apartments" component={() => <AuthenticatedRoute component={Apartments} />} />
+      <Route path="/apartments" component={() => <AuthenticatedRoute component={ApartamentyHub} />} />
       <Route path="/owners" component={() => <AuthenticatedRoute component={Owners} />} />
-      <Route path="/employees" component={() => <AuthenticatedRoute component={Employees} />} />
-      <Route path="/locations" component={() => <AuthenticatedRoute component={Lokalizacje} />} />
+      <Route path="/pracownicy" component={() => <AuthenticatedRoute component={PracownicyHub} />} />
       <Route path="/document-templates" component={() => <AuthenticatedRoute component={DocumentTemplates} />} />
       <Route path="/user-accounts" component={() => <AuthenticatedRoute component={UserAccounts} />} />
       <Route path="/company-settings" component={() => <AuthenticatedRoute component={CompanySettings} />} />
@@ -183,9 +182,8 @@ function AuthenticatedRouter() {
       <Route path="/customers" component={() => <AuthenticatedRoute component={Customers} />} />
       <Route path="/tasks" component={() => <AuthenticatedRoute component={Tasks} />} />
       <Route path="/source-comparison" component={() => <AuthenticatedRoute component={SourceComparison} />} />
-      <Route path="/v2/przychody" component={() => <AuthenticatedRoute component={V2Przychody} />} />
+      <Route path="/v2/przychody" component={() => <AuthenticatedRoute component={PrzychodyHub} />} />
       <Route path="/v2/koszty" component={() => <AuthenticatedRoute component={V2Koszty} />} />
-      <Route path="/v2/prognoza-przychodow" component={() => <AuthenticatedRoute component={PriorityRevenueForecast} />} />
       <Route path="/ustawienia-menu" component={() => <Redirect to="/ustawienia" />} />
 
       <Route path="/koszty">{() => <Redirect to="/v2/koszty" />}</Route>
@@ -212,13 +210,19 @@ function AuthenticatedRouter() {
       <Route path="/v2/prognoza" component={() => <Redirect to="/ustawienia" />} />
       <Route path="/v2/realizacja" component={() => <Redirect to="/v2/przychody" />} />
       <Route path="/rcp/admin" component={() => <AuthenticatedRoute component={TimeAdmin} />} />
-      <Route path="/usterki" component={() => <AuthenticatedRoute component={Usterki} />} />
-      <Route path="/szkolenia" component={() => <AuthenticatedRoute component={Szkolenia} />} />
-      <Route path="/umowy-pracownicze" component={() => <AuthenticatedRoute component={UmowyPracownicze} />} />
-      <Route path="/rcp/statystyki" component={() => <AuthenticatedRoute component={RcpStatystyki} />} />
-      <Route path="/rozliczenie-checkout" component={() => <AuthenticatedRoute component={CheckoutSettlement} />} />
       <Route path="/import-bankowy" component={() => <AuthenticatedRoute component={BankStatementImport} />} />
-      <Route path="/lista-plac" component={() => <AuthenticatedRoute component={ListaPlac} />} />
+
+      <Route path="/locations" component={() => <NavRedirect to="/apartments" tab="lokalizacje" />} />
+      <Route path="/przeglady" component={() => <NavRedirect to="/apartments" tab="przeglady" />} />
+      <Route path="/usterki" component={() => <NavRedirect to="/apartments" tab="usterki" />} />
+      <Route path="/invoices" component={() => <NavRedirect to="/dokumenty-ksiegowe" tab="faktury" />} />
+      <Route path="/rcp/statystyki" component={() => <Redirect to="/rcp/admin" />} />
+      <Route path="/szkolenia" component={() => <NavRedirect to="/pracownicy" tab="szkolenia" />} />
+      <Route path="/umowy-pracownicze" component={() => <NavRedirect to="/pracownicy" tab="umowy" />} />
+      <Route path="/lista-plac" component={() => <NavRedirect to="/pracownicy" tab="lista-plac" />} />
+      <Route path="/employees" component={() => <NavRedirect to="/pracownicy" tab="lista" />} />
+      <Route path="/rozliczenie-checkout" component={() => <NavRedirect to="/podnajem" tab="checkout" />} />
+      <Route path="/v2/prognoza-przychodow" component={() => <NavRedirect to="/v2/przychody" tab="prognoza" />} />
 
       <Route component={() => <AuthenticatedRoute component={NotFound} />} />
     </Switch>

@@ -89,6 +89,7 @@ const emptyForm = {
   recurrenceMonths: null as number | null,
 };
 
+export { TechnicalInspections };
 export default function TechnicalInspections() {
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
@@ -245,7 +246,6 @@ export default function TechnicalInspections() {
 
   return (
     <div className="p-4 md:p-6 space-y-4" data-testid="page-technical-inspections">
-      <PageHeader title="Przeglądy techniczne" description="Kalendarz i zarządzanie przeglądami technicznymi mieszkań" />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card data-testid="stat-overdue">
@@ -332,7 +332,7 @@ export default function TechnicalInspections() {
             </Select>
           </div>
 
-          <DataTable<TechnicalInspection>
+          <DataTable
             data={filteredInspections}
             columns={[
               { header: "Typ", accessorKey: "inspectionType", cell: (insp) => (

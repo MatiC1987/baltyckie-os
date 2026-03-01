@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +52,7 @@ function statusBadge(status: string) {
   }
 }
 
+export { ListaPlac };
 export default function ListaPlac() {
   const { toast } = useToast();
   const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null);
@@ -188,17 +188,12 @@ export default function ListaPlac() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <PageHeader
-        title="Lista Płac"
-        description="Zarządzanie listami płac i wynagrodzeniami pracowników"
-        icon={Banknote}
-        actions={
-          <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-period">
-            <Plus className="h-4 w-4 mr-2" />
-            Nowy okres
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-period">
+          <Plus className="h-4 w-4 mr-2" />
+          Nowy okres
+        </Button>
+      </div>
 
       {selectedPeriod && entries.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DataTable } from "@/components/DataTable";
 import { Plus, FileDown, Trash2, Loader2, FileSpreadsheet, Pencil, Copy, ChevronDown, ChevronUp, X, Search, FileWarning } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -89,7 +88,7 @@ function defaultForm() {
   };
 }
 
-export default function Invoices() {
+export function Invoices() {
   const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
@@ -313,25 +312,23 @@ export default function Invoices() {
 
   return (
     <div className="p-6 space-y-6" data-testid="page-invoices">
-      <PageHeader title="Faktury" description="Zarządzanie fakturami i dokumentami sprzedaży." icon={FileSpreadsheet} actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-status-filter"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Wszystkie</SelectItem>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-            <SelectTrigger className="w-[160px]" data-testid="select-payment-filter"><SelectValue placeholder="Płatność" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Wszystkie</SelectItem>
-              {Object.entries(PAYMENT_STATUSES).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button onClick={openNew} data-testid="button-create-invoice"><Plus className="h-4 w-4 mr-2" />Dodaj fakturę</Button>
-        </div>
-      } />
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[150px]" data-testid="select-status-filter"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Wszystkie</SelectItem>
+            {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+          <SelectTrigger className="w-[160px]" data-testid="select-payment-filter"><SelectValue placeholder="Płatność" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Wszystkie</SelectItem>
+            {Object.entries(PAYMENT_STATUSES).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button onClick={openNew} data-testid="button-create-invoice"><Plus className="h-4 w-4 mr-2" />Dodaj fakturę</Button>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -470,7 +467,7 @@ export default function Invoices() {
         </DialogContent>
       </Dialog>
 
-      <DataTable<Invoice>
+      <DataTable
         data={filtered}
         columns={[
           { header: "Numer", accessorKey: "invoiceNumber", cell: (inv) => <span data-testid={`text-invoice-number-${inv.id}`}>{inv.invoiceNumber}</span> },
@@ -503,3 +500,5 @@ export default function Invoices() {
     </div>
   );
 }
+
+export default Invoices;

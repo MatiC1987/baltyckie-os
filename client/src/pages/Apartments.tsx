@@ -48,6 +48,7 @@ function normalizeKey(loc: string): string {
   return loc.trim().toUpperCase();
 }
 
+export { Apartments };
 export default function Apartments() {
   const { data: apartments, isLoading } = useApartments();
   const { data: ownersList } = useOwners();
@@ -312,7 +313,7 @@ export default function Apartments() {
 
   if (apartments && apartments.length === 0) return (
     <div className="space-y-6">
-      <PageHeader title="Apartamenty" description="Zarządzanie apartamentami i lokalizacjami." icon={Building2} actions={
+      <div className="flex items-center justify-end">
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-apartment">
@@ -326,69 +327,62 @@ export default function Apartments() {
             <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
           </DialogContent>
         </Dialog>
-      } />
+      </div>
       <EmptyState icon={Building2} title="Brak apartamentów" description="Dodaj pierwszy apartament." actionLabel="Dodaj apartament" onAction={() => setIsDialogOpen(true)} />
     </div>
   );
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Apartamenty"
-        description="Zarządzanie apartamentami i lokalizacjami."
-        icon={Building2}
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" onClick={selectAll} data-testid="button-select-all">
-              <CheckSquare className="mr-2 h-4 w-4" />
-              {apartments && apartments.every(a => selectedIds.has(a.id)) && selectedIds.size > 0 ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        <Button variant="outline" onClick={selectAll} data-testid="button-select-all">
+          <CheckSquare className="mr-2 h-4 w-4" />
+          {apartments && apartments.every(a => selectedIds.has(a.id)) && selectedIds.size > 0 ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
+        </Button>
+        {selectedIds.size > 0 && (
+          <>
+            <Select
+              key={moveSelectKey}
+              onValueChange={handleBulkMove}
+              disabled={isMoving}
+            >
+              <SelectTrigger className="w-auto min-w-[200px]" data-testid="select-move-to-location">
+                <FolderInput className="mr-2 h-4 w-4" />
+                <SelectValue placeholder={isMoving ? "Przenoszenie..." : `Przenieś do... (${selectedIds.size})`} />
+              </SelectTrigger>
+              <SelectContent>
+                {LOCATIONS.map(loc => (
+                  <SelectItem key={loc} value={loc} data-testid={`option-move-${loc.toLowerCase().replace(/\s+/g, '-')}`}>
+                    {loc}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={isDeletingBulk}
+              data-testid="button-delete-selected"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isDeletingBulk ? "Usuwanie..." : `Usuń wybrane (${selectedIds.size})`}
             </Button>
-            {selectedIds.size > 0 && (
-              <>
-                <Select
-                  key={moveSelectKey}
-                  onValueChange={handleBulkMove}
-                  disabled={isMoving}
-                >
-                  <SelectTrigger className="w-auto min-w-[200px]" data-testid="select-move-to-location">
-                    <FolderInput className="mr-2 h-4 w-4" />
-                    <SelectValue placeholder={isMoving ? "Przenoszenie..." : `Przenieś do... (${selectedIds.size})`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LOCATIONS.map(loc => (
-                      <SelectItem key={loc} value={loc} data-testid={`option-move-${loc.toLowerCase().replace(/\s+/g, '-')}`}>
-                        {loc}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="destructive"
-                  onClick={handleBulkDelete}
-                  disabled={isDeletingBulk}
-                  data-testid="button-delete-selected"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {isDeletingBulk ? "Usuwanie..." : `Usuń wybrane (${selectedIds.size})`}
-                </Button>
-              </>
-            )}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-add-apartment">
-                  <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Dodaj nowy apartament</DialogTitle>
-                </DialogHeader>
-                <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
-              </DialogContent>
-            </Dialog>
-          </div>
-        }
-      />
+          </>
+        )}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button data-testid="button-add-apartment">
+              <Plus className="mr-2 h-4 w-4" /> Dodaj apartament
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Dodaj nowy apartament</DialogTitle>
+            </DialogHeader>
+            <ApartmentForm onSuccess={() => setIsDialogOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>

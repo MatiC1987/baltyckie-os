@@ -30,7 +30,7 @@ The application utilizes a modern full-stack architecture.
     *   `V2Koszty` features top tiles reflecting child component data for consistency.
     *   `Saldo Firmowe` provides a 60-month rolling company balance forecast, incorporating various revenue and cost sources, with UI for tiles, charts, and detailed tables.
     *   `V2Przychody` includes per-apartment expandable year comparison tables.
-    *   Dedicated revenue forecasting (`/v2/prognoza-przychodow`) per apartment with location summary tiles, bulk edit dialog (set value/percent/long-term/short-term marking), Excel export, and visual purple highlighting for long-term rental months. DB field: `revenue_forecasts.rental_type` (null=short-term, "LONG"=long-term).
+    *   Revenue forecasting available as "Prognoza" tab within PrzychodyHub (`/v2/przychody?tab=prognoza`), with location summary tiles, bulk edit dialog, Excel export, and purple highlighting for long-term months. DB field: `revenue_forecasts.rental_type` (null=short-term, "LONG"=long-term).
 *   **Property & Rental Management:**
     *   CRUD operations for apartments, reservations (short-term, group support, status tracking), and leases (long-term contracts).
     *   Gantt-chart-style calendar (Terminarz) for visualizing reservations, blockades, and subleases with drag-and-drop.
@@ -63,8 +63,21 @@ The application utilizes a modern full-stack architecture.
 *   **Recepcja Panel (`/recepcja`):**
     *   Independent panel for reception managers with separate JWT authentication.
     *   Features include a dashboard with notifications, Saldo CRUD, read-only access to key modules, payment toggling, cost invoice upload, meter reading submission, handover protocols, tenant data submission workflow, tenant contact list, and full RCP admin.
-    *   Includes `Usterki` module for issue/fault reporting with priority, status, and photo management, with an admin interface at `/usterki`.
+    *   Includes `Usterki` module for issue/fault reporting with priority, status, and photo management, with an admin interface at `/apartments?tab=usterki`.
     *   Admin-controlled sidebar visibility. All write operations are logged to `recepcja_audit_log`.
+
+## Navigation Structure (Sidebar)
+The sidebar is organized into 6 sections (configurable via sidebar-config.ts, storage key `sidebar-config-v16`):
+*   **Pulpit** — Dashboard (/)
+*   **REZERWACJE** (cyan) — Terminarz, Rezerwacje, Klienci, Podnajem
+*   **NIERUCHOMOŚCI** (orange) — Apartamenty (hub: /apartments with tabs Apartamenty/Lokalizacje/Przeglądy/Usterki), Właściciele
+*   **FINANSE** (emerald) — Saldo firmowe, Przychody (hub: /v2/przychody with tabs Przychody/Prognoza), Koszty, Salda, Import bankowy, Dokumenty (hub: /dokumenty-ksiegowe with tabs Dokumenty księgowe/Faktury), Umowy usługowe
+*   **KADRY** (pink) — RCP (/rcp/admin with tabs including Statystyki), Pracownicy (hub: /pracownicy with tabs Dashboard/Lista/Umowy/Lista płac/Szkolenia)
+*   **ANALITYKA** (blue) — Obłożenie, Rentowność, Porównanie r/r, Porównanie apartamentów, Sezonowość cen, Porównanie źródeł
+
+**Hub Pages Pattern:** Hub pages (ApartamentyHub, PrzychodyHub, DokumentyHub, PracownicyHub) merge related functionality into tabbed interfaces with `?tab=` URL query params for deep linking. Old standalone routes redirect to hub tabs via NavRedirect component.
+
+**Dashboard Widgets:** Configurable via WIDGET_REGISTRY. Includes: KPI, Saldo firmowe, Prognoza przychodów, Balance forecast chart, Nieopłacone podnajmy, Szybkie akcje, Nieopłacone przyjazdy, Najbliższe przyjazdy/wyjazdy, Kończące się umowy, Zadania na dziś, RCP (30s refresh), Ostatnia aktywność (60s refresh), Kadry (HR alerts for expiring contracts/exams/trainings).
 
 ## Zaplanowane funkcjonalności (Roadmap)
 
