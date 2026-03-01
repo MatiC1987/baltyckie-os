@@ -824,6 +824,7 @@ export const revenueForecasts = pgTable("revenue_forecasts", {
   apartmentId: integer("apartment_id").references(() => apartments.id),
   forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
   actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
+  rentalType: text("rental_type"),
 });
 
 export const insertRevenueForecastSchema = createInsertSchema(revenueForecasts).omit({ id: true });

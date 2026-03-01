@@ -30,7 +30,7 @@ The application utilizes a modern full-stack architecture.
     *   `V2Koszty` features top tiles reflecting child component data for consistency.
     *   `Saldo Firmowe` provides a 60-month rolling company balance forecast, incorporating various revenue and cost sources, with UI for tiles, charts, and detailed tables.
     *   `V2Przychody` includes per-apartment expandable year comparison tables.
-    *   Dedicated revenue forecasting (`/v2/prognoza-przychodow`) per apartment.
+    *   Dedicated revenue forecasting (`/v2/prognoza-przychodow`) per apartment with location summary tiles, bulk edit dialog (set value/percent/long-term/short-term marking), Excel export, and visual purple highlighting for long-term rental months. DB field: `revenue_forecasts.rental_type` (null=short-term, "LONG"=long-term).
 *   **Property & Rental Management:**
     *   CRUD operations for apartments, reservations (short-term, group support, status tracking), and leases (long-term contracts).
     *   Gantt-chart-style calendar (Terminarz) for visualizing reservations, blockades, and subleases with drag-and-drop.

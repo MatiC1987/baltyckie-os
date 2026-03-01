@@ -6,11 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { TrendingUp, ChevronLeft, ChevronRight, Copy, ArrowRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { TrendingUp, ChevronLeft, ChevronRight, Copy, ArrowRight, Layers, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import * as XLSX from "xlsx";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+const MONTHS_FULL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 
 const LOCATION_COLORS: Record<string, string> = {
   "GRAND BALTIC": "bg-blue-600 dark:bg-blue-700",
@@ -37,16 +42,21 @@ type RevenueForecast = {
   locationName: string | null;
   forecast: string;
   actual: string;
+  rentalType?: string | null;
 };
+
+type ForecastCell = { value: number; rentalType: string | null };
 
 function EditableCell({
   value,
   onSave,
   isCurrentMonth,
+  isLongTerm,
 }: {
   value: number;
   onSave: (v: number) => void;
   isCurrentMonth: boolean;
+  isLongTerm: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -75,16 +85,37 @@ function EditableCell({
     );
   }
 
+  const bgClass = isLongTerm
+    ? "bg-purple-100/70 dark:bg-purple-950/40"
+    : isCurrentMonth
+      ? "bg-cyan-50/60 dark:bg-cyan-950/20"
+      : "";
+
   return (
     <div
-      className={`text-right tabular-nums cursor-pointer hover:bg-primary/10 rounded px-1 py-0.5 min-h-[1.5rem] text-xs ${isCurrentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""} ${value > 0 ? "" : "text-muted-foreground/30"}`}
+      className={`text-right tabular-nums cursor-pointer hover:bg-primary/10 rounded px-1 py-0.5 min-h-[1.5rem] text-xs ${bgClass} ${value > 0 ? "" : "text-muted-foreground/30"}`}
       onClick={startEdit}
-      data-testid={`cell-forecast-${value}`}
+      data-testid="cell-forecast"
     >
-      {value > 0 ? formatNum(value) : "—"}
+      {isLongTerm && value > 0 ? (
+        <span className="flex items-center justify-end gap-0.5">
+          <span className="text-[8px] font-bold text-purple-600 dark:text-purple-400">DT</span>
+          {formatNum(value)}
+        </span>
+      ) : (
+        value > 0 ? formatNum(value) : "—"
+      )}
     </div>
   );
 }
+
+const SEASON_PRESETS = [
+  { label: "Sezon letni", months: [5, 6, 7, 8] },
+  { label: "Poza sezonem", months: [0, 1, 2, 3, 4, 9, 10, 11] },
+  { label: "Cały rok", months: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+];
+
+type BulkMode = "SET" | "PERCENT" | "LONG_TERM" | "SHORT_TERM";
 
 export default function PriorityRevenueForecast() {
   const currentYear = new Date().getFullYear();
@@ -92,12 +123,19 @@ export default function PriorityRevenueForecast() {
   const [year, setYear] = useState(currentYear);
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [showCopyAptDialog, setShowCopyAptDialog] = useState(false);
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [copySourceApt, setCopySourceApt] = useState<string>("");
   const [copyTargetApt, setCopyTargetApt] = useState<string>("");
   const [copySourceYear, setCopySourceYear] = useState<number | null>(null);
   const [copyTargetYear, setCopyTargetYear] = useState<number | null>(null);
   const [isCopying, setIsCopying] = useState(false);
   const { toast } = useToast();
+
+  const [bulkSelectedApts, setBulkSelectedApts] = useState<Set<number>>(new Set());
+  const [bulkSelectedMonths, setBulkSelectedMonths] = useState<Set<number>>(new Set());
+  const [bulkMode, setBulkMode] = useState<BulkMode>("SET");
+  const [bulkValue, setBulkValue] = useState("");
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   const { data: forecasts = [] } = useQuery<RevenueForecast[]>({
     queryKey: [`/api/revenue-forecasts?year=${year}`],
@@ -122,17 +160,23 @@ export default function PriorityRevenueForecast() {
   );
 
   const forecastMap = useMemo(() => {
-    const m: Record<string, number> = {};
+    const m: Record<string, ForecastCell> = {};
     for (const f of forecasts) {
       if (f.apartmentId) {
-        m[`${f.apartmentId}__${f.month}`] = parseFloat(f.forecast || "0");
+        m[`${f.apartmentId}__${f.month}`] = {
+          value: parseFloat(f.forecast || "0"),
+          rentalType: f.rentalType || null,
+        };
       }
     }
     return m;
   }, [forecasts]);
 
+  const getVal = useCallback((aptId: number, month: number) => forecastMap[`${aptId}__${month}`]?.value || 0, [forecastMap]);
+  const getType = useCallback((aptId: number, month: number) => forecastMap[`${aptId}__${month}`]?.rentalType || null, [forecastMap]);
+
   const upsertMutation = useMutation({
-    mutationFn: (body: { year: number; month: number; apartmentId: number; forecast: string }) =>
+    mutationFn: (body: { year: number; month: number; apartmentId: number; forecast: string; rentalType?: string | null }) =>
       apiRequest("PUT", "/api/revenue-forecasts", body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${year}`] });
@@ -167,17 +211,18 @@ export default function PriorityRevenueForecast() {
         const res = await apiRequest("GET", `/api/revenue-forecasts?year=${srcYear}`);
         sourceForecasts = await res.json();
       }
-      const srcMap: Record<string, number> = {};
+      const srcMap: Record<string, { val: number; rt: string | null }> = {};
       for (const f of sourceForecasts) {
         if (f.apartmentId) {
-          srcMap[`${f.apartmentId}__${f.month}`] = parseFloat(f.forecast || "0");
+          srcMap[`${f.apartmentId}__${f.month}`] = { val: parseFloat(f.forecast || "0"), rt: f.rentalType || null };
         }
       }
       let count = 0;
       let errors = 0;
       for (const apt of activeApts) {
         for (let m = 0; m < 12; m++) {
-          const val = srcMap[`${apt.id}__${m}`] || 0;
+          const src = srcMap[`${apt.id}__${m}`];
+          const val = src?.val || 0;
           if (val > 0) {
             try {
               await apiRequest("PUT", "/api/revenue-forecasts", {
@@ -185,6 +230,7 @@ export default function PriorityRevenueForecast() {
                 month: m,
                 apartmentId: apt.id,
                 forecast: String(val),
+                rentalType: src?.rt || null,
               });
               count++;
             } catch {
@@ -214,16 +260,15 @@ export default function PriorityRevenueForecast() {
     const srcId = Number(copySourceApt);
     const tgtId = Number(copyTargetApt);
     if (!srcId || !tgtId || srcId === tgtId) return;
-    let count = 0;
     for (let m = 0; m < 12; m++) {
-      const val = forecastMap[`${srcId}__${m}`] || 0;
+      const val = getVal(srcId, m);
       await apiRequest("PUT", "/api/revenue-forecasts", {
         year,
         month: m,
         apartmentId: tgtId,
         forecast: String(val),
+        rentalType: getType(srcId, m),
       });
-      count++;
     }
     queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${year}`] });
     const srcApt = activeApts.find(a => a.id === srcId);
@@ -241,12 +286,10 @@ export default function PriorityRevenueForecast() {
   const totalForecast = useMemo(() => {
     let sum = 0;
     for (const apt of activeApts) {
-      for (let m = 0; m < 12; m++) {
-        sum += forecastMap[`${apt.id}__${m}`] || 0;
-      }
+      for (let m = 0; m < 12; m++) sum += getVal(apt.id, m);
     }
     return sum;
-  }, [forecastMap, activeApts]);
+  }, [forecastMap, activeApts, getVal]);
 
   const aptsByLocation = useMemo(() => {
     const map: Record<string, Apartment[]> = {};
@@ -257,6 +300,147 @@ export default function PriorityRevenueForecast() {
     if (unassigned.length > 0) map["Inne"] = unassigned;
     return map;
   }, [activeApts, sortedLocations]);
+
+  const bulkApply = async () => {
+    if (bulkSelectedApts.size === 0 || bulkSelectedMonths.size === 0) return;
+    const numVal = parseFloat(bulkValue.replace(",", "."));
+    if (bulkMode !== "SHORT_TERM" && (isNaN(numVal) || (bulkMode === "SET" && numVal < 0) || (bulkMode === "LONG_TERM" && numVal <= 0))) {
+      toast({ title: "Błąd", description: "Podaj prawidłową wartość", variant: "destructive" });
+      return;
+    }
+    setBulkApplying(true);
+    let count = 0;
+    let errors = 0;
+    for (const aptId of bulkSelectedApts) {
+      for (const month of bulkSelectedMonths) {
+        try {
+          let forecast: string;
+          let rentalType: string | null = getType(aptId, month);
+          if (bulkMode === "SET") {
+            forecast = String(numVal);
+          } else if (bulkMode === "PERCENT") {
+            const current = getVal(aptId, month);
+            forecast = String(Math.round(current * (1 + numVal / 100)));
+          } else if (bulkMode === "LONG_TERM") {
+            forecast = String(numVal);
+            rentalType = "LONG";
+          } else {
+            forecast = String(getVal(aptId, month));
+            rentalType = null;
+          }
+          await apiRequest("PUT", "/api/revenue-forecasts", {
+            year,
+            month,
+            apartmentId: aptId,
+            forecast,
+            rentalType,
+          });
+          count++;
+        } catch {
+          errors++;
+        }
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: [`/api/revenue-forecasts?year=${year}`] });
+    if (errors > 0) {
+      toast({ title: "Częściowo zapisano", description: `${count} zaktualizowanych, ${errors} błędów`, variant: "destructive" });
+    } else {
+      toast({ title: "Zaktualizowano", description: `Zmieniono ${count} komórek` });
+    }
+    setBulkApplying(false);
+    setShowBulkDialog(false);
+  };
+
+  const openBulkDialog = () => {
+    setBulkSelectedApts(new Set());
+    setBulkSelectedMonths(new Set());
+    setBulkMode("SET");
+    setBulkValue("");
+    setShowBulkDialog(true);
+  };
+
+  const toggleBulkApt = (id: number) => {
+    setBulkSelectedApts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleBulkLocation = (locName: string) => {
+    const locApts = aptsByLocation[locName] || [];
+    setBulkSelectedApts(prev => {
+      const next = new Set(prev);
+      const allSelected = locApts.every(a => next.has(a.id));
+      for (const a of locApts) {
+        if (allSelected) next.delete(a.id); else next.add(a.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleBulkMonth = (m: number) => {
+    setBulkSelectedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m); else next.add(m);
+      return next;
+    });
+  };
+
+  const setBulkMonthPreset = (months: number[]) => {
+    setBulkSelectedMonths(new Set(months));
+  };
+
+  const toggleAllApts = () => {
+    setBulkSelectedApts(prev => {
+      if (prev.size === activeApts.length) return new Set();
+      return new Set(activeApts.map(a => a.id));
+    });
+  };
+
+  const exportToExcel = () => {
+    const rows: (string | number)[][] = [];
+    rows.push(["Lokalizacja", "Apartament", "Typ", ...MONTHS_FULL, "Rok"]);
+
+    for (const [locName, apts] of Object.entries(aptsByLocation)) {
+      if (apts.length === 0) continue;
+      const locTotal = apts.reduce((s, apt) => {
+        for (let m = 0; m < 12; m++) s += getVal(apt.id, m);
+        return s;
+      }, 0);
+      const locMonths = MONTHS.map((_, mi) =>
+        apts.reduce((s, apt) => s + getVal(apt.id, mi), 0)
+      );
+      rows.push([locName, "", "", ...locMonths, locTotal]);
+
+      for (const apt of apts) {
+        const aptMonths = MONTHS.map((_, mi) => getVal(apt.id, mi));
+        const aptTotal = aptMonths.reduce((s, v) => s + v, 0);
+        const longMonths = MONTHS.filter((_, mi) => getType(apt.id, mi) === "LONG").length;
+        const typeLabel = longMonths > 6 ? "DT" : longMonths > 0 ? "KT/DT" : "KT";
+        rows.push(["", apt.name, typeLabel, ...aptMonths, aptTotal]);
+      }
+    }
+
+    const totalMonths = MONTHS.map((_, mi) =>
+      activeApts.reduce((s, apt) => s + getVal(apt.id, mi), 0)
+    );
+    rows.push(["RAZEM", "", "", ...totalMonths, totalForecast]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Prognoza ${year}`);
+
+    const colWidths = [{ wch: 18 }, { wch: 22 }, { wch: 6 }];
+    for (let i = 0; i < 12; i++) colWidths.push({ wch: 12 });
+    colWidths.push({ wch: 14 });
+    ws["!cols"] = colWidths;
+
+    XLSX.writeFile(wb, `prognoza_przychodow_${year}.xlsx`);
+    toast({ title: "Eksport zakończony", description: `Plik prognoza_przychodow_${year}.xlsx został pobrany` });
+  };
+
+  const bulkCellCount = bulkSelectedApts.size * bulkSelectedMonths.size;
 
   return (
     <div className="p-6 space-y-4">
@@ -279,28 +463,49 @@ export default function PriorityRevenueForecast() {
           <Button variant="outline" size="icon" className="h-9 w-9" disabled={year >= years[years.length - 1]} onClick={() => setYear(y => y + 1)} data-testid="button-next-year">
             <ChevronRight className="h-4 w-4" />
           </Button>
+          <Button variant="outline" size="sm" onClick={openBulkDialog} data-testid="button-bulk-edit">
+            <Layers className="h-4 w-4 mr-1" /> Edycja zbiorcza
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowCopyAptDialog(true)} data-testid="button-copy-from-apt">
             <Copy className="h-4 w-4 mr-1" /> Kopiuj z apt.
           </Button>
           <Button variant="outline" size="sm" onClick={() => { setCopySourceYear(year); setCopyTargetYear(year + 1); setShowCopyDialog(true); }} data-testid="button-copy-to-next-year">
             <ArrowRight className="h-4 w-4 mr-1" /> Kopiuj rok → rok
           </Button>
+          <Button variant="outline" size="sm" onClick={exportToExcel} data-testid="button-export-excel">
+            <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="col-span-1">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <Card data-testid="card-total-forecast">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground font-medium">Łączna prognoza {year}</p>
             <p className="text-xl font-bold mt-1 tabular-nums">{totalForecast.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} PLN</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Śr. na apt: {activeApts.length > 0 ? Math.round(totalForecast / activeApts.length).toLocaleString("pl-PL") : 0} PLN</p>
           </CardContent>
         </Card>
-        <Card className="col-span-2">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground font-medium">Jak używać</p>
-            <p className="text-xs text-muted-foreground mt-1">Kliknij komórkę aby edytować prognozowaną kwotę przychodu. Zatwierdź Enterem lub kliknięciem poza komórkę. Dane są zapisywane automatycznie.</p>
-          </CardContent>
-        </Card>
+        {Object.entries(aptsByLocation).map(([locName, apts]) => {
+          if (apts.length === 0) return null;
+          const locTotal = apts.reduce((s, apt) => {
+            for (let m = 0; m < 12; m++) s += getVal(apt.id, m);
+            return s;
+          }, 0);
+          const avgPerApt = apts.length > 0 ? Math.round(locTotal / apts.length) : 0;
+          return (
+            <Card key={locName} data-testid={`card-location-${locName}`}>
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${getLocColor(locName)}`} />
+                  <p className="text-xs font-medium truncate">{locName}</p>
+                </div>
+                <p className="text-lg font-bold mt-1 tabular-nums">{locTotal.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} PLN</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Śr. na apt: {avgPerApt.toLocaleString("pl-PL")} PLN</p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
@@ -325,11 +530,11 @@ export default function PriorityRevenueForecast() {
               if (apts.length === 0) return null;
               const locColor = getLocColor(locName);
               const locTotal = apts.reduce((s, apt) => {
-                for (let m = 0; m < 12; m++) s += forecastMap[`${apt.id}__${m}`] || 0;
+                for (let m = 0; m < 12; m++) s += getVal(apt.id, m);
                 return s;
               }, 0);
               const locMonthTotals = MONTHS.map((_, mi) =>
-                apts.reduce((s, apt) => s + (forecastMap[`${apt.id}__${mi}`] || 0), 0)
+                apts.reduce((s, apt) => s + getVal(apt.id, mi), 0)
               );
 
               return [
@@ -347,21 +552,25 @@ export default function PriorityRevenueForecast() {
                   </td>
                 </tr>,
                 ...apts.map(apt => {
-                  const aptTotal = MONTHS.reduce((s, _, mi) => s + (forecastMap[`${apt.id}__${mi}`] || 0), 0);
+                  const aptTotal = MONTHS.reduce((s, _, mi) => s + getVal(apt.id, mi), 0);
                   return (
                     <tr key={`apt-${apt.id}`} className="hover:bg-muted/30 dark:hover:bg-muted/20 border-b border-border/50">
                       <td className="sticky left-0 z-10 bg-background border-r border-border/30 px-2 py-1 font-medium pl-6">
                         {apt.name}
                       </td>
-                      {MONTHS.map((_, mi) => (
-                        <td key={mi} className={`border-r border-border/20 px-1 py-0.5 ${mi === currentMonth && year === currentYear ? "bg-cyan-50/40 dark:bg-cyan-950/10" : ""}`}>
-                          <EditableCell
-                            value={forecastMap[`${apt.id}__${mi}`] || 0}
-                            onSave={v => handleCellSave(apt.id, mi, v)}
-                            isCurrentMonth={mi === currentMonth && year === currentYear}
-                          />
-                        </td>
-                      ))}
+                      {MONTHS.map((_, mi) => {
+                        const isLong = getType(apt.id, mi) === "LONG";
+                        return (
+                          <td key={mi} className={`border-r border-border/20 px-1 py-0.5 ${isLong ? "bg-purple-50/50 dark:bg-purple-950/20" : mi === currentMonth && year === currentYear ? "bg-cyan-50/40 dark:bg-cyan-950/10" : ""}`}>
+                            <EditableCell
+                              value={getVal(apt.id, mi)}
+                              onSave={v => handleCellSave(apt.id, mi, v)}
+                              isCurrentMonth={mi === currentMonth && year === currentYear}
+                              isLongTerm={isLong}
+                            />
+                          </td>
+                        );
+                      })}
                       <td className="px-2 py-1 text-right tabular-nums font-bold text-xs bg-muted/20 dark:bg-muted/10">
                         {formatNum(aptTotal)}
                       </td>
@@ -376,7 +585,7 @@ export default function PriorityRevenueForecast() {
                 RAZEM
               </td>
               {MONTHS.map((_, mi) => {
-                const monthTotal = activeApts.reduce((s, apt) => s + (forecastMap[`${apt.id}__${mi}`] || 0), 0);
+                const monthTotal = activeApts.reduce((s, apt) => s + getVal(apt.id, mi), 0);
                 return (
                   <td key={mi} className={`border-r border-border/30 px-2 py-2 text-right tabular-nums font-bold ${mi === currentMonth && year === currentYear ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
                     {formatNum(monthTotal)}
@@ -390,6 +599,156 @@ export default function PriorityRevenueForecast() {
           </tbody>
         </table>
       </div>
+
+      <Dialog open={showBulkDialog} onOpenChange={setShowBulkDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edycja zbiorcza</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-semibold">Apartamenty</Label>
+                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={toggleAllApts} data-testid="button-bulk-toggle-all">
+                  {bulkSelectedApts.size === activeApts.length ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
+                </Button>
+              </div>
+              <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                {Object.entries(aptsByLocation).map(([locName, apts]) => {
+                  if (apts.length === 0) return null;
+                  const allLocSelected = apts.every(a => bulkSelectedApts.has(a.id));
+                  return (
+                    <div key={locName}>
+                      <div
+                        className="flex items-center gap-2 py-1 px-1 cursor-pointer hover:bg-muted/50 rounded"
+                        onClick={() => toggleBulkLocation(locName)}
+                        data-testid={`bulk-loc-${locName}`}
+                      >
+                        <Checkbox checked={allLocSelected} />
+                        <div className={`w-2 h-2 rounded-full ${getLocColor(locName)}`} />
+                        <span className="text-xs font-semibold uppercase">{locName}</span>
+                      </div>
+                      <div className="ml-6 space-y-0.5">
+                        {apts.map(apt => (
+                          <div
+                            key={apt.id}
+                            className="flex items-center gap-2 py-0.5 px-1 cursor-pointer hover:bg-muted/30 rounded"
+                            onClick={() => toggleBulkApt(apt.id)}
+                            data-testid={`bulk-apt-${apt.id}`}
+                          >
+                            <Checkbox checked={bulkSelectedApts.has(apt.id)} />
+                            <span className="text-xs">{apt.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">Wybrano: {bulkSelectedApts.size} apartamentów</p>
+            </div>
+
+            <div>
+              <Label className="text-sm font-semibold mb-2 block">Miesiące</Label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {MONTHS.map((m, i) => (
+                  <Button
+                    key={i}
+                    variant={bulkSelectedMonths.has(i) ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs px-2"
+                    onClick={() => toggleBulkMonth(i)}
+                    data-testid={`bulk-month-${i}`}
+                  >
+                    {m}
+                  </Button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {SEASON_PRESETS.map(p => (
+                  <Button
+                    key={p.label}
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[10px] px-2 text-muted-foreground"
+                    onClick={() => setBulkMonthPreset(p.months)}
+                    data-testid={`bulk-preset-${p.label}`}
+                  >
+                    {p.label}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">Wybrano: {bulkSelectedMonths.size} miesięcy</p>
+            </div>
+
+            <div>
+              <Label className="text-sm font-semibold mb-2 block">Tryb</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: "SET" as BulkMode, label: "Ustaw wartość (PLN)" },
+                  { value: "PERCENT" as BulkMode, label: "Zmień o %" },
+                  { value: "LONG_TERM" as BulkMode, label: "Oznacz długoterminowe" },
+                  { value: "SHORT_TERM" as BulkMode, label: "Oznacz krótkoterminowe" },
+                ]).map(opt => (
+                  <Button
+                    key={opt.value}
+                    variant={bulkMode === opt.value ? "default" : "outline"}
+                    size="sm"
+                    className={`text-xs ${bulkMode === opt.value && opt.value === "LONG_TERM" ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}
+                    onClick={() => setBulkMode(opt.value)}
+                    data-testid={`bulk-mode-${opt.value}`}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {bulkMode !== "SHORT_TERM" && (
+              <div>
+                <Label className="text-sm font-semibold mb-1 block">
+                  {bulkMode === "SET" ? "Kwota (PLN)" : bulkMode === "PERCENT" ? "Procent zmian (%)" : "Czynsz miesięczny (PLN)"}
+                </Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={bulkValue}
+                  onChange={e => setBulkValue(e.target.value)}
+                  placeholder={bulkMode === "PERCENT" ? "np. 10 lub -5" : "np. 3500"}
+                  className="max-w-[200px]"
+                  data-testid="input-bulk-value"
+                />
+                {bulkMode === "PERCENT" && (
+                  <p className="text-[10px] text-muted-foreground mt-1">Wartość dodatnia = podwyżka, ujemna = obniżka</p>
+                )}
+                {bulkMode === "LONG_TERM" && (
+                  <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-1">Komórki zostaną oznaczone fioletowym tłem jako długoterminowe</p>
+                )}
+              </div>
+            )}
+
+            {bulkCellCount > 0 && (
+              <p className="text-sm text-muted-foreground" data-testid="text-bulk-count">
+                Zostanie zaktualizowanych <strong>{bulkCellCount}</strong> komórek
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkDialog(false)} disabled={bulkApplying} data-testid="button-bulk-cancel">Anuluj</Button>
+            <Button
+              onClick={bulkApply}
+              disabled={bulkApplying || bulkSelectedApts.size === 0 || bulkSelectedMonths.size === 0 || (bulkMode !== "SHORT_TERM" && !bulkValue)}
+              data-testid="button-bulk-apply"
+            >
+              {bulkApplying ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Zapisywanie...</>
+              ) : (
+                <><Layers className="h-4 w-4 mr-1" /> Zastosuj</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
         <DialogContent>
