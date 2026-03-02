@@ -104,19 +104,30 @@ The sidebar is organized into 6 sections (configurable via sidebar-config.ts, st
 - Ulepszone widoki mobilne (karty zamiast tabel na małych ekranach)
 
 ## Tasks Module Architecture (Things 3 Inspired)
-The `/tasks` page has been refactored from a 2689-line monolith into modular components in `client/src/components/tasks/`:
-- `taskUtils.ts` — constants (PRIORITY_*, TAG_COLORS), helpers (filterTasks, sortTasks, isOverdue, isDeadlineNear, computeSidebarCounts, buildUpcomingGroups), types (ViewType, SmartView)
+The `/tasks` page is a Things 3 visual clone, refactored into modular components in `client/src/components/tasks/`:
+- `taskUtils.ts` — constants (PRIORITY_*, TAG_COLORS), helpers (filterTasks, sortTasks, isOverdue, isDeadlineNear, computeSidebarCounts, buildUpcomingGroups, buildAnytimeGroups), types (ViewType includes "anytime", SmartView)
 - `TaskCheckbox.tsx` — custom SVG round checkbox with priority-colored border and checkmark animation
-- `TaskRow.tsx` — React.memo row with custom comparator, project color bar, deadline alerts, evening moon icon
-- `TaskDetailPanel.tsx` — chip-based metadata (date, deadline, priority, project, tags, evening, someday chips), checklist with progress bar
+- `TaskRow.tsx` — Ultra-minimal Things 3 style: checkbox + title only, optional ★ star (today-tagged), 🌙 moon (evening), ↻ recurring icons. Project name as muted text under title in mixed views. Subtask expand/collapse chevron.
+- `TaskInlineCard.tsx` — Inline card expansion on desktop (replaces side panel). Shows: checkbox, editable title, Notes textarea, status chip (Today/Evening/Someday), bottom icons (When?/Tag/Checklist/Priority).
+- `WhenPopover.tsx` — Dark-themed "When?" popover with Today/This Evening shortcuts, calendar grid, Someday option, + Add Reminder.
+- `TaskDetailPanel.tsx` — Full detail panel (mobile only), chip-based metadata, checklist with progress bar
 - `TaskDialogs.tsx` — TaskDialog, ProjectDialog, SectionDialog, SettingsDialog, MoveDialog
-- `TaskSidebar.tsx` — smart views with progress rings, gradient active state, memoized sidebar counts, drag-to-reorder projects
+- `TaskSidebar.tsx` — Quick Find search bar at top, 6 Things 3 smart views (Inbox/Today/Upcoming/Anytime/Someday/Logbook), progress rings on projects, drag-to-reorder, Areas with collapsible chevrons, "+ New List" footer
 - `TaskInlineAdd.tsx` — context-inheriting inline add with popovers for date/tag/priority/project/evening
 - `QuickFind.tsx` — Cmd+F/Cmd+K search dialog for tasks, projects, tags
-- `Tasks.tsx` (orchestrator, ~1185 lines) — optimistic updates, DnD, keyboard shortcuts, grouped views
+- `Tasks.tsx` (orchestrator) — optimistic updates, DnD, keyboard shortcuts, grouped views, inline card expansion, dark bottom action bar
 
-**Smart Views:** inbox, today (overdue/today/evening sections), tomorrow, upcoming (days→weeks→months), someday, priority, shared, logbook
-**New task fields:** `deadlineDate` (date), `someday` (boolean), `evening` (boolean)
+**Smart Views:** Inbox (count), Today (count + yellow banner), Upcoming (large day numbers for 7 days + month ranges + "Later"), Anytime (tasks grouped by project), Someday, Logbook
+**Things 3 UI Features:**
+- Ultra-minimal task rows (no borders, no tags, no flags visible — only checkbox + title)
+- ★ star before today-tagged tasks in non-Today views
+- Colored project dot (●) before title in Today view
+- Yellow "You have X new to-dos" dismissable banner in Today view
+- Large day numbers (32px bold) in Upcoming view with all 7 days shown
+- Inline card expansion on desktop (side panel on mobile)
+- Dark pill bottom action bar: Move / Trash / "..." menu (Duplicate, Repeat, Find in Text)
+- "New To-Do" placeholder rows at top and bottom of Inbox
+**Task fields:** `deadlineDate` (date), `someday` (boolean), `evening` (boolean)
 **Keyboard shortcuts:** 1-6 view switch, N=inline add, S=someday toggle, E=evening toggle, T=set today, Cmd+.=complete, Cmd+D=duplicate, Cmd+F/K=Quick Find, Del=delete
 
 ## External Dependencies

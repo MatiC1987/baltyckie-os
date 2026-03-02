@@ -1,12 +1,12 @@
-import { format, parseISO, isToday, isThisWeek, isBefore, isTomorrow, isYesterday, startOfWeek, addDays, addWeeks, addMonths, startOfMonth, endOfMonth, getDay } from "date-fns";
+import { format, parseISO, isToday, isThisWeek, isBefore, isTomorrow, isYesterday, startOfWeek, addDays, addWeeks, addMonths, startOfMonth, endOfMonth, getDay, getDate } from "date-fns";
 import { pl } from "date-fns/locale";
 import type { Task, TaskProject } from "@shared/schema";
 import {
-  Inbox, Star, Sun, Calendar, AlertCircle, Users, BookOpen, FolderOpen,
-  CalendarDays, Sparkles,
+  Inbox, Star, CalendarDays, Layers, Sparkles, BookOpen, FolderOpen,
+  Sun, AlertCircle, Users,
 } from "lucide-react";
 
-export type ViewType = "inbox" | "today" | "tomorrow" | "upcoming" | "someday" | "priority" | "shared" | "logbook" | { projectId: number };
+export type ViewType = "inbox" | "today" | "tomorrow" | "upcoming" | "anytime" | "someday" | "priority" | "shared" | "logbook" | { projectId: number };
 
 export type SettingsPage = "main" | "appearance" | "general" | "counter" | "today_settings" | "week_settings" | "plus_settings";
 
@@ -129,6 +129,15 @@ export function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, sho
       return !isBefore(d, today);
     });
   }
+  if (view === "anytime") {
+    return tasks.filter((t) => {
+      if (t.completed) return false;
+      if (t.parentTaskId !== null) return false;
+      if (t.someday) return false;
+      if (t.projectId) return true;
+      return false;
+    });
+  }
   if (view === "someday") return tasks.filter((t) => t.someday && !t.completed && t.parentTaskId === null);
   if (view === "priority") return tasks.filter((t) => !t.completed && t.priority && t.priority !== "BRAK" && t.parentTaskId === null && !t.someday);
   if (view === "shared") {
@@ -161,11 +170,12 @@ export function sortTasks(tasks: Task[], sortBy: string): Task[] {
 }
 
 export function viewLabel(view: ViewType, projects: TaskProject[]): string {
-  if (view === "inbox") return "Odebrane";
-  if (view === "today") return "Dziś";
+  if (view === "inbox") return "Inbox";
+  if (view === "today") return "Today";
   if (view === "tomorrow") return "Jutro";
-  if (view === "upcoming") return "Nadchodzące";
-  if (view === "someday") return "Kiedyś";
+  if (view === "upcoming") return "Upcoming";
+  if (view === "anytime") return "Anytime";
+  if (view === "someday") return "Someday";
   if (view === "priority") return "Priorytetowe";
   if (view === "shared") return "Udostępnione mi";
   if (view === "logbook") return "Logbook";
@@ -178,6 +188,7 @@ export function viewIcon(view: ViewType) {
   if (view === "today") return Star;
   if (view === "tomorrow") return Sun;
   if (view === "upcoming") return CalendarDays;
+  if (view === "anytime") return Layers;
   if (view === "someday") return Sparkles;
   if (view === "priority") return AlertCircle;
   if (view === "shared") return Users;
@@ -191,16 +202,15 @@ export interface SmartView {
   icon: any;
   label: string;
   color: string;
+  showCount?: boolean;
 }
 
 export const SMART_VIEWS: SmartView[] = [
-  { key: "inbox", view: "inbox", icon: Inbox, label: "Odebrane", color: "#5ADBFA" },
-  { key: "today", view: "today", icon: Star, label: "Dziś", color: "#FFD43B" },
-  { key: "tomorrow", view: "tomorrow", icon: Sun, label: "Jutro", color: "#FF922B" },
-  { key: "upcoming", view: "upcoming", icon: CalendarDays, label: "Nadchodzące", color: "#51CF66" },
-  { key: "someday", view: "someday", icon: Sparkles, label: "Kiedyś", color: "#C4B5FD" },
-  { key: "priority", view: "priority", icon: AlertCircle, label: "Priorytetowe", color: "#FF6B6B" },
-  { key: "shared", view: "shared", icon: Users, label: "Udostępnione mi", color: "#9775FA" },
+  { key: "inbox", view: "inbox", icon: Inbox, label: "Inbox", color: "#5ADBFA", showCount: true },
+  { key: "today", view: "today", icon: Star, label: "Today", color: "#FFD43B", showCount: true },
+  { key: "upcoming", view: "upcoming", icon: CalendarDays, label: "Upcoming", color: "#51CF66" },
+  { key: "anytime", view: "anytime", icon: Layers, label: "Anytime", color: "#4ECDC4" },
+  { key: "someday", view: "someday", icon: Sparkles, label: "Someday", color: "#C4B5FD" },
   { key: "logbook", view: "logbook", icon: BookOpen, label: "Logbook", color: "#868E96" },
 ];
 
@@ -208,6 +218,9 @@ export interface UpcomingGroup {
   key: string;
   label: string;
   date?: string;
+  dayNumber?: number;
+  dayName?: string;
+  isRange?: boolean;
   tasks: Task[];
 }
 
@@ -220,40 +233,111 @@ export function buildUpcomingGroups(tasks: Task[]): UpcomingGroup[] {
     const d = addDays(today, i);
     const key = format(d, "yyyy-MM-dd");
     const dayTasks = tasks.filter(t => t.dueDate === key);
-    if (dayTasks.length > 0 || i < 3) {
-      let label: string;
-      if (i === 0) label = "Dziś";
-      else if (i === 1) label = "Jutro";
-      else label = format(d, "EEEE, d MMMM", { locale: pl });
-      groups.push({ key, label, date: key, tasks: dayTasks });
-    }
+    let dayName: string;
+    if (i === 0) dayName = "Today";
+    else if (i === 1) dayName = "Tomorrow";
+    else dayName = format(d, "EEEE", { locale: pl });
+    groups.push({
+      key,
+      label: dayName,
+      date: key,
+      dayNumber: getDate(d),
+      dayName,
+      tasks: dayTasks,
+    });
   }
 
-  for (let w = 1; w <= 4; w++) {
-    const weekStart = addWeeks(addDays(today, 7), (w - 1) * 7);
-    const weekEnd = addDays(weekStart, 6);
-    const weekTasks = tasks.filter(t => {
+  const endOfNext7 = addDays(today, 7);
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+  const lastDayOfMonth = endOfMonth(today);
+
+  if (lastDayOfMonth >= endOfNext7) {
+    const rangeTasks = tasks.filter(t => {
       if (!t.dueDate) return false;
       const d = parseISO(t.dueDate);
-      return d >= weekStart && d <= weekEnd;
+      return d >= endOfNext7 && d <= lastDayOfMonth;
     });
-    if (weekTasks.length > 0) {
-      const label = `Tydzień ${format(weekStart, "d MMM", { locale: pl })}`;
-      groups.push({ key: `week-${w}`, label, tasks: weekTasks });
+    if (rangeTasks.length > 0) {
+      const rangeLabel = `${format(today, "MMMM", { locale: pl })} ${format(endOfNext7, "d")}–${format(lastDayOfMonth, "d")}`;
+      groups.push({
+        key: "rest-of-month",
+        label: rangeLabel,
+        isRange: true,
+        tasks: rangeTasks,
+      });
     }
   }
 
+  for (let m = 1; m <= 6; m++) {
+    const monthDate = addMonths(today, m);
+    const monthStart = startOfMonth(monthDate);
+    const monthEnd = endOfMonth(monthDate);
+    const monthTasks = tasks.filter(t => {
+      if (!t.dueDate) return false;
+      const d = parseISO(t.dueDate);
+      return d >= monthStart && d <= monthEnd;
+    });
+    if (monthTasks.length > 0) {
+      groups.push({
+        key: `month-${m}`,
+        label: format(monthDate, "LLLL", { locale: pl }),
+        isRange: true,
+        tasks: monthTasks,
+      });
+    }
+  }
+
+  const lastGroupEnd = addMonths(today, 7);
   const laterTasks = tasks.filter(t => {
     if (!t.dueDate) return false;
     const d = parseISO(t.dueDate);
-    const cutoff = addWeeks(addDays(today, 7), 4 * 7);
-    return d > cutoff;
+    return d >= lastGroupEnd;
   });
   if (laterTasks.length > 0) {
-    groups.push({ key: "later", label: "Później", tasks: laterTasks });
+    groups.push({
+      key: "later",
+      label: "Later",
+      isRange: true,
+      tasks: laterTasks,
+    });
   }
 
   return groups;
+}
+
+export interface AnytimeGroup {
+  projectId: number;
+  projectName: string;
+  projectColor: string;
+  tasks: Task[];
+}
+
+export function buildAnytimeGroups(tasks: Task[], projects: TaskProject[]): AnytimeGroup[] {
+  const projectMap = new Map<number, TaskProject>();
+  projects.forEach(p => projectMap.set(p.id, p));
+
+  const grouped = new Map<number, Task[]>();
+  tasks.forEach(t => {
+    if (!t.projectId) return;
+    const arr = grouped.get(t.projectId) || [];
+    arr.push(t);
+    grouped.set(t.projectId, arr);
+  });
+
+  const result: AnytimeGroup[] = [];
+  grouped.forEach((groupTasks, projectId) => {
+    const project = projectMap.get(projectId);
+    if (!project) return;
+    result.push({
+      projectId,
+      projectName: project.name,
+      projectColor: project.color || "#5ADBFA",
+      tasks: groupTasks,
+    });
+  });
+
+  return result.sort((a, b) => a.projectName.localeCompare(b.projectName, "pl"));
 }
 
 export function computeSidebarCounts(
@@ -264,7 +348,9 @@ export function computeSidebarCounts(
 ): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const sv of SMART_VIEWS) {
-    counts[sv.key] = filterTasks(tasks, sv.view, weekStart, showOverdueInToday, currentUserId).length;
+    if (sv.showCount) {
+      counts[sv.key] = filterTasks(tasks, sv.view, weekStart, showOverdueInToday, currentUserId).length;
+    }
   }
   return counts;
 }

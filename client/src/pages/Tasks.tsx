@@ -24,7 +24,7 @@ import {
   PanelLeftClose, PanelLeft, MoreHorizontal, ArrowRight,
   Copy, GripVertical, Menu, X, Flag, Pencil, Search,
   Inbox, Star, Sun, Moon, Clock, AlertTriangle, BookOpen, Sparkles,
-  CalendarDays,
+  CalendarDays, RefreshCw, Layers,
 } from "lucide-react";
 import {
   DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor,
@@ -37,6 +37,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { TaskRow } from "@/components/tasks/TaskRow";
 import { TaskDetailPanel } from "@/components/tasks/TaskDetailPanel";
+import { TaskInlineCard } from "@/components/tasks/TaskInlineCard";
 import { TaskSidebar, SidebarFooter } from "@/components/tasks/TaskSidebar";
 import { TaskInlineAdd } from "@/components/tasks/TaskInlineAdd";
 import { QuickFind } from "@/components/tasks/QuickFind";
@@ -46,7 +47,7 @@ import {
   PRIORITY_FLAG_COLORS, PRIORITY_LABELS,
   filterTasks, sortTasks, viewLabel, viewIcon, isOverdue,
   getStoredShowCounts, getStoredShowOverdueInToday, getStoredWeekStart, getStoredDefaultPriority, getStoredDefaultProject,
-  buildUpcomingGroups,
+  buildUpcomingGroups, buildAnytimeGroups,
 } from "@/components/tasks/taskUtils";
 
 function SortableTaskRow({ id, children, disabled }: { id: string; children: (listeners: Record<string, any> | undefined, isDragging: boolean) => React.ReactNode; disabled?: boolean }) {
@@ -92,6 +93,7 @@ export default function Tasks() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768);
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
   const [inlineAddVisible, setInlineAddVisible] = useState(false);
+  const [inlineAddTarget, setInlineAddTarget] = useState<string | undefined>(undefined);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
@@ -104,6 +106,8 @@ export default function Tasks() {
   const [renamingSectionName, setRenamingSectionName] = useState("");
   const renameSectionInputRef = useRef<HTMLInputElement>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [todayBannerDismissed, setTodayBannerDismissed] = useState(false);
+  const [anytimeExpandedProjects, setAnytimeExpandedProjects] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
@@ -340,13 +344,20 @@ export default function Tasks() {
     setSelectedTasks(new Set());
     setDetailTask(null);
     setInlineAddVisible(false);
+    setTodayBannerDismissed(false);
     if (isMobile) setSidebarCollapsed(true);
   }, [isMobile]);
 
+  const [inlineCardTaskId, setInlineCardTaskId] = useState<number | null>(null);
+
   const handleTaskClick = useCallback((task: Task) => {
     setSelectedTasks(new Set([task.id]));
-    setDetailTask(task);
-  }, []);
+    if (isMobile) {
+      setDetailTask(task);
+    } else {
+      setInlineCardTaskId(prev => prev === task.id ? null : task.id);
+    }
+  }, [isMobile]);
 
   const handleToggleComplete = useCallback((task: Task) => {
     toggleComplete.mutate(task);
@@ -383,7 +394,7 @@ export default function Tasks() {
       }
 
       const viewKeys: Record<string, ViewType> = {
-        "1": "inbox", "2": "today", "3": "upcoming", "4": "someday", "5": "priority", "6": "logbook",
+        "1": "inbox", "2": "today", "3": "upcoming", "4": "anytime", "5": "someday", "6": "logbook",
       };
       if (viewKeys[e.key]) {
         e.preventDefault();
@@ -405,7 +416,7 @@ export default function Tasks() {
           const task = tasks.find(t => t.id === taskId);
           if (task) {
             updateTask.mutate({ id: taskId, data: { someday: !task.someday } });
-            toast({ title: task.someday ? "Usunięto z Kiedyś" : "Oznaczono jako Kiedyś" });
+            toast({ title: task.someday ? "Usunięto z Someday" : "Oznaczono jako Someday" });
           }
         }
       }
@@ -443,7 +454,10 @@ export default function Tasks() {
         }
       }
       if (e.key === "Escape") {
-        if (detailTask) {
+        if (inlineCardTaskId) {
+          setInlineCardTaskId(null);
+          clearSelection();
+        } else if (detailTask) {
           setDetailTask(null);
         } else {
           clearSelection();
@@ -452,7 +466,7 @@ export default function Tasks() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedTasks, detailTask, tasks, updateTask, toggleComplete, duplicateTask, toast, clearSelection, handleViewChange]);
+  }, [selectedTasks, detailTask, tasks, updateTask, toggleComplete, duplicateTask, toast, clearSelection, handleViewChange, inlineCardTaskId]);
 
   const activeDragData = useMemo(() => {
     if (!activeDragId) return null;
@@ -536,18 +550,16 @@ export default function Tasks() {
 
   const VIcon = viewIcon(view);
   const selectedTasksArray = Array.from(selectedTasks);
-  const showProjectBar = !isProjectView;
+  const showProjectBar = !isProjectView && view !== "anytime";
 
   const emptyStateConfig: Record<string, { icon: any; title: string; subtitle: string }> = {
-    inbox: { icon: Inbox, title: "Odebrane są puste", subtitle: "Naciśnij N aby dodać nowe zadanie" },
-    today: { icon: Star, title: "Wszystko na dziś zrobione!", subtitle: "Gratulacje! Możesz odpocząć." },
-    tomorrow: { icon: Sun, title: "Brak zadań na jutro", subtitle: "Naciśnij N aby zaplanować dzień" },
-    upcoming: { icon: CalendarDays, title: "Brak nadchodzących zadań", subtitle: "Zaplanuj przyszłe zadania" },
-    someday: { icon: Sparkles, title: "Lista Kiedyś jest pusta", subtitle: "Przenieś tu pomysły na przyszłość" },
-    priority: { icon: Flag, title: "Brak priorytetowych zadań", subtitle: "Ustaw priorytet na wybranym zadaniu" },
-    shared: { icon: null, title: "Brak udostępnionych zadań", subtitle: "" },
-    logbook: { icon: BookOpen, title: "Logbook jest pusty", subtitle: "Ukończone zadania pojawią się tutaj" },
-    project: { icon: null, title: "Brak zadań w tym projekcie", subtitle: "Naciśnij N aby dodać" },
+    inbox: { icon: Inbox, title: "Inbox is empty", subtitle: "Press N to add a new to-do" },
+    today: { icon: Star, title: "Nothing for today!", subtitle: "Everything done. Enjoy your day." },
+    upcoming: { icon: CalendarDays, title: "No upcoming to-dos", subtitle: "Plan your future tasks" },
+    anytime: { icon: Layers, title: "No tasks in Anytime", subtitle: "Assign tasks to projects" },
+    someday: { icon: Sparkles, title: "Someday is empty", subtitle: "Move ideas here for later" },
+    logbook: { icon: BookOpen, title: "Logbook is empty", subtitle: "Completed tasks appear here" },
+    project: { icon: null, title: "No tasks in this project", subtitle: "Press N to add" },
   };
 
   const emptyKey = typeof view === "object" ? "project" : view;
@@ -555,15 +567,13 @@ export default function Tasks() {
 
   const todayGrouped = useMemo(() => {
     if (view !== "today") return null;
-    const overdue: Task[] = [];
-    const today: Task[] = [];
+    const allTasks: Task[] = [];
     const evening: Task[] = [];
     filtered.forEach((t) => {
-      if (t.dueDate && isOverdue(t)) overdue.push(t);
-      else if (t.evening) evening.push(t);
-      else today.push(t);
+      if (t.evening) evening.push(t);
+      else allTasks.push(t);
     });
-    return { overdue, today, evening };
+    return { tasks: allTasks, evening };
   }, [view, filtered]);
 
   const upcomingGroups = useMemo(() => {
@@ -571,14 +581,10 @@ export default function Tasks() {
     return buildUpcomingGroups(filtered);
   }, [view, filtered]);
 
-  const priorityGrouped = useMemo(() => {
-    if (view !== "priority") return null;
-    const groups: Record<string, Task[]> = { PILNY: [], WYSOKI: [], "ŚREDNI": [], NISKI: [] };
-    filtered.forEach((t) => {
-      if (t.priority && groups[t.priority]) groups[t.priority].push(t);
-    });
-    return Object.entries(groups).filter(([, arr]) => arr.length > 0);
-  }, [view, filtered]);
+  const anytimeGroups = useMemo(() => {
+    if (view !== "anytime") return null;
+    return buildAnytimeGroups(filtered, projects);
+  }, [view, filtered, projects]);
 
   const logbookGrouped = useMemo(() => {
     if (view !== "logbook") return null;
@@ -607,6 +613,21 @@ export default function Tasks() {
     const hasChildren = children.length > 0;
     const isExpanded = expandedTasks.has(t.id);
     const project = t.projectId ? projectsMap.get(t.projectId) : null;
+    const isInlineOpen = inlineCardTaskId === t.id;
+
+    if (isInlineOpen && !isMobile) {
+      return (
+        <div key={t.id}>
+          <TaskInlineCard
+            task={t}
+            project={project}
+            onUpdate={(data) => updateTask.mutate({ id: t.id, data })}
+            onToggleComplete={() => handleToggleComplete(t)}
+            onClose={() => { setInlineCardTaskId(null); clearSelection(); }}
+          />
+        </div>
+      );
+    }
 
     return (
       <div key={t.id}>
@@ -635,7 +656,7 @@ export default function Tasks() {
         )}
       </div>
     );
-  }, [childTasksMap, expandedTasks, selectedTasks, view, showProjectBar, projectsMap, handleToggleComplete, handleTaskClick, toggleExpand]);
+  }, [childTasksMap, expandedTasks, selectedTasks, view, showProjectBar, projectsMap, handleToggleComplete, handleTaskClick, toggleExpand, inlineCardTaskId, isMobile, updateTask, clearSelection]);
 
   const renderSortableTaskList = useCallback((taskList: Task[]) => {
     const sorted = sortTasks(taskList, sortBy);
@@ -651,39 +672,31 @@ export default function Tasks() {
     );
   }, [sortBy, renderTaskItem]);
 
-  const renderGroupHeader = useCallback((label: string, icon?: any, color?: string) => {
-    const Icon = icon;
-    return (
-      <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-b border-border/20 bg-gradient-to-b from-muted/5 to-transparent" style={{ color }}>
-        {Icon && <Icon className="h-3.5 w-3.5" />}
-        {label}
-      </div>
-    );
-  }, []);
-
   const renderGroupedView = () => {
-    if (view === "tomorrow") {
-      return renderSortableTaskList(filtered);
-    }
-
     if (view === "today" && todayGrouped) {
       return (
         <>
-          {todayGrouped.overdue.length > 0 && (
-            <div>
-              {renderGroupHeader("Zaległe", Clock, "#ef4444")}
-              {renderSortableTaskList(todayGrouped.overdue)}
+          {!todayBannerDismissed && filtered.length > 0 && (
+            <div className="mx-4 mt-3 mb-2 flex items-center justify-between px-4 py-2 rounded-lg border border-amber-200/60 dark:border-amber-800/40" style={{ backgroundColor: "#FFF9DB" }} data-testid="today-banner">
+              <span className="text-[13px] text-amber-900 dark:text-amber-200">
+                You have <strong>{filtered.length}</strong> new to-dos
+              </span>
+              <button
+                onClick={() => setTodayBannerDismissed(true)}
+                className="text-[12px] font-semibold text-amber-700 dark:text-amber-300 hover:text-amber-900 px-2 py-0.5 rounded"
+                data-testid="button-dismiss-banner"
+              >
+                OK
+              </button>
             </div>
           )}
-          {todayGrouped.today.length > 0 && (
-            <div>
-              {renderGroupHeader("Dziś", Sun)}
-              {renderSortableTaskList(todayGrouped.today)}
-            </div>
-          )}
+          {renderSortableTaskList(todayGrouped.tasks)}
           {todayGrouped.evening.length > 0 && (
             <div>
-              {renderGroupHeader("Wieczorem", Moon, "#818cf8")}
+              <div className="px-6 py-2 text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider flex items-center gap-2 mt-2">
+                <Moon className="h-3 w-3 text-indigo-400/60" />
+                This Evening
+              </div>
               {renderSortableTaskList(todayGrouped.evening)}
             </div>
           )}
@@ -692,39 +705,97 @@ export default function Tasks() {
     }
 
     if (view === "upcoming" && upcomingGroups) {
-      return upcomingGroups.map((group) => (
-        <div key={group.key}>
-          <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider capitalize flex items-center justify-between border-b border-border/20 bg-gradient-to-b from-muted/5 to-transparent">
-            <span className="flex items-center gap-2">
-              <CalendarDays className="h-3.5 w-3.5" />
-              {group.label}
-            </span>
-            {group.tasks.length > 3 && (
-              <span className="h-2 w-2 rounded-full bg-primary/40" />
-            )}
-          </div>
-          {group.tasks.length > 0 ? (
-            renderSortableTaskList(group.tasks)
-          ) : (
-            <div className="px-5 py-3 text-xs text-muted-foreground/30 italic">Brak zadań</div>
-          )}
+      return (
+        <div className="py-2">
+          {upcomingGroups.map((group) => (
+            <div key={group.key} className="mb-1">
+              {group.dayNumber && !group.isRange ? (
+                <div className="px-6 py-3 flex items-baseline gap-2 border-b border-border/15">
+                  <span className="text-[32px] font-bold leading-none text-foreground tabular-nums">{group.dayNumber}</span>
+                  <span className="text-[15px] text-muted-foreground/70 capitalize">{group.dayName}</span>
+                </div>
+              ) : (
+                <div className="px-6 py-3 border-b border-border/15">
+                  <span className="text-[15px] font-semibold text-foreground capitalize">{group.label}</span>
+                </div>
+              )}
+              {group.tasks.length > 0 ? (
+                renderSortableTaskList(group.tasks)
+              ) : (
+                !group.isRange && <div className="h-2" />
+              )}
+            </div>
+          ))}
         </div>
-      ));
+      );
     }
 
-    if (view === "priority" && priorityGrouped) {
-      return priorityGrouped.map(([priority, priorityTasks]) => (
-        <div key={priority}>
-          {renderGroupHeader(PRIORITY_LABELS[priority], Flag, undefined)}
-          {renderSortableTaskList(priorityTasks as Task[])}
+    if (view === "anytime" && anytimeGroups) {
+      return (
+        <div className="py-2">
+          {anytimeGroups.map((group) => {
+            const isExpanded = !anytimeExpandedProjects.has(group.projectId) || anytimeExpandedProjects.has(group.projectId);
+            const showLimit = anytimeExpandedProjects.has(group.projectId) ? group.tasks.length : 4;
+            const visibleTasks = group.tasks.slice(0, showLimit);
+            const remaining = group.tasks.length - showLimit;
+
+            return (
+              <div key={group.projectId} className="mb-2">
+                <button
+                  onClick={() => handleViewChange({ projectId: group.projectId })}
+                  className="flex items-center gap-2 px-6 py-2.5 w-full text-left hover:bg-muted/20 transition-colors"
+                  data-testid={`anytime-project-${group.projectId}`}
+                >
+                  <Circle className="h-4 w-4 shrink-0" style={{ color: group.projectColor, fill: group.projectColor }} />
+                  <span className="text-[14px] font-semibold text-foreground flex-1">{group.projectName}</span>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40" />
+                </button>
+                {visibleTasks.map((t) => {
+                  const project = projectsMap.get(t.projectId!);
+                  const isTodayTask = t.dueDate && isToday(parseISO(t.dueDate));
+                  return (
+                    <div
+                      key={t.id}
+                      className={`flex items-center gap-3 px-6 py-2 pl-12 cursor-pointer hover:bg-muted/20 transition-colors ${selectedTasks.has(t.id) ? "bg-muted/30" : ""}`}
+                      onClick={() => handleTaskClick(t)}
+                      data-testid={`task-row-${t.id}`}
+                    >
+                      <div className="shrink-0">
+                        <div
+                          className="h-[18px] w-[18px] rounded-full border-[1.5px] flex items-center justify-center cursor-pointer hover:opacity-80"
+                          style={{ borderColor: "#9ca3af" }}
+                          onClick={(e) => { e.stopPropagation(); handleToggleComplete(t); }}
+                        />
+                      </div>
+                      <span className="text-[13.5px] text-foreground truncate flex items-center gap-1.5">
+                        {isTodayTask && <Star className="h-3 w-3 text-amber-400 fill-amber-400 shrink-0" />}
+                        {t.title}
+                      </span>
+                    </div>
+                  );
+                })}
+                {remaining > 0 && (
+                  <button
+                    onClick={() => setAnytimeExpandedProjects(prev => { const n = new Set(prev); n.add(group.projectId); return n; })}
+                    className="px-12 py-1.5 text-[12px] text-primary/70 hover:text-primary transition-colors"
+                    data-testid={`anytime-show-more-${group.projectId}`}
+                  >
+                    Show {remaining} more
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
-      ));
+      );
     }
 
     if (view === "logbook" && logbookGrouped) {
       return logbookGrouped.map(({ label, tasks: groupTasks }) => (
         <div key={label}>
-          {renderGroupHeader(label)}
+          <div className="px-6 py-2 text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
+            {label}
+          </div>
           {groupTasks.map((t) => renderTaskItem(t))}
         </div>
       ));
@@ -733,7 +804,7 @@ export default function Tasks() {
     return null;
   };
 
-  const hasGroupedView = view === "today" || view === "tomorrow" || view === "upcoming" || view === "priority" || view === "logbook";
+  const hasGroupedView = view === "today" || view === "upcoming" || view === "anytime" || view === "logbook";
 
   const renderProjectView = () => {
     const sortedSections = [...projectSections].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -754,10 +825,7 @@ export default function Tasks() {
               <SortableSectionItem key={sec.id} id={`section-${sec.id}`}>
                 {(sectionListeners) => (
                   <div data-testid={`section-${sec.id}`}>
-                    <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider py-3 px-5 w-full text-left transition-colors text-muted-foreground/80 group border-b border-border/60 mt-2">
-                      <div className="opacity-0 group-hover:opacity-100 cursor-grab p-0.5 transition-opacity duration-150" {...(sectionListeners || {})}>
-                        <GripVertical className="h-3 w-3 text-muted-foreground/40" />
-                      </div>
+                    <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider py-3 px-5 w-full text-left transition-colors text-muted-foreground/80 group border-b border-border/30 mt-2">
                       <button
                         onClick={() => toggleSection(sec.id)}
                         className="flex items-center gap-1.5 flex-1 min-w-0"
@@ -839,6 +907,17 @@ export default function Tasks() {
 
   const activeProjects = useMemo(() => projects.filter(p => !p.archived), [projects]);
 
+  const newToDoRow = (position: "top" | "bottom") => (
+    <button
+      onClick={() => { setInlineAddVisible(true); }}
+      className="flex items-center gap-3 px-6 py-2.5 w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
+      data-testid={`button-new-todo-${position}`}
+    >
+      <div className="h-[18px] w-[18px] rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
+      <span>New To-Do</span>
+    </button>
+  );
+
   return (
     <div className="flex h-full" data-testid="page-tasks">
       {isMobile && !sidebarCollapsed && (
@@ -866,6 +945,7 @@ export default function Tasks() {
               onAddProject={() => setAddProjectOpen(true)}
               onAddSection={() => setAddSectionOpen(true)}
               onOpenSettings={() => setSettingsOpen(true)}
+              onOpenQuickFind={() => setQuickFindOpen(true)}
               onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
               onDeleteProject={(id) => deleteProject.mutate(id)}
               onReorderProjects={(items) => batchReorderProjects.mutate(items)}
@@ -880,7 +960,7 @@ export default function Tasks() {
       </AnimatePresence>
 
       <main className="flex-1 flex flex-col overflow-hidden relative" data-testid="tasks-main">
-        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border/50">
+        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border/30">
           {isMobile && (
             <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground" data-testid="button-mobile-menu">
               <Menu className="h-4 w-4" />
@@ -894,43 +974,19 @@ export default function Tasks() {
             {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <VIcon className="h-5 w-5 text-muted-foreground/60 shrink-0" />
+            <VIcon className="h-5 w-5 shrink-0" style={{ color: view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "inbox" ? "#5ADBFA" : undefined }} />
             <div>
               <h2 className="text-lg font-semibold tracking-tight truncate" data-testid="text-view-title">
                 {isProjectView ? (
                   <span className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground/60 text-sm font-normal">Projekt</span>
-                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40" />
                     {viewLabel(view, projects)}
                   </span>
                 ) : (
                   viewLabel(view, projects)
                 )}
               </h2>
-              <p className="text-[11px] text-muted-foreground/50">
-                {filtered.length} {filtered.length === 1 ? "zadanie" : filtered.length < 5 ? "zadania" : "zadań"}
-              </p>
             </div>
           </div>
-          <button
-            className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground"
-            onClick={() => setQuickFindOpen(true)}
-            data-testid="button-quick-find"
-          >
-            <Search className="h-4 w-4" />
-          </button>
-          <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-[130px] h-8 text-xs border-border/50" data-testid="select-sort">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="manual">Ręcznie</SelectItem>
-              <SelectItem value="dueDate">Termin</SelectItem>
-              <SelectItem value="priority">Priorytet</SelectItem>
-              <SelectItem value="createdAt">Data utworzenia</SelectItem>
-              <SelectItem value="alpha">Alfabetycznie</SelectItem>
-            </SelectContent>
-          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground" data-testid="button-context-menu">
@@ -938,8 +994,8 @@ export default function Tasks() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => setAddTaskOpen(true)} data-testid="menu-add-task">
-                <Plus className="h-3.5 w-3.5 mr-2" /> Dodaj zadanie
+              <DropdownMenuItem onClick={() => setInlineAddVisible(true)} data-testid="menu-add-task">
+                <Plus className="h-3.5 w-3.5 mr-2" /> New To-Do
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -953,13 +1009,12 @@ export default function Tasks() {
           const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
           const color = currentProject?.color || "#5ADBFA";
           return (
-            <div className="px-4 py-3" style={{ background: `linear-gradient(135deg, ${color}15, ${color}05)` }} data-testid="project-header">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-muted-foreground">{completedCount} z {totalCount} zadań</span>
-                <span className="text-xs font-medium" style={{ color }}>{Math.round(progress)}%</span>
+            <div className="px-6 py-3" data-testid="project-header">
+              <div className="text-[11px] text-muted-foreground/50 mb-1">
+                {completedCount} z {totalCount} zadań
               </div>
-              <div className="h-1 rounded-full bg-muted overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${color}, ${color}CC)` }} />
+              <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, backgroundColor: color }} />
               </div>
             </div>
           );
@@ -967,12 +1022,15 @@ export default function Tasks() {
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
           <div className="flex-1 overflow-y-auto task-list-transition">
+            {view === "inbox" && !inlineAddVisible && newToDoRow("top")}
+
             {inlineAddVisible && view !== "logbook" && (
               <TaskInlineAdd
                 view={view}
                 projects={activeProjects}
+                targetDate={inlineAddTarget}
                 onSubmit={handleInlineSubmit}
-                onCancel={() => setInlineAddVisible(false)}
+                onCancel={() => { setInlineAddVisible(false); setInlineAddTarget(undefined); }}
               />
             )}
 
@@ -992,14 +1050,16 @@ export default function Tasks() {
               </div>
             )}
 
-            {view !== "logbook" && !inlineAddVisible && (
+            {view === "inbox" && !inlineAddVisible && newToDoRow("bottom")}
+
+            {view !== "logbook" && view !== "inbox" && !inlineAddVisible && (
               <button
-                className="flex items-center gap-3 px-5 py-3 w-full text-left text-[13px] text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors duration-200"
+                className="flex items-center gap-3 px-6 py-2.5 w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
                 onClick={() => setInlineAddVisible(true)}
                 data-testid="button-inline-add"
               >
-                <Plus className="h-4 w-4" />
-                <span>Dodaj Zadanie</span>
+                <div className="h-[18px] w-[18px] rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
+                <span>New To-Do</span>
               </button>
             )}
           </div>
@@ -1008,9 +1068,6 @@ export default function Tasks() {
             {activeDragData?.type === "task" && activeDragData.item && (
               <div className="bg-card border border-border/50 rounded-xl shadow-2xl px-5 py-3.5 flex items-center gap-3 max-w-sm opacity-95">
                 <div className="h-[18px] w-[18px] rounded-full border-2 border-muted-foreground/25 shrink-0" />
-                {(activeDragData.item as Task).priority && (activeDragData.item as Task).priority !== "BRAK" && (
-                  <Flag className={`h-3.5 w-3.5 shrink-0 ${PRIORITY_FLAG_COLORS[(activeDragData.item as Task).priority || "BRAK"]}`} />
-                )}
                 <span className="text-[13px] truncate">{(activeDragData.item as Task).title}</span>
               </div>
             )}
@@ -1023,54 +1080,41 @@ export default function Tasks() {
           </DragOverlay>
         </DndContext>
 
-        {selectedTasks.size > 0 && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-card border rounded-xl shadow-lg px-2 py-1.5 z-50" data-testid="bottom-action-bar">
-            <span className="text-xs text-muted-foreground px-2 tabular-nums">{selectedTasks.size} zaznaczonych</span>
-            <div className="w-px h-5 bg-border mx-1" />
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
+        {(selectedTasks.size > 0 || inlineCardTaskId) && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800 dark:bg-zinc-900 text-white rounded-2xl shadow-lg px-3 py-2 z-50" data-testid="bottom-action-bar">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
               <ArrowRight className="h-3.5 w-3.5" />
-              Przenieś
+              Move
             </Button>
-            {selectedTasks.size === 1 && (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => duplicateTask.mutate(selectedTasksArray[0])} data-testid="button-action-duplicate">
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-destructive" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
+            <Button variant="ghost" size="sm" className="text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="sm" className="text-xs" onClick={clearSelection} data-testid="button-action-clear">
-              <X className="h-3.5 w-3.5" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-more">
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" side="top" className="w-48">
+                <DropdownMenuItem onClick={() => { if (selectedTasks.size === 1) duplicateTask.mutate(selectedTasksArray[0]); }} data-testid="menu-action-duplicate">
+                  <Copy className="h-3.5 w-3.5 mr-2" /> Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem data-testid="menu-action-repeat">
+                  <RefreshCw className="h-3.5 w-3.5 mr-2" /> Repeat...
+                </DropdownMenuItem>
+                <DropdownMenuItem data-testid="menu-action-find-in-text">
+                  <Search className="h-3.5 w-3.5 mr-2" /> Find in Text
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
 
         <div className="absolute bottom-6 right-6 z-40">
-          {isMobile ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="icon" className="rounded-full shadow-lg" data-testid="button-fab-add">
-                  <Plus className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top" className="w-48">
-                <DropdownMenuItem onClick={() => setInlineAddVisible(true)} data-testid="fab-menu-new-task">
-                  <Plus className="h-3.5 w-3.5 mr-2" /> Nowe zadanie
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {activeProjects.map((p) => (
-                  <DropdownMenuItem key={p.id} onClick={() => { setView({ projectId: p.id }); setInlineAddVisible(true); }} data-testid={`fab-menu-project-${p.id}`}>
-                    <Circle className="h-3 w-3 mr-2" style={{ color: p.color || "#5ADBFA", fill: p.color || "#5ADBFA" }} />
-                    {p.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button size="icon" className="rounded-full shadow-lg" onClick={() => setInlineAddVisible(true)} data-testid="button-fab-add">
-              <Plus className="h-5 w-5" />
-            </Button>
-          )}
+          <Button size="icon" className="rounded-full shadow-lg bg-primary hover:bg-primary/90" onClick={() => setInlineAddVisible(true)} data-testid="button-fab-add">
+            <Plus className="h-5 w-5" />
+          </Button>
         </div>
       </main>
 

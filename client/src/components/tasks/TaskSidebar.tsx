@@ -2,7 +2,7 @@ import { memo, useMemo, useCallback } from "react";
 import type { Task, TaskProject, TaskSection } from "@shared/schema";
 import {
   Plus, SlidersHorizontal, FolderPlus, ListPlus, Archive, Circle,
-  GripVertical, MoreHorizontal, Trash2, ChevronDown, ChevronRight,
+  GripVertical, MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -93,9 +93,7 @@ function ProjectSidebarItem({
           <GripVertical className="h-3 w-3 text-muted-foreground/40" />
         </div>
       )}
-      <div className="h-5 w-5 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: `${color}20` }}>
-        <Circle className="h-2.5 w-2.5 shrink-0" style={{ color, fill: color }} />
-      </div>
+      <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
       <span className="flex-1 truncate">{project.name}</span>
       {stats.total > 0 && (
         <ProgressRing completed={stats.completed} total={stats.total} color={color} />
@@ -140,6 +138,7 @@ interface TaskSidebarProps {
   onAddProject: () => void;
   onAddSection: () => void;
   onOpenSettings: () => void;
+  onOpenQuickFind: () => void;
   onUpdateProject: (id: number, data: Record<string, unknown>) => void;
   onDeleteProject: (id: number) => void;
   onReorderProjects: (items: { id: number; sortOrder: number }[]) => void;
@@ -159,6 +158,7 @@ export const TaskSidebar = memo(function TaskSidebar({
   onAddProject,
   onAddSection,
   onOpenSettings,
+  onOpenQuickFind,
   onUpdateProject,
   onDeleteProject,
   onReorderProjects,
@@ -177,16 +177,6 @@ export const TaskSidebar = memo(function TaskSidebar({
   const counts = useMemo(
     () => computeSidebarCounts(tasks, weekStart, showOverdueInToday, currentUserId),
     [tasks, weekStart, showOverdueInToday, currentUserId]
-  );
-
-  const overdueCount = useMemo(
-    () => tasks.filter((t) => {
-      if (t.completed || !t.dueDate) return false;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return new Date(t.dueDate) < today;
-    }).length,
-    [tasks]
   );
 
   const isActive = useCallback(
@@ -221,7 +211,15 @@ export const TaskSidebar = memo(function TaskSidebar({
 
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-0.5" data-testid="tasks-sidebar-content">
-      <div className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-2 px-2.5">Widoki</div>
+      <button
+        onClick={onOpenQuickFind}
+        className="flex items-center gap-2 w-full px-3 py-1.5 mb-3 rounded-lg bg-muted/40 hover:bg-muted/60 text-muted-foreground/60 text-[13px] transition-colors"
+        data-testid="sidebar-quick-find"
+      >
+        <Search className="h-3.5 w-3.5" />
+        <span>Quick Find</span>
+      </button>
+
       {SMART_VIEWS.map((sv) => {
         const count = counts[sv.key] || 0;
         const active = isActive(sv.view);
@@ -234,15 +232,13 @@ export const TaskSidebar = memo(function TaskSidebar({
             }`}
             data-testid={`button-view-${sv.key}`}
           >
-            <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-150 hover:scale-105 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
+            <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
               <sv.icon className="h-3.5 w-3.5" style={{ color: sv.color }} />
             </div>
             <span className="flex-1">{sv.label}</span>
-            {showCounts && count > 0 && (
+            {sv.showCount && count > 0 && (
               <span
-                className={`text-[10px] min-w-[18px] text-center px-1 py-0.5 rounded-full font-medium tabular-nums ${
-                  sv.key === "inbox" && overdueCount > 0 ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" : "text-muted-foreground"
-                }`}
+                className="text-[11px] min-w-[18px] text-center tabular-nums text-muted-foreground/70 font-medium"
                 data-testid={`badge-count-${sv.key}`}
               >
                 {count}
@@ -252,13 +248,48 @@ export const TaskSidebar = memo(function TaskSidebar({
         );
       })}
 
+      {areas.map((area) => {
+        const areaProjects = activeProjects
+          .filter((p) => p.area === area)
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        const isCollapsed = collapsedAreas.has(area);
+        return (
+          <div key={area}>
+            <button
+              onClick={() => onToggleArea(area)}
+              className="flex items-center gap-1.5 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 hover:bg-muted/30 rounded-md"
+              data-testid={`button-area-${area}`}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+              ) : (
+                <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
+              )}
+              <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-widest">{area}</span>
+            </button>
+            {!isCollapsed &&
+              areaProjects.map((p) => (
+                <ProjectSidebarItem
+                  key={p.id}
+                  project={p}
+                  tasks={tasks}
+                  isActive={isActive({ projectId: p.id })}
+                  onClick={() => onViewChange({ projectId: p.id })}
+                  onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
+                  onDelete={() => onDeleteProject(p.id)}
+                />
+              ))}
+          </div>
+        );
+      })}
+
       {ungroupedProjects.length > 0 && (
         <>
-          <div className="flex items-center gap-2 mt-5 mb-1.5 px-2.5">
-            <div className="flex-1 border-t border-border/30" />
-            <span className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest">Projekty</span>
-            <div className="flex-1 border-t border-border/30" />
-          </div>
+          {areas.length > 0 && (
+            <div className="flex items-center gap-2 mt-4 mb-1.5 px-2.5">
+              <div className="flex-1 border-t border-border/30" />
+            </div>
+          )}
           <DndContext sensors={sidebarSensors} collisionDetection={closestCenter} onDragEnd={handleSidebarDragEnd}>
             <SortableContext items={ungroupedProjects.map(p => `project-${p.id}`)} strategy={verticalListSortingStrategy}>
               {ungroupedProjects.map((p) => (
@@ -280,41 +311,6 @@ export const TaskSidebar = memo(function TaskSidebar({
           </DndContext>
         </>
       )}
-
-      {areas.map((area) => {
-        const areaProjects = activeProjects
-          .filter((p) => p.area === area)
-          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-        const isCollapsed = collapsedAreas.has(area);
-        return (
-          <div key={area}>
-            <button
-              onClick={() => onToggleArea(area)}
-              className="flex items-center gap-1.5 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 hover:bg-muted/30 rounded-md"
-              data-testid={`button-area-${area}`}
-            >
-              {isCollapsed ? (
-                <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
-              ) : (
-                <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
-              )}
-              <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">{area}</span>
-            </button>
-            {!isCollapsed &&
-              areaProjects.map((p) => (
-                <ProjectSidebarItem
-                  key={p.id}
-                  project={p}
-                  tasks={tasks}
-                  isActive={isActive({ projectId: p.id })}
-                  onClick={() => onViewChange({ projectId: p.id })}
-                  onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
-                  onDelete={() => onDeleteProject(p.id)}
-                />
-              ))}
-          </div>
-        );
-      })}
 
       {archivedProjects.length > 0 && (
         <>
@@ -356,7 +352,7 @@ export const SidebarFooter = memo(function SidebarFooter({
         <PopoverTrigger asChild>
           <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-1" data-testid="button-new-list">
             <Plus className="h-3.5 w-3.5" />
-            <span>Nowa Lista</span>
+            <span>New List</span>
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-1" align="start" side="top">
@@ -367,8 +363,8 @@ export const SidebarFooter = memo(function SidebarFooter({
           >
             <FolderPlus className="h-4 w-4 text-primary" />
             <div className="text-left">
-              <div className="font-medium">Nowy Projekt</div>
-              <div className="text-[10px] text-muted-foreground">Zdefiniuj cel i pracuj nad zadaniami</div>
+              <div className="font-medium">New Project</div>
+              <div className="text-[10px] text-muted-foreground">Define a goal, then work towards it one to-do at a time.</div>
             </div>
           </button>
           <button
@@ -378,8 +374,8 @@ export const SidebarFooter = memo(function SidebarFooter({
           >
             <ListPlus className="h-4 w-4 text-emerald-500" />
             <div className="text-left">
-              <div className="font-medium">Nowa Sekcja</div>
-              <div className="text-[10px] text-muted-foreground">Grupuj zadania w ramach projektu</div>
+              <div className="font-medium">New Area</div>
+              <div className="text-[10px] text-muted-foreground">Group projects and to-dos based on different responsibilities.</div>
             </div>
           </button>
         </PopoverContent>
