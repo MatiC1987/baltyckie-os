@@ -65,7 +65,7 @@ export function registerTaskPanelRoutes(app: Express) {
       const token = createTaskPanelToken(user.id);
 
       res.json({
-        user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl, employeeId: user.employeeId },
+        user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl, employeeId: user.employeeId, isAdmin: user.isAdmin },
         token,
       });
     } catch (err: any) {
@@ -75,7 +75,7 @@ export function registerTaskPanelRoutes(app: Express) {
 
   app.get('/api/task-panel/auth/user', isTaskPanelAuth as any, async (req: any, res) => {
     const u = req.taskPanelUser;
-    res.json({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatarUrl, employeeId: u.employeeId });
+    res.json({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatarUrl, employeeId: u.employeeId, isAdmin: u.isAdmin });
   });
 
   app.post('/api/task-panel/logout', isTaskPanelAuth as any, async (_req: any, res) => {
@@ -85,6 +85,10 @@ export function registerTaskPanelRoutes(app: Express) {
   app.get('/api/task-panel/tasks', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const user = req.taskPanelUser;
+      if (user.isAdmin) {
+        const allTasks = await db.select().from(tasksTable);
+        return res.json(allTasks);
+      }
       const virtualId = getEmployeeVirtualId(user.employeeId);
       const allTasks = await db.select().from(tasksTable).where(
         or(
@@ -135,11 +139,11 @@ export function registerTaskPanelRoutes(app: Express) {
       const taskId = Number(req.params.id);
       const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
       if (!existing) return res.status(404).json({ message: 'Zadanie nie znalezione' });
-      if (existing.userId !== virtualId && !(existing.sharedWith || []).includes(virtualId)) {
+      if (!user.isAdmin && existing.userId !== virtualId && !(existing.sharedWith || []).includes(virtualId)) {
         return res.status(403).json({ message: 'Brak dostępu' });
       }
       const updates: Record<string, any> = {};
-      const allowedFields = ['title', 'notes', 'completed', 'completedAt', 'priority', 'dueDate', 'dueTime', 'tags', 'evening', 'someday', 'deadlineDate', 'recurring', 'sortOrder', 'projectId', 'sectionId'];
+      const allowedFields = ['title', 'notes', 'completed', 'completedAt', 'priority', 'dueDate', 'dueTime', 'tags', 'evening', 'someday', 'deadlineDate', 'recurring', 'sortOrder', 'projectId', 'sectionId', 'sharedWith'];
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) updates[field] = req.body[field];
       }
@@ -159,7 +163,7 @@ export function registerTaskPanelRoutes(app: Express) {
       const taskId = Number(req.params.id);
       const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
       if (!existing) return res.status(404).json({ message: 'Zadanie nie znalezione' });
-      if (existing.userId !== virtualId) {
+      if (!user.isAdmin && existing.userId !== virtualId) {
         return res.status(403).json({ message: 'Brak dostępu do usunięcia' });
       }
       await db.delete(taskChecklistItems).where(eq(taskChecklistItems.taskId, taskId));
@@ -171,6 +175,7 @@ export function registerTaskPanelRoutes(app: Express) {
   });
 
   async function verifyTaskAccess(user: any, taskId: number): Promise<boolean> {
+    if (user.isAdmin) return true;
     const virtualId = getEmployeeVirtualId(user.employeeId);
     const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
     if (!task) return false;

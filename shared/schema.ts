@@ -1682,6 +1682,7 @@ export const taskPanelUsers = pgTable("task_panel_users", {
   passwordHash: text("password_hash").notNull(),
   avatarUrl: text("avatar_url"),
   active: boolean("active").default(true),
+  isAdmin: boolean("is_admin").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
