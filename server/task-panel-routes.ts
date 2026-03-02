@@ -233,6 +233,8 @@ export function registerTaskPanelRoutes(app: Express) {
 
 export async function seedTaskPanelUser() {
   try {
+    await db.execute(sql`ALTER TABLE task_panel_users ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false`);
+
     const [existing] = await db.select().from(taskPanelUsers).where(eq(taskPanelUsers.email, 'jan@baltyckie.pl'));
     if (!existing) {
       const hash = await bcrypt.hash('Zadania2025!', 10);
@@ -247,6 +249,36 @@ export async function seedTaskPanelUser() {
         active: true,
       });
       console.log('[TASK-PANEL] Seeded default user: jan@baltyckie.pl / Zadania2025!');
+    }
+
+    const [existingAdmin] = await db.select().from(taskPanelUsers).where(eq(taskPanelUsers.email, 'mateusz.cieslak@baltyckie.pl'));
+    if (!existingAdmin) {
+      let mcEmployeeId: number | null = null;
+      const allEmps = await db.select().from(employees);
+      const mcEmp = allEmps.find((e: any) => e.firstName === 'Mateusz' && e.lastName === 'Cieślak');
+      if (mcEmp) {
+        mcEmployeeId = mcEmp.id;
+      } else {
+        const [newEmp] = await db.insert(employees).values({
+          firstName: 'Mateusz',
+          lastName: 'Cieślak',
+          cooperationType: 'ETAT',
+          contractType: 'CZAS_NIEOKRESLONY',
+          position: 'ZARZADCA',
+          status: 'AKTYWNY',
+        }).returning();
+        mcEmployeeId = newEmp.id;
+      }
+      const hash = await bcrypt.hash('BaltFin2025!MC', 10);
+      await db.insert(taskPanelUsers).values({
+        name: 'Mateusz Cieślak',
+        email: 'mateusz.cieslak@baltyckie.pl',
+        passwordHash: hash,
+        employeeId: mcEmployeeId,
+        active: true,
+        isAdmin: true,
+      });
+      console.log('[TASK-PANEL] Seeded admin user: mateusz.cieslak@baltyckie.pl / BaltFin2025!MC');
     }
   } catch (e) {
     console.error('[TASK-PANEL] Seed error:', e);
