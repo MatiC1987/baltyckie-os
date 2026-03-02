@@ -1609,3 +1609,64 @@ export const dashboardWidgetConfigs = pgTable("dashboard_widget_configs", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ==================== LEGAL CASES ====================
+export const legalCases = pgTable("legal_cases", {
+  id: serial("id").primaryKey(),
+  caseNumber: text("case_number"),
+  title: text("title").notNull(),
+  description: text("description"),
+  caseType: text("case_type"),
+  status: text("status").default("NOWA"),
+  priority: text("priority").default("NORMALNY"),
+  role: text("role"),
+  courtName: text("court_name"),
+  judge: text("judge"),
+  opposingParty: text("opposing_party"),
+  opposingPartyContact: text("opposing_party_contact"),
+  lawyerName: text("lawyer_name"),
+  lawyerContact: text("lawyer_contact"),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  tenantName: text("tenant_name"),
+  claimAmount: numeric("claim_amount", { precision: 12, scale: 2 }),
+  settledAmount: numeric("settled_amount", { precision: 12, scale: 2 }),
+  legalCosts: numeric("legal_costs", { precision: 12, scale: 2 }),
+  filingDate: date("filing_date"),
+  nextHearingDate: date("next_hearing_date"),
+  deadlineDate: date("deadline_date"),
+  closedDate: date("closed_date"),
+  notes: text("notes"),
+  tags: text("tags").array(),
+  documentUrls: text("document_urls").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const legalCaseEvents = pgTable("legal_case_events", {
+  id: serial("id").primaryKey(),
+  legalCaseId: integer("legal_case_id").references(() => legalCases.id, { onDelete: "cascade" }).notNull(),
+  eventDate: date("event_date").notNull(),
+  eventType: text("event_type"),
+  title: text("title").notNull(),
+  description: text("description"),
+  outcome: text("outcome"),
+  documentUrls: text("document_urls").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const legalCasesRelations = relations(legalCases, ({ one, many }) => ({
+  apartment: one(apartments, { fields: [legalCases.apartmentId], references: [apartments.id] }),
+  events: many(legalCaseEvents),
+}));
+
+export const legalCaseEventsRelations = relations(legalCaseEvents, ({ one }) => ({
+  legalCase: one(legalCases, { fields: [legalCaseEvents.legalCaseId], references: [legalCases.id] }),
+}));
+
+export const insertLegalCaseSchema = createInsertSchema(legalCases).omit({ id: true, createdAt: true, updatedAt: true });
+export type LegalCase = typeof legalCases.$inferSelect;
+export type InsertLegalCase = z.infer<typeof insertLegalCaseSchema>;
+
+export const insertLegalCaseEventSchema = createInsertSchema(legalCaseEvents).omit({ id: true, createdAt: true });
+export type LegalCaseEvent = typeof legalCaseEvents.$inferSelect;
+export type InsertLegalCaseEvent = z.infer<typeof insertLegalCaseEventSchema>;

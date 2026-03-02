@@ -16,7 +16,7 @@ import {
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
   Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map as MapIcon, Navigation,
   Compass, Anchor, Sun, Moon, CloudRain, Wind, Droplet, Flame,
-  GraduationCap, FileCheck,
+  GraduationCap, FileCheck, Gavel,
   type LucideIcon
 } from "lucide-react";
 
@@ -41,6 +41,7 @@ export interface SidebarConfig {
   sections: NavSection[];
   customItems: Record<string, NavItem>;
   hiddenItems: string[];
+  hiddenSections: string[];
   customLabels: Record<string, string>;
   collapsed: string[];
   compact: boolean;
@@ -65,7 +66,7 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   Code, GitBranch, Package, Truck, ShoppingCart, CreditCard, DollarSign,
   Percent, TrendingDown, Activity, Award, Gift, Umbrella, Map: MapIcon, Navigation,
   Compass, Anchor, Sun, Moon, CloudRain, Wind, Droplet, Flame,
-  GraduationCap, FileCheck,
+  GraduationCap, FileCheck, Gavel,
 };
 
 export const ICON_CATEGORIES: { label: string; icons: string[] }[] = [
@@ -135,13 +136,14 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
   "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
   tasks: { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },
+  "sprawy-sadowe": { id: "sprawy-sadowe", href: "/sprawy-sadowe", label: "Sprawy sądowe", iconName: "Gavel" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "customers", "podnajem"], color: "cyan" },
   { id: "nieruchomosci", title: "NIERUCHOMOŚCI", itemIds: ["apartments", "owners"], color: "orange" },
-  { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services"], color: "emerald" },
+  { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "sprawy-sadowe"], color: "emerald" },
   { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy"], color: "pink" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "source-comparison"], color: "blue" },
 ];
@@ -150,6 +152,7 @@ export const DEFAULT_CONFIG: SidebarConfig = {
   sections: DEFAULT_SECTIONS.map(s => ({ ...s })),
   customItems: {},
   hiddenItems: [],
+  hiddenSections: [],
   customLabels: {},
   collapsed: [],
   compact: false,
@@ -160,7 +163,7 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const STORAGE_KEY = "sidebar-config-v16";
+const STORAGE_KEY = "sidebar-config-v17";
 
 export function loadConfigFromStorage(): SidebarConfig | null {
   try {
@@ -221,6 +224,7 @@ export function reconcileConfig(stored: Partial<SidebarConfig>): SidebarConfig {
     sections: reconciledSections,
     customItems: stored.customItems || {},
     hiddenItems: stored.hiddenItems || [],
+    hiddenSections: stored.hiddenSections || [],
     customLabels: stored.customLabels || {},
     collapsed: stored.collapsed || [],
     compact: stored.compact ?? false,
@@ -252,6 +256,7 @@ export function serializeForServer(config: SidebarConfig): string {
     sections: config.sections,
     customItems: config.customItems,
     hiddenItems: config.hiddenItems,
+    hiddenSections: config.hiddenSections,
     customLabels: config.customLabels,
     collapsed: config.collapsed,
     compact: config.compact,

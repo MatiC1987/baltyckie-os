@@ -67,11 +67,11 @@ The application utilizes a modern full-stack architecture.
     *   Admin-controlled sidebar visibility. All write operations are logged to `recepcja_audit_log`.
 
 ## Navigation Structure (Sidebar)
-The sidebar is organized into 6 sections (configurable via sidebar-config.ts, storage key `sidebar-config-v16`):
+The sidebar is organized into 6 sections (configurable via sidebar-config.ts, storage key `sidebar-config-v17`). Sections can be hidden/shown via hover EyeOff button on headers; hidden sections listed at bottom of sidebar with restore option. Config includes `hiddenSections: string[]` persisted to localStorage + server.
 *   **Pulpit** — Dashboard (/)
 *   **REZERWACJE** (cyan) — Terminarz, Rezerwacje, Klienci, Podnajem
 *   **NIERUCHOMOŚCI** (orange) — Apartamenty (hub: /apartments with tabs Apartamenty/Lokalizacje/Przeglądy/Usterki), Właściciele
-*   **FINANSE** (emerald) — Saldo firmowe, Przychody (hub: /v2/przychody with tabs Przychody/Prognoza), Koszty, Salda, Import bankowy, Dokumenty (hub: /dokumenty-ksiegowe with tabs Dokumenty księgowe/Faktury), Umowy usługowe
+*   **FINANSE** (emerald) — Saldo firmowe, Przychody (hub: /v2/przychody with tabs Przychody/Prognoza), Koszty, Salda, Import bankowy, Dokumenty (hub: /dokumenty-ksiegowe with tabs Dokumenty księgowe/Faktury), Umowy usługowe, Sprawy sądowe
 *   **KADRY** (pink) — RCP (/rcp/admin with tabs including Statystyki), Pracownicy (hub: /pracownicy with tabs Dashboard/Lista/Umowy/Lista płac/Szkolenia)
 *   **ANALITYKA** (blue) — Obłożenie, Rentowność, Porównanie r/r, Porównanie apartamentów, Sezonowość cen, Porównanie źródeł
 

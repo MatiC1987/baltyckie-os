@@ -21,6 +21,7 @@ interface SidebarContextValue {
   updateConfig: (updater: (prev: SidebarConfig) => SidebarConfig) => void;
   setSections: (sections: NavSection[]) => void;
   toggleHidden: (itemId: string) => void;
+  toggleHiddenSection: (sectionId: string) => void;
   setCustomLabel: (itemId: string, label: string) => void;
   removeCustomLabel: (itemId: string) => void;
   toggleCollapsed: (sectionId: string) => void;
@@ -116,6 +117,15 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       if (set.has(itemId)) set.delete(itemId);
       else set.add(itemId);
       return { ...prev, hiddenItems: [...set] };
+    });
+  }, [updateConfig]);
+
+  const toggleHiddenSection = useCallback((sectionId: string) => {
+    updateConfig(prev => {
+      const set = new Set(prev.hiddenSections);
+      if (set.has(sectionId)) set.delete(sectionId);
+      else set.add(sectionId);
+      return { ...prev, hiddenSections: [...set] };
     });
   }, [updateConfig]);
 
@@ -240,6 +250,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       ...prev,
       sections: sections.map(s => ({ ...s, itemIds: [...s.itemIds] })),
       hiddenItems: hiddenItems || [],
+      hiddenSections: [],
       customItems: {},
       customLabels: {},
     }));
@@ -285,6 +296,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       updateConfig,
       setSections,
       toggleHidden,
+      toggleHiddenSection,
       setCustomLabel,
       removeCustomLabel,
       toggleCollapsed,

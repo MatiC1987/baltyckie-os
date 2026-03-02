@@ -6,8 +6,8 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema } from "@shared/schema";
-import { eq, and, lt, lte, gte, ne, sql, count, desc } from "drizzle-orm";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema } from "@shared/schema";
+import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
 import multer from "multer";
@@ -10888,6 +10888,175 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       });
 
       res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/legal-cases", isAuthenticated, async (req: any, res) => {
+    try {
+      const { status, caseType, priority, search } = req.query;
+      const conditions: any[] = [];
+      if (status) conditions.push(eq(legalCases.status, status as string));
+      if (caseType) conditions.push(eq(legalCases.caseType, caseType as string));
+      if (priority) conditions.push(eq(legalCases.priority, priority as string));
+      if (search) {
+        const term = `%${search}%`;
+        conditions.push(or(
+          ilike(legalCases.title, term),
+          ilike(legalCases.caseNumber, term),
+          ilike(legalCases.opposingParty, term),
+        ));
+      }
+      const where = conditions.length > 0 ? and(...conditions) : undefined;
+      const results = await db.select().from(legalCases).where(where).orderBy(desc(legalCases.createdAt));
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/legal-cases/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [legalCase] = await db.select().from(legalCases).where(eq(legalCases.id, id));
+      if (!legalCase) return res.status(404).json({ message: "Sprawa nie znaleziona" });
+      const events = await db.select().from(legalCaseEvents)
+        .where(eq(legalCaseEvents.legalCaseId, id))
+        .orderBy(desc(legalCaseEvents.eventDate));
+      res.json({ ...legalCase, events });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/legal-cases", isAuthenticated, async (req: any, res) => {
+    try {
+      const parsed = insertLegalCaseSchema.parse(req.body);
+      const [created] = await db.insert(legalCases).values(parsed).returning();
+      await logActivity(req, "CREATE", "legal_case", created.id, created.title, `Utworzono sprawę sądową: ${created.title}`);
+      res.status(201).json(created);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "Błąd walidacji", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/legal-cases/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(legalCases).where(eq(legalCases.id, id));
+      if (!existing) return res.status(404).json({ message: "Sprawa nie znaleziona" });
+      const parsed = insertLegalCaseSchema.partial().parse(req.body);
+      const [updated] = await db.update(legalCases)
+        .set({ ...parsed, updatedAt: new Date() })
+        .where(eq(legalCases.id, id))
+        .returning();
+      await logActivity(req, "UPDATE", "legal_case", updated.id, updated.title, `Zaktualizowano sprawę sądową: ${updated.title}`);
+      res.json(updated);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "Błąd walidacji", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/legal-cases/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(legalCases).where(eq(legalCases.id, id));
+      if (!existing) return res.status(404).json({ message: "Sprawa nie znaleziona" });
+      await db.delete(legalCases).where(eq(legalCases.id, id));
+      await logActivity(req, "DELETE", "legal_case", id, existing.title, `Usunięto sprawę sądową: ${existing.title}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/legal-cases/:id/events", isAuthenticated, async (req: any, res) => {
+    try {
+      const legalCaseId = parseInt(req.params.id);
+      const events = await db.select().from(legalCaseEvents)
+        .where(eq(legalCaseEvents.legalCaseId, legalCaseId))
+        .orderBy(desc(legalCaseEvents.eventDate));
+      res.json(events);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/legal-cases/:id/events", isAuthenticated, async (req: any, res) => {
+    try {
+      const legalCaseId = parseInt(req.params.id);
+      const [parentCase] = await db.select().from(legalCases).where(eq(legalCases.id, legalCaseId));
+      if (!parentCase) return res.status(404).json({ message: "Sprawa nie znaleziona" });
+      const parsed = insertLegalCaseEventSchema.parse({ ...req.body, legalCaseId });
+      const [created] = await db.insert(legalCaseEvents).values(parsed).returning();
+      await db.update(legalCases).set({ updatedAt: new Date() }).where(eq(legalCases.id, legalCaseId));
+      await logActivity(req, "CREATE", "legal_case_event", created.id, created.title, `Dodano zdarzenie do sprawy: ${parentCase.title}`);
+      res.status(201).json(created);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "Błąd walidacji", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/legal-case-events/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(legalCaseEvents).where(eq(legalCaseEvents.id, id));
+      if (!existing) return res.status(404).json({ message: "Zdarzenie nie znalezione" });
+      const parsed = insertLegalCaseEventSchema.partial().parse(req.body);
+      const [updated] = await db.update(legalCaseEvents)
+        .set(parsed)
+        .where(eq(legalCaseEvents.id, id))
+        .returning();
+      await db.update(legalCases).set({ updatedAt: new Date() }).where(eq(legalCases.id, existing.legalCaseId));
+      await logActivity(req, "UPDATE", "legal_case_event", updated.id, updated.title, `Zaktualizowano zdarzenie: ${updated.title}`);
+      res.json(updated);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "Błąd walidacji", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/legal-case-events/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(legalCaseEvents).where(eq(legalCaseEvents.id, id));
+      if (!existing) return res.status(404).json({ message: "Zdarzenie nie znalezione" });
+      await db.delete(legalCaseEvents).where(eq(legalCaseEvents.id, id));
+      await db.update(legalCases).set({ updatedAt: new Date() }).where(eq(legalCases.id, existing.legalCaseId));
+      await logActivity(req, "DELETE", "legal_case_event", id, existing.title, `Usunięto zdarzenie: ${existing.title}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/legal-cases/:id/documents", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      const legalCaseId = parseInt(req.params.id);
+      const [parentCase] = await db.select().from(legalCases).where(eq(legalCases.id, legalCaseId));
+      if (!parentCase) return res.status(404).json({ message: "Sprawa nie znaleziona" });
+
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+
+      const fileName = req.file.originalname;
+      const objectPath = `legal-cases/${legalCaseId}/${Date.now()}_${fileName}`;
+
+      const { Client } = await import("@replit/object-storage");
+      const client = new Client();
+      await client.uploadFromBytes(objectPath, req.file.buffer);
+
+      const currentUrls = parentCase.documentUrls || [];
+      const updatedUrls = [...currentUrls, objectPath];
+      await db.update(legalCases)
+        .set({ documentUrls: updatedUrls, updatedAt: new Date() })
+        .where(eq(legalCases.id, legalCaseId));
+
+      await logActivity(req, "UPLOAD", "legal_case", legalCaseId, parentCase.title, `Dodano dokument: ${fileName}`);
+      res.json({ objectPath, fileName });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

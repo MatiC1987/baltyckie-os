@@ -315,14 +315,15 @@ function ColorPalettePicker({ value, onChange }: { value: string; onChange: (col
 export default function MenuCustomizationPanel() {
   const { toast } = useToast();
   const {
-    config, allItems, updateConfig, toggleHidden,
+    config, allItems, updateConfig, toggleHidden, toggleHiddenSection,
     addSection: ctxAddSection, removeSection, addSeparator, addLabel: ctxAddLabel,
     removeItem, moveItemToSection, applyPreset, resetToDefault,
     exportConfig, importConfig, setCompact: ctxSetCompact, setBadgeConfig: ctxSetBadgeConfig,
   } = useSidebar();
 
-  const { sections, hiddenItems, compact, badgeConfig, customItems } = config;
+  const { sections, hiddenItems, hiddenSections, compact, badgeConfig, customItems } = config;
   const hiddenSet = useMemo(() => new Set(hiddenItems), [hiddenItems]);
+  const hiddenSectionsSet = useMemo(() => new Set(hiddenSections), [hiddenSections]);
 
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [showNewSection, setShowNewSection] = useState(false);
@@ -632,6 +633,16 @@ export default function MenuCustomizationPanel() {
                       {sIdx < sections.length - 1 && (
                         <button onClick={() => handleMoveSectionDown(section.id)} className="text-muted-foreground hover:text-foreground p-1" title="W dół" data-testid={`move-down-${section.id}`}>
                           <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {section.id !== "main" && (
+                        <button
+                          onClick={() => toggleHiddenSection(section.id)}
+                          className={cn("p-1", hiddenSectionsSet.has(section.id) ? "text-amber-500 hover:text-foreground" : "text-muted-foreground hover:text-foreground")}
+                          title={hiddenSectionsSet.has(section.id) ? "Pokaż sekcję" : "Ukryj sekcję"}
+                          data-testid={`toggle-section-visibility-${section.id}`}
+                        >
+                          {hiddenSectionsSet.has(section.id) ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                         </button>
                       )}
                       <button onClick={() => addSeparator(section.id)} className="text-muted-foreground hover:text-foreground p-1" title="Dodaj separator" data-testid={`add-sep-${section.id}`}>

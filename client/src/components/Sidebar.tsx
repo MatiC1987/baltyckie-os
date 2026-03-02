@@ -20,6 +20,8 @@ import {
   Plus,
   PanelLeftClose,
   PanelLeft,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
@@ -122,10 +124,12 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
     return () => window.removeEventListener("toggle-mobile-sidebar", handler);
   }, []);
 
-  const { config, allItems, toggleCollapsed, setCompact } = useSidebar();
-  const { sections, hiddenItems, collapsed, compact } = config;
+  const { config, allItems, toggleCollapsed, setCompact, toggleHiddenSection } = useSidebar();
+  const { sections, hiddenItems, hiddenSections, collapsed, compact } = config;
   const hiddenSet = useMemo(() => new Set(hiddenItems), [hiddenItems]);
+  const hiddenSectionsSet = useMemo(() => new Set(hiddenSections), [hiddenSections]);
   const collapsedSet = useMemo(() => new Set(collapsed), [collapsed]);
+  const [showHiddenSections, setShowHiddenSections] = useState(false);
 
   const { data: companySettings } = useQuery<any>({
     queryKey: ["/api/company-settings"],
@@ -189,10 +193,11 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
 
           <nav className={cn("flex-1 overflow-y-auto pb-4 space-y-1", compact ? "px-1" : "px-3")} data-testid="nav-sidebar">
             {sections.map((section, sIdx) => {
+              if (section.id !== "main" && hiddenSectionsSet.has(section.id)) return null;
               const isCollapsed = (section.title && section.id !== "finanse") ? collapsedSet.has(section.id) : false;
               return (
                 <div key={section.id} data-testid={`nav-section-${section.id}`}>
-                  {sIdx > 0 && (
+                  {sIdx > 0 && sections.slice(0, sIdx).some(s => s.id === "main" || !hiddenSectionsSet.has(s.id)) && (
                     <div className={cn("border-t border-white/10", compact ? "my-2 mx-1" : "my-3")} />
                   )}
                   {section.title && !compact && (
@@ -216,6 +221,13 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                           )} />
                         )}
                       </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleHiddenSection(section.id); }}
+                        className="invisible group-hover/section:visible flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-slate-300 transition-colors"
+                        data-testid={`button-hide-section-${section.id}`}
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </button>
                     </div>
                   )}
                   <div className={cn(
@@ -255,6 +267,47 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
               );
             })}
           </nav>
+
+          {hiddenSections.length > 0 && !compact && (
+            <div className={cn("px-3 pb-1")} data-testid="hidden-sections-panel">
+              {!showHiddenSections ? (
+                <button
+                  onClick={() => setShowHiddenSections(true)}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-colors"
+                  data-testid="button-show-hidden-sections"
+                >
+                  <Eye className="h-3 w-3" />
+                  <span>Pokaż ukryte sekcje ({hiddenSections.length})</span>
+                </button>
+              ) : (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] font-bold tracking-widest uppercase text-slate-500">UKRYTE SEKCJE</span>
+                    <button
+                      onClick={() => setShowHiddenSections(false)}
+                      className="text-slate-500 hover:text-slate-300 transition-colors"
+                      data-testid="button-close-hidden-sections"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  {sections.filter(s => hiddenSectionsSet.has(s.id)).map(section => (
+                    <button
+                      key={section.id}
+                      onClick={() => toggleHiddenSection(section.id)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+                      data-testid={`button-restore-section-${section.id}`}
+                    >
+                      <Eye className="h-3 w-3 shrink-0" />
+                      <span className={cn("font-medium", getSectionColorClass(section.color))} style={getSectionColorStyle(section.color)}>
+                        {section.title}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className={cn("flex justify-center", compact ? "px-1 py-2" : "px-3 py-2")}>
             {compact ? (
