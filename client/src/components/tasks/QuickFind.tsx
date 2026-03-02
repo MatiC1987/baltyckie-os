@@ -134,7 +134,7 @@ export const QuickFind = memo(function QuickFind({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden" data-testid="dialog-quick-find">
+      <DialogContent className="max-w-[calc(100vw-1rem)] sm:max-w-lg p-0 gap-0 overflow-hidden" data-testid="dialog-quick-find">
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
           <Input
@@ -143,7 +143,7 @@ export const QuickFind = memo(function QuickFind({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Szukaj zadań, projektów, tagów..."
-            className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-sm h-auto py-0"
+            className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-[16px] sm:text-sm h-auto py-0"
             data-testid="input-quick-find"
           />
         </div>
@@ -154,7 +154,7 @@ export const QuickFind = memo(function QuickFind({
               return (
                 <button
                   key={result.id}
-                  className={`flex items-center gap-3 w-full px-4 py-2.5 text-left text-sm transition-colors ${
+                  className={`flex items-center gap-3 w-full px-4 py-2.5 min-h-[48px] text-left text-sm transition-colors ${
                     i === selectedIndex ? "bg-primary/5" : "hover:bg-muted/30"
                   }`}
                   onClick={() => handleSelect(result)}

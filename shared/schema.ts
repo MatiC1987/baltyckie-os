@@ -1673,3 +1673,18 @@ export type InsertLegalCase = z.infer<typeof insertLegalCaseSchema>;
 export const insertLegalCaseEventSchema = createInsertSchema(legalCaseEvents).omit({ id: true, createdAt: true });
 export type LegalCaseEvent = typeof legalCaseEvents.$inferSelect;
 export type InsertLegalCaseEvent = z.infer<typeof insertLegalCaseEventSchema>;
+
+export const taskPanelUsers = pgTable("task_panel_users", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  avatarUrl: text("avatar_url"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaskPanelUserSchema = createInsertSchema(taskPanelUsers).omit({ id: true, createdAt: true });
+export type TaskPanelUser = typeof taskPanelUsers.$inferSelect;
+export type InsertTaskPanelUser = z.infer<typeof insertTaskPanelUserSchema>;

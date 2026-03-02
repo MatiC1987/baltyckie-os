@@ -16,6 +16,7 @@ interface TaskRowProps {
   indent?: number;
   project?: TaskProject | null;
   showProjectBar?: boolean;
+  isMobile?: boolean;
   dragListeners?: Record<string, any>;
   onToggleComplete: (task: Task) => void;
   onClick: (task: Task) => void;
@@ -33,6 +34,7 @@ export const TaskRow = memo(function TaskRow({
   indent = 0,
   project,
   showProjectBar = false,
+  isMobile = false,
   dragListeners,
   onToggleComplete,
   onClick,
@@ -52,10 +54,10 @@ export const TaskRow = memo(function TaskRow({
 
   return (
     <div
-      className={`task-row flex items-start gap-3 px-6 py-2.5 cursor-pointer transition-colors duration-100 ${
+      className={`task-row flex items-start gap-3 ${isMobile ? "px-4 py-3" : "px-6 py-2.5"} cursor-pointer transition-colors duration-100 ${
         isSelected ? "bg-muted/30" : "hover:bg-muted/20"
       }`}
-      style={{ paddingLeft: `${24 + indent * 28}px` }}
+      style={{ paddingLeft: `${(isMobile ? 16 : 24) + indent * 28}px` }}
       onClick={handleClick}
       data-testid={`task-row-${task.id}`}
       {...(dragListeners || {})}
@@ -67,14 +69,25 @@ export const TaskRow = memo(function TaskRow({
         />
       )}
 
-      <div className="mt-[2px] shrink-0">
-        <TaskCheckbox
-          checked={!!task.completed}
-          priority={task.priority || "BRAK"}
-          onToggle={handleToggle}
-          data-testid={`checkbox-task-${task.id}`}
-        />
-      </div>
+      {isMobile ? (
+        <div className="shrink-0 flex items-center justify-center w-[44px] h-[44px] -m-[10px]">
+          <TaskCheckbox
+            checked={!!task.completed}
+            priority={task.priority || "BRAK"}
+            onToggle={handleToggle}
+            data-testid={`checkbox-task-${task.id}`}
+          />
+        </div>
+      ) : (
+        <div className="mt-[2px] shrink-0">
+          <TaskCheckbox
+            checked={!!task.completed}
+            priority={task.priority || "BRAK"}
+            onToggle={handleToggle}
+            data-testid={`checkbox-task-${task.id}`}
+          />
+        </div>
+      )}
 
       {hasChildren && (
         <button
@@ -100,7 +113,7 @@ export const TaskRow = memo(function TaskRow({
           )}
         </div>
         {showProjectBar && project && (
-          <div className="text-[11px] text-muted-foreground/50 mt-0.5 truncate">
+          <div className={`${isMobile ? "text-[12px]" : "text-[11px]"} text-muted-foreground/50 mt-0.5 truncate`}>
             {project.name}
           </div>
         )}
@@ -126,6 +139,7 @@ export const TaskRow = memo(function TaskRow({
     prev.childTotalCount === next.childTotalCount &&
     prev.indent === next.indent &&
     prev.showProjectBar === next.showProjectBar &&
+    prev.isMobile === next.isMobile &&
     prev.view === next.view
   );
 });

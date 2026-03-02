@@ -1,9 +1,9 @@
-import { memo, useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef, useMemo } from "react";
 import { format, parseISO } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Task, TaskProject, TaskSection, TaskChecklistItem } from "@shared/schema";
+import type { Task, TaskProject, TaskSection, TaskChecklistItem, Employee } from "@shared/schema";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,7 +24,7 @@ import { TaskCheckbox } from "./TaskCheckbox";
 import { PRIORITY_FLAG_COLORS, PRIORITY_LABELS, PRIORITY_BORDER_COLORS, getTagColor, isDeadlineNear } from "./taskUtils";
 import {
   X, Trash2, Users, Flag, Calendar, Clock, Tag, FolderOpen, RefreshCw,
-  Moon, Sparkles, AlertTriangle, Plus,
+  Moon, Sparkles, AlertTriangle, Plus, UserPlus,
 } from "lucide-react";
 
 interface DetailPanelProps {
@@ -114,20 +114,20 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
       data-testid="detail-panel"
     >
       <div className="flex items-center gap-2 px-5 py-3.5 border-b">
-        <button onClick={onClose} className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground" data-testid="button-close-detail">
+        <button onClick={onClose} className={`p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground ${isMobile ? "min-w-[44px] min-h-[44px] flex items-center justify-center" : ""}`} data-testid="button-close-detail">
           <X className="h-4 w-4" />
         </button>
         <div className="flex-1" />
         <button
           onClick={() => setDeleteConfirm(true)}
-          className="p-1.5 rounded-full hover:bg-muted/50 text-destructive/60 hover:text-destructive"
+          className={`p-1.5 rounded-full hover:bg-muted/50 text-destructive/60 hover:text-destructive ${isMobile ? "min-w-[44px] min-h-[44px] flex items-center justify-center" : ""}`}
           data-testid="button-delete-detail"
         >
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className={`flex-1 overflow-y-auto ${isMobile ? "pb-20" : ""}`}>
         <div className="px-6 pt-6 pb-4">
           <div className="flex items-start gap-3">
             <TaskCheckbox
@@ -144,7 +144,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
               onBlur={() => {
                 if (title.trim() && title !== task.title) onUpdate({ title: title.trim() });
               }}
-              className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-lg font-semibold h-auto py-0 leading-snug"
+              className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-lg font-semibold h-auto py-0 leading-snug ${isMobile ? "text-[16px]" : ""}`}
               data-testid="input-detail-title"
             />
           </div>
@@ -158,13 +158,13 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
               if (notes !== (task.notes || "")) onUpdate({ notes });
             }}
             placeholder="Notatki..."
-            className="resize-none text-sm min-h-[80px] bg-muted/5 border-border/30 rounded-lg"
+            className={`resize-none text-sm min-h-[80px] bg-muted/5 border-border/30 rounded-lg ${isMobile ? "text-[16px]" : ""}`}
             data-testid="textarea-detail-notes"
           />
         </div>
 
         <div className="px-6 pb-4">
-          <div className="flex flex-wrap gap-2">
+          <div className={`flex gap-2 ${isMobile ? "overflow-x-auto whitespace-nowrap" : "flex-wrap"}`}>
             <Popover>
               <PopoverTrigger asChild>
                 <button className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -279,6 +279,8 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                 ))}
               </PopoverContent>
             </Popover>
+
+            <EmployeeAssignChip task={task} onUpdate={onUpdate} />
 
             {task.recurring && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
@@ -535,7 +537,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                 }
               }}
               placeholder="Dodaj podzadanie..."
-              className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-xs h-auto py-1"
+              className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-xs h-auto py-1 ${isMobile ? "text-[16px]" : ""}`}
               data-testid="input-subtask-new"
             />
           </div>
@@ -620,3 +622,75 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
     </motion.div>
   );
 });
+
+function EmployeeAssignChip({ task, onUpdate }: { task: Task; onUpdate: (data: Record<string, unknown>) => void }) {
+  const { data: employeesList = [] } = useQuery<Employee[]>({
+    queryKey: ["/api/employees"],
+  });
+
+  const activeEmployees = useMemo(() => employeesList.filter((e: Employee) => e.status === "AKTYWNY"), [employeesList]);
+
+  const assignedEmployeeIds = useMemo(() => {
+    return (task.sharedWith || [])
+      .filter((s: string) => s.startsWith("employee-"))
+      .map((s: string) => Number(s.replace("employee-", "")));
+  }, [task.sharedWith]);
+
+  const assignedEmployees = useMemo(() => {
+    return activeEmployees.filter((e: Employee) => assignedEmployeeIds.includes(e.id));
+  }, [activeEmployees, assignedEmployeeIds]);
+
+  const toggleEmployee = (empId: number) => {
+    const virtualId = `employee-${empId}`;
+    const current = task.sharedWith || [];
+    const newShared = current.includes(virtualId)
+      ? current.filter((s: string) => s !== virtualId)
+      : [...current, virtualId];
+    onUpdate({ sharedWith: newShared });
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            assignedEmployees.length > 0
+              ? "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+              : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+          }`}
+          data-testid="chip-assign-employee"
+        >
+          <UserPlus className="h-3 w-3" />
+          {assignedEmployees.length > 0
+            ? assignedEmployees.map((e: Employee) => `${e.firstName} ${e.lastName?.[0] || ""}.`).join(", ")
+            : "+ Pracownik"}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-1" align="start">
+        <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+          Przypisz do pracownika
+        </div>
+        {activeEmployees.length === 0 && (
+          <div className="px-3 py-2 text-xs text-muted-foreground">Brak pracowników</div>
+        )}
+        {activeEmployees.map((emp: Employee) => {
+          const isAssigned = assignedEmployeeIds.includes(emp.id);
+          return (
+            <button
+              key={emp.id}
+              className={`flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors ${isAssigned ? "bg-teal-50 dark:bg-teal-900/20 font-medium" : ""}`}
+              onClick={() => toggleEmployee(emp.id)}
+              data-testid={`assign-employee-${emp.id}`}
+            >
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${isAssigned ? "bg-teal-500 text-white" : "bg-muted text-muted-foreground"}`}>
+                {emp.firstName?.[0]}{emp.lastName?.[0]}
+              </div>
+              <span className="flex-1 text-left truncate">{emp.firstName} {emp.lastName}</span>
+              {isAssigned && <span className="text-teal-600 dark:text-teal-400 text-xs">✓</span>}
+            </button>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
+  );
+}

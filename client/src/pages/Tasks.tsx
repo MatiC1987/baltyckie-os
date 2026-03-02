@@ -642,6 +642,7 @@ export default function Tasks() {
           indent={indent}
           project={project}
           showProjectBar={showProjectBar}
+          isMobile={isMobile}
           dragListeners={dragListeners}
           onToggleComplete={handleToggleComplete}
           onClick={handleTaskClick}
@@ -677,7 +678,7 @@ export default function Tasks() {
       return (
         <>
           {!todayBannerDismissed && filtered.length > 0 && (
-            <div className="mx-4 mt-3 mb-2 flex items-center justify-between px-4 py-2 rounded-lg border border-amber-200/60 dark:border-amber-800/40" style={{ backgroundColor: "#FFF9DB" }} data-testid="today-banner">
+            <div className={`${isMobile ? 'mx-2' : 'mx-4'} mt-3 mb-2 flex items-center justify-between px-4 py-2 rounded-lg border border-amber-200/60 dark:border-amber-800/40`} style={{ backgroundColor: "#FFF9DB" }} data-testid="today-banner">
               <span className="text-[13px] text-amber-900 dark:text-amber-200">
                 You have <strong>{filtered.length}</strong> new to-dos
               </span>
@@ -710,12 +711,12 @@ export default function Tasks() {
           {upcomingGroups.map((group) => (
             <div key={group.key} className="mb-1">
               {group.dayNumber && !group.isRange ? (
-                <div className="px-6 py-3 flex items-baseline gap-2 border-b border-border/15">
-                  <span className="text-[32px] font-bold leading-none text-foreground tabular-nums">{group.dayNumber}</span>
+                <div className={`${isMobile ? 'px-4' : 'px-6'} py-3 flex items-baseline gap-2 border-b border-border/15`}>
+                  <span className={`${isMobile ? 'text-[28px]' : 'text-[32px]'} font-bold leading-none text-foreground tabular-nums`}>{group.dayNumber}</span>
                   <span className="text-[15px] text-muted-foreground/70 capitalize">{group.dayName}</span>
                 </div>
               ) : (
-                <div className="px-6 py-3 border-b border-border/15">
+                <div className={`${isMobile ? 'px-4' : 'px-6'} py-3 border-b border-border/15`}>
                   <span className="text-[15px] font-semibold text-foreground capitalize">{group.label}</span>
                 </div>
               )}
@@ -743,7 +744,7 @@ export default function Tasks() {
               <div key={group.projectId} className="mb-2">
                 <button
                   onClick={() => handleViewChange({ projectId: group.projectId })}
-                  className="flex items-center gap-2 px-6 py-2.5 w-full text-left hover:bg-muted/20 transition-colors"
+                  className={`flex items-center gap-2 ${isMobile ? 'px-4' : 'px-6'} py-2.5 w-full text-left hover:bg-muted/20 transition-colors`}
                   data-testid={`anytime-project-${group.projectId}`}
                 >
                   <Circle className="h-4 w-4 shrink-0" style={{ color: group.projectColor, fill: group.projectColor }} />
@@ -756,7 +757,7 @@ export default function Tasks() {
                   return (
                     <div
                       key={t.id}
-                      className={`flex items-center gap-3 px-6 py-2 pl-12 cursor-pointer hover:bg-muted/20 transition-colors ${selectedTasks.has(t.id) ? "bg-muted/30" : ""}`}
+                      className={`flex items-center gap-3 px-6 py-2 ${isMobile ? 'pl-8' : 'pl-12'} cursor-pointer hover:bg-muted/20 transition-colors ${selectedTasks.has(t.id) ? "bg-muted/30" : ""}`}
                       onClick={() => handleTaskClick(t)}
                       data-testid={`task-row-${t.id}`}
                     >
@@ -777,7 +778,7 @@ export default function Tasks() {
                 {remaining > 0 && (
                   <button
                     onClick={() => setAnytimeExpandedProjects(prev => { const n = new Set(prev); n.add(group.projectId); return n; })}
-                    className="px-12 py-1.5 text-[12px] text-primary/70 hover:text-primary transition-colors"
+                    className={`px-12 py-1.5 text-[12px] text-primary/70 hover:text-primary transition-colors ${isMobile ? 'min-h-[44px] flex items-center' : ''}`}
                     data-testid={`anytime-show-more-${group.projectId}`}
                   >
                     Show {remaining} more
@@ -910,7 +911,7 @@ export default function Tasks() {
   const newToDoRow = (position: "top" | "bottom") => (
     <button
       onClick={() => { setInlineAddVisible(true); }}
-      className="flex items-center gap-3 px-6 py-2.5 w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
+      className={`flex items-center gap-3 px-6 ${isMobile ? 'py-3' : 'py-2.5'} w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
       data-testid={`button-new-todo-${position}`}
     >
       <div className="h-[18px] w-[18px] rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
@@ -920,15 +921,58 @@ export default function Tasks() {
 
   return (
     <div className="flex h-full" data-testid="page-tasks">
-      {isMobile && !sidebarCollapsed && (
-        <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setSidebarCollapsed(true)} data-testid="sidebar-backdrop" />
+      {isMobile && (
+        <div
+          className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-200 ${sidebarCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+          onClick={() => setSidebarCollapsed(true)}
+          data-testid="sidebar-backdrop"
+        />
       )}
-      <AnimatePresence>
-        {!sidebarCollapsed && (
+      {isMobile ? (
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 shrink-0 border-r flex flex-col overflow-hidden bg-background w-[280px] transition-transform duration-200 ${
+            sidebarCollapsed ? "-translate-x-full" : "translate-x-0"
+          }`}
+          data-testid="tasks-sidebar"
+        >
+          <div className="flex items-center justify-end p-2">
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground"
+              data-testid="button-close-sidebar"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <TaskSidebar
+            tasks={tasks}
+            projects={projects}
+            activeView={view}
+            showCounts={showCounts}
+            weekStart={weekStart}
+            showOverdueInToday={showOverdueInToday}
+            currentUserId={user?.id}
+            collapsedAreas={collapsedAreas}
+            onViewChange={handleViewChange}
+            onToggleArea={toggleArea}
+            onAddProject={() => setAddProjectOpen(true)}
+            onAddSection={() => setAddSectionOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenQuickFind={() => setQuickFindOpen(true)}
+            onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
+            onDeleteProject={(id) => deleteProject.mutate(id)}
+            onReorderProjects={(items) => batchReorderProjects.mutate(items)}
+          />
+          <SidebarFooter
+            onAddProject={() => setAddProjectOpen(true)}
+            onAddSection={() => setAddSectionOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        </aside>
+      ) : (
+        !sidebarCollapsed && (
           <aside
-            className={`shrink-0 border-r flex flex-col overflow-hidden bg-muted/10 w-[260px] transition-all duration-200 ${
-              isMobile ? "fixed inset-y-0 left-0 z-50 bg-background" : ""
-            }`}
+            className="shrink-0 border-r flex flex-col overflow-hidden bg-muted/10 w-[260px] transition-all duration-200"
             data-testid="tasks-sidebar"
           >
             <TaskSidebar
@@ -956,8 +1000,8 @@ export default function Tasks() {
               onOpenSettings={() => setSettingsOpen(true)}
             />
           </aside>
-        )}
-      </AnimatePresence>
+        )
+      )}
 
       <main className="flex-1 flex flex-col overflow-hidden relative" data-testid="tasks-main">
         <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border/30">
@@ -1021,7 +1065,7 @@ export default function Tasks() {
         })()}
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
-          <div className="flex-1 overflow-y-auto task-list-transition">
+          <div className={`flex-1 overflow-y-auto task-list-transition ${isMobile ? 'pb-20' : 'pb-0'}`}>
             {view === "inbox" && !inlineAddVisible && newToDoRow("top")}
 
             {inlineAddVisible && view !== "logbook" && (
@@ -1054,7 +1098,7 @@ export default function Tasks() {
 
             {view !== "logbook" && view !== "inbox" && !inlineAddVisible && (
               <button
-                className="flex items-center gap-3 px-6 py-2.5 w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors"
+                className={`flex items-center gap-3 px-6 ${isMobile ? 'py-3' : 'py-2.5'} w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
                 onClick={() => setInlineAddVisible(true)}
                 data-testid="button-inline-add"
               >
@@ -1081,7 +1125,7 @@ export default function Tasks() {
         </DndContext>
 
         {(selectedTasks.size > 0 || inlineCardTaskId) && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800 dark:bg-zinc-900 text-white rounded-2xl shadow-lg px-3 py-2 z-50" data-testid="bottom-action-bar">
+          <div className={`absolute ${isMobile ? 'bottom-20' : 'bottom-4'} left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800 dark:bg-zinc-900 text-white rounded-2xl shadow-lg px-3 py-2 z-50`} data-testid="bottom-action-bar">
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
               <ArrowRight className="h-3.5 w-3.5" />
               Move
@@ -1111,7 +1155,7 @@ export default function Tasks() {
           </div>
         )}
 
-        <div className="absolute bottom-6 right-6 z-40">
+        <div className={`absolute ${isMobile ? 'bottom-24 right-4' : 'bottom-6 right-6'} z-40`}>
           <Button size="icon" className="rounded-full shadow-lg bg-primary hover:bg-primary/90" onClick={() => setInlineAddVisible(true)} data-testid="button-fab-add">
             <Plus className="h-5 w-5" />
           </Button>

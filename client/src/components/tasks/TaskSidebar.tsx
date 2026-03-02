@@ -82,7 +82,7 @@ function ProjectSidebarItem({
 
   return (
     <div
-      className={`flex items-center gap-2 px-2.5 py-[7px] rounded-lg text-[13px] w-full text-left transition-all duration-150 cursor-pointer group ${
+      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg text-[13px] w-full text-left transition-all duration-150 cursor-pointer group ${
         isActive ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
       }`}
       onClick={onClick}
@@ -213,7 +213,7 @@ export const TaskSidebar = memo(function TaskSidebar({
     <div className="flex-1 overflow-y-auto p-3 space-y-0.5" data-testid="tasks-sidebar-content">
       <button
         onClick={onOpenQuickFind}
-        className="flex items-center gap-2 w-full px-3 py-1.5 mb-3 rounded-lg bg-muted/40 hover:bg-muted/60 text-muted-foreground/60 text-[13px] transition-colors"
+        className="flex items-center gap-2 w-full px-3 py-1.5 mb-3 min-h-[44px] rounded-lg bg-muted/40 hover:bg-muted/60 text-muted-foreground/60 text-[13px] transition-colors"
         data-testid="sidebar-quick-find"
       >
         <Search className="h-3.5 w-3.5" />
@@ -227,7 +227,7 @@ export const TaskSidebar = memo(function TaskSidebar({
           <button
             key={sv.key}
             onClick={() => onViewChange(sv.view)}
-            className={`flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] w-full text-left transition-all duration-150 ${
+            className={`flex items-center gap-2.5 px-2.5 py-[7px] min-h-[44px] rounded-lg text-[13px] w-full text-left transition-all duration-150 ${
               active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
             }`}
             data-testid={`button-view-${sv.key}`}
@@ -257,7 +257,7 @@ export const TaskSidebar = memo(function TaskSidebar({
           <div key={area}>
             <button
               onClick={() => onToggleArea(area)}
-              className="flex items-center gap-1.5 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 hover:bg-muted/30 rounded-md"
+              className="flex items-center gap-1.5 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[44px] hover:bg-muted/30 rounded-md"
               data-testid={`button-area-${area}`}
             >
               {isCollapsed ? (
@@ -350,7 +350,7 @@ export const SidebarFooter = memo(function SidebarFooter({
     <div className="border-t px-3 py-2 flex items-center gap-1">
       <Popover>
         <PopoverTrigger asChild>
-          <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-1" data-testid="button-new-list">
+          <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-1 min-h-[44px]" data-testid="button-new-list">
             <Plus className="h-3.5 w-3.5" />
             <span>New List</span>
           </button>
@@ -382,7 +382,7 @@ export const SidebarFooter = memo(function SidebarFooter({
       </Popover>
       <div className="flex-1" />
       <button
-        className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+        className="p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
         onClick={onOpenSettings}
         data-testid="button-settings"
       >

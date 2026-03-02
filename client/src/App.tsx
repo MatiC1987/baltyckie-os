@@ -12,6 +12,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { TablePageSkeleton, DashboardSkeleton, AnalyticsSkeleton } from "@/components/PageSkeleton";
 
 const RecepcjaApp = lazy(() => import("@/pages/recepcja/RecepcjaApp"));
+const ZadaniaApp = lazy(() => import("@/pages/zadania/ZadaniaApp"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const ApartamentyHub = lazy(() => import("@/pages/ApartamentyHub"));
 const Owners = lazy(() => import("@/pages/Owners"));
@@ -125,6 +126,14 @@ function Router() {
     return (
       <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
         <RecepcjaApp />
+      </Suspense>
+    );
+  }
+
+  if (location.startsWith("/zadania")) {
+    return (
+      <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
+        <ZadaniaApp />
       </Suspense>
     );
   }

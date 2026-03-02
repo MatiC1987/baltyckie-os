@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { memo, useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import {
@@ -43,6 +43,10 @@ export const TaskInlineAdd = memo(function TaskInlineAdd({
   });
   const [deadlineDate, setDeadlineDate] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useSyncExternalStore(
+    (cb) => { window.addEventListener("resize", cb); return () => window.removeEventListener("resize", cb); },
+    () => window.innerWidth < 768
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -91,7 +95,7 @@ export const TaskInlineAdd = memo(function TaskInlineAdd({
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Nowe zadanie..."
-          className="border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-sm h-auto py-0"
+          className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 ${isMobile ? 'text-[16px]' : 'text-sm'} h-auto py-0`}
           data-testid="input-inline-task-title"
         />
       </div>
