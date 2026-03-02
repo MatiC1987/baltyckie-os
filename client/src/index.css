@@ -664,3 +664,36 @@ aside[data-sidebar-fs]::after {
     page-break-inside: avoid;
   }
 }
+
+@keyframes checkmark-draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+.task-checkmark-path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 0;
+  animation: checkmark-draw 200ms ease-out;
+}
+
+.task-checkbox-btn:hover .task-checkbox-circle-hover {
+  opacity: 0.8 !important;
+}
+
+.task-row {
+  transition: background-color 200ms ease, opacity 200ms ease, transform 200ms ease;
+}
+
+.task-completing {
+  opacity: 0.5;
+}
+
+.task-completing .text-foreground {
+  text-decoration: line-through;
+}
+
+.task-exit {
+  transform: translateX(-20px);
+  opacity: 0;
+  transition: transform 300ms ease, opacity 300ms ease;
+}

@@ -103,6 +103,22 @@ The sidebar is organized into 6 sections (configurable via sidebar-config.ts, st
 ### Odłożone na później:
 - Ulepszone widoki mobilne (karty zamiast tabel na małych ekranach)
 
+## Tasks Module Architecture (Things 3 Inspired)
+The `/tasks` page has been refactored from a 2689-line monolith into modular components in `client/src/components/tasks/`:
+- `taskUtils.ts` — constants (PRIORITY_*, TAG_COLORS), helpers (filterTasks, sortTasks, isOverdue, isDeadlineNear, computeSidebarCounts, buildUpcomingGroups), types (ViewType, SmartView)
+- `TaskCheckbox.tsx` — custom SVG round checkbox with priority-colored border and checkmark animation
+- `TaskRow.tsx` — React.memo row with custom comparator, project color bar, deadline alerts, evening moon icon
+- `TaskDetailPanel.tsx` — chip-based metadata (date, deadline, priority, project, tags, evening, someday chips), checklist with progress bar
+- `TaskDialogs.tsx` — TaskDialog, ProjectDialog, SectionDialog, SettingsDialog, MoveDialog
+- `TaskSidebar.tsx` — smart views with progress rings, gradient active state, memoized sidebar counts, drag-to-reorder projects
+- `TaskInlineAdd.tsx` — context-inheriting inline add with popovers for date/tag/priority/project/evening
+- `QuickFind.tsx` — Cmd+F/Cmd+K search dialog for tasks, projects, tags
+- `Tasks.tsx` (orchestrator, ~1185 lines) — optimistic updates, DnD, keyboard shortcuts, grouped views
+
+**Smart Views:** inbox, today (overdue/today/evening sections), tomorrow, upcoming (days→weeks→months), someday, priority, shared, logbook
+**New task fields:** `deadlineDate` (date), `someday` (boolean), `evening` (boolean)
+**Keyboard shortcuts:** 1-6 view switch, N=inline add, S=someday toggle, E=evening toggle, T=set today, Cmd+.=complete, Cmd+D=duplicate, Cmd+F/K=Quick Find, Del=delete
+
 ## External Dependencies
 *   **Replit Auth:** Main application authentication.
 *   **PostgreSQL (Neon):** Primary database.
