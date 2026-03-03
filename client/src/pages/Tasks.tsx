@@ -1,5 +1,5 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DefaultTasksApiProvider } from "@/lib/tasksApiContext";
 import { AnimatePresence } from "framer-motion";
 import { format, parseISO, isToday, isTomorrow, isYesterday } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -18,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useTasksApi } from "@/lib/tasksApiContext";
 import {
   Plus, Trash2, ChevronDown, ChevronRight, Circle,
   PanelLeftClose, PanelLeft, MoreHorizontal, ArrowRight,
@@ -78,9 +78,10 @@ function SortableSectionItem({ id, children }: { id: string; children: (listener
   );
 }
 
-export default function Tasks() {
+export function TasksCore() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { apiRequest, currentUser: user, isZadaniaPanel, onLogout } = useTasksApi();
+  const queryClient = useQueryClient();
   const [view, setView] = useState<ViewType>("inbox");
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
@@ -967,6 +968,7 @@ export default function Tasks() {
             onAddProject={() => setAddProjectOpen(true)}
             onAddSection={() => setAddSectionOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
+            onLogout={onLogout}
           />
         </aside>
       ) : (
@@ -998,6 +1000,7 @@ export default function Tasks() {
               onAddProject={() => setAddProjectOpen(true)}
               onAddSection={() => setAddSectionOpen(true)}
               onOpenSettings={() => setSettingsOpen(true)}
+              onLogout={onLogout}
             />
           </aside>
         )
@@ -1269,5 +1272,13 @@ export default function Tasks() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+export default function Tasks() {
+  return (
+    <DefaultTasksApiProvider>
+      <TasksCore />
+    </DefaultTasksApiProvider>
   );
 }

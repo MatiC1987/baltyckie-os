@@ -1,8 +1,8 @@
 import { memo, useState, useEffect, useRef, useMemo } from "react";
 import { format, parseISO } from "date-fns";
 import { pl } from "date-fns/locale";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTasksApi } from "@/lib/tasksApiContext";
 import type { Task, TaskProject, TaskSection, TaskChecklistItem, Employee } from "@shared/schema";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,8 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
   onToggleComplete,
   onCreateSubtask,
 }: DetailPanelProps) {
+  const { apiRequest } = useTasksApi();
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes || "");
   const [subtaskTitle, setSubtaskTitle] = useState("");

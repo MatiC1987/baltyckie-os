@@ -3,6 +3,7 @@ import type { Task, TaskProject, TaskSection } from "@shared/schema";
 import {
   Plus, SlidersHorizontal, FolderPlus, ListPlus, Archive, Circle,
   GripVertical, MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
+  LogOut,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -339,12 +340,14 @@ interface SidebarFooterProps {
   onAddProject: () => void;
   onAddSection: () => void;
   onOpenSettings: () => void;
+  onLogout?: () => void;
 }
 
 export const SidebarFooter = memo(function SidebarFooter({
   onAddProject,
   onAddSection,
   onOpenSettings,
+  onLogout,
 }: SidebarFooterProps) {
   return (
     <div className="border-t px-3 py-2 flex items-center gap-1">
@@ -381,6 +384,15 @@ export const SidebarFooter = memo(function SidebarFooter({
         </PopoverContent>
       </Popover>
       <div className="flex-1" />
+      {onLogout && (
+        <button
+          className="p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+          onClick={onLogout}
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+      )}
       <button
         className="p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
         onClick={onOpenSettings}

@@ -1,12 +1,14 @@
 import type { Express } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { db } from "./db";
+import { storage } from "./storage";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { eq, or, sql } from "drizzle-orm";
 import {
   taskPanelUsers, tasks as tasksTable, taskProjects, taskSections,
   taskChecklistItems, employees,
+  insertTaskProjectSchema, insertTaskSectionSchema,
 } from "@shared/schema";
 
 function getJwtSecret(): string {
@@ -225,6 +227,221 @@ export function registerTaskPanelRoutes(app: Express) {
       if (req.body.sortOrder !== undefined) updates.sortOrder = req.body.sortOrder;
       const [updated] = await db.update(taskChecklistItems).set(updates).where(eq(taskChecklistItems.id, Number(req.params.id))).returning();
       res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-panel/checklist/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const [existing] = await db.select().from(taskChecklistItems).where(eq(taskChecklistItems.id, Number(req.params.id)));
+      if (!existing || !(await verifyTaskAccess(req.taskPanelUser, existing.taskId))) {
+        return res.status(403).json({ message: 'Brak dostępu' });
+      }
+      await storage.deleteTaskChecklistItem(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/:id/duplicate', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const user = req.taskPanelUser;
+      const taskId = Number(req.params.id);
+      if (!(await verifyTaskAccess(user, taskId))) {
+        return res.status(403).json({ message: 'Brak dostępu' });
+      }
+      const original = await storage.getTask(taskId);
+      if (!original) return res.status(404).json({ message: 'Zadanie nie znalezione' });
+      const virtualId = getEmployeeVirtualId(user.employeeId);
+      const duplicated = await storage.createTask({
+        title: original.title + " (kopia)",
+        notes: original.notes,
+        completed: false,
+        priority: original.priority || "BRAK",
+        dueDate: original.dueDate,
+        dueTime: original.dueTime,
+        tags: original.tags || [],
+        projectId: original.projectId,
+        sectionId: original.sectionId,
+        sortOrder: (original.sortOrder ?? 0) + 1,
+        recurring: original.recurring,
+        reminderDate: original.reminderDate,
+        reminderTime: original.reminderTime,
+        userId: virtualId,
+        sharedWith: original.sharedWith || [],
+      });
+      res.json(duplicated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/bulk-delete', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids)) return res.status(400).json({ message: 'ids must be array' });
+      const user = req.taskPanelUser;
+      for (const id of ids) {
+        if (!(await verifyTaskAccess(user, Number(id)))) continue;
+        await db.delete(taskChecklistItems).where(eq(taskChecklistItems.taskId, Number(id)));
+        await db.delete(tasksTable).where(eq(tasksTable.id, Number(id)));
+      }
+      res.json({ success: true, deleted: ids.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/bulk-move', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { ids, projectId, sectionId } = req.body;
+      if (!Array.isArray(ids)) return res.status(400).json({ message: 'ids must be array' });
+      const user = req.taskPanelUser;
+      const results = [];
+      for (const id of ids) {
+        if (!(await verifyTaskAccess(user, Number(id)))) continue;
+        const updated = await storage.updateTask(Number(id), {
+          projectId: projectId ?? null,
+          sectionId: sectionId ?? null,
+        });
+        results.push(updated);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/batch-reorder', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) return res.status(400).json({ message: 'items must be array' });
+      for (const item of items) {
+        const update: Record<string, unknown> = { sortOrder: item.sortOrder };
+        if (item.sectionId !== undefined) update.sectionId = item.sectionId;
+        if (item.projectId !== undefined) update.projectId = item.projectId;
+        await storage.updateTask(Number(item.id), update);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/projects', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const user = req.taskPanelUser;
+      const virtualId = getEmployeeVirtualId(user.employeeId);
+      const input = insertTaskProjectSchema.parse({ ...req.body, userId: virtualId });
+      const created = await storage.createTaskProject(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/task-panel/projects/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const updated = await storage.updateTaskProject(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-panel/projects/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      await storage.deleteTaskProject(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/projects/batch-reorder', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) return res.status(400).json({ message: 'items must be array' });
+      for (const item of items) {
+        await storage.updateTaskProject(Number(item.id), { sortOrder: item.sortOrder });
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/sections', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const user = req.taskPanelUser;
+      const virtualId = getEmployeeVirtualId(user.employeeId);
+      const input = insertTaskSectionSchema.parse({ ...req.body, userId: virtualId });
+      const created = await storage.createTaskSection(input);
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/task-panel/sections/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const updated = await storage.updateTaskSection(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-panel/sections/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      await storage.deleteTaskSection(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/sections/batch-reorder', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) return res.status(400).json({ message: 'items must be array' });
+      for (const item of items) {
+        await storage.updateTaskSection(Number(item.id), { sortOrder: item.sortOrder });
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/task-panel/employees', isTaskPanelAuth as any, async (_req: any, res) => {
+    try {
+      const allEmployees = await db.select().from(employees);
+      res.json(allEmployees);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/task-panel/users', isTaskPanelAuth as any, async (_req: any, res) => {
+    try {
+      const panelUsers = await db.select({
+        id: taskPanelUsers.id,
+        name: taskPanelUsers.name,
+        email: taskPanelUsers.email,
+        avatarUrl: taskPanelUsers.avatarUrl,
+        employeeId: taskPanelUsers.employeeId,
+      }).from(taskPanelUsers).where(eq(taskPanelUsers.active, true));
+      const mapped = panelUsers.map(u => ({
+        id: u.employeeId ? `employee-${u.employeeId}` : String(u.id),
+        firstName: u.name.split(' ')[0] || null,
+        lastName: u.name.split(' ').slice(1).join(' ') || null,
+        email: u.email,
+        profileImageUrl: u.avatarUrl,
+      }));
+      res.json(mapped);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

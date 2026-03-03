@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTasksApi } from "@/lib/tasksApiContext";
 import type { TaskProject, TaskSection } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,8 @@ export function TaskDialog({
   sections: TaskSection[];
   defaultProjectId?: number;
 }) {
+  const { apiRequest } = useTasksApi();
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [priority, setPriority] = useState(getStoredDefaultPriority());
