@@ -6,9 +6,9 @@ import {
   Sun, AlertCircle, Users,
 } from "lucide-react";
 
-export type ViewType = "inbox" | "today" | "tomorrow" | "upcoming" | "anytime" | "someday" | "priority" | "shared" | "logbook" | { projectId: number };
+export type ViewType = "inbox" | "today" | "tomorrow" | "upcoming" | "anytime" | "someday" | "priority" | "shared" | "logbook" | { projectId: number } | { area: string };
 
-export type SettingsPage = "main" | "appearance" | "general" | "counter" | "today_settings" | "week_settings" | "plus_settings";
+export type SettingsPage = "main" | "appearance" | "general" | "counter" | "today_settings" | "week_settings" | "plus_settings" | "font_size";
 
 export const PRIORITY_FLAG_COLORS: Record<string, string> = {
   PILNY: "text-red-500",
@@ -65,6 +65,19 @@ export function getStoredWeekStart(): 0 | 1 {
 
 export function getStoredDefaultProject(): string {
   try { return localStorage.getItem("tasksDefaultProject") || ""; } catch { return ""; }
+}
+
+export type TaskFontSize = "12" | "14" | "16" | "18";
+
+export const FONT_SIZE_OPTIONS: { value: TaskFontSize; label: string }[] = [
+  { value: "12", label: "Mały (12px)" },
+  { value: "14", label: "Normalny (14px)" },
+  { value: "16", label: "Duży (16px)" },
+  { value: "18", label: "Bardzo duży (18px)" },
+];
+
+export function getStoredFontSize(): TaskFontSize {
+  return (localStorage.getItem("tasks-font-size") as TaskFontSize) || "14";
 }
 
 export function getStoredDefaultPriority(): string {
@@ -148,7 +161,40 @@ export function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, sho
     const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
     return bTime - aTime;
   });
-  return tasks.filter((t) => t.projectId === view.projectId && !t.completed && t.parentTaskId === null);
+  if (typeof view === "object" && "area" in view) return [];
+  return tasks.filter((t) => t.projectId === (view as { projectId: number }).projectId && !t.completed && t.parentTaskId === null);
+}
+
+export function getProjectCompletedTasks(tasks: Task[], projectId: number): Task[] {
+  return tasks
+    .filter((t) => t.projectId === projectId && t.completed && t.parentTaskId === null)
+    .sort((a, b) => {
+      const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+}
+
+export function getProjectLaterTasks(activeTasks: Task[]): Task[] {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return activeTasks.filter((t) => t.dueDate && parseISO(t.dueDate) > today);
+}
+
+export function getProjectHideLater(projectId: number): boolean {
+  return localStorage.getItem(`tasks-project-${projectId}-hideLater`) === "true";
+}
+
+export function setProjectHideLater(projectId: number, value: boolean) {
+  localStorage.setItem(`tasks-project-${projectId}-hideLater`, String(value));
+}
+
+export function getProjectShowLogged(projectId: number): boolean {
+  return localStorage.getItem(`tasks-project-${projectId}-showLogged`) === "true";
+}
+
+export function setProjectShowLogged(projectId: number, value: boolean) {
+  localStorage.setItem(`tasks-project-${projectId}-showLogged`, String(value));
 }
 
 export function sortTasks(tasks: Task[], sortBy: string): Task[] {
@@ -179,7 +225,8 @@ export function viewLabel(view: ViewType, projects: TaskProject[]): string {
   if (view === "priority") return "Priorytetowe";
   if (view === "shared") return "Udostępnione mi";
   if (view === "logbook") return "Logbook";
-  const p = projects.find((pr) => pr.id === view.projectId);
+  if (typeof view === "object" && "area" in view) return view.area;
+  const p = projects.find((pr) => pr.id === (view as { projectId: number }).projectId);
   return p?.name || "Projekt";
 }
 
@@ -193,6 +240,7 @@ export function viewIcon(view: ViewType) {
   if (view === "priority") return AlertCircle;
   if (view === "shared") return Users;
   if (view === "logbook") return BookOpen;
+  if (typeof view === "object" && "area" in view) return Layers;
   return FolderOpen;
 }
 

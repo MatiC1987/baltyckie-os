@@ -416,6 +416,94 @@ export function registerTaskPanelRoutes(app: Express) {
     }
   });
 
+  app.post('/api/task-panel/tasks/bulk-assign', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { taskIds, employeeIds } = req.body;
+      if (!Array.isArray(taskIds) || !Array.isArray(employeeIds)) return res.status(400).json({ message: "taskIds and employeeIds must be arrays" });
+      const virtualIds = employeeIds.map((eid: number) => `employee-${eid}`);
+      const results = [];
+      for (const id of taskIds) {
+        const task = await storage.getTask(Number(id));
+        if (!task) continue;
+        const current = task.sharedWith || [];
+        const merged = Array.from(new Set([...current.filter((s: string) => !s.startsWith("employee-")), ...virtualIds]));
+        const updated = await storage.updateTask(Number(id), { sharedWith: merged });
+        results.push(updated);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/bulk-complete', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { taskIds, completed } = req.body;
+      if (!Array.isArray(taskIds)) return res.status(400).json({ message: "taskIds must be array" });
+      const results = [];
+      for (const id of taskIds) {
+        const updated = await storage.updateTask(Number(id), {
+          completed: completed !== false,
+          completedAt: completed !== false ? new Date() : null,
+        });
+        results.push(updated);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/bulk-tags', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { taskIds, tags } = req.body;
+      if (!Array.isArray(taskIds) || !Array.isArray(tags)) return res.status(400).json({ message: "taskIds and tags must be arrays" });
+      const results = [];
+      for (const id of taskIds) {
+        const updated = await storage.updateTask(Number(id), { tags });
+        results.push(updated);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/bulk-deadline', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { taskIds, deadlineDate } = req.body;
+      if (!Array.isArray(taskIds)) return res.status(400).json({ message: "taskIds must be array" });
+      const results = [];
+      for (const id of taskIds) {
+        const updated = await storage.updateTask(Number(id), { deadlineDate: deadlineDate || null });
+        results.push(updated);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/tasks/bulk-duplicate', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const user = (req as any).taskPanelUser;
+      const virtualId = user.employeeId ? `employee-${user.employeeId}` : String(user.id);
+      const { taskIds } = req.body;
+      if (!Array.isArray(taskIds)) return res.status(400).json({ message: "taskIds must be array" });
+      const results = [];
+      for (const id of taskIds) {
+        const task = await storage.getTask(Number(id));
+        if (!task) continue;
+        const { id: _id, createdAt: _ca, completedAt: _coa, ...rest } = task;
+        const dup = await storage.createTask({ ...rest, title: `${rest.title} (kopia)`, userId: virtualId, completed: false });
+        results.push(dup);
+      }
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/task-panel/employees', isTaskPanelAuth as any, async (_req: any, res) => {
     try {
       const allEmployees = await db.select().from(employees);

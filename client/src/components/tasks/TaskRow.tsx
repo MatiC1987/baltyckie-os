@@ -1,7 +1,7 @@
 import { memo, useCallback } from "react";
 import { parseISO, isToday } from "date-fns";
 import type { Task, TaskProject } from "@shared/schema";
-import { Moon, RefreshCw, Star, ChevronRight, ChevronDown } from "lucide-react";
+import { Moon, RefreshCw, Star, ChevronRight, ChevronDown, Bell } from "lucide-react";
 import { TaskCheckbox } from "./TaskCheckbox";
 import type { ViewType } from "./taskUtils";
 
@@ -111,6 +111,9 @@ export const TaskRow = memo(function TaskRow({
           {isEvening && (
             <Moon className="h-3 w-3 text-indigo-400/60 shrink-0" data-testid={`icon-evening-${task.id}`} />
           )}
+          {task.reminderDate && (
+            <Bell className="h-3 w-3 text-amber-400/60 shrink-0" data-testid={`icon-reminder-${task.id}`} />
+          )}
         </div>
         {showProjectBar && project && (
           <div className={`${isMobile ? "text-[12px]" : "text-[11px]"} text-muted-foreground/50 mt-0.5 truncate`}>
@@ -131,6 +134,7 @@ export const TaskRow = memo(function TaskRow({
     prev.task.evening === next.task.evening &&
     prev.task.someday === next.task.someday &&
     prev.task.recurring === next.task.recurring &&
+    prev.task.reminderDate === next.task.reminderDate &&
     prev.task.projectId === next.task.projectId &&
     prev.isSelected === next.isSelected &&
     prev.isExpanded === next.isExpanded &&

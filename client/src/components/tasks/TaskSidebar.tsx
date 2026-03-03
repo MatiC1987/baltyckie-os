@@ -2,7 +2,7 @@ import { memo, useMemo, useCallback } from "react";
 import type { Task, TaskProject, TaskSection } from "@shared/schema";
 import {
   Plus, SlidersHorizontal, FolderPlus, ListPlus, Archive, Circle,
-  GripVertical, MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
+  MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
   LogOut,
 } from "lucide-react";
 import {
@@ -11,28 +11,9 @@ import {
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useDroppable } from "@dnd-kit/core";
 import { SMART_VIEWS, computeSidebarCounts, type ViewType } from "./taskUtils";
 
-function SortableProjectItem({ id, children }: { id: string; children: (listeners: Record<string, any> | undefined) => React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.3 : 1,
-  };
-  return (
-    <div ref={setNodeRef} style={style} {...attributes}>
-      {children(listeners)}
-    </div>
-  );
-}
 
 function ProgressRing({ completed, total, color, size = 16 }: { completed: number; total: number; color: string; size?: number }) {
   const r = (size - 3) / 2;
@@ -55,23 +36,35 @@ function ProgressRing({ completed, total, color, size = 16 }: { completed: numbe
   );
 }
 
+function SmartViewDroppable({ id, isInbox, isDraggingTask, children }: { id: string; isInbox: boolean; isDraggingTask?: boolean; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  const dropHighlight = isInbox && isOver && isDraggingTask ? "ring-2 ring-blue-400 bg-blue-500/10 rounded-lg" : "";
+  return (
+    <div ref={setNodeRef} className={dropHighlight}>
+      {children}
+    </div>
+  );
+}
+
 function ProjectSidebarItem({
   project,
   tasks,
   isActive,
   onClick,
-  dragListeners,
   onArchive,
   onDelete,
+  isDraggingTask,
 }: {
   project: TaskProject;
   tasks: Task[];
   isActive: boolean;
   onClick: () => void;
-  dragListeners?: Record<string, any>;
   onArchive: () => void;
   onDelete: () => void;
+  isDraggingTask?: boolean;
 }) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `sidebar-project-${project.id}` });
+
   const stats = useMemo(() => {
     const projectTasks = tasks.filter((t) => t.projectId === project.id && t.parentTaskId === null);
     const completed = projectTasks.filter(t => t.completed).length;
@@ -80,20 +73,18 @@ function ProjectSidebarItem({
   }, [tasks, project.id]);
 
   const color = project.color || "#5ADBFA";
+  const dropHighlight = isOver && isDraggingTask ? "ring-2 ring-blue-400 bg-blue-500/10" : "";
 
   return (
     <div
-      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg text-[13px] w-full text-left transition-all duration-150 cursor-pointer group ${
+      ref={setDropRef}
+      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 cursor-pointer group ${
         isActive ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
-      }`}
+      } ${dropHighlight}`}
+      style={{ fontSize: 'var(--tasks-font-size, 13px)' }}
       onClick={onClick}
       data-testid={`sidebar-project-${project.id}`}
     >
-      {dragListeners && (
-        <div className="opacity-0 group-hover:opacity-100 cursor-grab transition-opacity duration-150" {...dragListeners}>
-          <GripVertical className="h-3 w-3 text-muted-foreground/40" />
-        </div>
-      )}
       <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
       <span className="flex-1 truncate">{project.name}</span>
       {stats.total > 0 && (
@@ -134,6 +125,7 @@ interface TaskSidebarProps {
   showOverdueInToday: boolean;
   currentUserId?: string;
   collapsedAreas: Set<string>;
+  isDraggingTask?: boolean;
   onViewChange: (view: ViewType) => void;
   onToggleArea: (area: string) => void;
   onAddProject: () => void;
@@ -154,6 +146,7 @@ export const TaskSidebar = memo(function TaskSidebar({
   showOverdueInToday,
   currentUserId,
   collapsedAreas,
+  isDraggingTask,
   onViewChange,
   onToggleArea,
   onAddProject,
@@ -182,36 +175,18 @@ export const TaskSidebar = memo(function TaskSidebar({
 
   const isActive = useCallback(
     (v: ViewType) => {
-      if (typeof activeView === "object" && typeof v === "object") return activeView.projectId === v.projectId;
+      if (typeof activeView === "object" && typeof v === "object") {
+        if ("area" in activeView && "area" in v) return activeView.area === v.area;
+        if ("projectId" in activeView && "projectId" in v) return activeView.projectId === v.projectId;
+        return false;
+      }
       return activeView === v;
     },
     [activeView]
   );
 
-  const sidebarSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  const handleSidebarDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    if (activeId.startsWith("project-") && overId.startsWith("project-")) {
-      const activeProjectId = Number(activeId.replace("project-", ""));
-      const overProjectId = Number(overId.replace("project-", ""));
-      const sorted = [...ungroupedProjects];
-      const oldIdx = sorted.findIndex(p => p.id === activeProjectId);
-      const newIdx = sorted.findIndex(p => p.id === overProjectId);
-      if (oldIdx === -1 || newIdx === -1) return;
-      const reordered = arrayMove(sorted, oldIdx, newIdx);
-      onReorderProjects(reordered.map((p, i) => ({ id: p.id, sortOrder: i })));
-    }
-  }, [ungroupedProjects, onReorderProjects]);
-
   return (
-    <div className="flex-1 overflow-y-auto p-3 space-y-0.5" data-testid="tasks-sidebar-content">
+    <div className="flex-1 overflow-y-auto p-3 space-y-0.5" style={{ fontSize: 'var(--tasks-font-size, 14px)' }} data-testid="tasks-sidebar-content">
       <button
         onClick={onOpenQuickFind}
         className="flex items-center gap-2 w-full px-3 py-1.5 mb-3 min-h-[44px] rounded-lg bg-muted/40 hover:bg-muted/60 text-muted-foreground/60 text-[13px] transition-colors"
@@ -224,28 +199,31 @@ export const TaskSidebar = memo(function TaskSidebar({
       {SMART_VIEWS.map((sv) => {
         const count = counts[sv.key] || 0;
         const active = isActive(sv.view);
+        const isInbox = sv.key === "inbox";
         return (
-          <button
-            key={sv.key}
-            onClick={() => onViewChange(sv.view)}
-            className={`flex items-center gap-2.5 px-2.5 py-[7px] min-h-[44px] rounded-lg text-[13px] w-full text-left transition-all duration-150 ${
-              active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
-            }`}
-            data-testid={`button-view-${sv.key}`}
-          >
-            <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
-              <sv.icon className="h-3.5 w-3.5" style={{ color: sv.color }} />
-            </div>
-            <span className="flex-1">{sv.label}</span>
-            {sv.showCount && count > 0 && (
-              <span
-                className="text-[11px] min-w-[18px] text-center tabular-nums text-muted-foreground/70 font-medium"
-                data-testid={`badge-count-${sv.key}`}
-              >
-                {count}
-              </span>
-            )}
-          </button>
+          <SmartViewDroppable key={sv.key} id={isInbox ? "sidebar-inbox" : `sidebar-view-${sv.key}`} isInbox={isInbox} isDraggingTask={isDraggingTask}>
+            <button
+              onClick={() => onViewChange(sv.view)}
+              className={`flex items-center gap-2.5 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 ${
+                active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
+              }`}
+              style={{ fontSize: 'var(--tasks-font-size, 13px)' }}
+              data-testid={`button-view-${sv.key}`}
+            >
+              <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
+                <sv.icon className="h-3.5 w-3.5" style={{ color: sv.color }} />
+              </div>
+              <span className="flex-1">{sv.label}</span>
+              {sv.showCount && count > 0 && (
+                <span
+                  className="text-[11px] min-w-[18px] text-center tabular-nums text-muted-foreground/70 font-medium"
+                  data-testid={`badge-count-${sv.key}`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          </SmartViewDroppable>
         );
       })}
 
@@ -254,20 +232,34 @@ export const TaskSidebar = memo(function TaskSidebar({
           .filter((p) => p.area === area)
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
         const isCollapsed = collapsedAreas.has(area);
+        const areaActive = isActive({ area });
         return (
           <div key={area}>
-            <button
-              onClick={() => onToggleArea(area)}
-              className="flex items-center gap-1.5 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[44px] hover:bg-muted/30 rounded-md"
+            <div
+              className={`flex items-center gap-1.5 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[44px] rounded-md ${
+                areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"
+              }`}
               data-testid={`button-area-${area}`}
             >
-              {isCollapsed ? (
-                <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
-              ) : (
-                <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
-              )}
-              <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-widest">{area}</span>
-            </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleArea(area); }}
+                className="shrink-0 p-0.5 rounded hover:bg-muted/40 transition-colors"
+                data-testid={`button-area-chevron-${area}`}
+              >
+                {isCollapsed ? (
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                ) : (
+                  <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
+                )}
+              </button>
+              <button
+                onClick={() => onViewChange({ area })}
+                className="flex-1 text-left min-w-0"
+                data-testid={`button-area-name-${area}`}
+              >
+                <span className={`text-[11px] font-semibold uppercase tracking-widest ${areaActive ? "text-foreground" : "text-muted-foreground/60"}`}>{area}</span>
+              </button>
+            </div>
             {!isCollapsed &&
               areaProjects.map((p) => (
                 <ProjectSidebarItem
@@ -278,6 +270,7 @@ export const TaskSidebar = memo(function TaskSidebar({
                   onClick={() => onViewChange({ projectId: p.id })}
                   onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
                   onDelete={() => onDeleteProject(p.id)}
+                  isDraggingTask={isDraggingTask}
                 />
               ))}
           </div>
@@ -291,25 +284,18 @@ export const TaskSidebar = memo(function TaskSidebar({
               <div className="flex-1 border-t border-border/30" />
             </div>
           )}
-          <DndContext sensors={sidebarSensors} collisionDetection={closestCenter} onDragEnd={handleSidebarDragEnd}>
-            <SortableContext items={ungroupedProjects.map(p => `project-${p.id}`)} strategy={verticalListSortingStrategy}>
-              {ungroupedProjects.map((p) => (
-                <SortableProjectItem key={p.id} id={`project-${p.id}`}>
-                  {(projectListeners) => (
-                    <ProjectSidebarItem
-                      project={p}
-                      tasks={tasks}
-                      isActive={isActive({ projectId: p.id })}
-                      onClick={() => onViewChange({ projectId: p.id })}
-                      dragListeners={projectListeners}
-                      onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
-                      onDelete={() => onDeleteProject(p.id)}
-                    />
-                  )}
-                </SortableProjectItem>
-              ))}
-            </SortableContext>
-          </DndContext>
+          {ungroupedProjects.map((p) => (
+            <ProjectSidebarItem
+              key={p.id}
+              project={p}
+              tasks={tasks}
+              isActive={isActive({ projectId: p.id })}
+              onClick={() => onViewChange({ projectId: p.id })}
+              onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
+              onDelete={() => onDeleteProject(p.id)}
+              isDraggingTask={isDraggingTask}
+            />
+          ))}
         </>
       )}
 
@@ -328,6 +314,7 @@ export const TaskSidebar = memo(function TaskSidebar({
               onClick={() => onViewChange({ projectId: p.id })}
               onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
               onDelete={() => onDeleteProject(p.id)}
+              isDraggingTask={isDraggingTask}
             />
           ))}
         </>

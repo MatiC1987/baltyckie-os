@@ -38,7 +38,7 @@ export const TaskInlineAdd = memo(function TaskInlineAdd({
   const [evening, setEvening] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [projectId, setProjectId] = useState<number | null>(() => {
-    if (typeof view === "object") return view.projectId;
+    if (typeof view === "object" && "projectId" in view) return view.projectId;
     return null;
   });
   const [deadlineDate, setDeadlineDate] = useState<string | null>(null);

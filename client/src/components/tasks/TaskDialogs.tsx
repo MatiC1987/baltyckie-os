@@ -15,11 +15,12 @@ import {
 } from "@/components/ui/select";
 import {
   PRIORITY_FLAG_COLORS, PRIORITY_LABELS, getStoredDefaultPriority, getStoredDefaultProject,
+  FONT_SIZE_OPTIONS, type TaskFontSize,
 } from "./taskUtils";
 import type { SettingsPage } from "./taskUtils";
 import {
   Flag, Star, Calendar, Tag, Plus, Sun, Moon, Monitor, Check, ChevronRight,
-  Inbox, Circle,
+  Inbox, Circle, Type,
 } from "lucide-react";
 
 export function TaskDialog({
@@ -312,6 +313,8 @@ export function SettingsDialog({
   setShowOverdueInToday,
   weekStart,
   setWeekStart,
+  fontSize,
+  setFontSize,
   projects,
 }: {
   open: boolean;
@@ -322,6 +325,8 @@ export function SettingsDialog({
   setShowOverdueInToday: (v: boolean) => void;
   weekStart: 0 | 1;
   setWeekStart: (v: 0 | 1) => void;
+  fontSize: TaskFontSize;
+  setFontSize: (v: TaskFontSize) => void;
   projects: TaskProject[];
 }) {
   const [page, setPage] = useState<SettingsPage>("main");
@@ -360,6 +365,7 @@ export function SettingsDialog({
     today_settings: "Dziś",
     week_settings: "Tydzień",
     plus_settings: "Przycisk Plus",
+    font_size: "Wielkość czcionki",
   };
 
   return (
@@ -380,6 +386,7 @@ export function SettingsDialog({
           <div className="space-y-1 py-2">
             {[
               { key: "appearance" as SettingsPage, label: "Wygląd", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white text-xs font-bold">Aa</div> },
+              { key: "font_size" as SettingsPage, label: "Wielkość czcionki", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center"><Type className="h-4 w-4 text-white" /></div> },
               { key: "counter" as SettingsPage, label: "Licznik zadań", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center"><Tag className="h-4 w-4 text-white" /></div> },
               { key: "today_settings" as SettingsPage, label: "Dziś", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center"><Star className="h-4 w-4 text-white" /></div> },
               { key: "week_settings" as SettingsPage, label: "Tydzień", icon: <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center"><Calendar className="h-4 w-4 text-white" /></div> },
@@ -421,6 +428,25 @@ export function SettingsDialog({
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {page === "font_size" && (
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">Zmień wielkość czcionki w zadaniach, menu i notatkach.</p>
+            <div className="space-y-1">
+              {FONT_SIZE_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-left ${fontSize === value ? "bg-primary/10" : "hover:bg-muted/50"}`}
+                  onClick={() => setFontSize(value)}
+                  data-testid={`button-font-size-${value}`}
+                >
+                  <span className="text-sm flex-1" style={{ fontSize: `${value}px` }}>{label}</span>
+                  {fontSize === value && <Check className="h-4 w-4 text-primary" />}
+                </button>
+              ))}
             </div>
           </div>
         )}

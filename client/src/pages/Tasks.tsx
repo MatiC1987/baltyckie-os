@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -17,6 +18,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useTasksApi } from "@/lib/tasksApiContext";
 import {
@@ -24,8 +26,9 @@ import {
   PanelLeftClose, PanelLeft, MoreHorizontal, ArrowRight,
   Copy, GripVertical, Menu, X, Flag, Pencil, Search,
   Inbox, Star, Sun, Moon, Clock, AlertTriangle, BookOpen, Sparkles,
-  CalendarDays, RefreshCw, Layers,
+  CalendarDays, RefreshCw, Layers, Tag, ListPlus, CheckSquare, UserPlus, Check, Calendar,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor,
   useSensor, useSensors, type DragStartEvent, type DragEndEvent,
@@ -35,6 +38,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+import { WhenPopover } from "@/components/tasks/WhenPopover";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import { TaskRow } from "@/components/tasks/TaskRow";
 import { TaskDetailPanel } from "@/components/tasks/TaskDetailPanel";
 import { TaskInlineCard } from "@/components/tasks/TaskInlineCard";
@@ -43,11 +50,14 @@ import { TaskInlineAdd } from "@/components/tasks/TaskInlineAdd";
 import { QuickFind } from "@/components/tasks/QuickFind";
 import { TaskDialog, ProjectDialog, SectionDialog, SettingsDialog, MoveDialog } from "@/components/tasks/TaskDialogs";
 import {
-  type ViewType,
+  type ViewType, type TaskFontSize,
   PRIORITY_FLAG_COLORS, PRIORITY_LABELS,
-  filterTasks, sortTasks, viewLabel, viewIcon, isOverdue,
-  getStoredShowCounts, getStoredShowOverdueInToday, getStoredWeekStart, getStoredDefaultPriority, getStoredDefaultProject,
+  filterTasks, sortTasks, viewLabel, viewIcon, isOverdue, getTagColor,
+  getStoredShowCounts, getStoredShowOverdueInToday, getStoredWeekStart, getStoredDefaultPriority, getStoredDefaultProject, getStoredFontSize,
   buildUpcomingGroups, buildAnytimeGroups,
+  getProjectCompletedTasks, getProjectLaterTasks,
+  getProjectHideLater, setProjectHideLater,
+  getProjectShowLogged, setProjectShowLogged,
 } from "@/components/tasks/taskUtils";
 
 function SortableTaskRow({ id, children, disabled }: { id: string; children: (listeners: Record<string, any> | undefined, isDragging: boolean) => React.ReactNode; disabled?: boolean }) {
@@ -102,6 +112,7 @@ export function TasksCore() {
   const [showOverdueInToday, setShowOverdueInToday] = useState(getStoredShowOverdueInToday);
   const [weekStart, setWeekStart] = useState<0 | 1>(getStoredWeekStart);
   const [sortBy, setSortBy] = useState<string>("manual");
+  const [fontSize, setFontSize] = useState<TaskFontSize>(getStoredFontSize);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [renamingSectionId, setRenamingSectionId] = useState<number | null>(null);
   const [renamingSectionName, setRenamingSectionName] = useState("");
@@ -109,6 +120,15 @@ export function TasksCore() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [todayBannerDismissed, setTodayBannerDismissed] = useState(false);
   const [anytimeExpandedProjects, setAnytimeExpandedProjects] = useState<Set<number>>(new Set());
+  const [projectHideLater, setProjectHideLaterState] = useState<Record<number, boolean>>({});
+  const [projectShowLogged, setProjectShowLoggedState] = useState<Record<number, boolean>>({});
+  const [filterTags, setFilterTags] = useState<Set<string>>(new Set());
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [assignCheckedIds, setAssignCheckedIds] = useState<Set<number>>(new Set());
+  const [bulkTagsInput, setBulkTagsInput] = useState("");
+  const [bulkTagsOpen, setBulkTagsOpen] = useState(false);
+  const [bulkDeadlineInput, setBulkDeadlineInput] = useState("");
+  const [bulkDeadlineOpen, setBulkDeadlineOpen] = useState(false);
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
@@ -127,6 +147,7 @@ export function TasksCore() {
   const { data: projects = [] } = useQuery<TaskProject[]>({ queryKey: ["/api/task-projects"] });
   const { data: sections = [] } = useQuery<TaskSection[]>({ queryKey: ["/api/task-sections"] });
   const { data: allUsers = [] } = useQuery<{ id: string; firstName: string | null; lastName: string | null; email: string | null; profileImageUrl: string | null }[]>({ queryKey: ["/api/all-users"] });
+  const { data: employees = [] } = useQuery<any[]>({ queryKey: ["/api/employees"] });
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -286,13 +307,91 @@ export function TasksCore() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/task-projects"] }),
   });
 
+  const bulkAssign = useMutation({
+    mutationFn: (data: { taskIds: number[]; employeeIds: number[] }) =>
+      apiRequest("POST", "/api/tasks/bulk-assign", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setSelectedTasks(new Set());
+      toast({ title: "Przydzielono pracowników" });
+    },
+  });
+
+  const bulkComplete = useMutation({
+    mutationFn: (data: { taskIds: number[]; completed: boolean }) =>
+      apiRequest("POST", "/api/tasks/bulk-complete", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setSelectedTasks(new Set());
+      toast({ title: "Zadania oznaczone jako ukończone" });
+    },
+  });
+
+  const bulkTags = useMutation({
+    mutationFn: (data: { taskIds: number[]; tags: string[] }) =>
+      apiRequest("POST", "/api/tasks/bulk-tags", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setSelectedTasks(new Set());
+      toast({ title: "Tagi ustawione" });
+    },
+  });
+
+  const bulkDeadline = useMutation({
+    mutationFn: (data: { taskIds: number[]; deadlineDate: string }) =>
+      apiRequest("POST", "/api/tasks/bulk-deadline", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setSelectedTasks(new Set());
+      toast({ title: "Deadline ustawiony" });
+    },
+  });
+
+  const bulkDuplicate = useMutation({
+    mutationFn: (data: { taskIds: number[] }) =>
+      apiRequest("POST", "/api/tasks/bulk-duplicate", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: "Zadania zduplikowane" });
+    },
+  });
+
   const filtered = useMemo(
     () => filterTasks(tasks, view, weekStart, showOverdueInToday, user?.id),
     [tasks, view, weekStart, showOverdueInToday, user?.id]
   );
 
-  const isProjectView = typeof view === "object";
-  const projectSections = isProjectView ? sections.filter((s) => s.projectId === view.projectId) : [];
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    filtered.forEach(t => {
+      if (t.tags && Array.isArray(t.tags)) {
+        t.tags.forEach(tag => { if (tag) tagSet.add(tag); });
+      }
+    });
+    return Array.from(tagSet).sort();
+  }, [filtered]);
+
+  const tagFilteredTasks = useMemo(() => {
+    if (filterTags.size === 0) return filtered;
+    return filtered.filter(t =>
+      t.tags && Array.isArray(t.tags) && t.tags.some(tag => filterTags.has(tag))
+    );
+  }, [filtered, filterTags]);
+
+  const isAreaView = typeof view === "object" && "area" in view;
+  const isProjectView = typeof view === "object" && "projectId" in view;
+  const projectSections = isProjectView ? sections.filter((s) => s.projectId === (view as { projectId: number }).projectId) : [];
+
+  const [renamingArea, setRenamingArea] = useState(false);
+  const [renamingAreaName, setRenamingAreaName] = useState("");
+  const renameAreaInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renamingArea && renameAreaInputRef.current) {
+      renameAreaInputRef.current.focus();
+      renameAreaInputRef.current.select();
+    }
+  }, [renamingArea]);
 
   const childTasksMap = useMemo(() => {
     const map = new Map<number, Task[]>();
@@ -346,19 +445,34 @@ export function TasksCore() {
     setDetailTask(null);
     setInlineAddVisible(false);
     setTodayBannerDismissed(false);
+    setFilterTags(new Set());
+    setMultiSelectMode(false);
     if (isMobile) setSidebarCollapsed(true);
+    if (typeof newView === "object" && "projectId" in newView) {
+      const pid = newView.projectId;
+      setProjectHideLaterState(prev => ({ ...prev, [pid]: getProjectHideLater(pid) }));
+      setProjectShowLoggedState(prev => ({ ...prev, [pid]: getProjectShowLogged(pid) }));
+    }
   }, [isMobile]);
 
   const [inlineCardTaskId, setInlineCardTaskId] = useState<number | null>(null);
 
   const handleTaskClick = useCallback((task: Task) => {
+    if (multiSelectMode) {
+      setSelectedTasks(prev => {
+        const next = new Set(prev);
+        next.has(task.id) ? next.delete(task.id) : next.add(task.id);
+        return next;
+      });
+      return;
+    }
     setSelectedTasks(new Set([task.id]));
     if (isMobile) {
       setDetailTask(task);
     } else {
       setInlineCardTaskId(prev => prev === task.id ? null : task.id);
     }
-  }, [isMobile]);
+  }, [isMobile, multiSelectMode]);
 
   const handleToggleComplete = useCallback((task: Task) => {
     toggleComplete.mutate(task);
@@ -371,6 +485,37 @@ export function TasksCore() {
     setRenamingSectionId(null);
     setRenamingSectionName("");
   }, [renamingSectionName, updateSection]);
+
+  const handleAreaRenameSubmit = useCallback(() => {
+    if (!isAreaView || !renamingAreaName.trim()) {
+      setRenamingArea(false);
+      return;
+    }
+    const oldAreaName = (view as { area: string }).area;
+    const newAreaName = renamingAreaName.trim();
+    if (oldAreaName === newAreaName) {
+      setRenamingArea(false);
+      return;
+    }
+    const areaProjects = projects.filter(p => p.area === oldAreaName);
+    areaProjects.forEach(p => {
+      updateProject.mutate({ id: p.id, data: { area: newAreaName } });
+    });
+    setView({ area: newAreaName });
+    setRenamingArea(false);
+    toast({ title: "Nazwa zmieniona" });
+  }, [isAreaView, view, renamingAreaName, projects, updateProject, toast]);
+
+  const handleAreaDelete = useCallback(() => {
+    if (!isAreaView) return;
+    const areaName = (view as { area: string }).area;
+    const areaProjects = projects.filter(p => p.area === areaName);
+    areaProjects.forEach(p => {
+      updateProject.mutate({ id: p.id, data: { area: null } });
+    });
+    setView("inbox");
+    toast({ title: "Obszar usunięty" });
+  }, [isAreaView, view, projects, updateProject, toast]);
 
   const handleInlineSubmit = useCallback((data: Record<string, unknown>) => {
     createTask.mutate(data);
@@ -494,10 +639,23 @@ export function TasksCore() {
     const activeId = String(active.id);
     const overId = String(over.id);
 
+    if (activeId.startsWith("task-") && overId.startsWith("sidebar-project-")) {
+      const taskId = Number(activeId.replace("task-", ""));
+      const projectId = Number(overId.replace("sidebar-project-", ""));
+      updateTask.mutate({ id: taskId, data: { projectId, sectionId: null } });
+      return;
+    }
+
+    if (activeId.startsWith("task-") && overId === "sidebar-inbox") {
+      const taskId = Number(activeId.replace("task-", ""));
+      updateTask.mutate({ id: taskId, data: { projectId: null, sectionId: null } });
+      return;
+    }
+
     if (activeId.startsWith("task-") && overId.startsWith("task-")) {
       const activeTaskId = Number(activeId.replace("task-", ""));
       const overTaskId = Number(overId.replace("task-", ""));
-      const sortedFiltered = sortTasks(filtered, sortBy);
+      const sortedFiltered = sortTasks(tagFilteredTasks, sortBy);
 
       if (isProjectView) {
         const activeTask = tasks.find(t => t.id === activeTaskId);
@@ -508,14 +666,14 @@ export function TasksCore() {
         const overSectionId = overTask.sectionId;
 
         if (activeSectionId === overSectionId) {
-          const sectionTasks = sortTasks(filtered.filter(t => t.sectionId === activeSectionId), sortBy);
+          const sectionTasks = sortTasks(tagFilteredTasks.filter(t => t.sectionId === activeSectionId), sortBy);
           const oldIdx = sectionTasks.findIndex(t => t.id === activeTaskId);
           const newIdx = sectionTasks.findIndex(t => t.id === overTaskId);
           if (oldIdx === -1 || newIdx === -1) return;
           const reordered = arrayMove(sectionTasks, oldIdx, newIdx);
           batchReorderTasks.mutate(reordered.map((t, i) => ({ id: t.id, sortOrder: i })));
         } else {
-          const targetSectionTasks = sortTasks(filtered.filter(t => t.sectionId === overSectionId), sortBy);
+          const targetSectionTasks = sortTasks(tagFilteredTasks.filter(t => t.sectionId === overSectionId), sortBy);
           const overIdx = targetSectionTasks.findIndex(t => t.id === overTaskId);
           const newSectionTasks = [...targetSectionTasks];
           const movedTask = { ...activeTask, sectionId: overSectionId };
@@ -547,11 +705,11 @@ export function TasksCore() {
       const reordered = arrayMove(sorted, oldIdx, newIdx);
       batchReorderSections.mutate(reordered.map((s, i) => ({ id: s.id, sortOrder: i })));
     }
-  }, [filtered, sortBy, isProjectView, tasks, projectSections, batchReorderTasks, batchReorderSections]);
+  }, [tagFilteredTasks, sortBy, isProjectView, tasks, projectSections, batchReorderTasks, batchReorderSections, updateTask]);
 
   const VIcon = viewIcon(view);
   const selectedTasksArray = Array.from(selectedTasks);
-  const showProjectBar = !isProjectView && view !== "anytime";
+  const showProjectBar = !isProjectView && !isAreaView && view !== "anytime";
 
   const emptyStateConfig: Record<string, { icon: any; title: string; subtitle: string }> = {
     inbox: { icon: Inbox, title: "Inbox is empty", subtitle: "Press N to add a new to-do" },
@@ -563,36 +721,49 @@ export function TasksCore() {
     project: { icon: null, title: "No tasks in this project", subtitle: "Press N to add" },
   };
 
-  const emptyKey = typeof view === "object" ? "project" : view;
+  const emptyKey = isProjectView ? "project" : isAreaView ? "area" : (view as string);
   const emptyState = emptyStateConfig[emptyKey] || emptyStateConfig.inbox;
 
   const todayGrouped = useMemo(() => {
     if (view !== "today") return null;
     const allTasks: Task[] = [];
     const evening: Task[] = [];
-    filtered.forEach((t) => {
+    tagFilteredTasks.forEach((t) => {
       if (t.evening) evening.push(t);
       else allTasks.push(t);
     });
     return { tasks: allTasks, evening };
-  }, [view, filtered]);
+  }, [view, tagFilteredTasks]);
 
   const upcomingGroups = useMemo(() => {
     if (view !== "upcoming") return null;
-    return buildUpcomingGroups(filtered);
-  }, [view, filtered]);
+    return buildUpcomingGroups(tagFilteredTasks);
+  }, [view, tagFilteredTasks]);
 
   const anytimeGroups = useMemo(() => {
     if (view !== "anytime") return null;
-    return buildAnytimeGroups(filtered, projects);
-  }, [view, filtered, projects]);
+    return buildAnytimeGroups(tagFilteredTasks, projects);
+  }, [view, tagFilteredTasks, projects]);
+
+  const areaData = useMemo(() => {
+    if (!isAreaView) return null;
+    const areaName = (view as { area: string }).area;
+    const areaProjects = projects.filter(p => p.area === areaName && !p.archived).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const tagSet = new Set<string>();
+    areaProjects.forEach(p => {
+      tasks.filter(t => t.projectId === p.id).forEach(t => {
+        (t.tags || []).forEach((tag: string) => tagSet.add(tag));
+      });
+    });
+    return { areaName, projects: areaProjects, tags: Array.from(tagSet) };
+  }, [isAreaView, view, projects, tasks]);
 
   const logbookGrouped = useMemo(() => {
     if (view !== "logbook") return null;
     const todayTasks: Task[] = [];
     const yesterday: Task[] = [];
     const older: Task[] = [];
-    filtered.forEach((t) => {
+    tagFilteredTasks.forEach((t) => {
       if (t.completedAt) {
         const d = new Date(t.completedAt);
         if (isToday(d)) todayTasks.push(t);
@@ -607,7 +778,7 @@ export function TasksCore() {
     if (yesterday.length) groups.push({ label: "Wczoraj", tasks: yesterday });
     if (older.length) groups.push({ label: "Starsze", tasks: older });
     return groups;
-  }, [view, filtered]);
+  }, [view, tagFilteredTasks]);
 
   const renderTaskItem = useCallback((t: Task, indent = 0, dragListeners?: Record<string, any>) => {
     const children = childTasksMap.get(t.id) || [];
@@ -678,10 +849,10 @@ export function TasksCore() {
     if (view === "today" && todayGrouped) {
       return (
         <>
-          {!todayBannerDismissed && filtered.length > 0 && (
+          {!todayBannerDismissed && tagFilteredTasks.length > 0 && (
             <div className={`${isMobile ? 'mx-2' : 'mx-4'} mt-3 mb-2 flex items-center justify-between px-4 py-2 rounded-lg border border-amber-200/60 dark:border-amber-800/40`} style={{ backgroundColor: "#FFF9DB" }} data-testid="today-banner">
               <span className="text-[13px] text-amber-900 dark:text-amber-200">
-                You have <strong>{filtered.length}</strong> new to-dos
+                You have <strong>{tagFilteredTasks.length}</strong> new to-dos
               </span>
               <button
                 onClick={() => setTodayBannerDismissed(true)}
@@ -803,22 +974,101 @@ export function TasksCore() {
       ));
     }
 
+    if (isAreaView && areaData) {
+      return (
+        <div className="py-4" data-testid="area-view">
+          {areaData.tags.length > 0 && (
+            <div className={`flex flex-wrap gap-1.5 ${isMobile ? 'px-4' : 'px-6'} mb-5`} data-testid="area-tags">
+              {areaData.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium ${getTagColor(tag)}`}
+                  data-testid={`badge-area-tag-${tag}`}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="space-y-0.5">
+            {areaData.projects.map((p) => {
+              const projectTasks = tasks.filter(t => t.projectId === p.id && t.parentTaskId === null);
+              const completedCount = projectTasks.filter(t => t.completed).length;
+              const totalCount = projectTasks.length;
+              const color = p.color || "#5ADBFA";
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => handleViewChange({ projectId: p.id })}
+                  className={`flex items-center gap-3 w-full text-left ${isMobile ? 'px-4 py-3.5' : 'px-6 py-3'} hover:bg-muted/20 transition-colors group`}
+                  data-testid={`area-project-${p.id}`}
+                >
+                  <Circle className="h-5 w-5 shrink-0" style={{ color, fill: color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-medium text-foreground truncate">{p.name}</div>
+                    {totalCount > 0 && (
+                      <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+                        {completedCount}/{totalCount} ukończonych
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/30 shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+          {areaData.projects.length === 0 && (
+            <div className="text-center text-muted-foreground/50 py-16" data-testid="text-area-empty">
+              <Layers className="h-12 w-12 mx-auto mb-3 opacity-15" />
+              <p className="text-sm font-medium">Brak projektów w tym obszarze</p>
+              <p className="text-xs mt-1 text-muted-foreground/40">Dodaj projekt i przypisz go do tego obszaru</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return null;
   };
 
-  const hasGroupedView = view === "today" || view === "upcoming" || view === "anytime" || view === "logbook";
+  const hasGroupedView = view === "today" || view === "upcoming" || view === "anytime" || view === "logbook" || isAreaView;
 
   const renderProjectView = () => {
+    const currentProjectId = isProjectView ? (view as { projectId: number }).projectId : 0;
+    const hideLater = projectHideLater[currentProjectId] ?? false;
+    const showLogged = projectShowLogged[currentProjectId] ?? false;
+
+    const laterTasks = getProjectLaterTasks(tagFilteredTasks);
+    const laterTaskIds = new Set(laterTasks.map(t => t.id));
+    const laterCount = laterTasks.length;
+
+    const visibleFiltered = hideLater ? tagFilteredTasks.filter(t => !laterTaskIds.has(t.id)) : tagFilteredTasks;
+
+    const completedTasks = getProjectCompletedTasks(tasks, currentProjectId);
+    const loggedCount = completedTasks.length;
+
     const sortedSections = [...projectSections].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     const sectionIds = sortedSections.map(s => `section-${s.id}`);
-    const unsectionedTasks = sortTasks(filtered.filter((t) => !t.sectionId), sortBy);
+    const unsectionedTasks = sortTasks(visibleFiltered.filter((t) => !t.sectionId), sortBy);
     const unsectionedIds = unsectionedTasks.map(t => `task-${t.id}`);
+
+    const toggleHideLater = () => {
+      const newVal = !hideLater;
+      setProjectHideLater(currentProjectId, newVal);
+      setProjectHideLaterState(prev => ({ ...prev, [currentProjectId]: newVal }));
+    };
+
+    const toggleShowLogged = () => {
+      const newVal = !showLogged;
+      setProjectShowLogged(currentProjectId, newVal);
+      setProjectShowLoggedState(prev => ({ ...prev, [currentProjectId]: newVal }));
+    };
 
     return (
       <>
         <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
           {sortedSections.map((sec) => {
-            const sectionTasks = sortTasks(filtered.filter((t) => t.sectionId === sec.id), sortBy);
+            const sectionTasks = sortTasks(visibleFiltered.filter((t) => t.sectionId === sec.id), sortBy);
             const collapsed = collapsedSections.has(sec.id);
             const sectionTaskIds = sectionTasks.map(t => `task-${t.id}`);
             const isRenaming = renamingSectionId === sec.id;
@@ -903,6 +1153,81 @@ export function TasksCore() {
             </SortableTaskRow>
           ))}
         </SortableContext>
+
+        {laterCount > 0 && (
+          <div className="px-6 py-2">
+            <button
+              onClick={toggleHideLater}
+              className="text-[13px] text-primary/70 hover:text-primary transition-colors"
+              data-testid="button-toggle-hide-later"
+            >
+              {hideLater
+                ? `Show ${laterCount} later ${laterCount === 1 ? "item" : "items"}`
+                : "Hide later items"
+              }
+            </button>
+          </div>
+        )}
+
+        {loggedCount > 0 && (
+          <div className="px-6 py-2">
+            <button
+              onClick={toggleShowLogged}
+              className="text-[13px] text-primary/70 hover:text-primary transition-colors"
+              data-testid="button-toggle-show-logged"
+            >
+              {showLogged
+                ? "Hide logged items"
+                : `Show ${loggedCount} logged ${loggedCount === 1 ? "item" : "items"}`
+              }
+            </button>
+          </div>
+        )}
+
+        {showLogged && completedTasks.length > 0 && (
+          <div className="mt-1" data-testid="logged-items-list">
+            {completedTasks.map((t) => {
+              const completedDate = t.completedAt
+                ? format(new Date(t.completedAt), "d MMM", { locale: pl })
+                : "";
+              return (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-3 px-6 py-2 cursor-pointer hover:bg-muted/20 transition-colors"
+                  onClick={() => handleTaskClick(t)}
+                  data-testid={`logged-task-${t.id}`}
+                >
+                  <div className="shrink-0">
+                    <div
+                      className="h-[18px] w-[18px] rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: "#3B82F6" }}
+                      onClick={(e) => { e.stopPropagation(); handleToggleComplete(t); }}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path
+                          d="M2 5 L4 7 L8 3"
+                          fill="none"
+                          stroke="white"
+                          strokeWidth={1.8}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  <span className="text-[13.5px] text-muted-foreground/50 line-through truncate flex-1">
+                    {t.title}
+                  </span>
+                  {completedDate && (
+                    <span className="text-[11px] text-muted-foreground/40 shrink-0">
+                      {completedDate}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </>
     );
   };
@@ -921,7 +1246,8 @@ export function TasksCore() {
   );
 
   return (
-    <div className="flex h-full" data-testid="page-tasks">
+    <div className="flex h-screen" style={{ '--tasks-font-size': `${fontSize}px` } as React.CSSProperties} data-testid="page-tasks">
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
       {isMobile && (
         <div
           className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-200 ${sidebarCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}
@@ -954,6 +1280,7 @@ export function TasksCore() {
             showOverdueInToday={showOverdueInToday}
             currentUserId={user?.id}
             collapsedAreas={collapsedAreas}
+            isDraggingTask={!!activeDragId && activeDragId.startsWith("task-")}
             onViewChange={handleViewChange}
             onToggleArea={toggleArea}
             onAddProject={() => setAddProjectOpen(true)}
@@ -986,6 +1313,7 @@ export function TasksCore() {
               showOverdueInToday={showOverdueInToday}
               currentUserId={user?.id}
               collapsedAreas={collapsedAreas}
+              isDraggingTask={!!activeDragId && activeDragId.startsWith("task-")}
               onViewChange={handleViewChange}
               onToggleArea={toggleArea}
               onAddProject={() => setAddProjectOpen(true)}
@@ -1021,10 +1349,23 @@ export function TasksCore() {
             {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <VIcon className="h-5 w-5 shrink-0" style={{ color: view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "inbox" ? "#5ADBFA" : undefined }} />
+            <VIcon className="h-5 w-5 shrink-0" style={{ color: isAreaView ? "#4ECDC4" : view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "inbox" ? "#5ADBFA" : undefined }} />
             <div>
               <h2 className="text-lg font-semibold tracking-tight truncate" data-testid="text-view-title">
-                {isProjectView ? (
+                {isAreaView && renamingArea ? (
+                  <Input
+                    ref={renameAreaInputRef}
+                    value={renamingAreaName}
+                    onChange={(e) => setRenamingAreaName(e.target.value)}
+                    onBlur={handleAreaRenameSubmit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); handleAreaRenameSubmit(); }
+                      if (e.key === "Escape") { setRenamingArea(false); }
+                    }}
+                    className="h-7 text-lg font-semibold border-0 bg-transparent shadow-none focus-visible:ring-1 px-1 py-0"
+                    data-testid="input-rename-area"
+                  />
+                ) : isProjectView ? (
                   <span className="flex items-center gap-1.5">
                     {viewLabel(view, projects)}
                   </span>
@@ -1034,18 +1375,132 @@ export function TasksCore() {
               </h2>
             </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground" data-testid="button-context-menu">
-                <MoreHorizontal className="h-5 w-5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => setInlineAddVisible(true)} data-testid="menu-add-task">
-                <Plus className="h-3.5 w-3.5 mr-2" /> New To-Do
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {filterTags.size > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-primary gap-1"
+              onClick={() => setFilterTags(new Set())}
+              data-testid="button-clear-filter"
+            >
+              <X className="h-3 w-3" />
+              Clear filter
+            </Button>
+          )}
+          {view !== "logbook" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground" data-testid="button-context-menu">
+                  <MoreHorizontal className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {isAreaView ? (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setRenamingArea(true);
+                        setRenamingAreaName((view as { area: string }).area);
+                      }}
+                      data-testid="menu-rename-area"
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-2" /> Zmień nazwę
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleAreaDelete} className="text-destructive" data-testid="menu-delete-area">
+                      <Trash2 className="h-3.5 w-3.5 mr-2" /> Usuń obszar
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <>
+                    <DropdownMenuItem onClick={() => setInlineAddVisible(true)} data-testid="menu-add-task">
+                      <Plus className="h-3.5 w-3.5 mr-2" /> New To-Do
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger data-testid="menu-filter-by-tag">
+                        <Tag className="h-3.5 w-3.5 mr-2" />
+                        Filter by Tag
+                        {filterTags.size > 0 && (
+                          <span className="ml-auto text-[10px] bg-primary/15 text-primary rounded-full px-1.5 py-0.5 tabular-nums">
+                            {filterTags.size}
+                          </span>
+                        )}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-52 p-2" data-testid="submenu-filter-tags">
+                        {availableTags.length === 0 ? (
+                          <p className="text-xs text-muted-foreground/60 px-2 py-3 text-center">No tags in this view</p>
+                        ) : (
+                          <div className="space-y-0.5 max-h-60 overflow-y-auto">
+                            {availableTags.map(tag => (
+                              <button
+                                key={tag}
+                                className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md hover:bg-muted/50 transition-colors"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setFilterTags(prev => {
+                                    const next = new Set(prev);
+                                    next.has(tag) ? next.delete(tag) : next.add(tag);
+                                    return next;
+                                  });
+                                }}
+                                data-testid={`filter-tag-${tag}`}
+                              >
+                                <Checkbox
+                                  checked={filterTags.has(tag)}
+                                  className="h-3.5 w-3.5"
+                                />
+                                <span className="truncate">{tag}</span>
+                              </button>
+                            ))}
+                            {filterTags.size > 0 && (
+                              <>
+                                <div className="border-t my-1" />
+                                <button
+                                  className="w-full text-xs text-primary px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors text-left"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setFilterTags(new Set());
+                                  }}
+                                  data-testid="button-clear-tag-filter"
+                                >
+                                  Clear filter
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    {isProjectView && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setAddSectionOpen(true)}
+                          data-testid="menu-new-heading"
+                        >
+                          <ListPlus className="h-3.5 w-3.5 mr-2" /> New Heading
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setMultiSelectMode(prev => !prev);
+                        if (!multiSelectMode) setSelectedTasks(new Set());
+                      }}
+                      data-testid="menu-select"
+                    >
+                      <CheckSquare className="h-3.5 w-3.5 mr-2" />
+                      {multiSelectMode ? "Exit Select" : "Select"}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {isProjectView && (() => {
@@ -1067,11 +1522,10 @@ export function TasksCore() {
           );
         })()}
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
-          <div className={`flex-1 overflow-y-auto task-list-transition ${isMobile ? 'pb-20' : 'pb-0'}`}>
+          <div className={`flex-1 overflow-y-auto task-list-transition ${isMobile ? 'pb-20' : 'pb-0'}`} style={{ fontSize: 'var(--tasks-font-size, 14px)' }}>
             {view === "inbox" && !inlineAddVisible && newToDoRow("top")}
 
-            {inlineAddVisible && view !== "logbook" && (
+            {inlineAddVisible && view !== "logbook" && !isAreaView && (
               <TaskInlineAdd
                 view={view}
                 projects={activeProjects}
@@ -1086,10 +1540,10 @@ export function TasksCore() {
             ) : isProjectView ? (
               renderProjectView()
             ) : (
-              renderSortableTaskList(filtered)
+              renderSortableTaskList(tagFilteredTasks)
             )}
 
-            {filtered.length === 0 && !inlineAddVisible && (
+            {tagFilteredTasks.length === 0 && !inlineAddVisible && !isAreaView && (
               <div className="text-center text-muted-foreground/50 py-20" data-testid="text-empty-tasks">
                 {emptyState.icon && <emptyState.icon className="h-12 w-12 mx-auto mb-3 opacity-15" />}
                 <p className="text-sm font-medium">{emptyState.title}</p>
@@ -1099,7 +1553,7 @@ export function TasksCore() {
 
             {view === "inbox" && !inlineAddVisible && newToDoRow("bottom")}
 
-            {view !== "logbook" && view !== "inbox" && !inlineAddVisible && (
+            {view !== "logbook" && view !== "inbox" && !isAreaView && !inlineAddVisible && (
               <button
                 className={`flex items-center gap-3 px-6 ${isMobile ? 'py-3' : 'py-2.5'} w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
                 onClick={() => setInlineAddVisible(true)}
@@ -1125,44 +1579,171 @@ export function TasksCore() {
               </div>
             )}
           </DragOverlay>
-        </DndContext>
 
         {(selectedTasks.size > 0 || inlineCardTaskId) && (
           <div className={`absolute ${isMobile ? 'bottom-20' : 'bottom-4'} left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800 dark:bg-zinc-900 text-white rounded-2xl shadow-lg px-3 py-2 z-50`} data-testid="bottom-action-bar">
+            <WhenPopover
+              onSelectToday={() => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { dueDate: format(new Date(), "yyyy-MM-dd"), evening: false, someday: false } })); }}
+              onSelectEvening={() => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { evening: true, dueDate: format(new Date(), "yyyy-MM-dd"), someday: false } })); }}
+              onSelectDate={(date) => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { dueDate: date, evening: false, someday: false } })); }}
+              onSelectSomeday={() => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { someday: true, dueDate: null, evening: false } })); }}
+              onClear={() => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { dueDate: null, evening: false, someday: false } })); }}
+              onSetReminder={(date, time) => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { reminderDate: date, reminderTime: time } })); }}
+            >
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-when">
+                <CalendarDays className="h-3.5 w-3.5" /> When
+              </Button>
+            </WhenPopover>
+
+            <Popover onOpenChange={(open) => { if (open) setAssignCheckedIds(new Set()); }}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-assign">
+                  <UserPlus className="h-3.5 w-3.5" /> Assign
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="center" side="top" className="w-56 p-2" data-testid="popover-assign">
+                <div className="text-xs font-medium mb-2 px-1">Przydziel pracowników</div>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {employees.map((emp: any) => (
+                    <label key={emp.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-xs" data-testid={`assign-employee-${emp.id}`}>
+                      <Checkbox
+                        checked={assignCheckedIds.has(emp.id)}
+                        onCheckedChange={(checked) => {
+                          setAssignCheckedIds(prev => {
+                            const next = new Set(prev);
+                            checked ? next.add(emp.id) : next.delete(emp.id);
+                            return next;
+                          });
+                        }}
+                        data-testid={`checkbox-employee-${emp.id}`}
+                      />
+                      <span>{emp.firstName || emp.name || ""} {emp.lastName || ""}</span>
+                    </label>
+                  ))}
+                  {employees.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Brak pracowników</div>}
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full mt-2"
+                  disabled={assignCheckedIds.size === 0}
+                  onClick={() => bulkAssign.mutate({ taskIds: selectedTasksArray, employeeIds: Array.from(assignCheckedIds) })}
+                  data-testid="button-confirm-assign"
+                >
+                  Przydziel ({assignCheckedIds.size})
+                </Button>
+              </PopoverContent>
+            </Popover>
+
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
               <ArrowRight className="h-3.5 w-3.5" />
               Move
             </Button>
-            <Button variant="ghost" size="sm" className="text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-more">
+                <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-more">
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" side="top" className="w-48">
-                <DropdownMenuItem onClick={() => { if (selectedTasks.size === 1) duplicateTask.mutate(selectedTasksArray[0]); }} data-testid="menu-action-duplicate">
-                  <Copy className="h-3.5 w-3.5 mr-2" /> Duplicate
+              <DropdownMenuContent align="center" side="top" className="w-56">
+                <DropdownMenuItem onClick={() => bulkComplete.mutate({ taskIds: selectedTasksArray, completed: true })} data-testid="menu-action-complete">
+                  <Check className="h-3.5 w-3.5 mr-2" /> Oznacz jako ukończone
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.preventDefault(); setBulkTagsOpen(true); setBulkTagsInput(""); }} data-testid="menu-action-tags">
+                  <Tag className="h-3.5 w-3.5 mr-2" /> Ustaw tagi
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.preventDefault(); setBulkDeadlineOpen(true); setBulkDeadlineInput(""); }} data-testid="menu-action-deadline">
+                  <Calendar className="h-3.5 w-3.5 mr-2" /> Ustaw deadline
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => bulkDuplicate.mutate({ taskIds: selectedTasksArray })} data-testid="menu-action-duplicate">
+                  <Copy className="h-3.5 w-3.5 mr-2" /> Duplikuj
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem data-testid="menu-action-repeat">
-                  <RefreshCw className="h-3.5 w-3.5 mr-2" /> Repeat...
-                </DropdownMenuItem>
-                <DropdownMenuItem data-testid="menu-action-find-in-text">
-                  <Search className="h-3.5 w-3.5 mr-2" /> Find in Text
+                <DropdownMenuItem disabled data-testid="menu-action-share">
+                  Udostępnij
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         )}
 
-        <div className={`absolute ${isMobile ? 'bottom-24 right-4' : 'bottom-6 right-6'} z-40`}>
-          <Button size="icon" className="rounded-full shadow-lg bg-primary hover:bg-primary/90" onClick={() => setInlineAddVisible(true)} data-testid="button-fab-add">
-            <Plus className="h-5 w-5" />
-          </Button>
-        </div>
+        <Popover open={bulkTagsOpen} onOpenChange={setBulkTagsOpen}>
+          <PopoverTrigger asChild>
+            <span className="hidden" />
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-3 fixed bottom-20 left-1/2 -translate-x-1/2" data-testid="popover-bulk-tags">
+            <div className="text-xs font-medium mb-2">Ustaw tagi (oddzielone przecinkami)</div>
+            <Input
+              value={bulkTagsInput}
+              onChange={(e) => setBulkTagsInput(e.target.value)}
+              placeholder="tag1, tag2, tag3"
+              className="text-xs mb-2"
+              data-testid="input-bulk-tags"
+            />
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!bulkTagsInput.trim()}
+              onClick={() => {
+                const tags = bulkTagsInput.split(",").map(t => t.trim()).filter(Boolean);
+                bulkTags.mutate({ taskIds: selectedTasksArray, tags });
+                setBulkTagsOpen(false);
+              }}
+              data-testid="button-confirm-tags"
+            >
+              Zastosuj
+            </Button>
+          </PopoverContent>
+        </Popover>
+
+        <Popover open={bulkDeadlineOpen} onOpenChange={setBulkDeadlineOpen}>
+          <PopoverTrigger asChild>
+            <span className="hidden" />
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-3 fixed bottom-20 left-1/2 -translate-x-1/2" data-testid="popover-bulk-deadline">
+            <div className="text-xs font-medium mb-2">Ustaw deadline</div>
+            <Input
+              type="date"
+              value={bulkDeadlineInput}
+              onChange={(e) => setBulkDeadlineInput(e.target.value)}
+              className="text-xs mb-2"
+              data-testid="input-bulk-deadline"
+            />
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!bulkDeadlineInput}
+              onClick={() => {
+                bulkDeadline.mutate({ taskIds: selectedTasksArray, deadlineDate: bulkDeadlineInput });
+                setBulkDeadlineOpen(false);
+              }}
+              data-testid="button-confirm-deadline"
+            >
+              Zastosuj
+            </Button>
+          </PopoverContent>
+        </Popover>
+
+        {view !== "logbook" && selectedTasks.size === 0 && !inlineCardTaskId && (
+          <div className={`absolute ${isMobile ? 'bottom-24 right-4' : 'bottom-6 right-6'} z-40`}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="flex items-center justify-center h-14 w-14 rounded-full bg-blue-500 text-white shadow-xl hover:bg-blue-600 transition-colors"
+                  onClick={() => setAddTaskOpen(true)}
+                  data-testid="button-fab-add"
+                >
+                  <Plus className="h-6 w-6" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Dodaj zadanie</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </main>
 
       <AnimatePresence>
@@ -1240,6 +1821,8 @@ export function TasksCore() {
         setShowOverdueInToday={(v) => { setShowOverdueInToday(v); localStorage.setItem("tasksShowOverdueToday", String(v)); }}
         weekStart={weekStart}
         setWeekStart={(v) => { setWeekStart(v); localStorage.setItem("tasksWeekStart", String(v)); }}
+        fontSize={fontSize}
+        setFontSize={(v) => { setFontSize(v); localStorage.setItem("tasks-font-size", v); }}
         projects={projects}
       />
 
@@ -1271,6 +1854,7 @@ export function TasksCore() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </DndContext>
     </div>
   );
 }

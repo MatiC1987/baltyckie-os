@@ -134,11 +134,14 @@ export function TaskInlineCard({
             currentDate={task.dueDate}
             evening={!!task.evening}
             someday={!!task.someday}
+            reminderDate={task.reminderDate}
+            reminderTime={task.reminderTime}
             onSelectToday={() => onUpdate({ dueDate: todayStr, evening: false, someday: false })}
             onSelectEvening={() => onUpdate({ evening: true, dueDate: todayStr, someday: false })}
             onSelectDate={(date) => onUpdate({ dueDate: date, evening: false, someday: false })}
             onSelectSomeday={() => onUpdate({ someday: true, dueDate: null, evening: false })}
             onClear={() => onUpdate({ dueDate: null, evening: false, someday: false })}
+            onSetReminder={(date, time) => onUpdate({ reminderDate: date, reminderTime: time })}
           >
             <button className="p-1.5 rounded-md text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50 transition-colors" data-testid={`inline-card-when-${task.id}`}>
               <Calendar className="h-4 w-4" />
