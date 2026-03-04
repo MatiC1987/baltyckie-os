@@ -11494,5 +11494,136 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post('/api/admin/bootstrap-production', async (req, res) => {
+    try {
+      const key = req.headers['x-bootstrap-key'];
+      if (key !== 'BaltFinBootstrap2026!') {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const bcrypt = await import('bcryptjs');
+      const results: string[] = [];
+
+      const existingUser = await db.execute(sql`SELECT id FROM users WHERE email = 'mateusz.cieslak@baltyckie.pl'`);
+      if (existingUser.rows.length === 0) {
+        const hash = await bcrypt.hash('AudiA72025!', 10);
+        await db.execute(sql`
+          INSERT INTO users (id, email, first_name, last_name, password_hash, created_at, updated_at)
+          VALUES ('mateusz-cieslak-admin', 'mateusz.cieslak@baltyckie.pl', 'Mateusz', 'Cieślak', ${hash}, NOW(), NOW())
+        `);
+        results.push('User mateusz.cieslak@baltyckie.pl created');
+      } else {
+        results.push('User mateusz.cieslak@baltyckie.pl already exists');
+      }
+
+      const existingAppUser = await db.execute(sql`SELECT id FROM app_users WHERE email = 'mateusz.cieslak@baltyckie.pl'`);
+      if (existingAppUser.rows.length === 0) {
+        const hash = await bcrypt.hash('AudiA72025!', 10);
+        await db.execute(sql`
+          INSERT INTO app_users (email, first_name, last_name, password_hash, active, permissions)
+          VALUES ('mateusz.cieslak@baltyckie.pl', 'Mateusz', 'Cieślak', ${hash}, true, ARRAY['admin'])
+        `);
+        results.push('App user mateusz.cieslak@baltyckie.pl created');
+      } else {
+        results.push('App user mateusz.cieslak@baltyckie.pl already exists');
+      }
+
+      await db.execute(sql`DELETE FROM sublease_meter_readings WHERE sublease_id IN (4, 15)`);
+      await db.execute(sql`DELETE FROM sublease_meter_settings WHERE sublease_id IN (4, 15)`);
+      results.push('Cleaned test meter data for subleases 4 and 15');
+
+      const XLSX_LIB = await import('xlsx');
+      const filePath = path.join(process.cwd(), 'attached_assets', 'podnajem_1772620255156.xlsx');
+      if (!fs.existsSync(filePath)) {
+        results.push('Excel file not found at ' + filePath);
+        return res.json({ results });
+      }
+
+      const wb = XLSX_LIB.readFile(filePath);
+      const excelDate = (serial: number) => new Date((serial - 25569) * 86400000).toISOString().slice(0, 10);
+
+      const LOKAL_MAP: Record<string, number> = {
+        'NA WYDMIE 7/2': 4, 'NA WYDMIE 8/21': 9, 'NA WYDMIE 7/23': 9,
+        'NA WYDMIE 8/32': 3, 'NA WYDMIE 7/1': 14, 'NA WYDMIE 8/36': 15, 'NA WYDMIE 8/26': 15,
+      };
+
+      const waterSheet = XLSX_LIB.utils.sheet_to_json(wb.Sheets['woda'], { header: 1 }) as any[][];
+      const energySheet = XLSX_LIB.utils.sheet_to_json(wb.Sheets['energia'], { header: 1 }) as any[][];
+
+      interface ReadingRow { subleaseId: number; from: string; to: string; start: number; end: number | null; }
+      const grouped: Record<string, Record<string, ReadingRow[]>> = {};
+
+      for (let i = 1; i < waterSheet.length; i++) {
+        const r = waterSheet[i];
+        if (!r || !r[0] || typeof r[0] !== 'string') continue;
+        const from = excelDate(r[3]);
+        if (from < '2025-09-01') continue;
+        const sid = LOKAL_MAP[r[2]];
+        if (!sid) continue;
+        const key = String(sid);
+        if (!grouped[key]) grouped[key] = {};
+        if (!grouped[key]['cold_water']) grouped[key]['cold_water'] = [];
+        if (!grouped[key]['hot_water']) grouped[key]['hot_water'] = [];
+        grouped[key]['cold_water'].push({ subleaseId: sid, from, to: excelDate(r[4]), start: r[5], end: r[6] });
+        grouped[key]['hot_water'].push({ subleaseId: sid, from, to: excelDate(r[4]), start: r[7], end: r[8] });
+      }
+
+      for (let i = 1; i < energySheet.length; i++) {
+        const r = energySheet[i];
+        if (!r || !r[0] || typeof r[0] === 'number') continue;
+        const tenant = String(r[0]).trim();
+        if (!tenant) continue;
+        if (typeof r[3] !== 'number') continue;
+        const from = excelDate(r[3]);
+        if (from < '2025-09-01') continue;
+        const sid = LOKAL_MAP[r[2]];
+        if (!sid) continue;
+        const key = String(sid);
+        if (!grouped[key]) grouped[key] = {};
+        if (!grouped[key]['electricity']) grouped[key]['electricity'] = [];
+        grouped[key]['electricity'].push({ subleaseId: sid, from, to: typeof r[4] === 'number' ? excelDate(r[4]) : from, start: r[5], end: r[6] != null ? r[6] : null });
+      }
+
+      let totalSettings = 0, totalReadings = 0;
+
+      for (const [sidStr, types] of Object.entries(grouped)) {
+        const sid = parseInt(sidStr);
+        for (const [meterType, rows] of Object.entries(types)) {
+          const sorted = rows.sort((a, b) => a.from.localeCompare(b.from));
+          const existingSetting = await db.execute(sql`SELECT id FROM sublease_meter_settings WHERE sublease_id = ${sid} AND meter_type = ${meterType}`);
+          if (existingSetting.rows.length === 0 && sorted.length > 0) {
+            const first = sorted[0];
+            await db.execute(sql`
+              INSERT INTO sublease_meter_settings (sublease_id, meter_type, unit_price, initial_reading, initial_date)
+              VALUES (${sid}, ${meterType}, 0, ${String(first.start) + '.000'}, ${first.from})
+            `);
+            totalSettings++;
+          }
+
+          for (const row of sorted) {
+            if (row.end === null || row.end === undefined) continue;
+            const existingReading = await db.execute(sql`
+              SELECT id FROM sublease_meter_readings WHERE sublease_id = ${sid} AND meter_type = ${meterType} AND reading_date = ${row.to}
+            `);
+            if (existingReading.rows.length === 0) {
+              await db.execute(sql`
+                INSERT INTO sublease_meter_readings (sublease_id, meter_type, reading, reading_date, status)
+                VALUES (${sid}, ${meterType}, ${String(row.end) + '.000'}, ${row.to}, 'confirmed')
+              `);
+              totalReadings++;
+            }
+          }
+        }
+      }
+
+      results.push(`Imported ${totalSettings} meter settings, ${totalReadings} meter readings`);
+
+      res.json({ success: true, results });
+    } catch (err: any) {
+      console.error('[BOOTSTRAP]', err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
