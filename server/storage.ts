@@ -358,6 +358,7 @@ export interface IStorage {
   getAccountingNoteByReportId(reportId: number): Promise<AccountingNote | null>;
   createAccountingNote(data: InsertAccountingNote): Promise<AccountingNote>;
   updateAccountingNoteStatus(id: number, status: string): Promise<AccountingNote>;
+  deleteAccountingNote(id: number): Promise<void>;
   getNextNoteNumber(year: number, month: number): Promise<string>;
 
   // Cost Invoices
@@ -1802,6 +1803,10 @@ export class DatabaseStorage implements IStorage {
   async updateAccountingNoteStatus(id: number, status: string): Promise<AccountingNote> {
     const [updated] = await db.update(accountingNotes).set({ status }).where(eq(accountingNotes.id, id)).returning();
     return updated;
+  }
+
+  async deleteAccountingNote(id: number): Promise<void> {
+    await db.delete(accountingNotes).where(eq(accountingNotes.id, id));
   }
 
   async getNextNoteNumber(year: number, month: number): Promise<string> {

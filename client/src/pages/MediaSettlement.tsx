@@ -1730,6 +1730,20 @@ function SubleaseMediaCard({
     },
   });
 
+  const deleteNote = useMutation({
+    mutationFn: async (noteId: number) => {
+      await apiRequest("DELETE", `/api/accounting-notes/${noteId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: notesKey });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting-notes"] });
+      toast({ title: "Usunięto notę księgową" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd usuwania noty", description: err.message, variant: "destructive" });
+    },
+  });
+
   const computeElecRowCost = useCallback(
     (consumption: number, readingDate: string) => {
       const charges = getElectricityChargesAtDate(readingDate);
@@ -2277,15 +2291,26 @@ function SubleaseMediaCard({
                             {note.generatedAt ? new Date(note.generatedAt).toLocaleDateString("pl-PL") : ""}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              data-testid={`button-download-saved-note-${note.id}`}
-                              title="Pobierz notę"
-                              onClick={() => downloadNoteById(note.id)}
-                            >
-                              <Download className="w-3 h-3" />
-                            </Button>
+                            <div className="flex gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                data-testid={`button-download-saved-note-${note.id}`}
+                                title="Pobierz notę"
+                                onClick={() => downloadNoteById(note.id)}
+                              >
+                                <Download className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                data-testid={`button-delete-note-${note.id}`}
+                                title="Usuń notę"
+                                onClick={() => { if (confirm("Czy na pewno chcesz usunąć tę notę księgową?")) deleteNote.mutate(note.id); }}
+                              >
+                                <Trash2 className="w-3 h-3 text-destructive" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

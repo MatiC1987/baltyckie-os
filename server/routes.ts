@@ -4265,6 +4265,31 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.delete('/api/accounting-notes/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const notes = await storage.getAccountingNotes();
+      const note = notes.find(n => n.id === id);
+      if (!note) return res.status(404).json({ message: "Nota nie znaleziona" });
+
+      if (note.objectPath) {
+        try {
+          const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const p = note.objectPath.startsWith("/") ? note.objectPath.slice(1) : note.objectPath;
+          const parts = p.split("/");
+          const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+          await storageFile.delete();
+        } catch (e) { console.error("Error deleting note file from storage:", e); }
+      }
+
+      await storage.deleteAccountingNote(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Error deleting accounting note:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.patch('/api/accounting-notes/bulk-status', isAuthenticated, async (req, res) => {
     try {
       const { noteIds, status } = req.body;
