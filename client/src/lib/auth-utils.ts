@@ -6,12 +6,12 @@ export function isUnauthorizedError(error: Error): boolean {
 export function redirectToLogin(toast?: (options: { title: string; description: string; variant: string }) => void) {
   if (toast) {
     toast({
-      title: "Unauthorized",
-      description: "You are logged out. Logging in again...",
+      title: "Sesja wygasła",
+      description: "Zaloguj się ponownie.",
       variant: "destructive",
     });
   }
   setTimeout(() => {
-    window.location.href = "/api/login";
+    window.location.href = "/";
   }, 500);
 }

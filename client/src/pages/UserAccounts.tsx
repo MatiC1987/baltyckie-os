@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Shield, ScrollText, Camera, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Shield, ScrollText, Camera, X, Fingerprint, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
@@ -32,6 +32,12 @@ interface AppUser {
   active: boolean;
   profileImageUrl: string | null;
   createdAt: string | null;
+}
+
+interface WebauthnDevice {
+  id: number;
+  deviceName: string;
+  createdAt: string;
 }
 
 const ALL_SECTIONS = [
@@ -136,6 +142,44 @@ export default function UserAccounts() {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
     }
   }
+
+  const { data: webauthnDevices = [], isLoading: loadingDevices } = useQuery<WebauthnDevice[]>({
+    queryKey: ["/api/app-users", editingUser?.id, "webauthn-credentials"],
+    queryFn: async () => {
+      if (!editingUser) return [];
+      const res = await apiRequest("GET", `/api/app-users/${editingUser.id}/webauthn-credentials`);
+      return res.json();
+    },
+    enabled: !!editingUser && dialogOpen,
+  });
+
+  const deleteDeviceMutation = useMutation({
+    mutationFn: ({ userId, credId }: { userId: number; credId: number }) =>
+      apiRequest("DELETE", `/api/app-users/${userId}/webauthn-credentials/${credId}`),
+    onSuccess: () => {
+      if (editingUser) {
+        queryClient.invalidateQueries({ queryKey: ["/api/app-users", editingUser.id, "webauthn-credentials"] });
+      }
+      toast({ title: "Urządzenie zostało usunięte" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteAllDevicesMutation = useMutation({
+    mutationFn: (userId: number) =>
+      apiRequest("DELETE", `/api/app-users/${userId}/webauthn-credentials`),
+    onSuccess: () => {
+      if (editingUser) {
+        queryClient.invalidateQueries({ queryKey: ["/api/app-users", editingUser.id, "webauthn-credentials"] });
+      }
+      toast({ title: "Wszystkie urządzenia zostały usunięte" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
 
   function openAdd() {
     setEditingUser(null);
@@ -277,7 +321,7 @@ export default function UserAccounts() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingUser ? "Edytuj użytkownika" : "Dodaj użytkownika"}</DialogTitle>
           </DialogHeader>
@@ -390,6 +434,84 @@ export default function UserAccounts() {
                 ))}
               </div>
             </div>
+
+            {editingUser && (
+              <div className="space-y-2 border-t pt-4">
+                <Label className="flex items-center gap-2">
+                  <Fingerprint className="h-4 w-4" />
+                  Urządzenia biometryczne
+                </Label>
+                {loadingDevices ? (
+                  <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Ładowanie...
+                  </div>
+                ) : webauthnDevices.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    Brak zarejestrowanych urządzeń biometrycznych.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {webauthnDevices.map(device => (
+                      <div
+                        key={device.id}
+                        className="flex items-center justify-between rounded-lg border p-2.5"
+                        data-testid={`device-row-${device.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Fingerprint className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{device.deviceName || "Urządzenie"}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {device.createdAt ? new Date(device.createdAt).toLocaleDateString("pl-PL") : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-red-500 hover:text-red-600"
+                          onClick={() => deleteDeviceMutation.mutate({ userId: editingUser.id, credId: device.id })}
+                          disabled={deleteDeviceMutation.isPending}
+                          data-testid={`button-delete-device-${device.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                    {webauthnDevices.length > 1 && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-red-500 hover:text-red-600"
+                            data-testid="button-delete-all-devices"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                            Usuń wszystkie urządzenia
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Usunąć wszystkie urządzenia?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Użytkownik nie będzie mógł logować się biometrycznie do momentu ponownej rejestracji urządzenia.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => deleteAllDevicesMutation.mutate(editingUser.id)}>
+                              Usuń wszystkie
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>Anuluj</Button>

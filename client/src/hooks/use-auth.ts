@@ -1,17 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
 import type { User } from "@shared/models/auth";
-import { getAuthHeaders, checkUrlForToken, clearAuthToken } from "@/lib/auth-token";
+import { getAuthHeaders, clearAuthToken } from "@/lib/auth-token";
 
 async function fetchUser(): Promise<User | null> {
+  const headers = getAuthHeaders();
+  if (!headers["x-auth-token"]) {
+    return null;
+  }
+
   const response = await fetch("/api/auth/user", {
     credentials: "include",
-    headers: {
-      ...getAuthHeaders(),
-    },
+    headers,
   });
 
   if (response.status === 401) {
+    clearAuthToken();
     return null;
   }
 
@@ -23,19 +26,22 @@ async function fetchUser(): Promise<User | null> {
 }
 
 async function logout(): Promise<void> {
+  const headers = getAuthHeaders();
+  try {
+    await fetch("/api/logout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...headers,
+      },
+    });
+  } catch {}
   clearAuthToken();
-  window.location.href = "/api/logout";
+  window.location.href = "/";
 }
 
 export function useAuth() {
   const queryClient = useQueryClient();
-
-  useEffect(() => {
-    const hadToken = checkUrlForToken();
-    if (hadToken) {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-    }
-  }, []);
 
   const { data: user, isLoading } = useQuery<User | null>({
     queryKey: ["/api/auth/user"],

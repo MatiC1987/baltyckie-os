@@ -7,7 +7,7 @@ Baltyckie Finanse is a comprehensive Polish-language application for financial m
 - Language: Polish (all UI text in Polish)
 - Currency: PLN
 - Date format: YYYY-MM-DD internally, displayed with date-fns pl locale
-- Auth: Replit Auth integration
+- Auth: Custom email+password login with WebAuthn biometric support (30-day session persistence)
 
 ## System Architecture
 The application employs a modern full-stack architecture designed for scalability and maintainability.
@@ -15,7 +15,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 **Frontend:** Developed with React, Vite, TypeScript, Tailwind CSS, shadcn/ui, Recharts, and Framer Motion, ensuring a responsive and intuitive user experience with dark mode support. Key UI/UX decisions include collapsible sidebars, global search, breadcrumbs, mobile responsiveness with a bottom navigation bar, and adaptive table layouts.
 **Backend:** Built on Express.js with TypeScript, providing robust API endpoints.
 **Database:** PostgreSQL hosted on Neon, managed with Drizzle ORM.
-**Authentication:** Replit Auth for the main application, complemented by a JWT-based system for the Recepcja Panel.
+**Authentication:** Custom email+password login with WebAuthn biometric support for the main application (30-day token persistence via `auth_tokens` table), complemented by a JWT-based system for the Recepcja Panel.
 **Data Handling:** Utilizes Zod schemas for API validation and TanStack Query for efficient data fetching and caching. An `IStorage` interface provides database abstraction.
 
 **Core Feature Specifications:**
@@ -30,7 +30,8 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **Zadania Panel (Tasks):** An independent, mobile-first employee tasks panel with JWT authentication. Inspired by Things 3, it offers five views (Inbox, Today, Upcoming, Someday, Logbook), inline task editing, and an admin interface for assigning tasks.
 
 ## External Dependencies
-*   **Replit Auth:** Primary authentication for the main application.
+*   **@simplewebauthn/server + @simplewebauthn/browser:** WebAuthn biometric authentication (passkeys, fingerprint, Face ID).
+*   **bcryptjs:** Password hashing for custom email+password authentication.
 *   **PostgreSQL (Neon):** The core relational database.
 *   **xlsx library:** Used for parsing Excel files.
 *   **date-fns:** For date formatting and manipulation, specifically with Polish locale support.

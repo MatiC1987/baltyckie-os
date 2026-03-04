@@ -1,8 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { LogIn, Building2, BarChart3, Calendar, Shield } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff } from "lucide-react";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
 import { motion } from "framer-motion";
+import { setAuthToken } from "@/lib/auth-token";
+import { useQueryClient } from "@tanstack/react-query";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 
 const features = [
   { icon: Building2, label: "Zarządzanie apartamentami" },
@@ -65,6 +74,181 @@ function useThemeLogo() {
 
 export default function Landing() {
   const themeLogo = useThemeLogo();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [hasWebauthn, setHasWebauthn] = useState(false);
+  const [checkingWebauthn, setCheckingWebauthn] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [showRegisterDialog, setShowRegisterDialog] = useState(false);
+  const [registeringBiometric, setRegisteringBiometric] = useState(false);
+
+  const checkWebauthn = useCallback(async (emailValue: string) => {
+    if (!emailValue || !emailValue.includes("@")) {
+      setHasWebauthn(false);
+      return;
+    }
+    setCheckingWebauthn(true);
+    try {
+      const res = await fetch(`/api/webauthn/has-credentials?email=${encodeURIComponent(emailValue)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setHasWebauthn(data.has);
+      }
+    } catch {
+      setHasWebauthn(false);
+    } finally {
+      setCheckingWebauthn(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkWebauthn(email);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [email, checkWebauthn]);
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+        credentials: "include",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message || "Błąd logowania");
+        return;
+      }
+
+      setAuthToken(data.token);
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+
+      if (!data.hasWebauthn) {
+        setShowRegisterDialog(true);
+      }
+    } catch (err) {
+      setError("Błąd połączenia z serwerem");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleBiometricLogin() {
+    setError("");
+    setBiometricLoading(true);
+
+    try {
+      const optionsRes = await fetch("/api/webauthn/login/options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+        credentials: "include",
+      });
+
+      if (!optionsRes.ok) {
+        const err = await optionsRes.json();
+        setError(err.message || "Błąd logowania biometrycznego");
+        return;
+      }
+
+      const options = await optionsRes.json();
+      const authResponse = await startAuthentication({ optionsJSON: options });
+
+      const verifyRes = await fetch("/api/webauthn/login/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: authResponse }),
+        credentials: "include",
+      });
+
+      const verifyData = await verifyRes.json();
+
+      if (!verifyRes.ok) {
+        setError(verifyData.message || "Weryfikacja biometryczna nie powiodła się");
+        return;
+      }
+
+      setAuthToken(verifyData.token);
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") {
+        setError("Anulowano logowanie biometryczne");
+      } else {
+        setError("Błąd logowania biometrycznego");
+      }
+    } finally {
+      setBiometricLoading(false);
+    }
+  }
+
+  async function handleRegisterBiometric() {
+    setRegisteringBiometric(true);
+    try {
+      const token = localStorage.getItem("bf_auth_token");
+      const optionsRes = await fetch("/api/webauthn/register/options", {
+        method: "POST",
+        headers: { "x-auth-token": token || "" },
+        credentials: "include",
+      });
+
+      if (!optionsRes.ok) {
+        toast({ title: "Błąd", description: "Nie udało się rozpocząć rejestracji", variant: "destructive" });
+        return;
+      }
+
+      const options = await optionsRes.json();
+      const regResponse = await startRegistration({ optionsJSON: options });
+
+      const deviceName = navigator.userAgent.includes("iPhone") ? "iPhone" :
+        navigator.userAgent.includes("iPad") ? "iPad" :
+        navigator.userAgent.includes("Android") ? "Android" :
+        navigator.userAgent.includes("Mac") ? "Mac" :
+        navigator.userAgent.includes("Windows") ? "Windows" : "Urządzenie";
+
+      const verifyRes = await fetch("/api/webauthn/register/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-auth-token": token || "",
+        },
+        body: JSON.stringify({ credential: regResponse, deviceName }),
+        credentials: "include",
+      });
+
+      if (verifyRes.ok) {
+        toast({ title: "Urządzenie zarejestrowane", description: "Następnym razem możesz logować się biometrycznie" });
+        setShowRegisterDialog(false);
+      } else {
+        toast({ title: "Błąd", description: "Rejestracja nie powiodła się", variant: "destructive" });
+      }
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") {
+        toast({ title: "Anulowano", description: "Rejestracja biometryczna została anulowana" });
+      } else {
+        toast({ title: "Błąd", description: "Rejestracja nie powiodła się", variant: "destructive" });
+      }
+    } finally {
+      setRegisteringBiometric(false);
+    }
+  }
+
+  function skipBiometricRegistration() {
+    setShowRegisterDialog(false);
+  }
 
   return (
     <div className="fixed inset-0 flex flex-col lg:flex-row" data-testid="landing-page">
@@ -155,29 +339,143 @@ export default function Landing() {
             className="rounded-2xl border border-border bg-card p-8 shadow-xl dark:bg-card/80 dark:backdrop-blur-xl dark:border-white/10 dark:shadow-2xl"
             data-testid="login-card"
           >
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-foreground mb-2">Witamy ponownie</h2>
               <p className="text-muted-foreground text-sm">
                 Zaloguj się, aby zarządzać swoimi finansami
               </p>
             </div>
 
-            <Button
-              size="lg"
-              onClick={() => (window.location.href = "/api/login")}
-              className="w-full text-base bg-[#051F51] text-white shadow-lg"
-              data-testid="button-login"
-            >
-              <LogIn className="mr-2 h-5 w-5" />
-              Zaloguj się przez Replit
-            </Button>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="twoj@email.pl"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  data-testid="input-login-email"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Hasło</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Wprowadź hasło"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    className="pr-10"
+                    data-testid="input-login-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    data-testid="button-toggle-password"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-sm text-destructive text-center bg-destructive/10 rounded-lg p-2"
+                  data-testid="text-login-error"
+                >
+                  {error}
+                </motion.div>
+              )}
+
+              <Button
+                type="submit"
+                size="lg"
+                disabled={loading || !email || !password}
+                className="w-full text-base bg-[#051F51] text-white shadow-lg hover:bg-[#0a2d6b]"
+                data-testid="button-login"
+              >
+                {loading ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : (
+                  <LogIn className="mr-2 h-5 w-5" />
+                )}
+                Zaloguj się
+              </Button>
+
+              {hasWebauthn && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  disabled={biometricLoading}
+                  onClick={handleBiometricLogin}
+                  className="w-full text-base"
+                  data-testid="button-biometric-login"
+                >
+                  {biometricLoading ? (
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  ) : (
+                    <Fingerprint className="mr-2 h-5 w-5" />
+                  )}
+                  Zaloguj biometrycznie
+                </Button>
+              )}
+            </form>
 
             <p className="text-xs text-muted-foreground text-center mt-6">
-              Logowanie zabezpieczone przez Replit Auth
+              Logowanie zabezpieczone szyfrowaniem
             </p>
           </motion.div>
         </div>
       </motion.div>
+
+      <Dialog open={showRegisterDialog} onOpenChange={setShowRegisterDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Fingerprint className="h-5 w-5 text-primary" />
+              Logowanie biometryczne
+            </DialogTitle>
+            <DialogDescription>
+              Chcesz logować się szybciej? Zarejestruj odcisk palca, Face ID lub klucz bezpieczeństwa, aby następnym razem logować się jednym dotknięciem.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              onClick={handleRegisterBiometric}
+              disabled={registeringBiometric}
+              className="w-full"
+              data-testid="button-register-biometric"
+            >
+              {registeringBiometric ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Fingerprint className="mr-2 h-4 w-4" />
+              )}
+              Zarejestruj urządzenie
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={skipBiometricRegistration}
+              className="w-full text-muted-foreground"
+              data-testid="button-skip-biometric"
+            >
+              Może później
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

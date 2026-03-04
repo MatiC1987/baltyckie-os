@@ -1,17 +1,27 @@
-import { users, type User, type UpsertUser } from "@shared/models/auth";
+import { users, webauthnCredentials, type User, type UpsertUser, type WebauthnCredential, type InsertWebauthnCredential } from "@shared/models/auth";
 import { db } from "../../db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
-// Interface for auth storage operations
-// (IMPORTANT) These user operations are mandatory for Replit Auth.
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  getWebauthnCredentials(userId: string): Promise<WebauthnCredential[]>;
+  getWebauthnCredentialById(credentialId: string): Promise<WebauthnCredential | undefined>;
+  saveWebauthnCredential(credential: InsertWebauthnCredential): Promise<WebauthnCredential>;
+  updateWebauthnCounter(credentialId: string, counter: number): Promise<void>;
+  deleteWebauthnCredential(id: number): Promise<void>;
+  deleteAllWebauthnCredentials(userId: string): Promise<void>;
 }
 
 class AuthStorage implements IAuthStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
   }
 
@@ -49,6 +59,32 @@ class AuthStorage implements IAuthStorage {
       }
       throw err;
     }
+  }
+
+  async getWebauthnCredentials(userId: string): Promise<WebauthnCredential[]> {
+    return db.select().from(webauthnCredentials).where(eq(webauthnCredentials.userId, userId));
+  }
+
+  async getWebauthnCredentialById(credentialId: string): Promise<WebauthnCredential | undefined> {
+    const [cred] = await db.select().from(webauthnCredentials).where(eq(webauthnCredentials.credentialId, credentialId));
+    return cred;
+  }
+
+  async saveWebauthnCredential(credential: InsertWebauthnCredential): Promise<WebauthnCredential> {
+    const [saved] = await db.insert(webauthnCredentials).values(credential).returning();
+    return saved;
+  }
+
+  async updateWebauthnCounter(credentialId: string, counter: number): Promise<void> {
+    await db.update(webauthnCredentials).set({ counter }).where(eq(webauthnCredentials.credentialId, credentialId));
+  }
+
+  async deleteWebauthnCredential(id: number): Promise<void> {
+    await db.delete(webauthnCredentials).where(eq(webauthnCredentials.id, id));
+  }
+
+  async deleteAllWebauthnCredentials(userId: string): Promise<void> {
+    await db.delete(webauthnCredentials).where(eq(webauthnCredentials.userId, userId));
   }
 }
 

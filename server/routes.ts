@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -3574,6 +3574,67 @@ export async function registerRoutes(
   app.delete('/api/app-users/:id', isAuthenticated, async (req, res) => {
     await storage.deleteAppUser(parseInt(req.params.id));
     res.status(204).send();
+  });
+
+  app.get('/api/app-users/:id/webauthn-credentials', isAuthenticated, async (req: any, res) => {
+    try {
+      const appUserId = parseInt(req.params.id);
+      const [appUser] = await db.select().from(appUsers).where(eq(appUsers.id, appUserId));
+      if (!appUser) return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+
+      const [authUser] = await db.select().from(users).where(eq(users.email, appUser.email));
+      if (!authUser) return res.json([]);
+
+      const creds = await db.select().from(webauthnCredentials).where(eq(webauthnCredentials.userId, authUser.id));
+      res.json(creds.map(c => ({
+        id: c.id,
+        deviceName: c.deviceName,
+        createdAt: c.createdAt,
+      })));
+    } catch (err) {
+      console.error("[WEBAUTHN] Error fetching credentials for app user:", err);
+      res.status(500).json({ message: "Błąd pobierania urządzeń" });
+    }
+  });
+
+  app.delete('/api/app-users/:id/webauthn-credentials/:credId', isAuthenticated, async (req: any, res) => {
+    try {
+      const appUserId = parseInt(req.params.id);
+      const credId = parseInt(req.params.credId);
+
+      const [appUser] = await db.select().from(appUsers).where(eq(appUsers.id, appUserId));
+      if (!appUser) return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+
+      const [authUser] = await db.select().from(users).where(eq(users.email, appUser.email));
+      if (!authUser) return res.status(404).json({ message: "Brak powiązanego konta" });
+
+      const [cred] = await db.select().from(webauthnCredentials)
+        .where(and(eq(webauthnCredentials.id, credId), eq(webauthnCredentials.userId, authUser.id)));
+      if (!cred) return res.status(404).json({ message: "Nie znaleziono urządzenia" });
+
+      await db.delete(webauthnCredentials).where(eq(webauthnCredentials.id, credId));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[WEBAUTHN] Error deleting credential:", err);
+      res.status(500).json({ message: "Błąd usuwania urządzenia" });
+    }
+  });
+
+  app.delete('/api/app-users/:id/webauthn-credentials', isAuthenticated, async (req: any, res) => {
+    try {
+      const appUserId = parseInt(req.params.id);
+      const [appUser] = await db.select().from(appUsers).where(eq(appUsers.id, appUserId));
+      if (!appUser) return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+
+      const [authUser] = await db.select().from(users).where(eq(users.email, appUser.email));
+      if (!authUser) return res.json({ ok: true });
+
+      await db.delete(webauthnCredentials).where(eq(webauthnCredentials.userId, authUser.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[WEBAUTHN] Error deleting all credentials:", err);
+      res.status(500).json({ message: "Błąd usuwania urządzeń" });
+    }
   });
 
   // Document Categories
