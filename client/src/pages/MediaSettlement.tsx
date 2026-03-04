@@ -1718,6 +1718,21 @@ function SubleaseMediaCard({
     },
   });
 
+  const computeElecRowCost = useCallback(
+    (consumption: number, readingDate: string) => {
+      const charges = getElectricityChargesAtDate(readingDate);
+      if (charges.length === 0) return { netto: 0, brutto: 0, varSum: 0, fixSum: 0 };
+      const varCharges = charges.filter(c => c.chargeType === "variable");
+      const fixCharges = charges.filter(c => c.chargeType === "fixed");
+      const varSum = varCharges.reduce((s, c) => s + (parseFloat(c.unitPrice) || 0), 0);
+      const fixSum = fixCharges.reduce((s, c) => s + (parseFloat(c.unitPrice) || 0), 0);
+      const netto = consumption * varSum + fixSum;
+      const brutto = netto * 1.23;
+      return { netto, brutto, varSum, fixSum };
+    },
+    [getElectricityChargesAtDate]
+  );
+
   const renderMeterTab = (types: MeterType[]) => {
     return types.map((type) => {
       const setting = getSetting(type);
@@ -1728,6 +1743,29 @@ function SubleaseMediaCard({
       const typePrices = prices.filter((p) => p.meterType === type);
       const hasHistoricalPrices = typePrices.length > 0;
 
+      const isElecWithCharges = type === "electricity" && electricityCharges.length > 0;
+
+      const currentVarSum = isElecWithCharges
+        ? electricityCharges
+            .filter(c => c.chargeType === "variable")
+            .reduce((grouped, c) => {
+              const existing = grouped.get(c.chargeName);
+              if (!existing || c.validFrom > existing.validFrom) grouped.set(c.chargeName, c);
+              return grouped;
+            }, new Map<string, SubleaseElectricityCharge>())
+        : new Map();
+      const currentFixSum = isElecWithCharges
+        ? electricityCharges
+            .filter(c => c.chargeType === "fixed")
+            .reduce((grouped, c) => {
+              const existing = grouped.get(c.chargeName);
+              if (!existing || c.validFrom > existing.validFrom) grouped.set(c.chargeName, c);
+              return grouped;
+            }, new Map<string, SubleaseElectricityCharge>())
+        : new Map();
+      const varTotal = Array.from(currentVarSum.values()).reduce((s, c) => s + (parseFloat(c.unitPrice) || 0), 0);
+      const fixTotal = Array.from(currentFixSum.values()).reduce((s, c) => s + (parseFloat(c.unitPrice) || 0), 0);
+
       return (
         <div key={type} className="space-y-3">
           {types.length > 1 && (
@@ -1736,7 +1774,7 @@ function SubleaseMediaCard({
               {info.label}
             </h4>
           )}
-          <div className="grid grid-cols-3 gap-3">
+          <div className={`grid ${isElecWithCharges ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3"} gap-3`}>
             <div>
               <Label className="text-xs text-muted-foreground">Stan początkowy</Label>
               <InlineEditInput
@@ -1773,45 +1811,72 @@ function SubleaseMediaCard({
                 }}
               />
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">
-                {hasHistoricalPrices ? "Cena bazowa" : "Cena jednostkowa"} ({info.unit === "kWh" ? "zł/kWh" : `zł/${info.unit}`})
-              </Label>
-              <div className="flex items-center gap-1">
-                <InlineEditInput
-                  key={`price-${type}-${setting?.id ?? "new"}`}
-                  testId={`input-unit-price-${type}-${sublease.id}`}
-                  initialValue={setting?.unitPrice || ""}
-                  step="0.0001"
-                  placeholder="0.0000"
-                  onSave={(val) => {
-                    saveSetting.mutate({
-                      meterType: type,
-                      unitPrice: val,
-                      initialReading: setting?.initialReading || "0",
-                      initialDate: setting?.initialDate || sublease.startDate,
-                    });
-                  }}
-                />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  data-testid={`button-price-history-${type}-${sublease.id}`}
-                  onClick={() => {
-                    setPriceHistoryType(type);
-                    setPriceHistoryOpen(true);
-                  }}
-                  title="Historia cen"
-                >
-                  <History className="w-4 h-4" />
-                </Button>
+            {isElecWithCharges ? (
+              <>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Opłaty zmienne</Label>
+                  <div className="text-sm font-medium mt-1">{formatNum(varTotal, 4)} zł/kWh</div>
+                  <p className="text-xs text-muted-foreground">{currentVarSum.size} pozycji</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Opłaty stałe</Label>
+                  <div className="text-sm font-medium mt-1">{formatNum(fixTotal, 4)} zł/mc</div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <p className="text-xs text-muted-foreground">{currentFixSum.size} pozycji</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-xs px-2"
+                      data-testid={`button-show-charges-${sublease.id}`}
+                      onClick={() => setChargesOpen(true)}
+                    >
+                      <FileText className="w-3 h-3 mr-1" />
+                      Cennik
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  {hasHistoricalPrices ? "Cena bazowa" : "Cena jednostkowa"} ({info.unit === "kWh" ? "zł/kWh" : `zł/${info.unit}`})
+                </Label>
+                <div className="flex items-center gap-1">
+                  <InlineEditInput
+                    key={`price-${type}-${setting?.id ?? "new"}`}
+                    testId={`input-unit-price-${type}-${sublease.id}`}
+                    initialValue={setting?.unitPrice || ""}
+                    step="0.0001"
+                    placeholder="0.0000"
+                    onSave={(val) => {
+                      saveSetting.mutate({
+                        meterType: type,
+                        unitPrice: val,
+                        initialReading: setting?.initialReading || "0",
+                        initialDate: setting?.initialDate || sublease.startDate,
+                      });
+                    }}
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    data-testid={`button-price-history-${type}-${sublease.id}`}
+                    onClick={() => {
+                      setPriceHistoryType(type);
+                      setPriceHistoryOpen(true);
+                    }}
+                    title="Historia cen"
+                  >
+                    <History className="w-4 h-4" />
+                  </Button>
+                </div>
+                {hasHistoricalPrices && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {typePrices.length} zmian{typePrices.length === 1 ? "a" : typePrices.length < 5 ? "y" : ""} cen
+                  </p>
+                )}
               </div>
-              {hasHistoricalPrices && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {typePrices.length} zmian{typePrices.length === 1 ? "a" : typePrices.length < 5 ? "y" : ""} cen
-                </p>
-              )}
-            </div>
+            )}
           </div>
 
           <div className="text-xs text-muted-foreground flex items-center gap-2 mb-1">
@@ -1827,14 +1892,26 @@ function SubleaseMediaCard({
                   <TableHead className="min-w-[80px]">Ilość dni</TableHead>
                   <TableHead className="min-w-[120px]">Stan licznika</TableHead>
                   <TableHead className="min-w-[100px]">Zużycie ({info.unit})</TableHead>
-                  <TableHead className="min-w-[100px]">Cena jedn.</TableHead>
-                  <TableHead className="min-w-[100px]">Koszt (PLN)</TableHead>
+                  {isElecWithCharges ? (
+                    <>
+                      <TableHead className="min-w-[100px]">Netto</TableHead>
+                      <TableHead className="min-w-[100px]">Brutto (z VAT)</TableHead>
+                    </>
+                  ) : (
+                    <>
+                      <TableHead className="min-w-[100px]">Cena jedn.</TableHead>
+                      <TableHead className="min-w-[100px]">Koszt (PLN)</TableHead>
+                    </>
+                  )}
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {typeReadings.map((reading, ri) => {
                   const row = computeRow(type, ri);
+                  const elecCost = isElecWithCharges && row.consumption !== null && reading.readingDate
+                    ? computeElecRowCost(row.consumption, reading.readingDate)
+                    : null;
                   return (
                     <TableRow key={reading.id}>
                       <TableCell className="text-sm font-medium">
@@ -1863,12 +1940,25 @@ function SubleaseMediaCard({
                       <TableCell className="text-sm">
                         {row.consumption !== null ? formatNum(row.consumption, 3) : "—"}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {row.unitPrice > 0 ? `${formatNum(row.unitPrice, 4)} zł` : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm font-medium">
-                        {row.cost !== null ? `${formatNum(row.cost)} zł` : "—"}
-                      </TableCell>
+                      {isElecWithCharges ? (
+                        <>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {elecCost ? `${formatNum(elecCost.netto)} zł` : "—"}
+                          </TableCell>
+                          <TableCell className="text-sm font-medium">
+                            {elecCost ? `${formatNum(elecCost.brutto)} zł` : "—"}
+                          </TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.unitPrice > 0 ? `${formatNum(row.unitPrice, 4)} zł` : "—"}
+                          </TableCell>
+                          <TableCell className="text-sm font-medium">
+                            {row.cost !== null ? `${formatNum(row.cost)} zł` : "—"}
+                          </TableCell>
+                        </>
+                      )}
                       <TableCell>
                         <Button
                           size="icon"
