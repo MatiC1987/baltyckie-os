@@ -11532,7 +11532,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       await db.execute(sql`DELETE FROM sublease_meter_settings WHERE sublease_id IN (4, 15)`);
       results.push('Cleaned test meter data for subleases 4 and 15');
 
-      const XLSX_LIB = await import('xlsx');
+      const XLSX_LIB = (await import('xlsx')).default || (await import('xlsx'));
       const filePath = path.join(process.cwd(), 'attached_assets', 'podnajem_1772620255156.xlsx');
       if (!fs.existsSync(filePath)) {
         results.push('Excel file not found at ' + filePath);
