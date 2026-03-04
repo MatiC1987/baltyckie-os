@@ -4039,8 +4039,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const QRCode = require("qrcode");
       const doc = new jsPDF({ compress: true });
 
-      let logoBuffer: Buffer | null = null;
-      let logoExt = "png";
+      let logoJpegBuffer: Buffer | null = null;
       if (companyData?.logoUrl) {
         try {
           const { objectStorageClient: osClient } = await import("./replit_integrations/object_storage/objectStorage");
@@ -4050,8 +4049,12 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
           })();
           const [buf] = await osClient.bucket(lp.bucketName).file(lp.objectName).download();
-          logoBuffer = buf;
-          logoExt = companyData.logoUrl!.split(".").pop()?.toLowerCase() || "png";
+          const sharp = require("sharp");
+          logoJpegBuffer = await sharp(buf)
+            .resize(300, 180, { fit: "inside", withoutEnlargement: true })
+            .flatten({ background: { r: 255, g: 255, b: 255 } })
+            .jpeg({ quality: 70 })
+            .toBuffer();
         } catch (e) { console.error("Logo load error:", e); }
       }
 
@@ -4063,11 +4066,9 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       }
 
       let headerY = 14;
-      if (logoBuffer) {
-        const imgFormat = (logoExt === "jpg" || logoExt === "jpeg") ? "JPEG" : "PNG";
-        const base64 = logoBuffer.toString("base64");
-        const dataUri = `data:image/${logoExt};base64,${base64}`;
-        doc.addImage(dataUri, imgFormat, 14, headerY, 35, 21, undefined, "FAST");
+      if (logoJpegBuffer) {
+        const dataUri = `data:image/jpeg;base64,${logoJpegBuffer.toString("base64")}`;
+        doc.addImage(dataUri, "JPEG", 14, headerY, 35, 21);
         headerY += 24;
       }
 
@@ -6973,11 +6974,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         try {
           const logoResp = await fetch(settings.logoUrl);
           if (logoResp.ok) {
-            const logoBuffer = Buffer.from(await logoResp.arrayBuffer());
-            const ext = settings.logoUrl.toLowerCase().includes('.png') ? 'PNG' : 'JPEG';
-            doc.addImage(logoBuffer, ext, 14, y, 30, 15, undefined, "FAST");
+            const rawLogoBuffer = Buffer.from(await logoResp.arrayBuffer());
+            const sharp = require("sharp");
+            const jpegBuf = await sharp(rawLogoBuffer)
+              .resize(300, 150, { fit: "inside", withoutEnlargement: true })
+              .flatten({ background: { r: 255, g: 255, b: 255 } })
+              .jpeg({ quality: 70 })
+              .toBuffer();
+            doc.addImage(jpegBuf, "JPEG", 14, y, 30, 15);
           }
-        } catch {}
+        } catch (e) { console.error("Logo load error:", e); }
       }
 
       // Header
