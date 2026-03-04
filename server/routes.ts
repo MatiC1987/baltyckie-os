@@ -4034,7 +4034,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         : "";
 
       const { jsPDF } = require("jspdf");
-      require("jspdf-autotable");
+      const autoTableModule = require("jspdf-autotable");
+      const autoTable = autoTableModule.default || autoTableModule;
       const QRCode = require("qrcode");
       const doc = new jsPDF();
 
@@ -4145,7 +4146,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         ]);
       }
 
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: startY + 12,
         head: [["Medium", rd("Zuzycie"), "Netto", "VAT", "Brutto"]],
         body: rows,
@@ -6928,7 +6929,8 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       const settings = await storage.getCompanySettings();
 
       const { jsPDF } = require("jspdf");
-      require("jspdf-autotable");
+      const autoTableMod = require("jspdf-autotable");
+      const autoTable = autoTableMod.default || autoTableMod;
 
       function stripPl(s: string): string {
         const map: Record<string, string> = {
@@ -6994,7 +6996,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           'GAZ': 'Gaz', 'OGRZEWANIE': 'Ogrzewanie'
         };
 
-        (doc as any).autoTable({
+        autoTable(doc, {
           startY: y,
           head: [['Typ', 'Nr licznika', 'Odczyt', 'Jednostka']],
           body: meters.map(m => [
@@ -7021,7 +7023,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         };
         const condLabel = (v: string | null) => v ? (condLabels[v] || v) : '-';
 
-        (doc as any).autoTable({
+        autoTable(doc, {
           startY: y,
           head: [['Pomieszczenie', 'Sciany', 'Podloga', 'Okna', 'Drzwi', 'Uwagi']],
           body: rooms.map(r => [
@@ -7051,7 +7053,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           'NOWY': 'Nowy', 'DOBRY': 'Dobry', 'ZUZYTY': 'Zuzyty', 'USZKODZONY': 'Uszkodzony'
         };
 
-        (doc as any).autoTable({
+        autoTable(doc, {
           startY: y,
           head: [['Lp.', 'Nazwa', 'Ilosc', 'Stan', 'Uwagi']],
           body: items.map((it, idx) => [
