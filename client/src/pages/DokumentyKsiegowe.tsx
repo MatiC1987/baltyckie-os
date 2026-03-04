@@ -844,7 +844,7 @@ function getMediaTypeBadge(mediaTypes: string | null | undefined) {
 
 function NoteMonthGroup({
   year, month, notes, selectedIds, allSelected,
-  onToggleSelect, onToggleSelectAll, onStatusChange, onDownload, getNoteStatusBadge
+  onToggleSelect, onToggleSelectAll, onStatusChange, onDownload, onDelete, getNoteStatusBadge
 }: {
   year: number; month: number; notes: AccountingNote[];
   selectedIds: Set<number>; allSelected: boolean;
@@ -852,6 +852,7 @@ function NoteMonthGroup({
   onToggleSelectAll: () => void;
   onStatusChange: (id: number, status: string) => void;
   onDownload: (id: number) => void;
+  onDelete: (id: number) => void;
   getNoteStatusBadge: (s: string) => JSX.Element;
 }) {
   const [open, setOpen] = useState(true);
@@ -921,6 +922,9 @@ function NoteMonthGroup({
                         <Button size="icon" variant="ghost" onClick={() => onDownload(note.id)} data-testid={`button-download-note-${note.id}`}>
                           <Download className="h-4 w-4" />
                         </Button>
+                        <Button size="icon" variant="ghost" onClick={() => { if (confirm("Czy na pewno chcesz usunąć tę notę księgową?")) onDelete(note.id); }} data-testid={`button-delete-note-${note.id}`}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -955,6 +959,19 @@ function AccountingNotesTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/accounting-notes"] });
       setSelectedIds(new Set());
       toast({ title: "Statusy zaktualizowane" });
+    },
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: async (noteId: number) => {
+      await apiRequest("DELETE", `/api/accounting-notes/${noteId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting-notes"] });
+      toast({ title: "Usunięto notę księgową" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd usuwania noty", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1120,6 +1137,7 @@ function AccountingNotesTab() {
               }}
               onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
               onDownload={handleDownload}
+              onDelete={(id) => deleteNoteMutation.mutate(id)}
               getNoteStatusBadge={getNoteStatusBadge}
             />
           );
