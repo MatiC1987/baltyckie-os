@@ -638,7 +638,7 @@ function ElectricityChargesDialog({
         ) : importMode ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h3 className="text-sm font-medium">Przegląd zaimportowanych opłat</h3>
+              <h3 className="text-sm font-medium">Porównanie stawek — stare vs nowe z faktury</h3>
               <Button
                 size="sm"
                 variant="outline"
@@ -672,68 +672,148 @@ function ElectricityChargesDialog({
               </div>
             </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10"></TableHead>
-                  <TableHead>Nazwa opłaty</TableHead>
-                  <TableHead>Typ</TableHead>
-                  <TableHead className="text-right">Cena netto</TableHead>
-                  <TableHead>Jednostka</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {importedCharges.map((ic, idx) => (
-                  <TableRow key={idx} data-testid={`row-import-charge-${idx}`}>
-                    <TableCell>
-                      <Checkbox
-                        checked={ic.selected}
-                        onCheckedChange={(checked) => {
-                          const updated = [...importedCharges];
-                          updated[idx] = { ...updated[idx], selected: !!checked };
-                          setImportedCharges(updated);
-                        }}
-                        data-testid={`checkbox-import-charge-${idx}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={ic.chargeName}
-                        onChange={(e) => {
-                          const updated = [...importedCharges];
-                          updated[idx] = { ...updated[idx], chargeName: e.target.value };
-                          setImportedCharges(updated);
-                        }}
-                        className="text-sm"
-                        data-testid={`input-import-name-${idx}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
-                        {ic.chargeType === "variable" ? "zmienna" : "stała"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        step="0.0001"
-                        value={ic.unitPrice}
-                        onChange={(e) => {
-                          const updated = [...importedCharges];
-                          updated[idx] = { ...updated[idx], unitPrice: parseFloat(e.target.value) || 0 };
-                          setImportedCharges(updated);
-                        }}
-                        className="w-28 ml-auto"
-                        data-testid={`input-import-price-${idx}`}
-                      />
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {ic.unit}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {(() => {
+              const currentByName = new Map<string, number>();
+              [...variableCharges, ...fixedCharges].forEach(c => {
+                currentByName.set(c.name, parseFloat(c.latest.unitPrice) || 0);
+              });
+              const hasChanges = importedCharges.some(ic => {
+                const current = currentByName.get(ic.chargeName);
+                return current !== undefined && Math.abs(current - ic.unitPrice) > 0.00005;
+              });
+              const hasNew = importedCharges.some(ic => !currentByName.has(ic.chargeName));
+
+              return (
+                <>
+                  {(hasChanges || hasNew) && (
+                    <div className="rounded-md border p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+                      <p className="text-sm text-amber-800 dark:text-amber-200 font-medium">
+                        {hasChanges && hasNew
+                          ? "Wykryto zmiany stawek oraz nowe pozycje. Sprawdź porównanie i potwierdź import."
+                          : hasChanges
+                          ? "Wykryto zmiany stawek. Sprawdź porównanie poniżej i potwierdź import."
+                          : "Wykryto nowe pozycje opłat. Sprawdź i potwierdź import."}
+                      </p>
+                    </div>
+                  )}
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10"></TableHead>
+                        <TableHead>Nazwa opłaty</TableHead>
+                        <TableHead>Typ</TableHead>
+                        <TableHead className="text-right">Aktualna stawka</TableHead>
+                        <TableHead className="text-right">Nowa stawka</TableHead>
+                        <TableHead className="text-right">Zmiana</TableHead>
+                        <TableHead>Jednostka</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importedCharges.map((ic, idx) => {
+                        const currentPrice = currentByName.get(ic.chargeName);
+                        const isNew = currentPrice === undefined;
+                        const diff = isNew ? null : ic.unitPrice - currentPrice;
+                        const diffPct = isNew || currentPrice === 0 ? null : ((diff! / currentPrice) * 100);
+                        const isHigher = diff !== null && diff > 0.00005;
+                        const isLower = diff !== null && diff < -0.00005;
+                        const isUnchanged = diff !== null && Math.abs(diff) <= 0.00005;
+
+                        return (
+                          <TableRow
+                            key={idx}
+                            data-testid={`row-import-charge-${idx}`}
+                            className={isNew ? "bg-blue-50/50 dark:bg-blue-950/20" : isHigher ? "bg-red-50/50 dark:bg-red-950/20" : isLower ? "bg-green-50/50 dark:bg-green-950/20" : ""}
+                          >
+                            <TableCell>
+                              <Checkbox
+                                checked={ic.selected}
+                                onCheckedChange={(checked) => {
+                                  const updated = [...importedCharges];
+                                  updated[idx] = { ...updated[idx], selected: !!checked };
+                                  setImportedCharges(updated);
+                                }}
+                                data-testid={`checkbox-import-charge-${idx}`}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={ic.chargeName}
+                                onChange={(e) => {
+                                  const updated = [...importedCharges];
+                                  updated[idx] = { ...updated[idx], chargeName: e.target.value };
+                                  setImportedCharges(updated);
+                                }}
+                                className="text-sm"
+                                data-testid={`input-import-name-${idx}`}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
+                                {ic.chargeType === "variable" ? "zmienna" : "stała"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right text-sm text-muted-foreground">
+                              {isNew ? (
+                                <Badge variant="outline" className="text-blue-600 dark:text-blue-400 no-default-hover-elevate no-default-active-elevate">NOWA</Badge>
+                              ) : (
+                                <span>{currentPrice.toFixed(4)} zł</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                step="0.0001"
+                                value={ic.unitPrice}
+                                onChange={(e) => {
+                                  const updated = [...importedCharges];
+                                  updated[idx] = { ...updated[idx], unitPrice: parseFloat(e.target.value) || 0 };
+                                  setImportedCharges(updated);
+                                }}
+                                className="w-28 ml-auto"
+                                data-testid={`input-import-price-${idx}`}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {isNew ? (
+                                <span className="text-blue-600 dark:text-blue-400">—</span>
+                              ) : isUnchanged ? (
+                                <span className="text-muted-foreground">bez zmian</span>
+                              ) : (
+                                <span className={isHigher ? "text-red-600 dark:text-red-400 font-medium" : "text-green-600 dark:text-green-400 font-medium"}>
+                                  {isHigher ? "+" : ""}{diff!.toFixed(4)} zł
+                                  {diffPct !== null && ` (${isHigher ? "+" : ""}${diffPct.toFixed(1)}%)`}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {ic.unit}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+
+                  {(() => {
+                    const selectedImported = importedCharges.filter(c => c.selected);
+                    const newVarSum = selectedImported.filter(c => c.chargeType === "variable").reduce((s, c) => s + c.unitPrice, 0);
+                    const newFixSum = selectedImported.filter(c => c.chargeType === "fixed").reduce((s, c) => s + c.unitPrice, 0);
+                    const oldVarSum = variableSum;
+                    const oldFixSum = fixedSum;
+                    return (
+                      <div className="rounded-md border p-3 bg-muted/30 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Podsumowanie po imporcie:</p>
+                        <div className="flex gap-6 text-sm">
+                          <span>Zmienne: <span className="text-muted-foreground">{oldVarSum.toFixed(4)}</span> → <span className="font-medium">{newVarSum.toFixed(4)} zł/kWh</span></span>
+                          <span>Stałe: <span className="text-muted-foreground">{oldFixSum.toFixed(4)}</span> → <span className="font-medium">{newFixSum.toFixed(4)} zł/mc</span></span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              );
+            })()}
 
             <div className="flex justify-end gap-2">
               <Button
@@ -746,7 +826,7 @@ function ElectricityChargesDialog({
                 ) : (
                   <Check className="w-4 h-4 mr-1" />
                 )}
-                Importuj zaznaczone ({importedCharges.filter(c => c.selected).length})
+                Potwierdź zmianę stawek ({importedCharges.filter(c => c.selected).length})
               </Button>
             </div>
           </div>
