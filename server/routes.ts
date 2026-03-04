@@ -3392,7 +3392,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Nie udało się przetworzyć PDF" });
       }
 
-      const openai = new OpenAI();
+      const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
       const content: any[] = [
         {
           type: "text",
@@ -10970,7 +10970,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         return res.status(400).json({ message: "Brak transakcji" });
       }
       const OpenAI = (await import("openai")).default;
-      const openai = new OpenAI();
+      const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
       const prompt = `Jesteś asystentem finansowym zarządzającym wynajmem apartamentów. Kategoryzuj poniższe transakcje bankowe. Dostępne kategorie:
 - CZYNSZ (opłaty czynszowe, wynajem)
 - MEDIA (prąd, gaz, woda, ogrzewanie, internet)
