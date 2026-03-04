@@ -4245,7 +4245,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const [fileBuffer] = await storageFile.download();
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(note.fileName)}"`);
+      const safeFileName = note.fileName.replace(/[^\w.\-]/g, '_');
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeURIComponent(note.fileName)}`);
       res.send(fileBuffer);
     } catch (err: any) {
       console.error("Error downloading accounting note:", err);

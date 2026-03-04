@@ -48,7 +48,7 @@ async function downloadNoteById(noteId: number) {
   const contentDisposition = response.headers.get("Content-Disposition");
   let fileName = "nota_ksiegowa.pdf";
   if (contentDisposition) {
-    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+    const match = contentDisposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/) || contentDisposition.match(/filename="([^"]+)"/);
     if (match) fileName = decodeURIComponent(match[1]);
   }
   const url = URL.createObjectURL(blob);
@@ -1706,8 +1706,8 @@ function SubleaseMediaCard({
       const a = document.createElement("a");
       a.href = url;
       const disposition = res.headers.get("content-disposition");
-      const match = disposition?.match(/filename="?(.+)"?/);
-      a.download = match?.[1] || `nota_${noteId}.pdf`;
+      const match = disposition?.match(/filename\*=UTF-8''(.+?)(?:;|$)/) || disposition?.match(/filename="([^"]+)"/);
+      a.download = match ? decodeURIComponent(match[1]) : `nota_${noteId}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {

@@ -964,7 +964,7 @@ function AccountingNotesTab() {
     const blob = await response.blob();
     const cd = response.headers.get("Content-Disposition");
     let fn = "nota_ksiegowa.pdf";
-    if (cd) { const m = cd.match(/filename="?([^"]+)"?/); if (m) fn = decodeURIComponent(m[1]); }
+    if (cd) { const m = cd.match(/filename\*=UTF-8''(.+?)(?:;|$)/) || cd.match(/filename="([^"]+)"/); if (m) fn = decodeURIComponent(m[1]); }
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = fn;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
