@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileSignature, HandCoins, Gauge, ClipboardCheck } from "lucide-react";
 import Subleases from "@/pages/Subleases";
@@ -14,7 +14,17 @@ const TABS = [
 ];
 
 export default function Podnajem() {
-  const [activeTab, setActiveTab] = useState("umowy");
+  const urlTab = new URLSearchParams(window.location.search).get("tab");
+  const initialTab = TABS.some(t => t.value === urlTab) ? urlTab! : "umowy";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab && TABS.some(t => t.value === tab)) {
+      setActiveTab(tab);
+    }
+  }, []);
 
   return (
     <div className="space-y-0" data-testid="page-podnajem">

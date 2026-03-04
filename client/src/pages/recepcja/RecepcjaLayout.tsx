@@ -2,16 +2,21 @@ import { useState, useEffect, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import { useRecepcjaAuth, recepcjaFetch } from "./RecepcjaApp";
 import { useTheme } from "@/components/ThemeProvider";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import {
   Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
 } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   LayoutDashboard, Wallet, FileText, HandCoins, UserPlus, History,
   Gauge, ClipboardList, FolderOpen, Search, CalendarDays, Hotel,
   Phone, CheckSquare, Clock, LogOut, Sun, Moon, Menu, X,
   PanelLeftClose, PanelLeft, ChevronDown, FileBarChart, AlertTriangle,
+  Bell, Check, CheckCheck,
   type LucideIcon,
 } from "lucide-react";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
@@ -138,6 +143,152 @@ function NavItemLink({ item, isActive, onClick, compact }: {
         <span className="font-medium text-xs leading-tight">{item.label}</span>
       </div>
     </Link>
+  );
+}
+
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "przed chwilą";
+  if (diffMin < 60) return `${diffMin} min temu`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours} godz. temu`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays} dni temu`;
+  return `${Math.floor(diffDays / 30)} mies. temu`;
+}
+
+function RecepcjaNotificationBell() {
+  const [open, setOpen] = useState(false);
+
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/recepcja/notifications/unread-count"],
+    queryFn: async () => {
+      const res = await recepcjaFetch("GET", "/api/recepcja/notifications/unread-count");
+      if (!res.ok) return { count: 0 };
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
+  const { data: notificationsList, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/recepcja/notifications"],
+    queryFn: async () => {
+      const res = await recepcjaFetch("GET", "/api/recepcja/notifications");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await recepcjaFetch("PATCH", `/api/recepcja/notifications/${id}/read`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/notifications/unread-count"] });
+    },
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => {
+      await recepcjaFetch("POST", "/api/recepcja/notifications/read-all");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/notifications/unread-count"] });
+    },
+  });
+
+  const unreadCount = unreadData?.count || 0;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="relative text-slate-400 hover:text-white hover:bg-white/5"
+          data-testid="button-recepcja-notification-bell"
+        >
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground"
+              data-testid="badge-recepcja-unread-count"
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-96 p-0" data-testid="popover-recepcja-notifications">
+        <div className="flex items-center justify-between gap-2 border-b p-3">
+          <h4 className="text-sm font-semibold" data-testid="text-recepcja-notifications-title">Powiadomienia</h4>
+          {unreadCount > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => markAllReadMutation.mutate()}
+              disabled={markAllReadMutation.isPending}
+              data-testid="button-recepcja-mark-all-read"
+            >
+              <CheckCheck className="h-3.5 w-3.5 mr-1" />
+              Oznacz wszystkie
+            </Button>
+          )}
+        </div>
+        <ScrollArea className="max-h-80">
+          {isLoading ? (
+            <div className="p-4 text-center text-sm text-muted-foreground" data-testid="text-recepcja-notifications-loading">
+              Ładowanie...
+            </div>
+          ) : !notificationsList || notificationsList.length === 0 ? (
+            <div className="p-4 text-center text-sm text-muted-foreground" data-testid="text-recepcja-no-notifications">
+              Brak powiadomień
+            </div>
+          ) : (
+            <div className="divide-y">
+              {notificationsList.map((notification: any) => (
+                <div
+                  key={notification.id}
+                  className={`flex items-start gap-3 p-3 ${!notification.isRead ? "bg-muted/50" : ""}`}
+                  data-testid={`recepcja-notification-item-${notification.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium" data-testid={`text-recepcja-notification-title-${notification.id}`}>
+                      {notification.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5" data-testid={`text-recepcja-notification-message-${notification.id}`}>
+                      {notification.message}
+                    </p>
+                    {notification.createdAt && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {timeAgo(notification.createdAt.toString())}
+                      </p>
+                    )}
+                  </div>
+                  {!notification.isRead && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => markReadMutation.mutate(notification.id)}
+                      disabled={markReadMutation.isPending}
+                      data-testid={`button-recepcja-mark-read-${notification.id}`}
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -377,7 +528,10 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
       )}
 
       <main className="flex-1 overflow-y-auto pb-20 lg:pb-4">
-        <div className="p-4 max-w-7xl mx-auto">
+        <div className="flex items-center justify-end gap-2 px-4 pt-3 max-w-7xl mx-auto">
+          <RecepcjaNotificationBell />
+        </div>
+        <div className="p-4 pt-2 max-w-7xl mx-auto">
           {children}
         </div>
       </main>

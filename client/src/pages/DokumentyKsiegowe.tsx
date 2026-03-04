@@ -24,7 +24,8 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Upload, FileText, Image, Trash2, Download, Package, ChevronDown, ChevronUp,
-  X, AlertTriangle, Clock, Search, Filter, Eye, History, Plus, CheckCircle2
+  X, AlertTriangle, Clock, Search, Filter, Eye, History, Plus, CheckCircle2,
+  Zap, Droplets
 } from "lucide-react";
 
 const EXPENSE_CATEGORIES = [
@@ -823,16 +824,139 @@ function MonthGroup({
   );
 }
 
-function AccountingNotesTab() {
-  const { data: notes = [], isLoading } = useQuery<AccountingNote[]>({ queryKey: ["/api/accounting-notes"] });
-  const { data: subleases = [] } = useQuery<Sublease[]>({ queryKey: ["/api/subleases"] });
+const NOTE_STATUS_OPTIONS = [
+  { value: "NOWA", label: "Nowa", variant: "secondary" as const },
+  { value: "WYSŁANA", label: "Wysłana", variant: "default" as const },
+  { value: "ZAKSIĘGOWANA", label: "Zaksięgowana", variant: "outline" as const },
+];
 
-  const getSubleaseName = (subleaseId: number) => {
-    const sub = subleases.find(s => s.id === subleaseId);
-    if (!sub) return `#${subleaseId}`;
-    if (sub.tenantType === "firma") return sub.companyName || `#${subleaseId}`;
-    return `${sub.firstName || ""} ${sub.lastName || ""}`.trim() || `#${subleaseId}`;
-  };
+function getMediaTypeBadge(mediaTypes: string | null | undefined) {
+  if (mediaTypes === "electricity") return <Badge variant="secondary" className="gap-1"><Zap className="h-3 w-3" /> Energia</Badge>;
+  if (mediaTypes === "water") return <Badge variant="secondary" className="gap-1"><Droplets className="h-3 w-3" /> Woda</Badge>;
+  if (mediaTypes === "both") return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <Badge variant="secondary" className="gap-1"><Zap className="h-3 w-3" /> Energia</Badge>
+      <Badge variant="secondary" className="gap-1"><Droplets className="h-3 w-3" /> Woda</Badge>
+    </div>
+  );
+  return <Badge variant="secondary">-</Badge>;
+}
+
+function NoteMonthGroup({
+  year, month, notes, selectedIds, allSelected,
+  onToggleSelect, onToggleSelectAll, onStatusChange, onDownload, getNoteStatusBadge
+}: {
+  year: number; month: number; notes: AccountingNote[];
+  selectedIds: Set<number>; allSelected: boolean;
+  onToggleSelect: (id: number) => void;
+  onToggleSelectAll: () => void;
+  onStatusChange: (id: number, status: string) => void;
+  onDownload: (id: number) => void;
+  getNoteStatusBadge: (s: string) => JSX.Element;
+}) {
+  const [open, setOpen] = useState(true);
+  const newCount = notes.filter(n => n.status === "NOWA").length;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 pb-2">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">{getMonthName(month)} {year}</CardTitle>
+              <Badge variant="secondary" className="text-xs">{notes.length}</Badge>
+              {newCount > 0 && <Badge variant="default" className="text-xs">{newCount} nowych</Badge>}
+            </div>
+            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected}
+                      onCheckedChange={onToggleSelectAll}
+                      data-testid={`checkbox-notes-select-all-${year}-${month}`}
+                    />
+                  </TableHead>
+                  <TableHead>Numer noty</TableHead>
+                  <TableHead>Apartament</TableHead>
+                  <TableHead>Najemca</TableHead>
+                  <TableHead>Typ mediów</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Data wygenerowania</TableHead>
+                  <TableHead className="text-right">Akcje</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {notes.map(note => (
+                  <TableRow key={note.id} data-testid={`row-note-${note.id}`}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(note.id)}
+                        onCheckedChange={() => onToggleSelect(note.id)}
+                        data-testid={`checkbox-note-${note.id}`}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium" data-testid={`text-note-number-${note.id}`}>{note.noteNumber}</TableCell>
+                    <TableCell data-testid={`text-note-apartment-${note.id}`}>{note.apartmentName || "-"}</TableCell>
+                    <TableCell data-testid={`text-note-tenant-${note.id}`}>{note.tenantName || "-"}</TableCell>
+                    <TableCell>{getMediaTypeBadge(note.mediaTypes)}</TableCell>
+                    <TableCell>
+                      <Select value={note.status} onValueChange={val => onStatusChange(note.id, val)}>
+                        <SelectTrigger className="w-[130px] h-8" data-testid={`select-note-status-${note.id}`}>
+                          <SelectValue>{getNoteStatusBadge(note.status)}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {NOTE_STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-sm">{formatDateTime(note.generatedAt)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => onDownload(note.id)} data-testid={`button-download-note-${note.id}`}>
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function AccountingNotesTab() {
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const { data: notes = [], isLoading } = useQuery<AccountingNote[]>({ queryKey: ["/api/accounting-notes"] });
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/accounting-notes/${id}/status`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/accounting-notes"] }),
+  });
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ noteIds, status }: { noteIds: number[]; status: string }) =>
+      apiRequest("PATCH", "/api/accounting-notes/bulk-status", { noteIds, status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting-notes"] });
+      setSelectedIds(new Set());
+      toast({ title: "Statusy zaktualizowane" });
+    },
+  });
 
   const handleDownload = async (noteId: number) => {
     const response = await fetch(`/api/accounting-notes/${noteId}/download`, { credentials: "include" });
@@ -847,55 +971,161 @@ function AccountingNotesTab() {
     URL.revokeObjectURL(url);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  const handleZipDownload = async () => {
+    if (selectedIds.size === 0) {
+      toast({ title: "Zaznacz noty", description: "Wybierz noty do pobrania", variant: "destructive" });
+      return;
+    }
+    try {
+      const resp = await fetch("/api/accounting-notes/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noteIds: [...selectedIds] }),
+        credentials: "include",
+      });
+      if (!resp.ok) throw new Error("Błąd pobierania ZIP");
+      const blob = await resp.blob();
+      const cd = resp.headers.get("Content-Disposition");
+      let fn = "noty_ksiegowe.zip";
+      if (cd) { const m = cd.match(/filename="?([^"]+)"?/); if (m) fn = m[1]; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = fn;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting-notes"] });
+      toast({ title: "Paczka ZIP pobrana" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    }
+  };
 
-  if (notes.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center text-muted-foreground">
-          Brak not księgowych. Noty generowane są automatycznie przy rozliczeniach mediów w zakładce Podnajem.
-        </CardContent>
-      </Card>
-    );
-  }
+  const filteredNotes = useMemo(() => {
+    let result = notes;
+    if (statusFilter !== "ALL") result = result.filter(n => n.status === statusFilter);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(n =>
+        n.noteNumber.toLowerCase().includes(q) ||
+        (n.apartmentName || "").toLowerCase().includes(q) ||
+        (n.tenantName || "").toLowerCase().includes(q) ||
+        (n.fileName || "").toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [notes, statusFilter, searchQuery]);
+
+  const groupedByMonth = useMemo(() => {
+    const groups: Record<string, AccountingNote[]> = {};
+    for (const note of filteredNotes) {
+      const y = note.noteYear || new Date(note.generatedAt || "").getFullYear();
+      const m = note.noteMonth || (new Date(note.generatedAt || "").getMonth() + 1);
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(note);
+    }
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filteredNotes]);
+
+  const toggleSelect = (id: number) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const getNoteStatusBadge = (status: string) => {
+    const opt = NOTE_STATUS_OPTIONS.find(s => s.value === status);
+    if (!opt) return <Badge variant="secondary">{status}</Badge>;
+    return <Badge variant={opt.variant} data-testid={`badge-note-status-${status}`}>{opt.label}</Badge>;
+  };
 
   return (
-    <Card>
-      <CardContent className="pt-4">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Numer noty</TableHead>
-              <TableHead>Podnajem</TableHead>
-              <TableHead>Plik</TableHead>
-              <TableHead>Data wygenerowania</TableHead>
-              <TableHead className="text-right">Akcje</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {notes.map(note => (
-              <TableRow key={note.id} data-testid={`row-note-${note.id}`}>
-                <TableCell className="font-medium">{note.noteNumber}</TableCell>
-                <TableCell>{getSubleaseName(note.subleaseId)}</TableCell>
-                <TableCell className="text-sm">{note.fileName}</TableCell>
-                <TableCell>{formatDateTime(note.generatedAt)}</TableCell>
-                <TableCell className="text-right">
-                  <Button size="icon" variant="ghost" onClick={() => handleDownload(note.id)} data-testid={`button-download-note-${note.id}`}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Szukaj po numerze, apartamencie, najemcy..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9"
+            data-testid="input-notes-search"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[160px]" data-testid="select-notes-status-filter">
+            <Filter className="h-4 w-4 mr-1" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Wszystkie</SelectItem>
+            {NOTE_STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        {selectedIds.size > 0 && (
+          <>
+            <Button onClick={handleZipDownload} data-testid="button-download-notes-zip">
+              <Package className="h-4 w-4 mr-1" />
+              Pobierz ZIP ({selectedIds.size})
+            </Button>
+            <Select onValueChange={val => bulkStatusMutation.mutate({ noteIds: [...selectedIds], status: val })}>
+              <SelectTrigger className="w-[160px]" data-testid="select-notes-bulk-status">
+                <SelectValue placeholder="Zmień status" />
+              </SelectTrigger>
+              <SelectContent>
+                {NOTE_STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+        </div>
+      ) : groupedByMonth.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            {notes.length === 0
+              ? "Brak not księgowych. Noty generowane są automatycznie przy rozliczeniach mediów w zakładce Podnajem."
+              : "Brak not pasujących do filtrów."}
+          </CardContent>
+        </Card>
+      ) : (
+        groupedByMonth.map(([monthKey, monthNotes]) => {
+          const [y, m] = monthKey.split("-").map(Number);
+          const monthSelectedIds = monthNotes.filter(n => selectedIds.has(n.id));
+          const allSelected = monthSelectedIds.length === monthNotes.length && monthNotes.length > 0;
+
+          return (
+            <NoteMonthGroup
+              key={monthKey}
+              year={y}
+              month={m}
+              notes={monthNotes}
+              selectedIds={selectedIds}
+              allSelected={allSelected}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={() => {
+                const next = new Set(selectedIds);
+                if (allSelected) {
+                  monthNotes.forEach(n => next.delete(n.id));
+                } else {
+                  monthNotes.forEach(n => next.add(n.id));
+                }
+                setSelectedIds(next);
+              }}
+              onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
+              onDownload={handleDownload}
+              getNoteStatusBadge={getNoteStatusBadge}
+            />
+          );
+        })
+      )}
+    </div>
   );
 }
 

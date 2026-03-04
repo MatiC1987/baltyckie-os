@@ -3,7 +3,7 @@ import { recepcjaFetch } from "./RecepcjaApp";
 import { Card } from "@/components/ui/card";
 import { Link } from "wouter";
 import {
-  Plane, PlaneLanding, AlertCircle, CheckSquare, UserPlus, LayoutDashboard, AlertTriangle,
+  Plane, PlaneLanding, AlertCircle, CheckSquare, UserPlus, LayoutDashboard, AlertTriangle, FileText,
 } from "lucide-react";
 
 export default function RecepcjaDashboard() {
@@ -15,6 +15,17 @@ export default function RecepcjaDashboard() {
     },
   });
 
+  const { data: accountingNotes } = useQuery<any[]>({
+    queryKey: ["/api/recepcja/accounting-notes"],
+    queryFn: async () => {
+      const res = await recepcjaFetch("GET", "/api/recepcja/accounting-notes");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const newNotesCount = (accountingNotes || []).filter((n: any) => n.status === "NOWA").length;
+
   const cards = [
     { label: "Przyjazdy dziś", value: data?.todayArrivals || 0, icon: Plane, color: "text-green-600", link: "/recepcja/rezerwacje" },
     { label: "Wyjazdy dziś", value: data?.todayDepartures || 0, icon: PlaneLanding, color: "text-blue-600", link: "/recepcja/rezerwacje" },
@@ -22,6 +33,7 @@ export default function RecepcjaDashboard() {
     { label: "Zadania na dziś", value: data?.todayTasks || 0, icon: CheckSquare, color: "text-orange-600", link: "/recepcja/zadania" },
     { label: "Oczekujący najemcy", value: data?.pendingSubmissions || 0, icon: UserPlus, color: "text-purple-600", link: "/recepcja/podnajem/nowy-najemca" },
     { label: "Otwarte usterki", value: data?.openIssues || 0, icon: AlertTriangle, color: "text-yellow-600", link: "/recepcja/usterki" },
+    { label: "Nowe noty do wydrukowania", value: newNotesCount, icon: FileText, color: "text-teal-600", link: "/recepcja/dokumenty" },
   ];
 
   return (
@@ -32,13 +44,13 @@ export default function RecepcjaDashboard() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          {[...Array(6)].map((_, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[...Array(7)].map((_, i) => (
             <Card key={i} className="p-4 animate-pulse"><div className="h-16 bg-muted rounded" /></Card>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {cards.map(card => {
             const Icon = card.icon;
             return (

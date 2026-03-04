@@ -1,8 +1,8 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport, AccountingNote } from "@shared/schema";
+import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport, AccountingNote, SubleaseElectricityCharge } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose
 } from "@/components/ui/dialog";
-import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign, Pencil, Gauge, Download } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import { Zap, Droplets, FileText, ChevronDown, ChevronUp, Check, Plus, Trash2, History, ClipboardCheck, CircleDollarSign, Pencil, Gauge, Download, Settings2, FileUp, AlertTriangle, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 
 function formatDate(d: string | null | undefined) {
@@ -262,6 +265,758 @@ function PriceHistoryDialog({
   );
 }
 
+const PREDEFINED_VARIABLE_CHARGES = [
+  "Energia czynna",
+  "Opłata sieciowa zmienna",
+  "Opłata jakościowa",
+  "Opłata OZE",
+  "Opłata kogeneracyjna",
+  "Akcyza",
+];
+
+const PREDEFINED_FIXED_CHARGES = [
+  "Opłata dystrybucyjna stała",
+  "Opłata abonamentowa",
+  "Opłata mocowa",
+  "Opłata przejściowa",
+  "Opłata handlowa",
+];
+
+interface ImportedCharge {
+  chargeName: string;
+  chargeType: "variable" | "fixed";
+  unitPrice: number;
+  unit: string;
+  vatRate: number;
+  selected: boolean;
+}
+
+function ElectricityChargesDialog({
+  open,
+  onOpenChange,
+  subleaseId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  subleaseId: number;
+}) {
+  const { toast } = useToast();
+  const chargesKey = [`/api/subleases/${subleaseId}/electricity-charges`];
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: charges = [], isLoading } = useQuery<SubleaseElectricityCharge[]>({
+    queryKey: chargesKey,
+    enabled: open,
+  });
+
+  const [addMode, setAddMode] = useState(false);
+  const [newChargeName, setNewChargeName] = useState("");
+  const [newChargeNameCustom, setNewChargeNameCustom] = useState("");
+  const [newChargeType, setNewChargeType] = useState<"variable" | "fixed">("variable");
+  const [newUnitPrice, setNewUnitPrice] = useState("");
+  const [newValidFrom, setNewValidFrom] = useState(new Date().toISOString().slice(0, 10));
+
+  const [editingChargeId, setEditingChargeId] = useState<number | null>(null);
+  const [editNewPrice, setEditNewPrice] = useState("");
+  const [editNewDate, setEditNewDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const [historyChargeName, setHistoryChargeName] = useState<string | null>(null);
+
+  const [importMode, setImportMode] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importedCharges, setImportedCharges] = useState<ImportedCharge[]>([]);
+  const [importVatRate, setImportVatRate] = useState("23");
+  const [importValidFrom, setImportValidFrom] = useState(new Date().toISOString().slice(0, 10));
+
+  const [vatRate, setVatRate] = useState("23");
+
+  const variableCharges = useMemo(() => {
+    const grouped = new Map<string, SubleaseElectricityCharge[]>();
+    charges
+      .filter(c => c.chargeType === "variable")
+      .forEach(c => {
+        const existing = grouped.get(c.chargeName) || [];
+        existing.push(c);
+        grouped.set(c.chargeName, existing);
+      });
+    const result: { name: string; latest: SubleaseElectricityCharge; count: number }[] = [];
+    grouped.forEach((items, name) => {
+      const sorted = [...items].sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+      result.push({ name, latest: sorted[0], count: items.length });
+    });
+    return result.sort((a, b) => a.name.localeCompare(b.name));
+  }, [charges]);
+
+  const fixedCharges = useMemo(() => {
+    const grouped = new Map<string, SubleaseElectricityCharge[]>();
+    charges
+      .filter(c => c.chargeType === "fixed")
+      .forEach(c => {
+        const existing = grouped.get(c.chargeName) || [];
+        existing.push(c);
+        grouped.set(c.chargeName, existing);
+      });
+    const result: { name: string; latest: SubleaseElectricityCharge; count: number }[] = [];
+    grouped.forEach((items, name) => {
+      const sorted = [...items].sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+      result.push({ name, latest: sorted[0], count: items.length });
+    });
+    return result.sort((a, b) => a.name.localeCompare(b.name));
+  }, [charges]);
+
+  const variableSum = useMemo(
+    () => variableCharges.reduce((sum, c) => sum + (parseFloat(c.latest.unitPrice) || 0), 0),
+    [variableCharges]
+  );
+
+  const fixedSum = useMemo(
+    () => fixedCharges.reduce((sum, c) => sum + (parseFloat(c.latest.unitPrice) || 0), 0),
+    [fixedCharges]
+  );
+
+  const lastUpdated = useMemo(() => {
+    if (charges.length === 0) return null;
+    const sorted = [...charges].sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+    return sorted[0].validFrom;
+  }, [charges]);
+
+  const staleWarning = useMemo(() => {
+    if (!lastUpdated) return false;
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    return new Date(lastUpdated) < threeMonthsAgo;
+  }, [lastUpdated]);
+
+  const historyCharges = useMemo(() => {
+    if (!historyChargeName) return [];
+    return charges
+      .filter(c => c.chargeName === historyChargeName)
+      .sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+  }, [charges, historyChargeName]);
+
+  const addCharge = useMutation({
+    mutationFn: async () => {
+      const name = newChargeName === "__custom__" ? newChargeNameCustom : newChargeName;
+      await apiRequest("POST", `/api/subleases/${subleaseId}/electricity-charges`, {
+        chargeName: name,
+        chargeType: newChargeType,
+        unitPrice: newUnitPrice,
+        validFrom: newValidFrom,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chargesKey });
+      setAddMode(false);
+      setNewChargeName("");
+      setNewChargeNameCustom("");
+      setNewUnitPrice("");
+      toast({ title: "Dodano opłatę" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateCharge = useMutation({
+    mutationFn: async ({ chargeId, chargeName, chargeType }: { chargeId: number; chargeName: string; chargeType: string }) => {
+      await apiRequest("POST", `/api/subleases/${subleaseId}/electricity-charges`, {
+        chargeName,
+        chargeType,
+        unitPrice: editNewPrice,
+        validFrom: editNewDate,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chargesKey });
+      setEditingChargeId(null);
+      setEditNewPrice("");
+      toast({ title: "Dodano nową stawkę (stara zachowana w historii)" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteCharge = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/electricity-charges/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chargesKey });
+      toast({ title: "Usunięto opłatę" });
+    },
+  });
+
+  const bulkImport = useMutation({
+    mutationFn: async (items: { chargeName: string; chargeType: string; unitPrice: string; validFrom: string }[]) => {
+      await apiRequest("POST", `/api/subleases/${subleaseId}/electricity-charges/bulk`, { charges: items });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chargesKey });
+      setImportMode(false);
+      setImportedCharges([]);
+      toast({ title: "Zaimportowano opłaty" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd importu", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleFileUpload = async (file: File) => {
+    setImportLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/subleases/${subleaseId}/import-electricity-invoice`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Błąd importu");
+      }
+      const data = await res.json();
+      const parsed: ImportedCharge[] = (data.charges || []).map((c: any) => ({
+        chargeName: c.chargeName || "",
+        chargeType: c.chargeType || "variable",
+        unitPrice: typeof c.unitPrice === "number" ? c.unitPrice : parseFloat(c.unitPrice) || 0,
+        unit: c.unit || (c.chargeType === "fixed" ? "mc" : "kWh"),
+        vatRate: c.vatRate || data.vatRate || 23,
+        selected: true,
+      }));
+      setImportedCharges(parsed);
+      if (data.vatRate) setImportVatRate(String(data.vatRate));
+      setImportMode(true);
+    } catch (err: any) {
+      toast({ title: "Błąd importu faktury", description: err.message, variant: "destructive" });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportConfirm = () => {
+    const selected = importedCharges.filter(c => c.selected);
+    if (selected.length === 0) return;
+    const items = selected.map(c => ({
+      chargeName: c.chargeName,
+      chargeType: c.chargeType,
+      unitPrice: c.unitPrice.toFixed(4),
+      validFrom: importValidFrom,
+    }));
+    bulkImport.mutate(items);
+  };
+
+  const resolvedName = newChargeName === "__custom__" ? newChargeNameCustom : newChargeName;
+  const canAdd = resolvedName.trim() && newUnitPrice && newValidFrom;
+
+  const renderChargeRow = (item: { name: string; latest: SubleaseElectricityCharge; count: number }, isVariable: boolean) => {
+    const isEditing = editingChargeId === item.latest.id;
+    return (
+      <TableRow key={item.name} data-testid={`row-charge-${item.latest.id}`}>
+        <TableCell className="text-sm font-medium">{item.name}</TableCell>
+        <TableCell className="text-right text-sm">
+          {isEditing ? (
+            <Input
+              type="number"
+              step="0.0001"
+              value={editNewPrice}
+              onChange={(e) => setEditNewPrice(e.target.value)}
+              className="w-28 ml-auto"
+              data-testid={`input-edit-charge-price-${item.latest.id}`}
+            />
+          ) : (
+            <span>{formatNum(item.latest.unitPrice, 4)} zł</span>
+          )}
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {isEditing ? (
+            <Input
+              type="date"
+              value={editNewDate}
+              onChange={(e) => setEditNewDate(e.target.value)}
+              className="w-36"
+              data-testid={`input-edit-charge-date-${item.latest.id}`}
+            />
+          ) : (
+            formatDate(item.latest.validFrom)
+          )}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1 justify-end">
+            {isEditing ? (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  data-testid={`button-confirm-edit-charge-${item.latest.id}`}
+                  disabled={!editNewPrice || updateCharge.isPending}
+                  onClick={() =>
+                    updateCharge.mutate({
+                      chargeId: item.latest.id,
+                      chargeName: item.name,
+                      chargeType: item.latest.chargeType,
+                    })
+                  }
+                >
+                  <Check className="w-4 h-4 text-green-600" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setEditingChargeId(null)}
+                  data-testid={`button-cancel-edit-charge-${item.latest.id}`}
+                >
+                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  data-testid={`button-edit-charge-${item.latest.id}`}
+                  title="Zmień stawkę (nowy wpis)"
+                  onClick={() => {
+                    setEditingChargeId(item.latest.id);
+                    setEditNewPrice(item.latest.unitPrice);
+                    setEditNewDate(new Date().toISOString().slice(0, 10));
+                  }}
+                >
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                {item.count > 1 && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    data-testid={`button-history-charge-${item.latest.id}`}
+                    title={`Historia zmian (${item.count})`}
+                    onClick={() => setHistoryChargeName(item.name)}
+                  >
+                    <History className="w-3 h-3" />
+                  </Button>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  data-testid={`button-delete-charge-${item.latest.id}`}
+                  onClick={() => deleteCharge.mutate(item.latest.id)}
+                >
+                  <Trash2 className="w-3 h-3 text-destructive" />
+                </Button>
+              </>
+            )}
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Zap className="w-5 h-5" />
+            Konfiguracja opłat za energię elektryczną
+          </DialogTitle>
+        </DialogHeader>
+
+        {staleWarning && (
+          <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800">
+            <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-500 shrink-0" />
+            <p className="text-sm text-yellow-700 dark:text-yellow-400">
+              Stawki nie były aktualizowane od ponad 3 miesięcy. Sprawdź, czy są aktualne.
+            </p>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : importMode ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-medium">Przegląd zaimportowanych opłat</h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setImportMode(false); setImportedCharges([]); }}
+                data-testid="button-cancel-import"
+              >
+                Anuluj
+              </Button>
+            </div>
+
+            <div className="flex gap-3 items-end flex-wrap">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Data obowiązywania od</Label>
+                <Input
+                  type="date"
+                  value={importValidFrom}
+                  onChange={(e) => setImportValidFrom(e.target.value)}
+                  className="w-40"
+                  data-testid="input-import-valid-from"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Stawka VAT (%)</Label>
+                <Input
+                  type="number"
+                  value={importVatRate}
+                  onChange={(e) => setImportVatRate(e.target.value)}
+                  className="w-24"
+                  data-testid="input-import-vat-rate"
+                />
+              </div>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10"></TableHead>
+                  <TableHead>Nazwa opłaty</TableHead>
+                  <TableHead>Typ</TableHead>
+                  <TableHead className="text-right">Cena netto</TableHead>
+                  <TableHead>Jednostka</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {importedCharges.map((ic, idx) => (
+                  <TableRow key={idx} data-testid={`row-import-charge-${idx}`}>
+                    <TableCell>
+                      <Checkbox
+                        checked={ic.selected}
+                        onCheckedChange={(checked) => {
+                          const updated = [...importedCharges];
+                          updated[idx] = { ...updated[idx], selected: !!checked };
+                          setImportedCharges(updated);
+                        }}
+                        data-testid={`checkbox-import-charge-${idx}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={ic.chargeName}
+                        onChange={(e) => {
+                          const updated = [...importedCharges];
+                          updated[idx] = { ...updated[idx], chargeName: e.target.value };
+                          setImportedCharges(updated);
+                        }}
+                        className="text-sm"
+                        data-testid={`input-import-name-${idx}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
+                        {ic.chargeType === "variable" ? "zmienna" : "stała"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        value={ic.unitPrice}
+                        onChange={(e) => {
+                          const updated = [...importedCharges];
+                          updated[idx] = { ...updated[idx], unitPrice: parseFloat(e.target.value) || 0 };
+                          setImportedCharges(updated);
+                        }}
+                        className="w-28 ml-auto"
+                        data-testid={`input-import-price-${idx}`}
+                      />
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {ic.unit}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                data-testid="button-confirm-import"
+                disabled={bulkImport.isPending || importedCharges.filter(c => c.selected).length === 0}
+                onClick={handleImportConfirm}
+              >
+                {bulkImport.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4 mr-1" />
+                )}
+                Importuj zaznaczone ({importedCharges.filter(c => c.selected).length})
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Opłaty zmienne (za kWh)</h3>
+                <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate">
+                  Suma: {formatNum(variableSum, 4)} zł/kWh
+                </Badge>
+              </div>
+              {variableCharges.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nazwa</TableHead>
+                      <TableHead className="text-right">Cena netto</TableHead>
+                      <TableHead>Obowiązuje od</TableHead>
+                      <TableHead className="text-right w-28">Akcje</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {variableCharges.map(item => renderChargeRow(item, true))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-2">Brak opłat zmiennych</p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Opłaty stałe (za miesiąc)</h3>
+                <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate">
+                  Suma: {formatNum(fixedSum, 2)} zł/mc
+                </Badge>
+              </div>
+              {fixedCharges.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nazwa</TableHead>
+                      <TableHead className="text-right">Cena netto</TableHead>
+                      <TableHead>Obowiązuje od</TableHead>
+                      <TableHead className="text-right w-28">Akcje</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {fixedCharges.map(item => renderChargeRow(item, false))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-2">Brak opłat stałych</p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-md flex-wrap">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Stawka VAT</p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    step="1"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(e.target.value)}
+                    className="w-20"
+                    data-testid="input-vat-rate"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+              </div>
+              <div className="text-right space-y-1">
+                <p className="text-xs text-muted-foreground">Zmienne: {formatNum(variableSum, 4)} zł/kWh</p>
+                <p className="text-xs text-muted-foreground">Stałe: {formatNum(fixedSum, 2)} zł/mc</p>
+              </div>
+            </div>
+
+            {addMode ? (
+              <div className="space-y-3 p-3 border rounded-md">
+                <h4 className="text-sm font-medium">Dodaj nową opłatę</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Typ opłaty</Label>
+                    <Select
+                      value={newChargeType}
+                      onValueChange={(v) => {
+                        setNewChargeType(v as "variable" | "fixed");
+                        setNewChargeName("");
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-charge-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="variable">Zmienna (za kWh)</SelectItem>
+                        <SelectItem value="fixed">Stała (za miesiąc)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Nazwa opłaty</Label>
+                    <Select
+                      value={newChargeName}
+                      onValueChange={setNewChargeName}
+                    >
+                      <SelectTrigger data-testid="select-charge-name">
+                        <SelectValue placeholder="Wybierz..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(newChargeType === "variable" ? PREDEFINED_VARIABLE_CHARGES : PREDEFINED_FIXED_CHARGES).map(name => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                        <SelectItem value="__custom__">Inna...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {newChargeName === "__custom__" && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Nazwa własna</Label>
+                    <Input
+                      value={newChargeNameCustom}
+                      onChange={(e) => setNewChargeNameCustom(e.target.value)}
+                      placeholder="Nazwa opłaty"
+                      data-testid="input-charge-name-custom"
+                    />
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Cena netto ({newChargeType === "variable" ? "zł/kWh" : "zł/mc"})
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.0001"
+                      value={newUnitPrice}
+                      onChange={(e) => setNewUnitPrice(e.target.value)}
+                      placeholder="0.0000"
+                      data-testid="input-charge-price"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Obowiązuje od</Label>
+                    <Input
+                      type="date"
+                      value={newValidFrom}
+                      onChange={(e) => setNewValidFrom(e.target.value)}
+                      data-testid="input-charge-valid-from"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAddMode(false)}
+                    data-testid="button-cancel-add-charge"
+                  >
+                    Anuluj
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!canAdd || addCharge.isPending}
+                    onClick={() => addCharge.mutate()}
+                    data-testid="button-save-charge"
+                  >
+                    {addCharge.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
+                    Dodaj
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAddMode(true)}
+                  data-testid="button-add-charge"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Dodaj opłatę
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importLoading}
+                  data-testid="button-import-invoice"
+                >
+                  {importLoading ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <FileUp className="w-4 h-4 mr-1" />
+                  )}
+                  {importLoading ? "Analizowanie..." : "Importuj z faktury PDF"}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        <Dialog open={!!historyChargeName} onOpenChange={(v) => { if (!v) setHistoryChargeName(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Historia zmian — {historyChargeName}</DialogTitle>
+            </DialogHeader>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Obowiązuje od</TableHead>
+                  <TableHead className="text-right">Cena netto</TableHead>
+                  <TableHead className="w-10"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyCharges.map(c => (
+                  <TableRow key={c.id} data-testid={`row-history-charge-${c.id}`}>
+                    <TableCell className="text-sm">{formatDate(c.validFrom)}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">
+                      {formatNum(c.unitPrice, 4)} zł
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        data-testid={`button-delete-history-charge-${c.id}`}
+                        onClick={() => deleteCharge.mutate(c.id)}
+                      >
+                        <Trash2 className="w-3 h-3 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setHistoryChargeName(null)} data-testid="button-close-history">
+                Zamknij
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" data-testid="button-close-charges">Zamknij</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EditReportDialog({
   report,
   open,
@@ -279,33 +1034,47 @@ function EditReportDialog({
   const [periodTo, setPeriodTo] = useState(report.periodTo || "");
   const [elecConsumption, setElecConsumption] = useState(report.electricityConsumption || "");
   const [elecCost, setElecCost] = useState(report.electricityCost || "");
+  const [elecFixedCharges, setElecFixedCharges] = useState(report.electricityFixedCharges || "");
+  const [elecVatRate, setElecVatRate] = useState(report.electricityVatRate || "23");
+  const [elecNetto, setElecNetto] = useState(report.electricityNetto || "");
+  const [elecBrutto, setElecBrutto] = useState(report.electricityBrutto || "");
   const [coldConsumption, setColdConsumption] = useState(report.coldWaterConsumption || "");
   const [coldCost, setColdCost] = useState(report.coldWaterCost || "");
   const [hotConsumption, setHotConsumption] = useState(report.hotWaterConsumption || "");
   const [hotCost, setHotCost] = useState(report.hotWaterCost || "");
   const [paymentStatus, setPaymentStatus] = useState(report.paymentStatus || "NIEOPLACONE");
 
-  const totalCost = [elecCost, coldCost, hotCost]
-    .reduce((sum, v) => sum + (parseFloat(String(v)) || 0), 0);
+  const hasVatFields = !!(elecNetto && parseFloat(String(elecNetto)) > 0);
+
+  const totalCost = hasVatFields
+    ? (parseFloat(String(elecBrutto)) || 0) + (parseFloat(String(coldCost)) || 0) + (parseFloat(String(hotCost)) || 0)
+    : [elecCost, coldCost, hotCost].reduce((sum, v) => sum + (parseFloat(String(v)) || 0), 0);
 
   const handleSubmit = () => {
-    onSave({
+    const data: Record<string, unknown> = {
       periodFrom,
       periodTo,
       electricityConsumption: elecConsumption || null,
-      electricityCost: elecCost || null,
+      electricityCost: hasVatFields ? elecBrutto : (elecCost || null),
       coldWaterConsumption: coldConsumption || null,
       coldWaterCost: coldCost || null,
       hotWaterConsumption: hotConsumption || null,
       hotWaterCost: hotCost || null,
       totalCost: totalCost.toFixed(2),
       paymentStatus,
-    });
+    };
+    if (hasVatFields) {
+      data.electricityFixedCharges = elecFixedCharges || null;
+      data.electricityVatRate = elecVatRate || "23";
+      data.electricityNetto = elecNetto || null;
+      data.electricityBrutto = elecBrutto || null;
+    }
+    onSave(data);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edytuj rozliczenie</DialogTitle>
         </DialogHeader>
@@ -332,7 +1101,7 @@ function EditReportDialog({
           </div>
 
           <div className="space-y-3">
-            <h4 className="text-sm font-medium">Energia elektryczna</h4>
+            <h4 className="text-sm font-medium flex items-center gap-1"><Zap className="w-4 h-4" /> Energia elektryczna</h4>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Zużycie (kWh)</Label>
@@ -345,18 +1114,64 @@ function EditReportDialog({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Koszt (zł)</Label>
+                <Label className="text-xs text-muted-foreground">Opłaty stałe (zł)</Label>
                 <Input
                   type="number"
                   step="0.01"
-                  value={elecCost}
-                  onChange={(e) => setElecCost(e.target.value)}
-                  data-testid="input-edit-elec-cost"
+                  value={elecFixedCharges}
+                  onChange={(e) => setElecFixedCharges(e.target.value)}
+                  data-testid="input-edit-elec-fixed"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Netto (zł)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={elecNetto}
+                  onChange={(e) => {
+                    setElecNetto(e.target.value);
+                    const n = parseFloat(e.target.value) || 0;
+                    const vat = parseFloat(String(elecVatRate)) || 23;
+                    setElecBrutto((n * (1 + vat / 100)).toFixed(2));
+                    setElecCost((n * (1 + vat / 100)).toFixed(2));
+                  }}
+                  data-testid="input-edit-elec-netto"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">VAT (%)</Label>
+                <Input
+                  type="number"
+                  step="1"
+                  value={elecVatRate}
+                  onChange={(e) => {
+                    setElecVatRate(e.target.value);
+                    const n = parseFloat(String(elecNetto)) || 0;
+                    const vat = parseFloat(e.target.value) || 23;
+                    setElecBrutto((n * (1 + vat / 100)).toFixed(2));
+                    setElecCost((n * (1 + vat / 100)).toFixed(2));
+                  }}
+                  data-testid="input-edit-elec-vat"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Brutto (zł)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={elecBrutto}
+                  onChange={(e) => setElecBrutto(e.target.value)}
+                  data-testid="input-edit-elec-brutto"
+                  className="font-medium"
                 />
               </div>
             </div>
 
-            <h4 className="text-sm font-medium">Woda zimna</h4>
+            <Separator />
+            <h4 className="text-sm font-medium flex items-center gap-1"><Droplets className="w-4 h-4" /> Woda zimna</h4>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Zużycie (m³)</Label>
@@ -380,7 +1195,8 @@ function EditReportDialog({
               </div>
             </div>
 
-            <h4 className="text-sm font-medium">Woda ciepła</h4>
+            <Separator />
+            <h4 className="text-sm font-medium flex items-center gap-1"><Droplets className="w-4 h-4" /> Woda ciepła</h4>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Zużycie (m³)</Label>
@@ -467,6 +1283,7 @@ function SubleaseMediaCard({
   const [newReadingValue, setNewReadingValue] = useState("");
   const [addingReadingType, setAddingReadingType] = useState<MeterType | null>(null);
   const [editReport, setEditReport] = useState<MediaSettlementReport | null>(null);
+  const [chargesDialogOpen, setChargesDialogOpen] = useState(false);
 
   const apt = apartments.find((a) => a.id === sublease.apartmentId);
   const aptName = apt?.name || `Apt #${sublease.apartmentId}`;
@@ -499,6 +1316,11 @@ function SubleaseMediaCard({
 
   const { data: reports = [] } = useQuery<MediaSettlementReport[]>({
     queryKey: [`/api/subleases/${sublease.id}/settlement-reports`],
+  });
+
+  const chargesKey = [`/api/subleases/${sublease.id}/electricity-charges`];
+  const { data: electricityCharges = [] } = useQuery<SubleaseElectricityCharge[]>({
+    queryKey: chargesKey,
   });
 
   const saveSetting = useMutation({
@@ -604,11 +1426,31 @@ function SubleaseMediaCard({
     return new Date().toISOString().slice(0, 10);
   }, []);
 
+  const getElectricityChargesAtDate = useCallback((date: string) => {
+    const chargesByName = new Map<string, SubleaseElectricityCharge>();
+    for (const charge of electricityCharges) {
+      if (charge.validFrom <= date) {
+        const existing = chargesByName.get(charge.chargeName);
+        if (!existing || charge.validFrom > existing.validFrom) {
+          chargesByName.set(charge.chargeName, charge);
+        }
+      }
+    }
+    return Array.from(chargesByName.values());
+  }, [electricityCharges]);
+
   const getCurrentPeriodData = useCallback(() => {
     const types: MeterType[] = ["electricity", "cold_water", "hot_water"];
     let total = 0;
     const periodFrom = currentPeriodFrom;
     const periodTo = currentPeriodTo;
+    let elecNetto = 0;
+    let elecBrutto = 0;
+    let elecFixedCharges = 0;
+    let elecVatRate = 23;
+    let elecVariableDetails: { name: string; consumption: number; unitPrice: number; cost: number }[] = [];
+    let elecFixedDetails: { name: string; unitPrice: number; months: number; cost: number }[] = [];
+    const useNewCharges = electricityCharges.length > 0;
 
     const items = types.map((type) => {
       const typeReadings = getReadingsForType(type);
@@ -632,10 +1474,45 @@ function SubleaseMediaCard({
       let prevValue = baselineValue;
       for (const curr of periodReadings) {
         const consumption = curr.value - prevValue;
-        const unitPrice = getPriceAtDate(type, curr.date);
-        periodConsumption += consumption;
-        periodCost += consumption * unitPrice;
+        if (type === "electricity" && useNewCharges) {
+          periodConsumption += consumption;
+        } else {
+          const unitPrice = getPriceAtDate(type, curr.date);
+          periodConsumption += consumption;
+          periodCost += consumption * unitPrice;
+        }
         prevValue = curr.value;
+      }
+
+      if (type === "electricity" && useNewCharges && periodConsumption > 0) {
+        const charges = getElectricityChargesAtDate(periodTo);
+        const variableCharges = charges.filter(c => c.chargeType === "variable");
+        const fixedCharges = charges.filter(c => c.chargeType === "fixed");
+
+        let variableTotal = 0;
+        elecVariableDetails = variableCharges.map(c => {
+          const price = parseFloat(c.unitPrice);
+          const cost = periodConsumption * price;
+          variableTotal += cost;
+          return { name: c.chargeName, consumption: periodConsumption, unitPrice: price, cost };
+        });
+
+        const fromDate = new Date(periodFrom);
+        const toDate = new Date(periodTo);
+        const months = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24 * 30)));
+
+        let fixedTotal = 0;
+        elecFixedDetails = fixedCharges.map(c => {
+          const price = parseFloat(c.unitPrice);
+          const cost = price * months;
+          fixedTotal += cost;
+          return { name: c.chargeName, unitPrice: price, months, cost };
+        });
+
+        elecFixedCharges = fixedTotal;
+        elecNetto = variableTotal + fixedTotal;
+        elecBrutto = elecNetto * (1 + elecVatRate / 100);
+        periodCost = elecBrutto;
       }
 
       total += periodCost;
@@ -647,8 +1524,13 @@ function SubleaseMediaCard({
         totalCost: periodCost,
       };
     });
-    return { items, total, periodFrom, periodTo };
-  }, [getReadingsForType, getSetting, getPriceAtDate, currentPeriodFrom, currentPeriodTo, sublease.startDate]);
+    return {
+      items, total, periodFrom, periodTo,
+      elecNetto, elecBrutto, elecFixedCharges, elecVatRate,
+      elecVariableDetails, elecFixedDetails,
+      useNewCharges,
+    };
+  }, [getReadingsForType, getSetting, getPriceAtDate, getElectricityChargesAtDate, currentPeriodFrom, currentPeriodTo, sublease.startDate, electricityCharges]);
 
   const createReport = useMutation({
     mutationFn: async () => {
@@ -656,7 +1538,7 @@ function SubleaseMediaCard({
       const elec = data.items.find(i => i.type === "electricity");
       const cold = data.items.find(i => i.type === "cold_water");
       const hot = data.items.find(i => i.type === "hot_water");
-      await apiRequest("POST", `/api/subleases/${sublease.id}/settlement-reports`, {
+      const reportData: Record<string, unknown> = {
         periodFrom: data.periodFrom,
         periodTo: data.periodTo,
         electricityConsumption: elec?.totalConsumption?.toFixed(3) || "0",
@@ -667,12 +1549,28 @@ function SubleaseMediaCard({
         hotWaterCost: hot?.totalCost?.toFixed(2) || "0",
         totalCost: data.total.toFixed(2),
         paymentStatus: "NIEOPLACONE",
-      });
+      };
+      if (data.useNewCharges) {
+        reportData.electricityFixedCharges = data.elecFixedCharges.toFixed(2);
+        reportData.electricityVatRate = data.elecVatRate.toFixed(2);
+        reportData.electricityNetto = data.elecNetto.toFixed(2);
+        reportData.electricityBrutto = data.elecBrutto.toFixed(2);
+      }
+      const res = await apiRequest("POST", `/api/subleases/${sublease.id}/settlement-reports`, reportData);
+      return res;
     },
-    onSuccess: () => {
+    onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: reportsKey });
       setGenerateOpen(false);
       toast({ title: "Wygenerowano raport rozliczeniowy" });
+      try {
+        const report = await res.json();
+        if (report?.id) {
+          await apiRequest("POST", "/api/accounting-notes/generate", { reportId: report.id, subleaseId: sublease.id });
+          queryClient.invalidateQueries({ queryKey: notesKey });
+          toast({ title: "Wygenerowano notę księgową" });
+        }
+      } catch {}
     },
   });
 
@@ -997,6 +1895,18 @@ function SubleaseMediaCard({
             <Button
               size="sm"
               variant="outline"
+              data-testid={`button-electricity-charges-${sublease.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setChargesDialogOpen(true);
+              }}
+            >
+              <Settings2 className="w-4 h-4 mr-1" />
+              Opłaty prądu
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               data-testid={`button-generate-report-${sublease.id}`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1067,8 +1977,14 @@ function SubleaseMediaCard({
                           <TableCell className="text-sm">
                             {formatDate(report.periodFrom)} — {formatDate(report.periodTo)}
                           </TableCell>
-                          <TableCell className="text-right text-sm">
-                            {report.electricityCost ? `${formatNum(report.electricityCost)} zł` : "—"}
+                          <TableCell className="text-right text-sm" title={
+                            report.electricityNetto && Number(report.electricityNetto) > 0
+                              ? `Netto: ${formatNum(report.electricityNetto)} zł + VAT ${report.electricityVatRate || 23}% = Brutto: ${formatNum(report.electricityBrutto)} zł`
+                              : undefined
+                          }>
+                            {report.electricityBrutto && Number(report.electricityBrutto) > 0
+                              ? `${formatNum(report.electricityBrutto)} zł`
+                              : report.electricityCost ? `${formatNum(report.electricityCost)} zł` : "—"}
                           </TableCell>
                           <TableCell className="text-right text-sm">
                             {report.coldWaterCost ? `${formatNum(report.coldWaterCost)} zł` : "—"}
@@ -1221,6 +2137,7 @@ function SubleaseMediaCard({
             </div>
             {(() => {
               const data = getCurrentPeriodData();
+              const elecItem = data.items.find(i => i.type === "electricity");
               return (
                 <div className="space-y-3">
                   <div className="p-3 bg-muted/50 rounded-md">
@@ -1229,6 +2146,50 @@ function SubleaseMediaCard({
                       {formatDate(data.periodFrom)} — {formatDate(data.periodTo)}
                     </p>
                   </div>
+
+                  {data.useNewCharges && elecItem && elecItem.totalConsumption > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold flex items-center gap-1"><Zap className="w-4 h-4" /> Energia elektryczna — {formatNum(elecItem.totalConsumption, 3)} kWh</p>
+                      {data.elecVariableDetails.length > 0 && (
+                        <div className="ml-4">
+                          <p className="text-xs text-muted-foreground mb-1">Opłaty zmienne (za kWh):</p>
+                          <Table>
+                            <TableBody>
+                              {data.elecVariableDetails.map((d, i) => (
+                                <TableRow key={i} className="text-xs">
+                                  <TableCell className="py-1">{d.name}</TableCell>
+                                  <TableCell className="py-1 text-right">{formatNum(d.unitPrice, 4)} zł/kWh</TableCell>
+                                  <TableCell className="py-1 text-right">{formatNum(d.cost)} zł</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                      {data.elecFixedDetails.length > 0 && (
+                        <div className="ml-4">
+                          <p className="text-xs text-muted-foreground mb-1">Opłaty stałe (za miesiąc):</p>
+                          <Table>
+                            <TableBody>
+                              {data.elecFixedDetails.map((d, i) => (
+                                <TableRow key={i} className="text-xs">
+                                  <TableCell className="py-1">{d.name}</TableCell>
+                                  <TableCell className="py-1 text-right">{formatNum(d.unitPrice, 2)} zł/mc × {d.months}</TableCell>
+                                  <TableCell className="py-1 text-right">{formatNum(d.cost)} zł</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                      <div className="ml-4 text-sm space-y-0.5">
+                        <div className="flex justify-between"><span>Netto:</span><span>{formatNum(data.elecNetto)} zł</span></div>
+                        <div className="flex justify-between"><span>VAT {data.elecVatRate}%:</span><span>{formatNum(data.elecBrutto - data.elecNetto)} zł</span></div>
+                        <div className="flex justify-between font-semibold"><span>Brutto:</span><span>{formatNum(data.elecBrutto)} zł</span></div>
+                      </div>
+                    </div>
+                  )}
+
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1289,7 +2250,133 @@ function SubleaseMediaCard({
           isPending={updateReport.isPending}
         />
       )}
+
+      <ElectricityChargesDialog
+        open={chargesDialogOpen}
+        onOpenChange={setChargesDialogOpen}
+        subleaseId={sublease.id}
+      />
     </>
+  );
+}
+
+interface PendingReadingGroup {
+  subleaseId: number;
+  apartmentName: string;
+  tenantName: string;
+  readings: SubleaseMeterReading[];
+}
+
+function PendingReadingsSection({ apartments }: { apartments: Apartment[] }) {
+  const { toast } = useToast();
+  const pendingKey = ["/api/pending-meter-readings"];
+  const { data: pendingGroups = [], isLoading } = useQuery<PendingReadingGroup[]>({
+    queryKey: pendingKey,
+  });
+
+  const confirmReadings = useMutation({
+    mutationFn: async (readingIds: number[]) => {
+      await apiRequest("POST", "/api/meter-readings/confirm", { readingIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pendingKey });
+      toast({ title: "Odczyty zatwierdzone" });
+    },
+  });
+
+  const confirmAndSettle = useMutation({
+    mutationFn: async ({ subleaseId, readingIds }: { subleaseId: number; readingIds: number[] }) => {
+      await apiRequest("POST", "/api/meter-readings/confirm", { readingIds });
+      queryClient.invalidateQueries({ queryKey: [`/api/subleases/${subleaseId}/meter-readings`] });
+      return subleaseId;
+    },
+    onSuccess: (subleaseId) => {
+      queryClient.invalidateQueries({ queryKey: pendingKey });
+      toast({ title: "Odczyty zatwierdzone — otwórz kartę podnajmu poniżej, aby wygenerować rozliczenie" });
+      setTimeout(() => {
+        const el = document.querySelector(`[data-testid="card-sublease-media-${subleaseId}"]`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+    },
+  });
+
+  if (isLoading || pendingGroups.length === 0) return null;
+
+  return (
+    <Card className="border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/10" data-testid="card-pending-readings">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-amber-500" />
+          Odczyty do weryfikacji ({pendingGroups.reduce((s, g) => s + g.readings.length, 0)})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {pendingGroups.map((group) => {
+          const readingIds = group.readings.map(r => r.id);
+          return (
+            <div key={group.subleaseId} className="p-3 bg-background rounded-lg border" data-testid={`pending-group-${group.subleaseId}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <span className="font-medium text-sm">{group.apartmentName}</span>
+                  <span className="text-muted-foreground text-sm ml-2">— {group.tenantName}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={confirmReadings.isPending || confirmAndSettle.isPending}
+                    onClick={() => confirmReadings.mutate(readingIds)}
+                    data-testid={`button-confirm-readings-${group.subleaseId}`}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Zatwierdź odczyty
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={confirmAndSettle.isPending || confirmReadings.isPending}
+                    onClick={() => confirmAndSettle.mutate({ subleaseId: group.subleaseId, readingIds })}
+                    data-testid={`button-confirm-settle-${group.subleaseId}`}
+                  >
+                    <ClipboardCheck className="w-3 h-3 mr-1" />
+                    Zatwierdź i rozlicz
+                  </Button>
+                </div>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Medium</TableHead>
+                    <TableHead>Data odczytu</TableHead>
+                    <TableHead className="text-right">Wartość</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {group.readings.map((reading) => (
+                    <TableRow key={reading.id} data-testid={`row-pending-reading-${reading.id}`}>
+                      <TableCell className="text-sm">
+                        {reading.meterType === "electricity" && <><Zap className="w-3 h-3 inline mr-1" />Energia</>}
+                        {reading.meterType === "cold_water" && <><Droplets className="w-3 h-3 inline mr-1" />Woda zimna</>}
+                        {reading.meterType === "hot_water" && <><Droplets className="w-3 h-3 inline mr-1" />Woda ciepła</>}
+                      </TableCell>
+                      <TableCell className="text-sm">{formatDate(reading.readingDate)}</TableCell>
+                      <TableCell className="text-right text-sm font-medium">
+                        {reading.reading} {reading.meterType === "electricity" ? "kWh" : "m³"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs">
+                          Oczekuje
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1337,6 +2424,7 @@ export default function MediaSettlement() {
         </Card>
       ) : (
         <div className="space-y-4">
+          <PendingReadingsSection apartments={apartments} />
           {mediaSubleases.map((s) => (
             <SubleaseMediaCard key={s.id} sublease={s} apartments={apartments} />
           ))}

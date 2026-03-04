@@ -283,6 +283,38 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // ==================== NOTIFICATIONS (recepcja) ====================
+  app.get('/api/recepcja/notifications', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const notifs = await storage.getNotifications("recepcja");
+      res.json(notifs);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get('/api/recepcja/notifications/unread-count', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const unread = await storage.getUnreadNotifications("recepcja");
+      res.json({ count: unread.length });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch('/api/recepcja/notifications/:id/read', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      await storage.markNotificationRead(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/notifications/read-all', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const unread = await storage.getUnreadNotifications("recepcja");
+      for (const n of unread) {
+        await storage.markNotificationRead(n.id);
+      }
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // ==================== LICZNIKI (meter readings) ====================
   app.get('/api/recepcja/meter-subleases', isRecepcjaAuth as any, async (req: any, res) => {
     try {
@@ -312,13 +344,29 @@ export function registerRecepcjaRoutes(app: Express) {
     try {
       const { subleaseId, meterType, readingDate, readingValue } = req.body;
       const [reading] = await db.insert(subleaseMeterReadings).values({
-        subleaseId, meterType, readingDate, reading: readingValue,
+        subleaseId, meterType, readingDate, reading: readingValue, status: "pending",
       }).returning();
       await db.insert(meterReadingsLog).values({
         subleaseId, meterType, readingDate, readingValue,
         submittedBy: req.recepcjaUser.id,
       });
       await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'meter_reading', reading.id.toString(), { subleaseId, meterType, readingValue });
+
+      const sublease = await storage.getSublease(subleaseId);
+      const apts = await storage.getApartments();
+      const apt = apts.find(a => a.id === sublease?.apartmentId);
+      const aptName = apt?.name || "Nieznany";
+      const meterLabel = meterType === "electricity" ? "prąd" : meterType === "cold_water" ? "zimna woda" : "ciepła woda";
+      await storage.createNotification({
+        type: "meter_reading_pending",
+        title: "Nowy odczyt licznika do weryfikacji",
+        message: `${aptName}: ${meterLabel} — odczyt ${readingValue} (${readingDate})`,
+        entityType: "meter_reading",
+        entityId: reading.id,
+        isRead: false,
+        targetPanel: null,
+      });
+
       res.json(reading);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });

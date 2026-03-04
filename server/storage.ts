@@ -27,6 +27,7 @@ import {
   subleaseMeterReadings, SubleaseMeterReading, InsertSubleaseMeterReading,
   subleaseMeterSettings, SubleaseMeterSetting, InsertSubleaseMeterSetting,
   subleaseMeterPrices, SubleaseMeterPrice, InsertSubleaseMeterPrice,
+  subleaseElectricityCharges, SubleaseElectricityCharge, InsertSubleaseElectricityCharge,
   mediaSettlementReports, MediaSettlementReport, InsertMediaSettlementReport,
   appUsers, AppUser, InsertAppUser,
   documentCategories, DocumentCategory, InsertDocumentCategory,
@@ -237,11 +238,19 @@ export interface IStorage {
   getMeterReadings(subleaseId: number): Promise<SubleaseMeterReading[]>;
   upsertMeterReading(reading: InsertSubleaseMeterReading): Promise<SubleaseMeterReading>;
   deleteMeterReading(id: number): Promise<void>;
+  updateMeterReadingStatus(id: number, status: string): Promise<void>;
+  getPendingMeterReadings(): Promise<SubleaseMeterReading[]>;
   getMeterSettings(subleaseId: number): Promise<SubleaseMeterSetting[]>;
   upsertMeterSetting(setting: InsertSubleaseMeterSetting): Promise<SubleaseMeterSetting>;
   getMeterPrices(subleaseId: number): Promise<SubleaseMeterPrice[]>;
   createMeterPrice(price: InsertSubleaseMeterPrice): Promise<SubleaseMeterPrice>;
   deleteMeterPrice(id: number): Promise<void>;
+
+  // Sublease Electricity Charges
+  getElectricityCharges(subleaseId: number): Promise<SubleaseElectricityCharge[]>;
+  createElectricityCharge(data: InsertSubleaseElectricityCharge): Promise<SubleaseElectricityCharge>;
+  updateElectricityCharge(id: number, data: Partial<InsertSubleaseElectricityCharge>): Promise<SubleaseElectricityCharge>;
+  deleteElectricityCharge(id: number): Promise<void>;
 
   getMediaSettlementReports(subleaseId: number): Promise<MediaSettlementReport[]>;
   createMediaSettlementReport(report: InsertMediaSettlementReport): Promise<MediaSettlementReport>;
@@ -309,8 +318,8 @@ export interface IStorage {
   deleteInvoice(id: number): Promise<void>;
 
   // Notifications
-  getNotifications(): Promise<Notification[]>;
-  getUnreadNotifications(): Promise<Notification[]>;
+  getNotifications(targetPanel?: string | null): Promise<Notification[]>;
+  getUnreadNotifications(targetPanel?: string | null): Promise<Notification[]>;
   createNotification(data: InsertNotification): Promise<Notification>;
   markNotificationRead(id: number): Promise<void>;
   markAllNotificationsRead(): Promise<void>;
@@ -348,6 +357,7 @@ export interface IStorage {
   getAccountingNotes(subleaseId?: number): Promise<AccountingNote[]>;
   getAccountingNoteByReportId(reportId: number): Promise<AccountingNote | null>;
   createAccountingNote(data: InsertAccountingNote): Promise<AccountingNote>;
+  updateAccountingNoteStatus(id: number, status: string): Promise<AccountingNote>;
   getNextNoteNumber(year: number, month: number): Promise<string>;
 
   // Cost Invoices
@@ -1295,6 +1305,36 @@ export class DatabaseStorage implements IStorage {
     await db.delete(subleaseMeterPrices).where(eq(subleaseMeterPrices.id, id));
   }
 
+  async updateMeterReadingStatus(id: number, status: string): Promise<void> {
+    await db.update(subleaseMeterReadings).set({ status }).where(eq(subleaseMeterReadings.id, id));
+  }
+
+  async getPendingMeterReadings(): Promise<SubleaseMeterReading[]> {
+    return db.select().from(subleaseMeterReadings)
+      .where(eq(subleaseMeterReadings.status, "pending"))
+      .orderBy(desc(subleaseMeterReadings.readingDate));
+  }
+
+  async getElectricityCharges(subleaseId: number): Promise<SubleaseElectricityCharge[]> {
+    return db.select().from(subleaseElectricityCharges)
+      .where(eq(subleaseElectricityCharges.subleaseId, subleaseId))
+      .orderBy(desc(subleaseElectricityCharges.validFrom), subleaseElectricityCharges.chargeName);
+  }
+
+  async createElectricityCharge(data: InsertSubleaseElectricityCharge): Promise<SubleaseElectricityCharge> {
+    const [created] = await db.insert(subleaseElectricityCharges).values(data).returning();
+    return created;
+  }
+
+  async updateElectricityCharge(id: number, data: Partial<InsertSubleaseElectricityCharge>): Promise<SubleaseElectricityCharge> {
+    const [updated] = await db.update(subleaseElectricityCharges).set(data).where(eq(subleaseElectricityCharges.id, id)).returning();
+    return updated;
+  }
+
+  async deleteElectricityCharge(id: number): Promise<void> {
+    await db.delete(subleaseElectricityCharges).where(eq(subleaseElectricityCharges.id, id));
+  }
+
   async getMediaSettlementReports(subleaseId: number): Promise<MediaSettlementReport[]> {
     return db.select().from(mediaSettlementReports)
       .where(eq(mediaSettlementReports.subleaseId, subleaseId))
@@ -1523,12 +1563,24 @@ export class DatabaseStorage implements IStorage {
     await db.delete(invoices).where(eq(invoices.id, id));
   }
 
-  async getNotifications(): Promise<Notification[]> {
-    return db.select().from(notifications).orderBy(desc(notifications.createdAt)).limit(100);
+  async getNotifications(targetPanel?: string | null): Promise<Notification[]> {
+    if (targetPanel === undefined) {
+      return db.select().from(notifications).where(isNull(notifications.targetPanel)).orderBy(desc(notifications.createdAt)).limit(100);
+    }
+    if (targetPanel === null) {
+      return db.select().from(notifications).orderBy(desc(notifications.createdAt)).limit(100);
+    }
+    return db.select().from(notifications).where(eq(notifications.targetPanel, targetPanel)).orderBy(desc(notifications.createdAt)).limit(100);
   }
 
-  async getUnreadNotifications(): Promise<Notification[]> {
-    return db.select().from(notifications).where(eq(notifications.isRead, false)).orderBy(desc(notifications.createdAt));
+  async getUnreadNotifications(targetPanel?: string | null): Promise<Notification[]> {
+    if (targetPanel === undefined) {
+      return db.select().from(notifications).where(and(eq(notifications.isRead, false), isNull(notifications.targetPanel))).orderBy(desc(notifications.createdAt));
+    }
+    if (targetPanel === null) {
+      return db.select().from(notifications).where(eq(notifications.isRead, false)).orderBy(desc(notifications.createdAt));
+    }
+    return db.select().from(notifications).where(and(eq(notifications.isRead, false), eq(notifications.targetPanel, targetPanel))).orderBy(desc(notifications.createdAt));
   }
 
   async createNotification(data: InsertNotification): Promise<Notification> {
@@ -1745,6 +1797,11 @@ export class DatabaseStorage implements IStorage {
   async createAccountingNote(data: InsertAccountingNote): Promise<AccountingNote> {
     const [created] = await db.insert(accountingNotes).values(data).returning();
     return created;
+  }
+
+  async updateAccountingNoteStatus(id: number, status: string): Promise<AccountingNote> {
+    const [updated] = await db.update(accountingNotes).set({ status }).where(eq(accountingNotes.id, id)).returning();
+    return updated;
   }
 
   async getNextNoteNumber(year: number, month: number): Promise<string> {

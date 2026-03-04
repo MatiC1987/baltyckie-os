@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -3321,6 +3321,172 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.get('/api/subleases/:id/electricity-charges', isAuthenticated, async (req, res) => {
+    try {
+      const charges = await storage.getElectricityCharges(Number(req.params.id));
+      res.json(charges);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/subleases/:id/electricity-charges', isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertSubleaseElectricityChargeSchema.parse({ ...req.body, subleaseId: Number(req.params.id) });
+      const created = await storage.createElectricityCharge(parsed);
+      res.status(201).json(created);
+    } catch (err: any) { res.status(400).json({ message: err.message || "Nieprawidłowe dane" }); }
+  });
+
+  app.post('/api/subleases/:id/electricity-charges/bulk', isAuthenticated, async (req, res) => {
+    try {
+      const { charges } = req.body;
+      if (!Array.isArray(charges)) return res.status(400).json({ message: "charges must be an array" });
+      const created = [];
+      for (const charge of charges) {
+        const parsed = insertSubleaseElectricityChargeSchema.parse({ ...charge, subleaseId: Number(req.params.id) });
+        created.push(await storage.createElectricityCharge(parsed));
+      }
+      res.status(201).json(created);
+    } catch (err: any) { res.status(400).json({ message: err.message || "Nieprawidłowe dane" }); }
+  });
+
+  app.put('/api/electricity-charges/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateElectricityCharge(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) { res.status(400).json({ message: err.message || "Błąd aktualizacji" }); }
+  });
+
+  app.delete('/api/electricity-charges/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteElectricityCharge(Number(req.params.id));
+      res.status(204).send();
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/subleases/:id/import-electricity-invoice', isAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const tmpDir = os.tmpdir();
+      const pdfPath = path.join(tmpDir, `invoice_${Date.now()}.pdf`);
+      fs.writeFileSync(pdfPath, req.file.buffer);
+
+      let base64Images: string[] = [];
+      try {
+        const outputPrefix = path.join(tmpDir, `invoice_page_${Date.now()}`);
+        execSync(`pdftoppm -png -r 300 "${pdfPath}" "${outputPrefix}"`, { timeout: 30000 });
+        const pngFiles = fs.readdirSync(tmpDir)
+          .filter(f => f.startsWith(path.basename(outputPrefix)) && f.endsWith('.png'))
+          .sort();
+        for (const pngFile of pngFiles) {
+          const pngPath = path.join(tmpDir, pngFile);
+          const buf = fs.readFileSync(pngPath);
+          base64Images.push(buf.toString('base64'));
+          fs.unlinkSync(pngPath);
+        }
+      } catch (e) {
+        console.error('pdftoppm error:', e);
+      }
+      fs.unlinkSync(pdfPath);
+
+      if (base64Images.length === 0) {
+        return res.status(400).json({ message: "Nie udało się przetworzyć PDF" });
+      }
+
+      const openai = new OpenAI();
+      const content: any[] = [
+        {
+          type: "text",
+          text: `Analizujesz polską fakturę VAT od operatora energii elektrycznej. Wyciągnij WSZYSTKIE pozycje opłat z sekcji rozliczeniowej.
+
+Dla każdej pozycji podaj:
+- chargeName: nazwa opłaty (np. "Energia czynna", "Opłata sieciowa zmienna", "Opłata dystrybucyjna stała", "Akcyza", "Opłata jakościowa", "Opłata OZE", "Opłata kogeneracyjna", "Opłata abonamentowa", "Opłata mocowa")
+- chargeType: "variable" jeśli opłata jest za kWh/MWh, "fixed" jeśli jest za miesiąc/okres rozliczeniowy
+- unitPrice: cena jednostkowa netto (jako liczba, np. 0.4521)
+- unit: "kWh" dla zmiennych, "mc" dla stałych
+- vatRate: stawka VAT w % (np. 23)
+
+WAŻNE:
+- Ignoruj sekcję "Rozliczenie energii wprowadzonej do sieci" (prosument)
+- Podawaj ceny NETTO (bez VAT)
+- Jeśli cena jest za MWh, przelicz na kWh (podziel przez 1000)
+
+Odpowiedz TYLKO prawidłowym JSON w formacie:
+{"charges": [...], "vatRate": 23}`
+        }
+      ];
+      for (const img of base64Images) {
+        content.push({
+          type: "image_url",
+          image_url: { url: `data:image/png;base64,${img}`, detail: "high" }
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content }],
+        max_tokens: 2000,
+        temperature: 0,
+      });
+
+      const text = response.choices[0]?.message?.content || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(400).json({ message: "AI nie mogło sparsować faktury. Spróbuj dodać stawki ręcznie." });
+      }
+      const parsed = JSON.parse(jsonMatch[0]);
+      res.json(parsed);
+    } catch (err: any) {
+      console.error('Invoice import error:', err);
+      res.status(500).json({ message: err.message || "Błąd importu faktury" });
+    }
+  });
+
+  app.get('/api/pending-meter-readings', isAuthenticated, async (req, res) => {
+    try {
+      const pending = await storage.getPendingMeterReadings();
+      const subleaseIds = [...new Set(pending.map(r => r.subleaseId))];
+      const result: any[] = [];
+      for (const sid of subleaseIds) {
+        const sublease = await storage.getSublease(sid);
+        if (!sublease) continue;
+        const apts = await storage.getApartments();
+        const apt = apts.find(a => a.id === sublease.apartmentId);
+        const readings = pending.filter(r => r.subleaseId === sid);
+        result.push({
+          subleaseId: sid,
+          apartmentName: apt?.name || "Nieznany",
+          tenantName: sublease.tenantType === "firma"
+            ? (sublease.companyName || "")
+            : `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim(),
+          readings,
+        });
+      }
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/meter-readings/confirm', isAuthenticated, async (req, res) => {
+    try {
+      const { readingIds } = req.body;
+      if (!Array.isArray(readingIds)) return res.status(400).json({ message: "readingIds must be an array" });
+      for (const id of readingIds) {
+        await storage.updateMeterReadingStatus(id, "confirmed");
+      }
+      res.json({ success: true, confirmed: readingIds.length });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/meter-readings/settle', isAuthenticated, async (req, res) => {
+    try {
+      const { readingIds } = req.body;
+      if (!Array.isArray(readingIds)) return res.status(400).json({ message: "readingIds must be an array" });
+      for (const id of readingIds) {
+        await storage.updateMeterReadingStatus(id, "settled");
+      }
+      res.json({ success: true, settled: readingIds.length });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get('/api/subleases/:id/settlement-reports', isAuthenticated, async (req, res) => {
     const reports = await storage.getMediaSettlementReports(Number(req.params.id));
     res.json(reports);
@@ -3821,7 +3987,7 @@ export async function registerRoutes(
         return res.json(existing);
       }
 
-      const report = (await storage.getSettlementReports(subleaseId)).find(r => r.id === reportId);
+      const report = (await storage.getMediaSettlementReports(subleaseId)).find(r => r.id === reportId);
       if (!report) return res.status(404).json({ message: "Raport nie znaleziony" });
 
       const sublease = await storage.getSublease(subleaseId);
@@ -3936,26 +4102,56 @@ export async function registerRoutes(
       doc.text(rd(`Okres: ${formatDatePL(report.periodFrom)} - ${formatDatePL(report.periodTo)}`), 14, startY + 7);
 
       const rows: string[][] = [];
+      const hasNewElecFields = report.electricityNetto && Number(report.electricityNetto) > 0;
       if (report.electricityConsumption && Number(report.electricityConsumption) > 0) {
-        rows.push([rd("Energia elektryczna"), `${plnFmt(report.electricityConsumption)} kWh`, `${plnFmt(report.electricityCost)} PLN`]);
+        if (hasNewElecFields) {
+          const vatRate = report.electricityVatRate ? `${plnFmt(report.electricityVatRate)}%` : "23%";
+          rows.push([
+            rd("Energia elektryczna"),
+            `${plnFmt(report.electricityConsumption)} kWh`,
+            `${plnFmt(report.electricityNetto)} PLN`,
+            vatRate,
+            `${plnFmt(report.electricityBrutto)} PLN`,
+          ]);
+        } else {
+          rows.push([
+            rd("Energia elektryczna"),
+            `${plnFmt(report.electricityConsumption)} kWh`,
+            `${plnFmt(report.electricityCost)} PLN`,
+            "",
+            `${plnFmt(report.electricityCost)} PLN`,
+          ]);
+        }
       }
       if (report.coldWaterConsumption && Number(report.coldWaterConsumption) > 0) {
-        rows.push([rd("Woda zimna"), rd(`${plnFmt(report.coldWaterConsumption)} m3`), `${plnFmt(report.coldWaterCost)} PLN`]);
+        rows.push([
+          rd("Woda zimna"),
+          rd(`${plnFmt(report.coldWaterConsumption)} m3`),
+          `${plnFmt(report.coldWaterCost)} PLN`,
+          rd("—"),
+          `${plnFmt(report.coldWaterCost)} PLN`,
+        ]);
       }
       if (report.hotWaterConsumption && Number(report.hotWaterConsumption) > 0) {
-        rows.push([rd("Woda ciepla"), rd(`${plnFmt(report.hotWaterConsumption)} m3`), `${plnFmt(report.hotWaterCost)} PLN`]);
+        rows.push([
+          rd("Woda ciepla"),
+          rd(`${plnFmt(report.hotWaterConsumption)} m3`),
+          `${plnFmt(report.hotWaterCost)} PLN`,
+          rd("—"),
+          `${plnFmt(report.hotWaterCost)} PLN`,
+        ]);
       }
 
       (doc as any).autoTable({
         startY: startY + 12,
-        head: [["Medium", rd("Zuzycie"), "Koszt"]],
+        head: [["Medium", rd("Zuzycie"), "Netto", "VAT", "Brutto"]],
         body: rows,
-        foot: [[rd("RAZEM DO ZAPLATY"), "", `${plnFmt(report.totalCost)} PLN`]],
+        foot: [[rd("RAZEM DO ZAPLATY"), "", "", "", `${plnFmt(report.totalCost)} PLN`]],
         theme: "grid",
         headStyles: { fillColor: [41, 128, 185], fontSize: 9 },
         footStyles: { fillColor: [236, 240, 241], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 9 },
         styles: { fontSize: 9 },
-        columnStyles: { 1: { halign: "right" as const }, 2: { halign: "right" as const } },
+        columnStyles: { 1: { halign: "right" as const }, 2: { halign: "right" as const }, 3: { halign: "center" as const }, 4: { halign: "right" as const } },
         margin: { left: 14, right: 14 },
       });
 
@@ -3992,12 +4188,34 @@ export async function registerRoutes(
 
       const objectPath = `/objects/accounting-notes/${fileName}`;
 
+      const hasElectricity = report.electricityConsumption && Number(report.electricityConsumption) > 0;
+      const hasWater = (report.coldWaterConsumption && Number(report.coldWaterConsumption) > 0) ||
+                       (report.hotWaterConsumption && Number(report.hotWaterConsumption) > 0);
+      const mediaTypes = hasElectricity && hasWater ? "both" : hasElectricity ? "electricity" : "water";
+      const periodDate = new Date(report.periodTo);
+
       const note = await storage.createAccountingNote({
         subleaseId,
         reportId,
         noteNumber,
         objectPath: storagePath,
         fileName,
+        status: "NOWA",
+        apartmentName: aptName,
+        tenantName,
+        mediaTypes,
+        noteMonth: periodDate.getMonth() + 1,
+        noteYear: periodDate.getFullYear(),
+      });
+
+      await storage.createNotification({
+        type: "accounting_note_ready",
+        title: "Nowa nota księgowa do wydrukowania",
+        message: `${aptName} — ${tenantName}: nota ${noteNumber}`,
+        entityType: "accounting_note",
+        entityId: note.id,
+        isRead: false,
+        targetPanel: "recepcja",
       });
 
       res.json(note);
@@ -4027,6 +4245,72 @@ export async function registerRoutes(
       res.send(fileBuffer);
     } catch (err: any) {
       console.error("Error downloading accounting note:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/accounting-notes/:id/status', isAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.body;
+      if (!status || !["NOWA", "WYSŁANA", "ZAKSIĘGOWANA"].includes(status)) {
+        return res.status(400).json({ message: "Nieprawidłowy status" });
+      }
+      const updated = await storage.updateAccountingNoteStatus(Number(req.params.id), status);
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch('/api/accounting-notes/bulk-status', isAuthenticated, async (req, res) => {
+    try {
+      const { noteIds, status } = req.body;
+      if (!Array.isArray(noteIds) || !status || !["NOWA", "WYSŁANA", "ZAKSIĘGOWANA"].includes(status)) {
+        return res.status(400).json({ message: "Nieprawidłowe dane" });
+      }
+      const updated = [];
+      for (const id of noteIds) {
+        updated.push(await storage.updateAccountingNoteStatus(id, status));
+      }
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/accounting-notes/download-zip', isAuthenticated, async (req, res) => {
+    try {
+      const { noteIds } = req.body;
+      if (!Array.isArray(noteIds) || noteIds.length === 0) {
+        return res.status(400).json({ message: "Brak not do pobrania" });
+      }
+      const allNotes = await storage.getAccountingNotes();
+      const selectedNotes = allNotes.filter(n => noteIds.includes(n.id));
+      if (selectedNotes.length === 0) return res.status(404).json({ message: "Nie znaleziono not" });
+
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+
+      for (const note of selectedNotes) {
+        try {
+          const parsedPath = (() => {
+            const p = note.objectPath.startsWith("/") ? note.objectPath.slice(1) : note.objectPath;
+            const parts = p.split("/");
+            return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+          })();
+          const [fileBuffer] = await osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName).download();
+          zip.file(note.fileName, fileBuffer);
+          if (note.status === "NOWA") {
+            await storage.updateAccountingNoteStatus(note.id, "WYSŁANA");
+          }
+        } catch (e) {
+          console.error(`Error downloading note ${note.id}:`, e);
+        }
+      }
+
+      const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="noty_ksiegowe_${new Date().toISOString().split('T')[0]}.zip"`);
+      res.send(zipBuffer);
+    } catch (err: any) {
+      console.error("ZIP download error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -5608,7 +5892,7 @@ export async function registerRoutes(
 
   app.get("/api/notifications", isAuthenticated, async (_req, res) => {
     try {
-      const allNotifications = await storage.getNotifications();
+      const allNotifications = await storage.getNotifications(undefined);
       res.json(allNotifications);
     } catch (err) {
       console.error("Get notifications error:", err);
@@ -5618,7 +5902,7 @@ export async function registerRoutes(
 
   app.get("/api/notifications/unread-count", isAuthenticated, async (_req, res) => {
     try {
-      const unread = await storage.getUnreadNotifications();
+      const unread = await storage.getUnreadNotifications(undefined);
       res.json({ count: unread.length });
     } catch (err) {
       console.error("Get unread count error:", err);

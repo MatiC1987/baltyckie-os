@@ -536,6 +536,7 @@ export const subleaseMeterReadings = pgTable("sublease_meter_readings", {
   yearMonth: text("year_month"),
   readingDate: date("reading_date"),
   reading: numeric("reading", { precision: 12, scale: 3 }),
+  status: text("status").notNull().default("confirmed"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -569,6 +570,20 @@ export const insertSubleaseMeterPriceSchema = createInsertSchema(subleaseMeterPr
 export type SubleaseMeterPrice = typeof subleaseMeterPrices.$inferSelect;
 export type InsertSubleaseMeterPrice = z.infer<typeof insertSubleaseMeterPriceSchema>;
 
+export const subleaseElectricityCharges = pgTable("sublease_electricity_charges", {
+  id: serial("id").primaryKey(),
+  subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
+  chargeName: text("charge_name").notNull(),
+  chargeType: text("charge_type").notNull(),
+  unitPrice: numeric("unit_price", { precision: 12, scale: 4 }).notNull(),
+  validFrom: date("valid_from").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSubleaseElectricityChargeSchema = createInsertSchema(subleaseElectricityCharges).omit({ id: true, createdAt: true });
+export type SubleaseElectricityCharge = typeof subleaseElectricityCharges.$inferSelect;
+export type InsertSubleaseElectricityCharge = z.infer<typeof insertSubleaseElectricityChargeSchema>;
+
 export const mediaSettlementReports = pgTable("media_settlement_reports", {
   id: serial("id").primaryKey(),
   subleaseId: integer("sublease_id").references(() => subleases.id, { onDelete: "cascade" }).notNull(),
@@ -576,6 +591,10 @@ export const mediaSettlementReports = pgTable("media_settlement_reports", {
   periodTo: date("period_to").notNull(),
   electricityConsumption: numeric("electricity_consumption", { precision: 12, scale: 3 }),
   electricityCost: numeric("electricity_cost", { precision: 12, scale: 2 }),
+  electricityFixedCharges: numeric("electricity_fixed_charges", { precision: 12, scale: 2 }),
+  electricityVatRate: numeric("electricity_vat_rate", { precision: 5, scale: 2 }),
+  electricityNetto: numeric("electricity_netto", { precision: 12, scale: 2 }),
+  electricityBrutto: numeric("electricity_brutto", { precision: 12, scale: 2 }),
   coldWaterConsumption: numeric("cold_water_consumption", { precision: 12, scale: 3 }),
   coldWaterCost: numeric("cold_water_cost", { precision: 12, scale: 2 }),
   hotWaterConsumption: numeric("hot_water_consumption", { precision: 12, scale: 3 }),
@@ -809,6 +828,7 @@ export const notifications = pgTable("notifications", {
   entityId: integer("entity_id"),
   isRead: boolean("is_read").default(false),
   dueDate: date("due_date"),
+  targetPanel: text("target_panel"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -879,6 +899,12 @@ export const accountingNotes = pgTable("accounting_notes", {
   noteNumber: text("note_number").notNull(),
   objectPath: text("object_path").notNull(),
   fileName: text("file_name").notNull(),
+  status: text("status").notNull().default("NOWA"),
+  apartmentName: text("apartment_name"),
+  tenantName: text("tenant_name"),
+  mediaTypes: text("media_types"),
+  noteMonth: integer("note_month"),
+  noteYear: integer("note_year"),
   generatedAt: timestamp("generated_at").defaultNow(),
 });
 

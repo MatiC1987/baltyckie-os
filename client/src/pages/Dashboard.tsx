@@ -1208,6 +1208,24 @@ function CompanyBalanceCard({
   );
 }
 
+function PendingReadingsReminder() {
+  const { data: pendingReadings } = useQuery<{ subleaseId: number; readings: any[] }[]>({ queryKey: ["/api/pending-meter-readings"] });
+  const count = pendingReadings?.reduce((s, g) => s + g.readings.length, 0) || 0;
+  if (count === 0) return null;
+  return (
+    <Card className="border-amber-500/50" data-testid="card-pending-readings-reminder">
+      <CardContent className="py-3 px-4">
+        <Link href="/podnajem?tab=media">
+          <div className="flex items-center gap-2 text-sm cursor-pointer hover-elevate" data-testid="reminder-pending-readings">
+            <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+            <span>Odczyty liczników do weryfikacji: <strong>{count}</strong></span>
+          </div>
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
 function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders, expiringTrainings, expiringContracts }: { reservations: Reservation[]; apartments: any[]; isLoading: boolean; reminders?: { expiringExams: { id: number; examName: string; validUntil: string; employeeName: string }[]; overdueCosts: number; overdueSubleasePayments: number; upcomingArrivals: number; expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[]; upcomingInspections?: { id: number; inspectionType: string; nextDate: string; apartmentId: number | null; isOverdue: boolean }[] }; expiringTrainings?: { id: number; name: string; status: string; employeeName: string; expiryDate: string | null }[]; expiringContracts?: { id: number; title: string; employeeName: string; endDate: string | null }[] }) {
   const [sortField, setSortField] = useState<SortField>("endDate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -1261,6 +1279,7 @@ function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminders, exp
 
   return (
     <div className="space-y-3">
+      <PendingReadingsReminder />
       {hasReminders && (
         <Card data-testid="card-reminders">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
