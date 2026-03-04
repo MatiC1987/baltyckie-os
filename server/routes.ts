@@ -4037,7 +4037,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const autoTableModule = require("jspdf-autotable");
       const autoTable = autoTableModule.default || autoTableModule;
       const QRCode = require("qrcode");
-      const doc = new jsPDF();
+      const doc = new jsPDF({ compress: true });
 
       let logoBuffer: Buffer | null = null;
       let logoExt = "png";
@@ -4067,7 +4067,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         const imgFormat = (logoExt === "jpg" || logoExt === "jpeg") ? "JPEG" : "PNG";
         const base64 = logoBuffer.toString("base64");
         const dataUri = `data:image/${logoExt};base64,${base64}`;
-        doc.addImage(dataUri, imgFormat, 14, headerY, 35, 21);
+        doc.addImage(dataUri, imgFormat, 14, headerY, 35, 21, undefined, "FAST");
         headerY += 24;
       }
 
@@ -6966,17 +6966,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         return s.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, c => map[c] || c);
       }
 
-      const doc = new jsPDF();
+      const doc = new jsPDF({ compress: true });
       let y = 15;
 
-      // Company logo
       if (settings?.logoUrl) {
         try {
           const logoResp = await fetch(settings.logoUrl);
           if (logoResp.ok) {
             const logoBuffer = Buffer.from(await logoResp.arrayBuffer());
             const ext = settings.logoUrl.toLowerCase().includes('.png') ? 'PNG' : 'JPEG';
-            doc.addImage(logoBuffer, ext, 14, y, 30, 15);
+            doc.addImage(logoBuffer, ext, 14, y, 30, 15, undefined, "FAST");
           }
         } catch {}
       }
