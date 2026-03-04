@@ -4033,7 +4033,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         ? [companyData.street, companyData.postalCode, companyData.city].filter(Boolean).join(", ")
         : "";
 
-      const jsPDF = (await import("jspdf")).default;
+      const { jsPDF } = await import("jspdf");
       await import("jspdf-autotable");
       const QRCode = (await import("qrcode")).default;
       const doc = new jsPDF();

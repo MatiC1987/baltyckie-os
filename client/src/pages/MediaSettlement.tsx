@@ -1650,7 +1650,9 @@ function SubleaseMediaCard({
           queryClient.invalidateQueries({ queryKey: notesKey });
           toast({ title: "Wygenerowano notę księgową" });
         }
-      } catch {}
+      } catch (noteErr: any) {
+        toast({ title: "Błąd generowania noty księgowej", description: noteErr?.message || "Spróbuj wygenerować notę ręcznie", variant: "destructive" });
+      }
     },
   });
 
