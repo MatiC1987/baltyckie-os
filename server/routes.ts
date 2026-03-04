@@ -4033,9 +4033,9 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         ? [companyData.street, companyData.postalCode, companyData.city].filter(Boolean).join(", ")
         : "";
 
-      const { jsPDF } = await import("jspdf");
-      await import("jspdf-autotable");
-      const QRCode = (await import("qrcode")).default;
+      const { jsPDF } = require("jspdf");
+      require("jspdf-autotable");
+      const QRCode = require("qrcode");
       const doc = new jsPDF();
 
       let logoBuffer: Buffer | null = null;

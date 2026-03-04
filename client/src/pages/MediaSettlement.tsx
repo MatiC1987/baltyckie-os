@@ -1516,6 +1516,16 @@ function SubleaseMediaCard({
         }
       }
     }
+    if (chargesByName.size === 0 && electricityCharges.length > 0) {
+      const earliest = new Map<string, SubleaseElectricityCharge>();
+      for (const charge of electricityCharges) {
+        const existing = earliest.get(charge.chargeName);
+        if (!existing || charge.validFrom < existing.validFrom) {
+          earliest.set(charge.chargeName, charge);
+        }
+      }
+      return Array.from(earliest.values());
+    }
     return Array.from(chargesByName.values());
   }, [electricityCharges]);
 
