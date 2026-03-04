@@ -1854,7 +1854,7 @@ function SubleaseMediaCard({
                       variant="outline"
                       className="h-6 text-xs px-2"
                       data-testid={`button-show-charges-${sublease.id}`}
-                      onClick={() => setChargesOpen(true)}
+                      onClick={() => setChargesDialogOpen(true)}
                     >
                       <FileText className="w-3 h-3 mr-1" />
                       Cennik

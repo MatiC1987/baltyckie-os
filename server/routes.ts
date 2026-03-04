@@ -4049,12 +4049,28 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
           })();
           const [buf] = await osClient.bucket(lp.bucketName).file(lp.objectName).download();
-          const sharp = require("sharp");
-          logoJpegBuffer = await sharp(buf)
-            .resize(300, 180, { fit: "inside", withoutEnlargement: true })
-            .flatten({ background: { r: 255, g: 255, b: 255 } })
-            .jpeg({ quality: 70 })
-            .toBuffer();
+          const PNG = require("pngjs").PNG;
+          const jpeg = require("jpeg-js");
+          const png = PNG.sync.read(buf);
+          const w = Math.min(png.width, 300);
+          const scale = w / png.width;
+          const h = Math.round(png.height * scale);
+          const resizedData = Buffer.alloc(w * h * 4);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const sx = Math.floor(x / scale);
+              const sy = Math.floor(y / scale);
+              const si = (sy * png.width + sx) * 4;
+              const di = (y * w + x) * 4;
+              const a = png.data[si + 3] / 255;
+              resizedData[di] = Math.round(png.data[si] * a + 255 * (1 - a));
+              resizedData[di + 1] = Math.round(png.data[si + 1] * a + 255 * (1 - a));
+              resizedData[di + 2] = Math.round(png.data[si + 2] * a + 255 * (1 - a));
+              resizedData[di + 3] = 255;
+            }
+          }
+          const jpegData = jpeg.encode({ data: resizedData, width: w, height: h }, 70);
+          logoJpegBuffer = jpegData.data;
         } catch (e) { console.error("Logo load error:", e); }
       }
 
@@ -6975,13 +6991,34 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
           const logoResp = await fetch(settings.logoUrl);
           if (logoResp.ok) {
             const rawLogoBuffer = Buffer.from(await logoResp.arrayBuffer());
-            const sharp = require("sharp");
-            const jpegBuf = await sharp(rawLogoBuffer)
-              .resize(300, 150, { fit: "inside", withoutEnlargement: true })
-              .flatten({ background: { r: 255, g: 255, b: 255 } })
-              .jpeg({ quality: 70 })
-              .toBuffer();
-            doc.addImage(jpegBuf, "JPEG", 14, y, 30, 15);
+            const isPng = settings.logoUrl.toLowerCase().includes('.png');
+            let imgBuf = rawLogoBuffer;
+            let imgFmt: string = isPng ? "PNG" : "JPEG";
+            if (isPng) {
+              try {
+                const PNG = require("pngjs").PNG;
+                const jpegMod = require("jpeg-js");
+                const png = PNG.sync.read(rawLogoBuffer);
+                const sw = Math.min(png.width, 300);
+                const sc = sw / png.width;
+                const sh = Math.round(png.height * sc);
+                const rd2 = Buffer.alloc(sw * sh * 4);
+                for (let py = 0; py < sh; py++) {
+                  for (let px = 0; px < sw; px++) {
+                    const sox = Math.floor(px / sc), soy = Math.floor(py / sc);
+                    const si2 = (soy * png.width + sox) * 4, di2 = (py * sw + px) * 4;
+                    const al = png.data[si2 + 3] / 255;
+                    rd2[di2] = Math.round(png.data[si2] * al + 255 * (1 - al));
+                    rd2[di2 + 1] = Math.round(png.data[si2 + 1] * al + 255 * (1 - al));
+                    rd2[di2 + 2] = Math.round(png.data[si2 + 2] * al + 255 * (1 - al));
+                    rd2[di2 + 3] = 255;
+                  }
+                }
+                imgBuf = jpegMod.encode({ data: rd2, width: sw, height: sh }, 70).data;
+                imgFmt = "JPEG";
+              } catch (convErr) { console.error("PNG→JPEG conversion failed, using raw:", convErr); }
+            }
+            doc.addImage(imgBuf, imgFmt, 14, y, 30, 15);
           }
         } catch (e) { console.error("Logo load error:", e); }
       }

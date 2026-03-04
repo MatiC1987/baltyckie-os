@@ -30,6 +30,8 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
+  "pngjs",
+  "jpeg-js",
 ];
 
 async function buildAll() {
