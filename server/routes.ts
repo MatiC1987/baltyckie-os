@@ -11542,6 +11542,75 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post("/api/legal-case-events/:id/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      const [event] = await db.select().from(legalCaseEvents).where(eq(legalCaseEvents.id, eventId));
+      if (!event) return res.status(404).json({ message: "Zdarzenie nie znalezione" });
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+
+      const fileName = req.file.originalname;
+      const objectPath = `legal-cases/events/${eventId}/${Date.now()}_${fileName}`;
+
+      const { Client } = await import("@replit/object-storage");
+      const client = new Client();
+      await client.uploadFromBytes(objectPath, req.file.buffer);
+
+      const currentUrls = event.documentUrls || [];
+      const updatedUrls = [...currentUrls, objectPath];
+      await db.update(legalCaseEvents).set({ documentUrls: updatedUrls }).where(eq(legalCaseEvents.id, eventId));
+      await db.update(legalCases).set({ updatedAt: new Date() }).where(eq(legalCases.id, event.legalCaseId));
+
+      res.json({ objectPath, fileName });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/legal-case-events/:id/attachments", isAuthenticated, async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      const { objectPath } = req.body;
+      if (!objectPath) return res.status(400).json({ message: "Brak ścieżki pliku" });
+
+      const [event] = await db.select().from(legalCaseEvents).where(eq(legalCaseEvents.id, eventId));
+      if (!event) return res.status(404).json({ message: "Zdarzenie nie znalezione" });
+
+      const updatedUrls = (event.documentUrls || []).filter((u: string) => u !== objectPath);
+      await db.update(legalCaseEvents).set({ documentUrls: updatedUrls }).where(eq(legalCaseEvents.id, eventId));
+
+      try {
+        const { Client } = await import("@replit/object-storage");
+        const client = new Client();
+        await client.delete(objectPath);
+      } catch {}
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/legal-case-files", isAuthenticated, async (req: any, res) => {
+    try {
+      const objectPath = req.query.path as string;
+      if (!objectPath || !objectPath.startsWith("legal-cases/")) {
+        return res.status(400).json({ message: "Nieprawidłowa ścieżka" });
+      }
+      const { Client } = await import("@replit/object-storage");
+      const client = new Client();
+      const result = await client.downloadAsBytes(objectPath);
+      if (!result.ok) return res.status(404).json({ message: "Plik nie znaleziony" });
+      const fileName = objectPath.split("/").pop() || "file";
+      const cleanName = fileName.replace(/^\d+_/, "");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(cleanName)}"`);
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.send(Buffer.from(result.value));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/legal-cases/:id/documents", isAuthenticated, upload.single("file"), async (req: any, res) => {
     try {
       const legalCaseId = parseInt(req.params.id);
