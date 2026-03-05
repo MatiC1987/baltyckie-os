@@ -96,8 +96,10 @@ const customCollisionDetection: CollisionDetection = (args) => {
 
   if (isDraggingProject) {
     const pointerHits = pointerWithin(args);
+    const areaHit = pointerHits.find(c => String(c.id).startsWith("droppable-area-"));
     const sortableHit = pointerHits.find(c => String(c.id).startsWith("sortable-project-"));
     if (sortableHit) return [sortableHit];
+    if (areaHit) return [areaHit];
     return closestCenter(args);
   }
 
@@ -542,6 +544,33 @@ export function TasksCore() {
     toast({ title: "Obszar usunięty" });
   }, [isAreaView, view, projects, updateProject, toast]);
 
+  const handleSidebarAreaRename = useCallback((oldName: string, newName: string) => {
+    const existingAreas = new Set(projects.filter(p => !p.archived && p.area).map(p => p.area!));
+    if (existingAreas.has(newName) && newName !== oldName) {
+      toast({ title: "Taka przestrzeń już istnieje", variant: "destructive" });
+      return;
+    }
+    const areaProjects = projects.filter(p => p.area === oldName);
+    areaProjects.forEach(p => {
+      updateProject.mutate({ id: p.id, data: { area: newName } });
+    });
+    if (isAreaView && (view as { area: string }).area === oldName) {
+      setView({ area: newName });
+    }
+    toast({ title: "Nazwa zmieniona" });
+  }, [projects, updateProject, isAreaView, view, toast]);
+
+  const handleSidebarAreaDelete = useCallback((areaName: string) => {
+    const areaProjects = projects.filter(p => p.area === areaName);
+    areaProjects.forEach(p => {
+      updateProject.mutate({ id: p.id, data: { area: null } });
+    });
+    if (isAreaView && (view as { area: string }).area === areaName) {
+      setView("inbox");
+    }
+    toast({ title: "Przestrzeń usunięta" });
+  }, [projects, updateProject, isAreaView, view, toast]);
+
   const handleInlineSubmit = useCallback((data: Record<string, unknown>) => {
     createTask.mutate(data);
   }, [createTask]);
@@ -668,15 +697,29 @@ export function TasksCore() {
     const activeId = String(active.id);
     const overId = String(over.id);
 
+    if (activeId.startsWith("sortable-project-") && overId.startsWith("droppable-area-")) {
+      const activeProjectId = Number(activeId.replace("sortable-project-", ""));
+      const targetArea = overId.replace("droppable-area-", "");
+      const newArea = targetArea === "ungrouped" ? null : targetArea;
+      const activeProject = projects.find(p => p.id === activeProjectId);
+      if (!activeProject || (activeProject.area || null) === newArea) return;
+      updateProject.mutate({ id: activeProjectId, data: { area: newArea } });
+      toast({ title: newArea ? `Przeniesiono do "${newArea}"` : "Usunięto z przestrzeni" });
+      return;
+    }
+
     if (activeId.startsWith("sortable-project-") && overId.startsWith("sortable-project-")) {
       const activeProjectId = Number(activeId.replace("sortable-project-", ""));
       const overProjectId = Number(overId.replace("sortable-project-", ""));
       const activeProject = projects.find(p => p.id === activeProjectId);
       const overProject = projects.find(p => p.id === overProjectId);
       if (!activeProject || !overProject) return;
-      const groupArea = activeProject.area || "";
-      const overGroupArea = overProject.area || "";
-      if (groupArea !== overGroupArea) return;
+      const sameArea = (activeProject.area || "") === (overProject.area || "");
+      if (!sameArea) {
+        updateProject.mutate({ id: activeProjectId, data: { area: overProject.area || null } });
+        return;
+      }
+      const groupArea = overProject.area || "";
       const groupProjects = projects
         .filter(p => !p.archived && (p.area || "") === groupArea)
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -754,7 +797,7 @@ export function TasksCore() {
       const reordered = arrayMove(sorted, oldIdx, newIdx);
       batchReorderSections.mutate(reordered.map((s, i) => ({ id: s.id, sortOrder: i })));
     }
-  }, [tagFilteredTasks, sortBy, isProjectView, tasks, projects, projectSections, batchReorderTasks, batchReorderSections, batchReorderProjects, updateTask]);
+  }, [tagFilteredTasks, sortBy, isProjectView, tasks, projects, projectSections, batchReorderTasks, batchReorderSections, batchReorderProjects, updateTask, updateProject, toast]);
 
   const VIcon = viewIcon(view);
   const selectedTasksArray = Array.from(selectedTasks);
@@ -1336,6 +1379,7 @@ export function TasksCore() {
             currentUserId={user?.id}
             collapsedAreas={collapsedAreas}
             isDraggingTask={!!activeDragId && activeDragId.startsWith("task-")}
+            isDraggingProject={!!activeDragId && activeDragId.startsWith("sortable-project-")}
             onViewChange={handleViewChange}
             onToggleArea={toggleArea}
             onAddProject={() => setAddProjectOpen(true)}
@@ -1344,6 +1388,8 @@ export function TasksCore() {
             onOpenQuickFind={() => setQuickFindOpen(true)}
             onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
             onDeleteProject={(id) => deleteProject.mutate(id)}
+            onRenameArea={handleSidebarAreaRename}
+            onDeleteArea={handleSidebarAreaDelete}
           />
           <SidebarFooter
             onAddProject={() => setAddProjectOpen(true)}
@@ -1368,6 +1414,7 @@ export function TasksCore() {
               currentUserId={user?.id}
               collapsedAreas={collapsedAreas}
               isDraggingTask={!!activeDragId && activeDragId.startsWith("task-")}
+              isDraggingProject={!!activeDragId && activeDragId.startsWith("sortable-project-")}
               onViewChange={handleViewChange}
               onToggleArea={toggleArea}
               onAddProject={() => setAddProjectOpen(true)}
@@ -1376,6 +1423,8 @@ export function TasksCore() {
               onOpenQuickFind={() => setQuickFindOpen(true)}
               onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
               onDeleteProject={(id) => deleteProject.mutate(id)}
+              onRenameArea={handleSidebarAreaRename}
+              onDeleteArea={handleSidebarAreaDelete}
             />
             <SidebarFooter
               onAddProject={() => setAddProjectOpen(true)}

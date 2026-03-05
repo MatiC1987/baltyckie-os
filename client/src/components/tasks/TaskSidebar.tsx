@@ -52,6 +52,26 @@ function SmartViewDroppable({ id, isInbox, isDraggingTask, children }: { id: str
   );
 }
 
+function AreaDropTarget({ area, isDraggingProject, children }: { area: string; isDraggingProject?: boolean; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `droppable-area-${area}` });
+  const dropHighlight = isDraggingProject && isOver ? "ring-2 ring-emerald-400 bg-emerald-500/10 rounded-lg" : "";
+  return (
+    <div ref={setNodeRef} className={`${dropHighlight} transition-all duration-150`} data-testid={`droppable-area-${area}`}>
+      {children}
+    </div>
+  );
+}
+
+function UngroupedDropTarget({ isDraggingProject, children }: { isDraggingProject?: boolean; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: "droppable-area-ungrouped" });
+  const dropHighlight = isDraggingProject && isOver ? "ring-2 ring-blue-400 bg-blue-500/10 rounded-lg" : "";
+  return (
+    <div ref={setNodeRef} className={`${dropHighlight} transition-all duration-150`}>
+      {children}
+    </div>
+  );
+}
+
 function SortableProjectItem({
   project,
   tasks,
@@ -154,7 +174,7 @@ function SortableProjectItem({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
+              className="opacity-0 group-hover:opacity-100 max-md:opacity-40 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
               onClick={(e) => e.stopPropagation()}
               data-testid={`button-project-menu-${project.id}`}
             >
@@ -211,6 +231,7 @@ interface TaskSidebarProps {
   currentUserId?: string;
   collapsedAreas: Set<string>;
   isDraggingTask?: boolean;
+  isDraggingProject?: boolean;
   onViewChange: (view: ViewType) => void;
   onToggleArea: (area: string) => void;
   onAddProject: () => void;
@@ -219,6 +240,8 @@ interface TaskSidebarProps {
   onOpenQuickFind: () => void;
   onUpdateProject: (id: number, data: Record<string, unknown>) => void;
   onDeleteProject: (id: number) => void;
+  onRenameArea: (oldName: string, newName: string) => void;
+  onDeleteArea: (areaName: string) => void;
 }
 
 function StaticProjectItem({
@@ -307,7 +330,7 @@ function StaticProjectItem({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
+              className="opacity-0 group-hover:opacity-100 max-md:opacity-40 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
               onClick={(e) => e.stopPropagation()}
               data-testid={`button-project-menu-${project.id}`}
             >
@@ -407,6 +430,7 @@ export const TaskSidebar = memo(function TaskSidebar({
   currentUserId,
   collapsedAreas,
   isDraggingTask,
+  isDraggingProject,
   onViewChange,
   onToggleArea,
   onAddProject,
@@ -415,9 +439,13 @@ export const TaskSidebar = memo(function TaskSidebar({
   onOpenQuickFind,
   onUpdateProject,
   onDeleteProject,
+  onRenameArea,
+  onDeleteArea,
 }: TaskSidebarProps) {
   const [renamingProjectId, setRenamingProjectId] = useState<number | null>(null);
   const [renamingProjectName, setRenamingProjectName] = useState("");
+  const [renamingAreaName, setRenamingAreaName] = useState<string | null>(null);
+  const [renamingAreaValue, setRenamingAreaValue] = useState("");
 
   const activeProjects = useMemo(() => projects.filter((p) => !p.archived), [projects]);
   const archivedProjects = useMemo(() => projects.filter((p) => p.archived), [projects]);
@@ -526,20 +554,87 @@ export const TaskSidebar = memo(function TaskSidebar({
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
         const isCollapsed = collapsedAreas.has(area);
         const areaActive = isActive({ area });
+        const isRenamingThisArea = renamingAreaName === area;
         return (
-          <div key={area}>
+          <AreaDropTarget key={area} area={area} isDraggingProject={isDraggingProject}>
             <div
               role="button"
               tabIndex={0}
-              className={`flex items-center gap-2 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[36px] rounded-md cursor-pointer ${
+              className={`flex items-center gap-2 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[36px] rounded-md cursor-pointer group/area ${
                 areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"
               }`}
-              onClick={() => onViewChange({ area })}
+              onClick={isRenamingThisArea ? undefined : () => onViewChange({ area })}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onViewChange({ area }); } }}
               data-testid={`button-area-${area}`}
             >
               <Link2 className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-              <span className={`flex-1 text-[12px] font-bold uppercase tracking-wider ${areaActive ? "text-foreground" : "text-foreground/70"}`}>{area}</span>
+              {isRenamingThisArea ? (
+                <Input
+                  value={renamingAreaValue}
+                  onChange={(e) => setRenamingAreaValue(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = renamingAreaValue.trim();
+                    if (trimmed && trimmed !== area && !areas.includes(trimmed)) {
+                      onRenameArea(area, trimmed);
+                    }
+                    setRenamingAreaName(null);
+                    setRenamingAreaValue("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const trimmed = renamingAreaValue.trim();
+                      if (trimmed && trimmed !== area && !areas.includes(trimmed)) {
+                        onRenameArea(area, trimmed);
+                      }
+                      setRenamingAreaName(null);
+                      setRenamingAreaValue("");
+                    }
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      setRenamingAreaName(null);
+                      setRenamingAreaValue("");
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-6 flex-1 text-[12px] font-bold uppercase tracking-wider border-0 bg-transparent shadow-none focus-visible:ring-1 px-1 py-0"
+                  autoFocus
+                  data-testid={`input-rename-area-${area}`}
+                />
+              ) : (
+                <span className={`flex-1 text-[12px] font-bold uppercase tracking-wider ${areaActive ? "text-foreground" : "text-foreground/70"}`}>{area}</span>
+              )}
+              {!isRenamingThisArea && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="opacity-0 group-hover/area:opacity-100 md:max-lg:opacity-0 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150 max-md:opacity-40"
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`button-area-menu-${area}`}
+                    >
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="right">
+                    <DropdownMenuItem
+                      onClick={(e) => { e.stopPropagation(); setRenamingAreaName(area); setRenamingAreaValue(area); }}
+                      data-testid={`menu-rename-area-${area}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-2" />
+                      Zmień nazwę
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => { e.stopPropagation(); onDeleteArea(area); }}
+                      className="text-destructive"
+                      data-testid={`menu-delete-area-${area}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-2" />
+                      Usuń przestrzeń
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleArea(area); }}
                 className="shrink-0 p-0.5 rounded hover:bg-muted/40 transition-colors"
@@ -567,12 +662,12 @@ export const TaskSidebar = memo(function TaskSidebar({
                 />
               </div>
             )}
-          </div>
+          </AreaDropTarget>
         );
       })}
 
       {ungroupedProjects.length > 0 && (
-        <>
+        <UngroupedDropTarget isDraggingProject={isDraggingProject}>
           {areas.length > 0 && (
             <div className="mt-3 mb-1 mx-1 border-t border-border/20" />
           )}
@@ -587,7 +682,15 @@ export const TaskSidebar = memo(function TaskSidebar({
             allAreas={areas}
             {...renameProps}
           />
-        </>
+        </UngroupedDropTarget>
+      )}
+
+      {ungroupedProjects.length === 0 && areas.length > 0 && isDraggingProject && (
+        <UngroupedDropTarget isDraggingProject={isDraggingProject}>
+          <div className="mt-3 px-2.5 py-2 text-[11px] text-muted-foreground/50 italic">
+            Upuść tutaj aby usunąć z przestrzeni
+          </div>
+        </UngroupedDropTarget>
       )}
 
       {archivedProjects.length > 0 && (
