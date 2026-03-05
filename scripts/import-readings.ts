@@ -5,6 +5,7 @@ import XLSX from 'xlsx';
 
 const LOKAL_TO_SUBLEASE: Record<string, number> = {
   'NA WYDMIE 7/2': 4,
+  'NA WYDMIE 7 /2': 4,
   'NA WYDMIE 8/21': 9,
   'NA WYDMIE 7/23': 9,
   'NA WYDMIE 8/32': 3,
@@ -12,6 +13,10 @@ const LOKAL_TO_SUBLEASE: Record<string, number> = {
   'NA WYDMIE 8/36': 15,
   'NA WYDMIE 8/26': 15,
 };
+
+function normalizeLokal(lokal: string): string {
+  return lokal.replace(/\s+/g, ' ').trim();
+}
 
 function excelDate(serial: number): string {
   const d = new Date((serial - 25569) * 86400000);
@@ -135,9 +140,14 @@ function parseWater(wb: XLSX.WorkBook): WaterRow[] {
     const from = excelDate(r[3]);
     if (from < '2025-09-01') continue;
 
+    const lokal = normalizeLokal(String(r[2]));
+    if (!LOKAL_TO_SUBLEASE[lokal]) {
+      console.log(`  [SKIP water] unknown lokal: "${lokal}" (tenant: ${r[0]})`);
+      continue;
+    }
     result.push({
       tenant: r[0],
-      lokal: r[2],
+      lokal,
       from,
       to: excelDate(r[4]),
       coldStart: r[5],
@@ -168,9 +178,14 @@ function parseEnergy(wb: XLSX.WorkBook): EnergyRow[] {
     const toRaw = r[4];
     const to = typeof toRaw === 'number' ? excelDate(toRaw) : from;
 
+    const lokal = normalizeLokal(String(r[2]));
+    if (!LOKAL_TO_SUBLEASE[lokal]) {
+      console.log(`  [SKIP energy] unknown lokal: "${lokal}" (tenant: ${tenant})`);
+      continue;
+    }
     result.push({
       tenant,
-      lokal: r[2],
+      lokal,
       from,
       to,
       elecStart: r[5],

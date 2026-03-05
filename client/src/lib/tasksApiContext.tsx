@@ -110,7 +110,7 @@ export function ZadaniaTasksApiProvider({
         queryFn: zadaniaQueryFn,
         refetchInterval: false,
         refetchOnWindowFocus: false,
-        staleTime: 30 * 1000,
+        staleTime: 60 * 1000,
         retry: false,
       },
       mutations: {

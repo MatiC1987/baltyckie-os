@@ -4,7 +4,7 @@ import { db } from "./db";
 import { storage } from "./storage";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { eq, or, sql } from "drizzle-orm";
+import { eq, or, sql, inArray } from "drizzle-orm";
 import {
   taskPanelUsers, tasks as tasksTable, taskProjects, taskSections,
   taskChecklistItems, employees,
@@ -87,17 +87,37 @@ export function registerTaskPanelRoutes(app: Express) {
   app.get('/api/task-panel/tasks', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const user = req.taskPanelUser;
+      const includeChecklists = req.query.include === 'checklists';
+
+      let allTasks: any[];
       if (user.isAdmin) {
-        const allTasks = await db.select().from(tasksTable);
-        return res.json(allTasks);
+        allTasks = await db.select().from(tasksTable);
+      } else {
+        const virtualId = getEmployeeVirtualId(user.employeeId);
+        allTasks = await db.select().from(tasksTable).where(
+          or(
+            eq(tasksTable.userId, virtualId),
+            sql`${virtualId} = ANY(${tasksTable.sharedWith})`
+          )
+        );
       }
-      const virtualId = getEmployeeVirtualId(user.employeeId);
-      const allTasks = await db.select().from(tasksTable).where(
-        or(
-          eq(tasksTable.userId, virtualId),
-          sql`${virtualId} = ANY(${tasksTable.sharedWith})`
-        )
-      );
+
+      if (includeChecklists && allTasks.length > 0) {
+        const taskIds = allTasks.map((t: any) => t.id);
+        const allChecklists = await db.select().from(taskChecklistItems)
+          .where(inArray(taskChecklistItems.taskId, taskIds));
+        const checklistMap = new Map<number, any[]>();
+        for (const item of allChecklists) {
+          const list = checklistMap.get(item.taskId) || [];
+          list.push(item);
+          checklistMap.set(item.taskId, list);
+        }
+        allTasks = allTasks.map((t: any) => ({
+          ...t,
+          checklistItems: checklistMap.get(t.id) || [],
+        }));
+      }
+
       res.json(allTasks);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -282,13 +302,24 @@ export function registerTaskPanelRoutes(app: Express) {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids)) return res.status(400).json({ message: 'ids must be array' });
+      const numericIds = ids.map(Number);
       const user = req.taskPanelUser;
-      for (const id of ids) {
-        if (!(await verifyTaskAccess(user, Number(id)))) continue;
-        await db.delete(taskChecklistItems).where(eq(taskChecklistItems.taskId, Number(id)));
-        await db.delete(tasksTable).where(eq(tasksTable.id, Number(id)));
+
+      let allowedIds: number[];
+      if (user.isAdmin) {
+        allowedIds = numericIds;
+      } else {
+        const virtualId = getEmployeeVirtualId(user.employeeId);
+        const accessibleTasks = await db.select({ id: tasksTable.id }).from(tasksTable)
+          .where(sql`${tasksTable.id} = ANY(${numericIds}) AND (${tasksTable.userId} = ${virtualId} OR ${virtualId} = ANY(${tasksTable.sharedWith}))`);
+        allowedIds = accessibleTasks.map(t => t.id);
       }
-      res.json({ success: true, deleted: ids.length });
+
+      if (allowedIds.length > 0) {
+        await db.delete(taskChecklistItems).where(inArray(taskChecklistItems.taskId, allowedIds));
+        await db.delete(tasksTable).where(inArray(tasksTable.id, allowedIds));
+      }
+      res.json({ success: true, deleted: allowedIds.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -298,17 +329,27 @@ export function registerTaskPanelRoutes(app: Express) {
     try {
       const { ids, projectId, sectionId } = req.body;
       if (!Array.isArray(ids)) return res.status(400).json({ message: 'ids must be array' });
+      const numericIds = ids.map(Number);
       const user = req.taskPanelUser;
-      const results = [];
-      for (const id of ids) {
-        if (!(await verifyTaskAccess(user, Number(id)))) continue;
-        const updated = await storage.updateTask(Number(id), {
+
+      let allowedIds: number[];
+      if (user.isAdmin) {
+        allowedIds = numericIds;
+      } else {
+        const virtualId = getEmployeeVirtualId(user.employeeId);
+        const accessibleTasks = await db.select({ id: tasksTable.id }).from(tasksTable)
+          .where(sql`${tasksTable.id} = ANY(${numericIds}) AND (${tasksTable.userId} = ${virtualId} OR ${virtualId} = ANY(${tasksTable.sharedWith}))`);
+        allowedIds = accessibleTasks.map(t => t.id);
+      }
+
+      if (allowedIds.length > 0) {
+        const results = await db.update(tasksTable).set({
           projectId: projectId ?? null,
           sectionId: sectionId ?? null,
-        });
-        results.push(updated);
+        }).where(inArray(tasksTable.id, allowedIds)).returning();
+        return res.json(results);
       }
-      res.json(results);
+      res.json([]);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -317,13 +358,39 @@ export function registerTaskPanelRoutes(app: Express) {
   app.post('/api/task-panel/tasks/batch-reorder', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const { items } = req.body;
-      if (!Array.isArray(items)) return res.status(400).json({ message: 'items must be array' });
-      for (const item of items) {
+      if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'items must be non-empty array' });
+
+      const validated = items.map((i: any) => ({
+        id: Number(i.id),
+        sortOrder: Number(i.sortOrder),
+        sectionId: i.sectionId !== undefined ? (i.sectionId === null ? null : Number(i.sectionId)) : undefined,
+        projectId: i.projectId !== undefined ? (i.projectId === null ? null : Number(i.projectId)) : undefined,
+      })).filter(i => Number.isFinite(i.id) && Number.isFinite(i.sortOrder));
+
+      if (validated.length === 0) return res.status(400).json({ message: 'no valid items' });
+
+      const user = req.taskPanelUser;
+      let allowedIds: number[];
+      const numericIds = validated.map(i => i.id);
+      if (user.isAdmin) {
+        allowedIds = numericIds;
+      } else {
+        const virtualId = getEmployeeVirtualId(user.employeeId);
+        const accessible = await db.select({ id: tasksTable.id }).from(tasksTable)
+          .where(sql`${tasksTable.id} = ANY(${numericIds}) AND (${tasksTable.userId} = ${virtualId} OR ${virtualId} = ANY(${tasksTable.sharedWith}))`);
+        allowedIds = accessible.map(t => t.id);
+      }
+
+      const allowed = validated.filter(i => allowedIds.includes(i.id));
+      if (allowed.length === 0) return res.json({ success: true });
+
+      for (const item of allowed) {
         const update: Record<string, unknown> = { sortOrder: item.sortOrder };
         if (item.sectionId !== undefined) update.sectionId = item.sectionId;
         if (item.projectId !== undefined) update.projectId = item.projectId;
-        await storage.updateTask(Number(item.id), update);
+        await db.update(tasksTable).set(update).where(eq(tasksTable.id, item.id));
       }
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -363,9 +430,12 @@ export function registerTaskPanelRoutes(app: Express) {
   app.post('/api/task-panel/projects/batch-reorder', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const { items } = req.body;
-      if (!Array.isArray(items)) return res.status(400).json({ message: 'items must be array' });
+      if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'items must be non-empty array' });
       for (const item of items) {
-        await storage.updateTaskProject(Number(item.id), { sortOrder: item.sortOrder });
+        const id = Number(item.id);
+        const sortOrder = Number(item.sortOrder);
+        if (!Number.isFinite(id) || !Number.isFinite(sortOrder)) continue;
+        await db.update(taskProjects).set({ sortOrder }).where(eq(taskProjects.id, id));
       }
       res.json({ success: true });
     } catch (err: any) {
@@ -406,9 +476,12 @@ export function registerTaskPanelRoutes(app: Express) {
   app.post('/api/task-panel/sections/batch-reorder', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const { items } = req.body;
-      if (!Array.isArray(items)) return res.status(400).json({ message: 'items must be array' });
+      if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'items must be non-empty array' });
       for (const item of items) {
-        await storage.updateTaskSection(Number(item.id), { sortOrder: item.sortOrder });
+        const id = Number(item.id);
+        const sortOrder = Number(item.sortOrder);
+        if (!Number.isFinite(id) || !Number.isFinite(sortOrder)) continue;
+        await db.update(taskSections).set({ sortOrder }).where(eq(taskSections.id, id));
       }
       res.json({ success: true });
     } catch (err: any) {
@@ -420,14 +493,26 @@ export function registerTaskPanelRoutes(app: Express) {
     try {
       const { taskIds, employeeIds } = req.body;
       if (!Array.isArray(taskIds) || !Array.isArray(employeeIds)) return res.status(400).json({ message: "taskIds and employeeIds must be arrays" });
+      const numericTaskIds = taskIds.map(Number).filter(Number.isFinite);
       const virtualIds = employeeIds.map((eid: number) => `employee-${eid}`);
+      const user = req.taskPanelUser;
+
+      let accessFilter;
+      if (user.isAdmin) {
+        accessFilter = inArray(tasksTable.id, numericTaskIds);
+      } else {
+        const virtualId = getEmployeeVirtualId(user.employeeId);
+        accessFilter = sql`${tasksTable.id} = ANY(${numericTaskIds}) AND (${tasksTable.userId} = ${virtualId} OR ${virtualId} = ANY(${tasksTable.sharedWith}))`;
+      }
+
+      const existingTasks = await db.select({ id: tasksTable.id, sharedWith: tasksTable.sharedWith })
+        .from(tasksTable).where(accessFilter);
+
       const results = [];
-      for (const id of taskIds) {
-        const task = await storage.getTask(Number(id));
-        if (!task) continue;
+      for (const task of existingTasks) {
         const current = task.sharedWith || [];
         const merged = Array.from(new Set([...current.filter((s: string) => !s.startsWith("employee-")), ...virtualIds]));
-        const updated = await storage.updateTask(Number(id), { sharedWith: merged });
+        const [updated] = await db.update(tasksTable).set({ sharedWith: merged }).where(eq(tasksTable.id, task.id)).returning();
         results.push(updated);
       }
       res.json(results);
@@ -440,14 +525,12 @@ export function registerTaskPanelRoutes(app: Express) {
     try {
       const { taskIds, completed } = req.body;
       if (!Array.isArray(taskIds)) return res.status(400).json({ message: "taskIds must be array" });
-      const results = [];
-      for (const id of taskIds) {
-        const updated = await storage.updateTask(Number(id), {
-          completed: completed !== false,
-          completedAt: completed !== false ? new Date() : null,
-        });
-        results.push(updated);
-      }
+      const numericIds = taskIds.map(Number);
+      const isCompleted = completed !== false;
+      const results = await db.update(tasksTable).set({
+        completed: isCompleted,
+        completedAt: isCompleted ? new Date() : null,
+      }).where(inArray(tasksTable.id, numericIds)).returning();
       res.json(results);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -458,11 +541,9 @@ export function registerTaskPanelRoutes(app: Express) {
     try {
       const { taskIds, tags } = req.body;
       if (!Array.isArray(taskIds) || !Array.isArray(tags)) return res.status(400).json({ message: "taskIds and tags must be arrays" });
-      const results = [];
-      for (const id of taskIds) {
-        const updated = await storage.updateTask(Number(id), { tags });
-        results.push(updated);
-      }
+      const numericIds = taskIds.map(Number);
+      const results = await db.update(tasksTable).set({ tags })
+        .where(inArray(tasksTable.id, numericIds)).returning();
       res.json(results);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -473,11 +554,9 @@ export function registerTaskPanelRoutes(app: Express) {
     try {
       const { taskIds, deadlineDate } = req.body;
       if (!Array.isArray(taskIds)) return res.status(400).json({ message: "taskIds must be array" });
-      const results = [];
-      for (const id of taskIds) {
-        const updated = await storage.updateTask(Number(id), { deadlineDate: deadlineDate || null });
-        results.push(updated);
-      }
+      const numericIds = taskIds.map(Number);
+      const results = await db.update(tasksTable).set({ deadlineDate: deadlineDate || null })
+        .where(inArray(tasksTable.id, numericIds)).returning();
       res.json(results);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -540,24 +619,51 @@ export async function seedTaskPanelUser() {
   try {
     await db.execute(sql`ALTER TABLE task_panel_users ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false`);
 
-    const [existing] = await db.select().from(taskPanelUsers).where(eq(taskPanelUsers.email, 'jan@baltyckie.pl'));
-    if (!existing) {
-      const hash = await bcrypt.hash('Zadania2025!', 10);
+    const janPassword = 'Zadania2025!';
+    const janHash = await bcrypt.hash(janPassword, 10);
+    const [existingJan] = await db.select().from(taskPanelUsers).where(eq(taskPanelUsers.email, 'jan@baltyckie.pl'));
+    if (existingJan) {
+      const hashMatches = await bcrypt.compare(janPassword, existingJan.passwordHash);
+      if (!hashMatches) {
+        await db.update(taskPanelUsers).set({ passwordHash: janHash, active: true }).where(eq(taskPanelUsers.id, existingJan.id));
+        console.log('[TASK-PANEL] Updated password hash for jan@baltyckie.pl (was stale)');
+      } else {
+        console.log('[TASK-PANEL] jan@baltyckie.pl already exists with correct hash');
+      }
+    } else {
       let employeeId: number | null = null;
       const [emp] = await db.select().from(employees).limit(1);
       if (emp) employeeId = emp.id;
       await db.insert(taskPanelUsers).values({
         name: 'Jan Kowalski',
         email: 'jan@baltyckie.pl',
-        passwordHash: hash,
+        passwordHash: janHash,
         employeeId,
         active: true,
       });
-      console.log('[TASK-PANEL] Seeded default user: jan@baltyckie.pl / Zadania2025!');
+      console.log('[TASK-PANEL] Seeded default user: jan@baltyckie.pl');
     }
 
+    const mcPassword = 'BaltFin2025!MC';
+    const mcHash = await bcrypt.hash(mcPassword, 10);
     const [existingAdmin] = await db.select().from(taskPanelUsers).where(eq(taskPanelUsers.email, 'mateusz.cieslak@baltyckie.pl'));
-    if (!existingAdmin) {
+    if (existingAdmin) {
+      const hashMatches = await bcrypt.compare(mcPassword, existingAdmin.passwordHash);
+      const updates: Record<string, any> = { active: true, isAdmin: true };
+      if (!hashMatches) {
+        updates.passwordHash = mcHash;
+        console.log('[TASK-PANEL] Updated password hash for mateusz.cieslak@baltyckie.pl (was stale)');
+      }
+      if (!existingAdmin.employeeId) {
+        const allEmps = await db.select().from(employees);
+        const mcEmp = allEmps.find((e: any) => e.firstName === 'Mateusz' && e.lastName === 'Cieślak');
+        if (mcEmp) updates.employeeId = mcEmp.id;
+      }
+      await db.update(taskPanelUsers).set(updates).where(eq(taskPanelUsers.id, existingAdmin.id));
+      if (hashMatches) {
+        console.log('[TASK-PANEL] mateusz.cieslak@baltyckie.pl already exists with correct hash, ensured admin+active');
+      }
+    } else {
       let mcEmployeeId: number | null = null;
       const allEmps = await db.select().from(employees);
       const mcEmp = allEmps.find((e: any) => e.firstName === 'Mateusz' && e.lastName === 'Cieślak');
@@ -574,16 +680,15 @@ export async function seedTaskPanelUser() {
         }).returning();
         mcEmployeeId = newEmp.id;
       }
-      const hash = await bcrypt.hash('BaltFin2025!MC', 10);
       await db.insert(taskPanelUsers).values({
         name: 'Mateusz Cieślak',
         email: 'mateusz.cieslak@baltyckie.pl',
-        passwordHash: hash,
+        passwordHash: mcHash,
         employeeId: mcEmployeeId,
         active: true,
         isAdmin: true,
       });
-      console.log('[TASK-PANEL] Seeded admin user: mateusz.cieslak@baltyckie.pl / BaltFin2025!MC');
+      console.log('[TASK-PANEL] Seeded admin user: mateusz.cieslak@baltyckie.pl');
     }
   } catch (e) {
     console.error('[TASK-PANEL] Seed error:', e);
