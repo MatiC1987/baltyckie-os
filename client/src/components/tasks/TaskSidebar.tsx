@@ -1,9 +1,9 @@
-import { memo, useMemo, useCallback } from "react";
+import { memo, useMemo, useCallback, useState } from "react";
 import type { Task, TaskProject, TaskSection } from "@shared/schema";
 import {
   Plus, SlidersHorizontal, FolderPlus, ListPlus, Archive, Circle,
   MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
-  LogOut,
+  LogOut, GripVertical,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -12,6 +12,14 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
 import { useDroppable } from "@dnd-kit/core";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { SMART_VIEWS, computeSidebarCounts, type ViewType } from "./taskUtils";
 
 
@@ -46,7 +54,117 @@ function SmartViewDroppable({ id, isInbox, isDraggingTask, children }: { id: str
   );
 }
 
-function ProjectSidebarItem({
+function SortableProjectItem({
+  project,
+  tasks,
+  isActive,
+  onClick,
+  onArchive,
+  onDelete,
+  isDraggingTask,
+}: {
+  project: TaskProject;
+  tasks: Task[];
+  isActive: boolean;
+  onClick: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  isDraggingTask?: boolean;
+}) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `sidebar-project-${project.id}` });
+  const {
+    attributes, listeners, setNodeRef: setSortRef, transform, transition, isDragging,
+  } = useSortable({ id: `sortable-project-${project.id}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    fontSize: 'var(--tasks-font-size, 13px)',
+  };
+
+  const stats = useMemo(() => {
+    const projectTasks = tasks.filter((t) => t.projectId === project.id && t.parentTaskId === null);
+    const completed = projectTasks.filter(t => t.completed).length;
+    const total = projectTasks.length;
+    return { completed, total, remaining: total - completed };
+  }, [tasks, project.id]);
+
+  const color = project.color || "#5ADBFA";
+  const dropHighlight = isOver && isDraggingTask ? "ring-2 ring-blue-400 bg-blue-500/10" : "";
+
+  return (
+    <div
+      ref={(node) => { setDropRef(node); setSortRef(node); }}
+      style={style}
+      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 cursor-pointer group ${
+        isActive ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
+      } ${dropHighlight}`}
+      onClick={onClick}
+      data-testid={`sidebar-project-${project.id}`}
+    >
+      <button
+        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-1 shrink-0 text-muted-foreground/40 hover:text-muted-foreground/70 touch-none"
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        data-testid={`drag-handle-project-${project.id}`}
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
+      <span className="flex-1 truncate">{project.name}</span>
+      {stats.total > 0 && (
+        <ProgressRing completed={stats.completed} total={stats.total} color={color} />
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`button-project-menu-${project.id}`}
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="right">
+          <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
+            <Archive className="h-3.5 w-3.5 mr-2" />
+            {project.archived ? "Przywróć z archiwum" : "Archiwizuj"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
+            <Trash2 className="h-3.5 w-3.5 mr-2" />
+            Usuń
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+interface TaskSidebarProps {
+  tasks: Task[];
+  projects: TaskProject[];
+  activeView: ViewType;
+  showCounts: boolean;
+  weekStart: 0 | 1;
+  showOverdueInToday: boolean;
+  currentUserId?: string;
+  collapsedAreas: Set<string>;
+  isDraggingTask?: boolean;
+  onViewChange: (view: ViewType) => void;
+  onToggleArea: (area: string) => void;
+  onAddProject: () => void;
+  onAddSection: () => void;
+  onOpenSettings: () => void;
+  onOpenQuickFind: () => void;
+  onUpdateProject: (id: number, data: Record<string, unknown>) => void;
+  onDeleteProject: (id: number) => void;
+  onReorderProjects: (items: { id: number; sortOrder: number }[]) => void;
+}
+
+function StaticProjectItem({
   project,
   tasks,
   isActive,
@@ -116,25 +234,60 @@ function ProjectSidebarItem({
   );
 }
 
-interface TaskSidebarProps {
+function SortableProjectList({
+  projectList,
+  tasks,
+  isActive,
+  onViewChange,
+  onUpdateProject,
+  onDeleteProject,
+  onReorderProjects,
+  isDraggingTask,
+}: {
+  projectList: TaskProject[];
   tasks: Task[];
-  projects: TaskProject[];
-  activeView: ViewType;
-  showCounts: boolean;
-  weekStart: 0 | 1;
-  showOverdueInToday: boolean;
-  currentUserId?: string;
-  collapsedAreas: Set<string>;
-  isDraggingTask?: boolean;
-  onViewChange: (view: ViewType) => void;
-  onToggleArea: (area: string) => void;
-  onAddProject: () => void;
-  onAddSection: () => void;
-  onOpenSettings: () => void;
-  onOpenQuickFind: () => void;
+  isActive: (v: ViewType) => boolean;
+  onViewChange: (v: ViewType) => void;
   onUpdateProject: (id: number, data: Record<string, unknown>) => void;
   onDeleteProject: (id: number) => void;
   onReorderProjects: (items: { id: number; sortOrder: number }[]) => void;
+  isDraggingTask?: boolean;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const sortableIds = useMemo(() => projectList.map(p => `sortable-project-${p.id}`), [projectList]);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = sortableIds.indexOf(String(active.id));
+    const newIdx = sortableIds.indexOf(String(over.id));
+    if (oldIdx === -1 || newIdx === -1) return;
+    const reordered = arrayMove(projectList, oldIdx, newIdx);
+    onReorderProjects(reordered.map((p, i) => ({ id: p.id, sortOrder: i })));
+  }, [sortableIds, projectList, onReorderProjects]);
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+        {projectList.map((p) => (
+          <SortableProjectItem
+            key={p.id}
+            project={p}
+            tasks={tasks}
+            isActive={isActive({ projectId: p.id })}
+            onClick={() => onViewChange({ projectId: p.id })}
+            onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
+            onDelete={() => onDeleteProject(p.id)}
+            isDraggingTask={isDraggingTask}
+          />
+        ))}
+      </SortableContext>
+    </DndContext>
+  );
 }
 
 export const TaskSidebar = memo(function TaskSidebar({
@@ -260,19 +413,18 @@ export const TaskSidebar = memo(function TaskSidebar({
                 <span className={`text-[11px] font-semibold uppercase tracking-widest ${areaActive ? "text-foreground" : "text-muted-foreground/60"}`}>{area}</span>
               </button>
             </div>
-            {!isCollapsed &&
-              areaProjects.map((p) => (
-                <ProjectSidebarItem
-                  key={p.id}
-                  project={p}
-                  tasks={tasks}
-                  isActive={isActive({ projectId: p.id })}
-                  onClick={() => onViewChange({ projectId: p.id })}
-                  onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
-                  onDelete={() => onDeleteProject(p.id)}
-                  isDraggingTask={isDraggingTask}
-                />
-              ))}
+            {!isCollapsed && (
+              <SortableProjectList
+                projectList={areaProjects}
+                tasks={tasks}
+                isActive={isActive}
+                onViewChange={onViewChange}
+                onUpdateProject={onUpdateProject}
+                onDeleteProject={onDeleteProject}
+                onReorderProjects={onReorderProjects}
+                isDraggingTask={isDraggingTask}
+              />
+            )}
           </div>
         );
       })}
@@ -284,18 +436,16 @@ export const TaskSidebar = memo(function TaskSidebar({
               <div className="flex-1 border-t border-border/30" />
             </div>
           )}
-          {ungroupedProjects.map((p) => (
-            <ProjectSidebarItem
-              key={p.id}
-              project={p}
-              tasks={tasks}
-              isActive={isActive({ projectId: p.id })}
-              onClick={() => onViewChange({ projectId: p.id })}
-              onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
-              onDelete={() => onDeleteProject(p.id)}
-              isDraggingTask={isDraggingTask}
-            />
-          ))}
+          <SortableProjectList
+            projectList={ungroupedProjects}
+            tasks={tasks}
+            isActive={isActive}
+            onViewChange={onViewChange}
+            onUpdateProject={onUpdateProject}
+            onDeleteProject={onDeleteProject}
+            onReorderProjects={onReorderProjects}
+            isDraggingTask={isDraggingTask}
+          />
         </>
       )}
 
@@ -306,7 +456,7 @@ export const TaskSidebar = memo(function TaskSidebar({
             Archiwum
           </div>
           {archivedProjects.map((p) => (
-            <ProjectSidebarItem
+            <StaticProjectItem
               key={p.id}
               project={p}
               tasks={tasks}
