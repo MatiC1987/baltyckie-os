@@ -91,6 +91,16 @@ function SortableSectionItem({ id, children }: { id: string; children: (listener
 }
 
 const customCollisionDetection: CollisionDetection = (args) => {
+  const activeId = String(args.active.id);
+  const isDraggingProject = activeId.startsWith("sortable-project-");
+
+  if (isDraggingProject) {
+    const pointerHits = pointerWithin(args);
+    const sortableHit = pointerHits.find(c => String(c.id).startsWith("sortable-project-"));
+    if (sortableHit) return [sortableHit];
+    return closestCenter(args);
+  }
+
   const pointerCollisions = pointerWithin(args);
   if (pointerCollisions.length > 0) {
     const sidebarHit = pointerCollisions.find(c =>
@@ -638,8 +648,12 @@ export function TasksCore() {
       const sectionId = Number(activeDragId.replace("section-", ""));
       return { type: "section" as const, item: sections.find(s => s.id === sectionId) };
     }
+    if (activeDragId.startsWith("sortable-project-")) {
+      const projectId = Number(activeDragId.replace("sortable-project-", ""));
+      return { type: "project" as const, item: projects.find(p => p.id === projectId) };
+    }
     return null;
-  }, [activeDragId, tasks, sections]);
+  }, [activeDragId, tasks, sections, projects]);
 
   const handleMainDragStart = useCallback((event: DragStartEvent) => {
     setActiveDragId(String(event.active.id));
@@ -746,13 +760,13 @@ export function TasksCore() {
   const showProjectBar = !isProjectView && !isAreaView && view !== "anytime";
 
   const emptyStateConfig: Record<string, { icon: any; title: string; subtitle: string }> = {
-    inbox: { icon: Inbox, title: "Inbox is empty", subtitle: "Press N to add a new to-do" },
-    today: { icon: Star, title: "Nothing for today!", subtitle: "Everything done. Enjoy your day." },
-    upcoming: { icon: CalendarDays, title: "No upcoming to-dos", subtitle: "Plan your future tasks" },
-    anytime: { icon: Layers, title: "No tasks in Anytime", subtitle: "Assign tasks to projects" },
-    someday: { icon: Sparkles, title: "Someday is empty", subtitle: "Move ideas here for later" },
-    logbook: { icon: BookOpen, title: "Logbook is empty", subtitle: "Completed tasks appear here" },
-    project: { icon: null, title: "No tasks in this project", subtitle: "Press N to add" },
+    inbox: { icon: Inbox, title: "Skrzynka jest pusta", subtitle: "Naciśnij N, aby dodać nowe zadanie" },
+    today: { icon: Star, title: "Nic na dziś!", subtitle: "Wszystko zrobione. Miłego dnia." },
+    upcoming: { icon: CalendarDays, title: "Brak nadchodzących zadań", subtitle: "Zaplanuj przyszłe zadania" },
+    anytime: { icon: Layers, title: "Brak zadań w Kiedykolwiek", subtitle: "Przypisz zadania do projektów" },
+    someday: { icon: Sparkles, title: "Kiedyś jest puste", subtitle: "Przenieś tutaj pomysły na później" },
+    logbook: { icon: BookOpen, title: "Dziennik jest pusty", subtitle: "Ukończone zadania pojawią się tutaj" },
+    project: { icon: null, title: "Brak zadań w tym projekcie", subtitle: "Naciśnij N, aby dodać" },
   };
 
   const emptyKey = isProjectView ? "project" : isAreaView ? "area" : (view as string);
@@ -987,7 +1001,7 @@ export function TasksCore() {
                     className={`px-12 py-1.5 text-[12px] text-primary/70 hover:text-primary transition-colors ${isMobile ? 'min-h-[44px] flex items-center' : ''}`}
                     data-testid={`anytime-show-more-${group.projectId}`}
                   >
-                    Show {remaining} more
+                    Pokaż {remaining} więcej
                   </button>
                 )}
               </div>
@@ -1054,8 +1068,8 @@ export function TasksCore() {
           {areaData.projects.length === 0 && (
             <div className="text-center text-muted-foreground/50 py-16" data-testid="text-area-empty">
               <Layers className="h-12 w-12 mx-auto mb-3 opacity-15" />
-              <p className="text-sm font-medium">Brak projektów w tym obszarze</p>
-              <p className="text-xs mt-1 text-muted-foreground/40">Dodaj projekt i przypisz go do tego obszaru</p>
+              <p className="text-sm font-medium">Brak projektów w tej przestrzeni</p>
+              <p className="text-xs mt-1 text-muted-foreground/40">Dodaj projekt i przypisz go do tej przestrzeni</p>
             </div>
           )}
         </div>
@@ -1202,8 +1216,8 @@ export function TasksCore() {
               data-testid="button-toggle-hide-later"
             >
               {hideLater
-                ? `Show ${laterCount} later ${laterCount === 1 ? "item" : "items"}`
-                : "Hide later items"
+                ? `Pokaż ${laterCount} późniejsz${laterCount === 1 ? "e" : "ych"}`
+                : "Ukryj późniejsze"
               }
             </button>
           </div>
@@ -1217,8 +1231,8 @@ export function TasksCore() {
               data-testid="button-toggle-show-logged"
             >
               {showLogged
-                ? "Hide logged items"
-                : `Show ${loggedCount} logged ${loggedCount === 1 ? "item" : "items"}`
+                ? "Ukryj ukończone"
+                : `Pokaż ${loggedCount} ukończon${loggedCount === 1 ? "e" : "ych"}`
               }
             </button>
           </div>
@@ -1281,7 +1295,7 @@ export function TasksCore() {
       data-testid={`button-new-todo-${position}`}
     >
       <div className="h-[18px] w-[18px] rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
-      <span>New To-Do</span>
+      <span>Nowe zadanie</span>
     </button>
   );
 
@@ -1446,19 +1460,19 @@ export function TasksCore() {
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleAreaDelete} className="text-destructive" data-testid="menu-delete-area">
-                      <Trash2 className="h-3.5 w-3.5 mr-2" /> Usuń obszar
+                      <Trash2 className="h-3.5 w-3.5 mr-2" /> Usuń przestrzeń
                     </DropdownMenuItem>
                   </>
                 ) : (
                   <>
                     <DropdownMenuItem onClick={() => setInlineAddVisible(true)} data-testid="menu-add-task">
-                      <Plus className="h-3.5 w-3.5 mr-2" /> New To-Do
+                      <Plus className="h-3.5 w-3.5 mr-2" /> Nowe zadanie
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger data-testid="menu-filter-by-tag">
                         <Tag className="h-3.5 w-3.5 mr-2" />
-                        Filter by Tag
+                        Filtruj po tagu
                         {filterTags.size > 0 && (
                           <span className="ml-auto text-[10px] bg-primary/15 text-primary rounded-full px-1.5 py-0.5 tabular-nums">
                             {filterTags.size}
@@ -1467,7 +1481,7 @@ export function TasksCore() {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent className="w-52 p-2" data-testid="submenu-filter-tags">
                         {availableTags.length === 0 ? (
-                          <p className="text-xs text-muted-foreground/60 px-2 py-3 text-center">No tags in this view</p>
+                          <p className="text-xs text-muted-foreground/60 px-2 py-3 text-center">Brak tagów w tym widoku</p>
                         ) : (
                           <div className="space-y-0.5 max-h-60 overflow-y-auto">
                             {availableTags.map(tag => (
@@ -1598,7 +1612,7 @@ export function TasksCore() {
                 data-testid="button-inline-add"
               >
                 <div className="h-[18px] w-[18px] rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
-                <span>New To-Do</span>
+                <span>Nowe zadanie</span>
               </button>
             )}
           </div>
@@ -1614,6 +1628,12 @@ export function TasksCore() {
               <div className="bg-card border border-border/50 rounded-xl shadow-2xl px-5 py-3 flex items-center gap-2 opacity-95">
                 <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40" />
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70">{(activeDragData.item as TaskSection).name}</span>
+              </div>
+            )}
+            {activeDragData?.type === "project" && activeDragData.item && (
+              <div className="bg-card border border-border/50 rounded-xl shadow-2xl px-5 py-3 flex items-center gap-3 max-w-[220px] opacity-95">
+                <Circle className="h-4 w-4 shrink-0" style={{ color: (activeDragData.item as TaskProject).color || "#5ADBFA", fill: (activeDragData.item as TaskProject).color || "#5ADBFA" }} />
+                <span className="text-[13px] truncate">{(activeDragData.item as TaskProject).name}</span>
               </div>
             )}
           </DragOverlay>
@@ -1674,7 +1694,7 @@ export function TasksCore() {
 
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
               <ArrowRight className="h-3.5 w-3.5" />
-              Move
+              Przenieś
             </Button>
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
               <Trash2 className="h-3.5 w-3.5" />

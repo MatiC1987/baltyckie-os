@@ -616,8 +616,8 @@ export const SidebarFooter = memo(function SidebarFooter({
           >
             <FolderPlus className="h-4 w-4 text-primary" />
             <div className="text-left">
-              <div className="font-medium">New Project</div>
-              <div className="text-[10px] text-muted-foreground">Define a goal, then work towards it one to-do at a time.</div>
+              <div className="font-medium">Nowy Projekt</div>
+              <div className="text-[10px] text-muted-foreground">Wyznacz cel i realizuj go krok po kroku.</div>
             </div>
           </button>
           <button
@@ -627,8 +627,8 @@ export const SidebarFooter = memo(function SidebarFooter({
           >
             <ListPlus className="h-4 w-4 text-emerald-500" />
             <div className="text-left">
-              <div className="font-medium">New Area</div>
-              <div className="text-[10px] text-muted-foreground">Group projects and to-dos based on different responsibilities.</div>
+              <div className="font-medium">Nowa Przestrzeń</div>
+              <div className="text-[10px] text-muted-foreground">Grupuj projekty i zadania według różnych obszarów odpowiedzialności.</div>
             </div>
           </button>
         </PopoverContent>

@@ -210,7 +210,7 @@ export function ProjectDialog({ open, onOpenChange, onSubmit }: { open: boolean;
             <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="mt-1 h-9 w-16 p-1" data-testid="input-project-color" />
           </div>
           <div>
-            <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Obszar (opcjonalnie)</Label>
+            <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Przestrzeń (opcjonalnie)</Label>
             <Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="np. Praca, Dom" className="mt-1" data-testid="input-project-area" />
           </div>
         </div>
