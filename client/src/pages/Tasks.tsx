@@ -844,7 +844,7 @@ export function TasksCore() {
   }, [tagFilteredTasks, sortBy, isProjectView, tasks, projects, projectSections, batchReorderTasks, batchReorderSections, batchReorderProjects, updateTask, updateProject, toast, areaOrder, saveAreaOrder]);
 
   const VIcon = viewIcon(view);
-  const selectedTasksArray = Array.from(selectedTasks);
+  const selectedTasksArray = selectedTasks.size > 0 ? Array.from(selectedTasks) : inlineCardTaskId ? [inlineCardTaskId] : [];
   const showProjectBar = !isProjectView && !isAreaView && view !== "anytime";
 
   const emptyStateConfig: Record<string, { icon: any; title: string; subtitle: string }> = {
@@ -1748,14 +1748,14 @@ export function TasksCore() {
               onSetReminder={(date, time) => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { reminderDate: date, reminderTime: time } })); }}
             >
               <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-when">
-                <CalendarDays className="h-3.5 w-3.5" /> When
+                <CalendarDays className="h-3.5 w-3.5" /> Kiedy
               </Button>
             </WhenPopover>
 
             <Popover onOpenChange={(open) => { if (open) setAssignCheckedIds(new Set()); }}>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-assign">
-                  <UserPlus className="h-3.5 w-3.5" /> Assign
+                  <UserPlus className="h-3.5 w-3.5" /> Przydziel
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="center" side="top" className="w-56 p-2" data-testid="popover-assign">
@@ -1796,7 +1796,7 @@ export function TasksCore() {
               Przenieś
             </Button>
             <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" /> Usuń
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

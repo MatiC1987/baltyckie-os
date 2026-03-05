@@ -165,9 +165,12 @@ export function registerTaskPanelRoutes(app: Express) {
         return res.status(403).json({ message: 'Brak dostępu' });
       }
       const updates: Record<string, any> = {};
-      const allowedFields = ['title', 'notes', 'completed', 'completedAt', 'priority', 'dueDate', 'dueTime', 'tags', 'evening', 'someday', 'deadlineDate', 'recurring', 'sortOrder', 'projectId', 'sectionId', 'sharedWith'];
+      const allowedFields = ['title', 'notes', 'completed', 'completedAt', 'priority', 'dueDate', 'dueTime', 'tags', 'evening', 'someday', 'deadlineDate', 'recurring', 'sortOrder', 'projectId', 'sectionId', 'sharedWith', 'area', 'reminderDate', 'reminderTime', 'parentTaskId'];
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) updates[field] = req.body[field];
+      }
+      if (updates.completedAt && typeof updates.completedAt === 'string') {
+        updates.completedAt = new Date(updates.completedAt);
       }
       if (updates.completed === true && !updates.completedAt) updates.completedAt = new Date();
       if (updates.completed === false) updates.completedAt = null;
