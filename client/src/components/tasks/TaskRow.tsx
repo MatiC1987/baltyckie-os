@@ -115,6 +115,11 @@ export const TaskRow = memo(function TaskRow({
             <Bell className="h-3 w-3 text-amber-400/60 shrink-0" data-testid={`icon-reminder-${task.id}`} />
           )}
         </div>
+        {task.notes && (
+          <div className={`${isMobile ? "text-[11px]" : "text-[10.5px]"} text-muted-foreground/40 mt-0.5 truncate leading-snug`} data-testid={`text-task-notes-${task.id}`}>
+            {task.notes}
+          </div>
+        )}
         {showProjectBar && project && (
           <div className={`${isMobile ? "text-[12px]" : "text-[11px]"} text-muted-foreground/50 mt-0.5 truncate`}>
             {project.name}
@@ -127,6 +132,7 @@ export const TaskRow = memo(function TaskRow({
   return (
     prev.task.id === next.task.id &&
     prev.task.title === next.task.title &&
+    prev.task.notes === next.task.notes &&
     prev.task.completed === next.task.completed &&
     prev.task.priority === next.task.priority &&
     prev.task.dueDate === next.task.dueDate &&
