@@ -269,7 +269,7 @@ export function TasksCore() {
   });
 
   const bulkMove = useMutation({
-    mutationFn: (data: { ids: number[]; projectId: number | null; sectionId: number | null }) =>
+    mutationFn: (data: { ids: number[]; projectId: number | null; sectionId: number | null; clearSchedule?: boolean }) =>
       apiRequest("POST", "/api/tasks/bulk-move", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
@@ -784,7 +784,7 @@ export function TasksCore() {
 
     if (activeId.startsWith("task-") && overId === "sidebar-inbox") {
       const taskId = Number(activeId.replace("task-", ""));
-      updateTask.mutate({ id: taskId, data: { projectId: null, sectionId: null } });
+      updateTask.mutate({ id: taskId, data: { projectId: null, sectionId: null, dueDate: null, evening: false, someday: false } });
       return;
     }
 
@@ -2006,7 +2006,9 @@ export function TasksCore() {
         onOpenChange={setMoveDialogOpen}
         projects={projects}
         sections={sections}
-        onMove={(projectId, sectionId) => bulkMove.mutate({ ids: selectedTasksArray, projectId, sectionId })}
+        onMove={(projectId, sectionId) => {
+          bulkMove.mutate({ ids: selectedTasksArray, projectId, sectionId, clearSchedule: projectId === null });
+        }}
         isPending={bulkMove.isPending}
       />
 

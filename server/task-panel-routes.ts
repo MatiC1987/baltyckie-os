@@ -330,7 +330,7 @@ export function registerTaskPanelRoutes(app: Express) {
 
   app.post('/api/task-panel/tasks/bulk-move', isTaskPanelAuth as any, async (req: any, res) => {
     try {
-      const { ids, projectId, sectionId } = req.body;
+      const { ids, projectId, sectionId, clearSchedule } = req.body;
       if (!Array.isArray(ids)) return res.status(400).json({ message: 'ids must be array' });
       const numericIds = ids.map(Number);
       const user = req.taskPanelUser;
@@ -346,10 +346,16 @@ export function registerTaskPanelRoutes(app: Express) {
       }
 
       if (allowedIds.length > 0) {
-        const results = await db.update(tasksTable).set({
+        const setData: Record<string, any> = {
           projectId: projectId ?? null,
           sectionId: sectionId ?? null,
-        }).where(inArray(tasksTable.id, allowedIds)).returning();
+        };
+        if (clearSchedule) {
+          setData.dueDate = null;
+          setData.evening = false;
+          setData.someday = false;
+        }
+        const results = await db.update(tasksTable).set(setData).where(inArray(tasksTable.id, allowedIds)).returning();
         return res.json(results);
       }
       res.json([]);

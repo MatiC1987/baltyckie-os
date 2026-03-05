@@ -7963,14 +7963,20 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
 
   app.post('/api/tasks/bulk-move', isAuthenticated, async (req, res) => {
     try {
-      const { ids, projectId, sectionId } = req.body;
+      const { ids, projectId, sectionId, clearSchedule } = req.body;
       if (!Array.isArray(ids)) return res.status(400).json({ message: "ids must be array" });
       const results = [];
       for (const id of ids) {
-        const updated = await storage.updateTask(Number(id), {
+        const updateData: Record<string, unknown> = {
           projectId: projectId ?? null,
           sectionId: sectionId ?? null,
-        });
+        };
+        if (clearSchedule) {
+          updateData.dueDate = null;
+          updateData.evening = false;
+          updateData.someday = false;
+        }
+        const updated = await storage.updateTask(Number(id), updateData);
         results.push(updated);
       }
       res.json(results);
