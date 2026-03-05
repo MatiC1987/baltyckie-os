@@ -639,6 +639,26 @@ export function TasksCore() {
     const activeId = String(active.id);
     const overId = String(over.id);
 
+    if (activeId.startsWith("sortable-project-") && overId.startsWith("sortable-project-")) {
+      const activeProjectId = Number(activeId.replace("sortable-project-", ""));
+      const overProjectId = Number(overId.replace("sortable-project-", ""));
+      const activeProject = projects.find(p => p.id === activeProjectId);
+      const overProject = projects.find(p => p.id === overProjectId);
+      if (!activeProject || !overProject) return;
+      const groupArea = activeProject.area || "";
+      const overGroupArea = overProject.area || "";
+      if (groupArea !== overGroupArea) return;
+      const groupProjects = projects
+        .filter(p => !p.archived && (p.area || "") === groupArea)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      const oldIdx = groupProjects.findIndex(p => p.id === activeProjectId);
+      const newIdx = groupProjects.findIndex(p => p.id === overProjectId);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const reordered = arrayMove(groupProjects, oldIdx, newIdx);
+      batchReorderProjects.mutate(reordered.map((p, i) => ({ id: p.id, sortOrder: i })));
+      return;
+    }
+
     if (activeId.startsWith("task-") && overId.startsWith("sidebar-project-")) {
       const taskId = Number(activeId.replace("task-", ""));
       const projectId = Number(overId.replace("sidebar-project-", ""));
@@ -705,7 +725,7 @@ export function TasksCore() {
       const reordered = arrayMove(sorted, oldIdx, newIdx);
       batchReorderSections.mutate(reordered.map((s, i) => ({ id: s.id, sortOrder: i })));
     }
-  }, [tagFilteredTasks, sortBy, isProjectView, tasks, projectSections, batchReorderTasks, batchReorderSections, updateTask]);
+  }, [tagFilteredTasks, sortBy, isProjectView, tasks, projects, projectSections, batchReorderTasks, batchReorderSections, batchReorderProjects, updateTask]);
 
   const VIcon = viewIcon(view);
   const selectedTasksArray = Array.from(selectedTasks);
@@ -1295,7 +1315,6 @@ export function TasksCore() {
             onOpenQuickFind={() => setQuickFindOpen(true)}
             onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
             onDeleteProject={(id) => deleteProject.mutate(id)}
-            onReorderProjects={(items) => batchReorderProjects.mutate(items)}
           />
           <SidebarFooter
             onAddProject={() => setAddProjectOpen(true)}
@@ -1328,7 +1347,6 @@ export function TasksCore() {
               onOpenQuickFind={() => setQuickFindOpen(true)}
               onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
               onDeleteProject={(id) => deleteProject.mutate(id)}
-              onReorderProjects={(items) => batchReorderProjects.mutate(items)}
             />
             <SidebarFooter
               onAddProject={() => setAddProjectOpen(true)}

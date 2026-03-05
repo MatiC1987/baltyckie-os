@@ -14,11 +14,7 @@ import {
 } from "@/components/ui/popover";
 import { useDroppable } from "@dnd-kit/core";
 import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove,
+  SortableContext, verticalListSortingStrategy, useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { SMART_VIEWS, computeSidebarCounts, type ViewType } from "./taskUtils";
@@ -199,7 +195,6 @@ interface TaskSidebarProps {
   onOpenQuickFind: () => void;
   onUpdateProject: (id: number, data: Record<string, unknown>) => void;
   onDeleteProject: (id: number) => void;
-  onReorderProjects: (items: { id: number; sortOrder: number }[]) => void;
 }
 
 function StaticProjectItem({
@@ -323,7 +318,6 @@ function SortableProjectList({
   onViewChange,
   onUpdateProject,
   onDeleteProject,
-  onReorderProjects,
   isDraggingTask,
   renamingProjectId,
   renamingProjectName,
@@ -338,7 +332,6 @@ function SortableProjectList({
   onViewChange: (v: ViewType) => void;
   onUpdateProject: (id: number, data: Record<string, unknown>) => void;
   onDeleteProject: (id: number) => void;
-  onReorderProjects: (items: { id: number; sortOrder: number }[]) => void;
   isDraggingTask?: boolean;
   renamingProjectId: number | null;
   renamingProjectName: string;
@@ -347,46 +340,29 @@ function SortableProjectList({
   onRenameSubmit: () => void;
   onRenameCancel: () => void;
 }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
   const sortableIds = useMemo(() => projectList.map(p => `sortable-project-${p.id}`), [projectList]);
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIdx = sortableIds.indexOf(String(active.id));
-    const newIdx = sortableIds.indexOf(String(over.id));
-    if (oldIdx === -1 || newIdx === -1) return;
-    const reordered = arrayMove(projectList, oldIdx, newIdx);
-    onReorderProjects(reordered.map((p, i) => ({ id: p.id, sortOrder: i })));
-  }, [sortableIds, projectList, onReorderProjects]);
-
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-        {projectList.map((p) => (
-          <SortableProjectItem
-            key={p.id}
-            project={p}
-            tasks={tasks}
-            isActive={isActive({ projectId: p.id })}
-            onClick={() => onViewChange({ projectId: p.id })}
-            onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
-            onDelete={() => onDeleteProject(p.id)}
-            isDraggingTask={isDraggingTask}
-            isRenaming={renamingProjectId === p.id}
-            renamingName={renamingProjectId === p.id ? renamingProjectName : undefined}
-            onStartRename={() => onStartRename(p.id, p.name)}
-            onRenamingChange={onRenamingChange}
-            onRenameSubmit={onRenameSubmit}
-            onRenameCancel={onRenameCancel}
-          />
-        ))}
-      </SortableContext>
-    </DndContext>
+    <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+      {projectList.map((p) => (
+        <SortableProjectItem
+          key={p.id}
+          project={p}
+          tasks={tasks}
+          isActive={isActive({ projectId: p.id })}
+          onClick={() => onViewChange({ projectId: p.id })}
+          onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
+          onDelete={() => onDeleteProject(p.id)}
+          isDraggingTask={isDraggingTask}
+          isRenaming={renamingProjectId === p.id}
+          renamingName={renamingProjectId === p.id ? renamingProjectName : undefined}
+          onStartRename={() => onStartRename(p.id, p.name)}
+          onRenamingChange={onRenamingChange}
+          onRenameSubmit={onRenameSubmit}
+          onRenameCancel={onRenameCancel}
+        />
+      ))}
+    </SortableContext>
   );
 }
 
@@ -408,7 +384,6 @@ export const TaskSidebar = memo(function TaskSidebar({
   onOpenQuickFind,
   onUpdateProject,
   onDeleteProject,
-  onReorderProjects,
 }: TaskSidebarProps) {
   const [renamingProjectId, setRenamingProjectId] = useState<number | null>(null);
   const [renamingProjectName, setRenamingProjectName] = useState("");
@@ -554,7 +529,6 @@ export const TaskSidebar = memo(function TaskSidebar({
                 onViewChange={onViewChange}
                 onUpdateProject={onUpdateProject}
                 onDeleteProject={onDeleteProject}
-                onReorderProjects={onReorderProjects}
                 isDraggingTask={isDraggingTask}
                 {...renameProps}
               />
@@ -575,7 +549,6 @@ export const TaskSidebar = memo(function TaskSidebar({
             onViewChange={onViewChange}
             onUpdateProject={onUpdateProject}
             onDeleteProject={onDeleteProject}
-            onReorderProjects={onReorderProjects}
             isDraggingTask={isDraggingTask}
             {...renameProps}
           />
