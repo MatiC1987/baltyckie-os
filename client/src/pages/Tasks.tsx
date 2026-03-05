@@ -93,6 +93,14 @@ function SortableSectionItem({ id, children }: { id: string; children: (listener
 const customCollisionDetection: CollisionDetection = (args) => {
   const activeId = String(args.active.id);
   const isDraggingProject = activeId.startsWith("sortable-project-");
+  const isDraggingAreaItem = activeId.startsWith("sortable-area-");
+
+  if (isDraggingAreaItem) {
+    const pointerHits = pointerWithin(args);
+    const areaHit = pointerHits.find(c => String(c.id).startsWith("sortable-area-") && c.id !== activeId);
+    if (areaHit) return [areaHit];
+    return closestCenter(args);
+  }
 
   if (isDraggingProject) {
     const pointerHits = pointerWithin(args);
@@ -156,6 +164,9 @@ export function TasksCore() {
   const [bulkTagsOpen, setBulkTagsOpen] = useState(false);
   const [bulkDeadlineInput, setBulkDeadlineInput] = useState("");
   const [bulkDeadlineOpen, setBulkDeadlineOpen] = useState(false);
+  const [areaOrder, setAreaOrder] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("tasksAreaOrder") || "[]"); } catch { return []; }
+  });
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
@@ -544,6 +555,11 @@ export function TasksCore() {
     toast({ title: "Obszar usunięty" });
   }, [isAreaView, view, projects, updateProject, toast]);
 
+  const saveAreaOrder = useCallback((newOrder: string[]) => {
+    setAreaOrder(newOrder);
+    localStorage.setItem("tasksAreaOrder", JSON.stringify(newOrder));
+  }, []);
+
   const handleSidebarAreaRename = useCallback((oldName: string, newName: string) => {
     const existingAreas = new Set(projects.filter(p => !p.archived && p.area).map(p => p.area!));
     if (existingAreas.has(newName) && newName !== oldName) {
@@ -554,22 +570,24 @@ export function TasksCore() {
     areaProjects.forEach(p => {
       updateProject.mutate({ id: p.id, data: { area: newName } });
     });
+    saveAreaOrder(areaOrder.map(a => a === oldName ? newName : a));
     if (isAreaView && (view as { area: string }).area === oldName) {
       setView({ area: newName });
     }
     toast({ title: "Nazwa zmieniona" });
-  }, [projects, updateProject, isAreaView, view, toast]);
+  }, [projects, updateProject, isAreaView, view, toast, areaOrder, saveAreaOrder]);
 
   const handleSidebarAreaDelete = useCallback((areaName: string) => {
     const areaProjects = projects.filter(p => p.area === areaName);
     areaProjects.forEach(p => {
       updateProject.mutate({ id: p.id, data: { area: null } });
     });
+    saveAreaOrder(areaOrder.filter(a => a !== areaName));
     if (isAreaView && (view as { area: string }).area === areaName) {
       setView("inbox");
     }
     toast({ title: "Przestrzeń usunięta" });
-  }, [projects, updateProject, isAreaView, view, toast]);
+  }, [projects, updateProject, isAreaView, view, toast, areaOrder, saveAreaOrder]);
 
   const handleInlineSubmit = useCallback((data: Record<string, unknown>) => {
     createTask.mutate(data);
@@ -697,6 +715,21 @@ export function TasksCore() {
     const activeId = String(active.id);
     const overId = String(over.id);
 
+    if (activeId.startsWith("sortable-area-") && overId.startsWith("sortable-area-")) {
+      const activeArea = activeId.replace("sortable-area-", "");
+      const overArea = overId.replace("sortable-area-", "");
+      const uniqueAreas = Array.from(new Set(projects.filter(p => !p.archived && p.area).map(p => p.area!)));
+      const currentOrder = areaOrder.filter(a => uniqueAreas.includes(a));
+      const unordered = uniqueAreas.filter(a => !areaOrder.includes(a));
+      const fullOrder = [...currentOrder, ...unordered];
+      const oldIdx = fullOrder.indexOf(activeArea);
+      const newIdx = fullOrder.indexOf(overArea);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const reordered = arrayMove(fullOrder, oldIdx, newIdx);
+      saveAreaOrder(reordered);
+      return;
+    }
+
     if (activeId.startsWith("sortable-project-") && overId.startsWith("droppable-area-")) {
       const activeProjectId = Number(activeId.replace("sortable-project-", ""));
       const targetArea = overId.replace("droppable-area-", "");
@@ -797,7 +830,7 @@ export function TasksCore() {
       const reordered = arrayMove(sorted, oldIdx, newIdx);
       batchReorderSections.mutate(reordered.map((s, i) => ({ id: s.id, sortOrder: i })));
     }
-  }, [tagFilteredTasks, sortBy, isProjectView, tasks, projects, projectSections, batchReorderTasks, batchReorderSections, batchReorderProjects, updateTask, updateProject, toast]);
+  }, [tagFilteredTasks, sortBy, isProjectView, tasks, projects, projectSections, batchReorderTasks, batchReorderSections, batchReorderProjects, updateTask, updateProject, toast, areaOrder, saveAreaOrder]);
 
   const VIcon = viewIcon(view);
   const selectedTasksArray = Array.from(selectedTasks);
@@ -1380,6 +1413,8 @@ export function TasksCore() {
             collapsedAreas={collapsedAreas}
             isDraggingTask={!!activeDragId && activeDragId.startsWith("task-")}
             isDraggingProject={!!activeDragId && activeDragId.startsWith("sortable-project-")}
+            isDraggingArea={!!activeDragId && activeDragId.startsWith("sortable-area-")}
+            areaOrder={areaOrder}
             onViewChange={handleViewChange}
             onToggleArea={toggleArea}
             onAddProject={() => setAddProjectOpen(true)}
@@ -1415,6 +1450,8 @@ export function TasksCore() {
               collapsedAreas={collapsedAreas}
               isDraggingTask={!!activeDragId && activeDragId.startsWith("task-")}
               isDraggingProject={!!activeDragId && activeDragId.startsWith("sortable-project-")}
+              isDraggingArea={!!activeDragId && activeDragId.startsWith("sortable-area-")}
+              areaOrder={areaOrder}
               onViewChange={handleViewChange}
               onToggleArea={toggleArea}
               onAddProject={() => setAddProjectOpen(true)}
