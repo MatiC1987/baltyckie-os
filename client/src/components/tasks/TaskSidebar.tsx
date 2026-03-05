@@ -1,9 +1,10 @@
-import { memo, useMemo, useCallback, useState } from "react";
+import { memo, useMemo, useCallback, useState, useRef, useEffect } from "react";
 import type { Task, TaskProject, TaskSection } from "@shared/schema";
+import { Input } from "@/components/ui/input";
 import {
   Plus, SlidersHorizontal, FolderPlus, ListPlus, Archive, Circle,
   MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
-  LogOut,
+  LogOut, Pencil, Link2,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -62,6 +63,12 @@ function SortableProjectItem({
   onArchive,
   onDelete,
   isDraggingTask,
+  isRenaming,
+  renamingName,
+  onStartRename,
+  onRenamingChange,
+  onRenameSubmit,
+  onRenameCancel,
 }: {
   project: TaskProject;
   tasks: Task[];
@@ -70,11 +77,25 @@ function SortableProjectItem({
   onArchive: () => void;
   onDelete: () => void;
   isDraggingTask?: boolean;
+  isRenaming?: boolean;
+  renamingName?: string;
+  onStartRename?: () => void;
+  onRenamingChange?: (v: string) => void;
+  onRenameSubmit?: () => void;
+  onRenameCancel?: () => void;
 }) {
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `sidebar-project-${project.id}` });
   const {
     attributes, listeners, setNodeRef: setSortRef, transform, transition, isDragging,
   } = useSortable({ id: `sortable-project-${project.id}` });
+
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -97,41 +118,65 @@ function SortableProjectItem({
     <div
       ref={(node) => { setDropRef(node); setSortRef(node); }}
       style={style}
-      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 cursor-grab active:cursor-grabbing group touch-none ${
+      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 group ${
+        isRenaming ? "cursor-text" : "cursor-grab active:cursor-grabbing touch-none"
+      } ${
         isActive ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
       } ${dropHighlight}`}
       {...attributes}
-      {...listeners}
-      onClick={onClick}
+      {...(isRenaming ? {} : listeners)}
+      onClick={isRenaming ? undefined : onClick}
       data-testid={`sidebar-project-${project.id}`}
     >
       <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
-      <span className="flex-1 truncate">{project.name}</span>
-      {stats.total > 0 && (
+      {isRenaming ? (
+        <Input
+          ref={renameInputRef}
+          value={renamingName || ""}
+          onChange={(e) => onRenamingChange?.(e.target.value)}
+          onBlur={() => onRenameSubmit?.()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); onRenameSubmit?.(); }
+            if (e.key === "Escape") { onRenameCancel?.(); }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="h-6 flex-1 text-[13px] font-medium border-0 bg-transparent shadow-none focus-visible:ring-1 px-1 py-0"
+          data-testid={`input-rename-project-${project.id}`}
+        />
+      ) : (
+        <span className="flex-1 truncate">{project.name}</span>
+      )}
+      {!isRenaming && stats.total > 0 && (
         <ProgressRing completed={stats.completed} total={stats.total} color={color} />
       )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
-            onClick={(e) => e.stopPropagation()}
-            data-testid={`button-project-menu-${project.id}`}
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="right">
-          <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
-            <Archive className="h-3.5 w-3.5 mr-2" />
-            {project.archived ? "Przywróć z archiwum" : "Archiwizuj"}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
-            <Trash2 className="h-3.5 w-3.5 mr-2" />
-            Usuń
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {!isRenaming && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
+              onClick={(e) => e.stopPropagation()}
+              data-testid={`button-project-menu-${project.id}`}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="right">
+            <DropdownMenuItem onClick={() => onStartRename?.()} data-testid={`menu-rename-project-${project.id}`}>
+              <Pencil className="h-3.5 w-3.5 mr-2" />
+              Zmień nazwę
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
+              <Archive className="h-3.5 w-3.5 mr-2" />
+              {project.archived ? "Przywróć z archiwum" : "Archiwizuj"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
+              <Trash2 className="h-3.5 w-3.5 mr-2" />
+              Usuń
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
@@ -165,6 +210,12 @@ function StaticProjectItem({
   onArchive,
   onDelete,
   isDraggingTask,
+  isRenaming,
+  renamingName,
+  onStartRename,
+  onRenamingChange,
+  onRenameSubmit,
+  onRenameCancel,
 }: {
   project: TaskProject;
   tasks: Task[];
@@ -173,8 +224,22 @@ function StaticProjectItem({
   onArchive: () => void;
   onDelete: () => void;
   isDraggingTask?: boolean;
+  isRenaming?: boolean;
+  renamingName?: string;
+  onStartRename?: () => void;
+  onRenamingChange?: (v: string) => void;
+  onRenameSubmit?: () => void;
+  onRenameCancel?: () => void;
 }) {
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `sidebar-project-${project.id}` });
+
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
 
   const stats = useMemo(() => {
     const projectTasks = tasks.filter((t) => t.projectId === project.id && t.parentTaskId === null);
@@ -189,40 +254,64 @@ function StaticProjectItem({
   return (
     <div
       ref={setDropRef}
-      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 cursor-pointer group ${
+      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 group ${
+        isRenaming ? "cursor-text" : "cursor-pointer"
+      } ${
         isActive ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
       } ${dropHighlight}`}
       style={{ fontSize: 'var(--tasks-font-size, 13px)' }}
-      onClick={onClick}
+      onClick={isRenaming ? undefined : onClick}
       data-testid={`sidebar-project-${project.id}`}
     >
       <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
-      <span className="flex-1 truncate">{project.name}</span>
-      {stats.total > 0 && (
+      {isRenaming ? (
+        <Input
+          ref={renameInputRef}
+          value={renamingName || ""}
+          onChange={(e) => onRenamingChange?.(e.target.value)}
+          onBlur={() => onRenameSubmit?.()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); onRenameSubmit?.(); }
+            if (e.key === "Escape") { onRenameCancel?.(); }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="h-6 flex-1 text-[13px] font-medium border-0 bg-transparent shadow-none focus-visible:ring-1 px-1 py-0"
+          data-testid={`input-rename-project-${project.id}`}
+        />
+      ) : (
+        <span className="flex-1 truncate">{project.name}</span>
+      )}
+      {!isRenaming && stats.total > 0 && (
         <ProgressRing completed={stats.completed} total={stats.total} color={color} />
       )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
-            onClick={(e) => e.stopPropagation()}
-            data-testid={`button-project-menu-${project.id}`}
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="right">
-          <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
-            <Archive className="h-3.5 w-3.5 mr-2" />
-            {project.archived ? "Przywróć z archiwum" : "Archiwizuj"}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
-            <Trash2 className="h-3.5 w-3.5 mr-2" />
-            Usuń
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {!isRenaming && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted/50 text-muted-foreground transition-opacity duration-150"
+              onClick={(e) => e.stopPropagation()}
+              data-testid={`button-project-menu-${project.id}`}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="right">
+            <DropdownMenuItem onClick={() => onStartRename?.()} data-testid={`menu-rename-project-${project.id}`}>
+              <Pencil className="h-3.5 w-3.5 mr-2" />
+              Zmień nazwę
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
+              <Archive className="h-3.5 w-3.5 mr-2" />
+              {project.archived ? "Przywróć z archiwum" : "Archiwizuj"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-project-${project.id}`}>
+              <Trash2 className="h-3.5 w-3.5 mr-2" />
+              Usuń
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
@@ -236,6 +325,12 @@ function SortableProjectList({
   onDeleteProject,
   onReorderProjects,
   isDraggingTask,
+  renamingProjectId,
+  renamingProjectName,
+  onStartRename,
+  onRenamingChange,
+  onRenameSubmit,
+  onRenameCancel,
 }: {
   projectList: TaskProject[];
   tasks: Task[];
@@ -245,6 +340,12 @@ function SortableProjectList({
   onDeleteProject: (id: number) => void;
   onReorderProjects: (items: { id: number; sortOrder: number }[]) => void;
   isDraggingTask?: boolean;
+  renamingProjectId: number | null;
+  renamingProjectName: string;
+  onStartRename: (id: number, name: string) => void;
+  onRenamingChange: (v: string) => void;
+  onRenameSubmit: () => void;
+  onRenameCancel: () => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -276,6 +377,12 @@ function SortableProjectList({
             onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
             onDelete={() => onDeleteProject(p.id)}
             isDraggingTask={isDraggingTask}
+            isRenaming={renamingProjectId === p.id}
+            renamingName={renamingProjectId === p.id ? renamingProjectName : undefined}
+            onStartRename={() => onStartRename(p.id, p.name)}
+            onRenamingChange={onRenamingChange}
+            onRenameSubmit={onRenameSubmit}
+            onRenameCancel={onRenameCancel}
           />
         ))}
       </SortableContext>
@@ -303,6 +410,9 @@ export const TaskSidebar = memo(function TaskSidebar({
   onDeleteProject,
   onReorderProjects,
 }: TaskSidebarProps) {
+  const [renamingProjectId, setRenamingProjectId] = useState<number | null>(null);
+  const [renamingProjectName, setRenamingProjectName] = useState("");
+
   const activeProjects = useMemo(() => projects.filter((p) => !p.archived), [projects]);
   const archivedProjects = useMemo(() => projects.filter((p) => p.archived), [projects]);
   const areas = useMemo(
@@ -330,6 +440,33 @@ export const TaskSidebar = memo(function TaskSidebar({
     },
     [activeView]
   );
+
+  const handleStartRename = useCallback((id: number, name: string) => {
+    setRenamingProjectId(id);
+    setRenamingProjectName(name);
+  }, []);
+
+  const handleRenameSubmit = useCallback(() => {
+    if (renamingProjectId !== null && renamingProjectName.trim()) {
+      onUpdateProject(renamingProjectId, { name: renamingProjectName.trim() });
+    }
+    setRenamingProjectId(null);
+    setRenamingProjectName("");
+  }, [renamingProjectId, renamingProjectName, onUpdateProject]);
+
+  const handleRenameCancel = useCallback(() => {
+    setRenamingProjectId(null);
+    setRenamingProjectName("");
+  }, []);
+
+  const renameProps = {
+    renamingProjectId,
+    renamingProjectName,
+    onStartRename: handleStartRename,
+    onRenamingChange: setRenamingProjectName,
+    onRenameSubmit: handleRenameSubmit,
+    onRenameCancel: handleRenameCancel,
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-0.5" style={{ fontSize: 'var(--tasks-font-size, 14px)' }} data-testid="tasks-sidebar-content">
@@ -373,6 +510,10 @@ export const TaskSidebar = memo(function TaskSidebar({
         );
       })}
 
+      {(areas.length > 0 || ungroupedProjects.length > 0) && (
+        <div className="mt-3 mb-1 mx-1 border-t border-border/20" />
+      )}
+
       {areas.map((area) => {
         const areaProjects = activeProjects
           .filter((p) => p.area === area)
@@ -382,28 +523,27 @@ export const TaskSidebar = memo(function TaskSidebar({
         return (
           <div key={area}>
             <div
-              className={`flex items-center gap-1.5 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[44px] rounded-md ${
+              role="button"
+              tabIndex={0}
+              className={`flex items-center gap-2 w-full text-left px-2.5 py-2 mt-3 mb-0.5 min-h-[44px] rounded-md cursor-pointer ${
                 areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"
               }`}
+              onClick={() => onViewChange({ area })}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onViewChange({ area }); } }}
               data-testid={`button-area-${area}`}
             >
+              <Link2 className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+              <span className={`flex-1 text-[13px] font-bold ${areaActive ? "text-foreground" : "text-foreground/80"}`}>{area}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleArea(area); }}
                 className="shrink-0 p-0.5 rounded hover:bg-muted/40 transition-colors"
                 data-testid={`button-area-chevron-${area}`}
               >
                 {isCollapsed ? (
-                  <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40" />
                 ) : (
-                  <ChevronDown className="h-3 w-3 text-muted-foreground/50" />
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/40" />
                 )}
-              </button>
-              <button
-                onClick={() => onViewChange({ area })}
-                className="flex-1 text-left min-w-0"
-                data-testid={`button-area-name-${area}`}
-              >
-                <span className={`text-[11px] font-semibold uppercase tracking-widest ${areaActive ? "text-foreground" : "text-muted-foreground/60"}`}>{area}</span>
               </button>
             </div>
             {!isCollapsed && (
@@ -416,6 +556,7 @@ export const TaskSidebar = memo(function TaskSidebar({
                 onDeleteProject={onDeleteProject}
                 onReorderProjects={onReorderProjects}
                 isDraggingTask={isDraggingTask}
+                {...renameProps}
               />
             )}
           </div>
@@ -425,9 +566,7 @@ export const TaskSidebar = memo(function TaskSidebar({
       {ungroupedProjects.length > 0 && (
         <>
           {areas.length > 0 && (
-            <div className="flex items-center gap-2 mt-4 mb-1.5 px-2.5">
-              <div className="flex-1 border-t border-border/30" />
-            </div>
+            <div className="mt-3 mb-1 mx-1 border-t border-border/20" />
           )}
           <SortableProjectList
             projectList={ungroupedProjects}
@@ -438,13 +577,15 @@ export const TaskSidebar = memo(function TaskSidebar({
             onDeleteProject={onDeleteProject}
             onReorderProjects={onReorderProjects}
             isDraggingTask={isDraggingTask}
+            {...renameProps}
           />
         </>
       )}
 
       {archivedProjects.length > 0 && (
         <>
-          <div className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest mt-5 mb-1.5 px-2.5 flex items-center gap-1.5">
+          <div className="mt-3 mb-1 mx-1 border-t border-border/20" />
+          <div className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest mt-2 mb-1.5 px-2.5 flex items-center gap-1.5">
             <Archive className="h-3 w-3" />
             Archiwum
           </div>
@@ -458,6 +599,12 @@ export const TaskSidebar = memo(function TaskSidebar({
               onArchive={() => onUpdateProject(p.id, { archived: !p.archived })}
               onDelete={() => onDeleteProject(p.id)}
               isDraggingTask={isDraggingTask}
+              isRenaming={renamingProjectId === p.id}
+              renamingName={renamingProjectId === p.id ? renamingProjectName : undefined}
+              onStartRename={() => handleStartRename(p.id, p.name)}
+              onRenamingChange={setRenamingProjectName}
+              onRenameSubmit={handleRenameSubmit}
+              onRenameCancel={handleRenameCancel}
             />
           ))}
         </>

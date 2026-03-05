@@ -1078,8 +1078,10 @@ export function TasksCore() {
                 {(sectionListeners) => (
                   <div data-testid={`section-${sec.id}`}>
                     <div
-                      className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider py-3 px-5 w-full text-left transition-colors text-muted-foreground/80 group border-b border-border/30 mt-2 cursor-grab active:cursor-grabbing touch-none"
-                      {...sectionListeners}
+                      className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider py-3 px-5 w-full text-left transition-colors text-muted-foreground/80 group border-b border-border/30 mt-2 ${
+                        isRenaming ? "cursor-text" : "cursor-grab active:cursor-grabbing touch-none"
+                      }`}
+                      {...(isRenaming ? {} : sectionListeners)}
                       data-testid={`section-header-${sec.id}`}
                     >
                       <button
