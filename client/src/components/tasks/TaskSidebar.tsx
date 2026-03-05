@@ -124,7 +124,7 @@ function SortableProjectItem({
       onClick={isRenaming ? undefined : onClick}
       data-testid={`sidebar-project-${project.id}`}
     >
-      <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
+      <Circle className="h-[15px] w-[15px] shrink-0" strokeWidth={2.5} style={{ color }} />
       {isRenaming ? (
         <Input
           ref={renameInputRef}
@@ -258,7 +258,7 @@ function StaticProjectItem({
       onClick={isRenaming ? undefined : onClick}
       data-testid={`sidebar-project-${project.id}`}
     >
-      <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
+      <Circle className="h-[15px] w-[15px] shrink-0" strokeWidth={2.5} style={{ color }} />
       {isRenaming ? (
         <Input
           ref={renameInputRef}
@@ -451,7 +451,7 @@ export const TaskSidebar = memo(function TaskSidebar({
         data-testid="sidebar-quick-find"
       >
         <Search className="h-3.5 w-3.5" />
-        <span>Quick Find</span>
+        <span>Szybkie wyszukiwanie</span>
       </button>
 
       {SMART_VIEWS.map((sv) => {
@@ -500,7 +500,7 @@ export const TaskSidebar = memo(function TaskSidebar({
             <div
               role="button"
               tabIndex={0}
-              className={`flex items-center gap-2 w-full text-left px-2.5 py-2 mt-3 mb-0.5 min-h-[44px] rounded-md cursor-pointer ${
+              className={`flex items-center gap-2 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[36px] rounded-md cursor-pointer ${
                 areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"
               }`}
               onClick={() => onViewChange({ area })}
@@ -508,7 +508,7 @@ export const TaskSidebar = memo(function TaskSidebar({
               data-testid={`button-area-${area}`}
             >
               <Link2 className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-              <span className={`flex-1 text-[13px] font-bold ${areaActive ? "text-foreground" : "text-foreground/80"}`}>{area}</span>
+              <span className={`flex-1 text-[12px] font-bold uppercase tracking-wider ${areaActive ? "text-foreground" : "text-foreground/70"}`}>{area}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleArea(area); }}
                 className="shrink-0 p-0.5 rounded hover:bg-muted/40 transition-colors"
@@ -522,16 +522,18 @@ export const TaskSidebar = memo(function TaskSidebar({
               </button>
             </div>
             {!isCollapsed && (
-              <SortableProjectList
-                projectList={areaProjects}
-                tasks={tasks}
-                isActive={isActive}
-                onViewChange={onViewChange}
-                onUpdateProject={onUpdateProject}
-                onDeleteProject={onDeleteProject}
-                isDraggingTask={isDraggingTask}
-                {...renameProps}
-              />
+              <div className="pl-2">
+                <SortableProjectList
+                  projectList={areaProjects}
+                  tasks={tasks}
+                  isActive={isActive}
+                  onViewChange={onViewChange}
+                  onUpdateProject={onUpdateProject}
+                  onDeleteProject={onDeleteProject}
+                  isDraggingTask={isDraggingTask}
+                  {...renameProps}
+                />
+              </div>
             )}
           </div>
         );
@@ -605,7 +607,7 @@ export const SidebarFooter = memo(function SidebarFooter({
         <PopoverTrigger asChild>
           <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-1 min-h-[44px]" data-testid="button-new-list">
             <Plus className="h-3.5 w-3.5" />
-            <span>New List</span>
+            <span>Nowa Lista</span>
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-1" align="start" side="top">
