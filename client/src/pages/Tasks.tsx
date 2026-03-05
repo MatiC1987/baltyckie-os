@@ -50,7 +50,7 @@ import { TaskInlineCard } from "@/components/tasks/TaskInlineCard";
 import { TaskSidebar, SidebarFooter } from "@/components/tasks/TaskSidebar";
 import { TaskInlineAdd } from "@/components/tasks/TaskInlineAdd";
 import { QuickFind } from "@/components/tasks/QuickFind";
-import { TaskDialog, ProjectDialog, SectionDialog, SettingsDialog, MoveDialog } from "@/components/tasks/TaskDialogs";
+import { TaskDialog, ProjectDialog, SectionDialog, SettingsDialog, MoveDialog, AreaDialog } from "@/components/tasks/TaskDialogs";
 import {
   type ViewType, type TaskFontSize,
   PRIORITY_FLAG_COLORS, PRIORITY_LABELS,
@@ -121,6 +121,7 @@ export function TasksCore() {
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [addAreaOpen, setAddAreaOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickFindOpen, setQuickFindOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
@@ -1338,7 +1339,7 @@ export function TasksCore() {
             onViewChange={handleViewChange}
             onToggleArea={toggleArea}
             onAddProject={() => setAddProjectOpen(true)}
-            onAddSection={() => setAddSectionOpen(true)}
+            onAddArea={() => setAddAreaOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenQuickFind={() => setQuickFindOpen(true)}
             onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
@@ -1346,7 +1347,7 @@ export function TasksCore() {
           />
           <SidebarFooter
             onAddProject={() => setAddProjectOpen(true)}
-            onAddSection={() => setAddSectionOpen(true)}
+            onAddArea={() => setAddAreaOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             onLogout={onLogout}
           />
@@ -1370,7 +1371,7 @@ export function TasksCore() {
               onViewChange={handleViewChange}
               onToggleArea={toggleArea}
               onAddProject={() => setAddProjectOpen(true)}
-              onAddSection={() => setAddSectionOpen(true)}
+              onAddArea={() => setAddAreaOpen(true)}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenQuickFind={() => setQuickFindOpen(true)}
               onUpdateProject={(id, data) => updateProject.mutate({ id, data })}
@@ -1378,7 +1379,7 @@ export function TasksCore() {
             />
             <SidebarFooter
               onAddProject={() => setAddProjectOpen(true)}
-              onAddSection={() => setAddSectionOpen(true)}
+              onAddArea={() => setAddAreaOpen(true)}
               onOpenSettings={() => setSettingsOpen(true)}
               onLogout={onLogout}
             />
@@ -1860,7 +1861,24 @@ export function TasksCore() {
         defaultProjectId={isProjectView ? (view as { projectId: number }).projectId : undefined}
       />
 
-      <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} onSubmit={(data) => createProject.mutate(data)} />
+      <ProjectDialog
+        open={addProjectOpen}
+        onOpenChange={setAddProjectOpen}
+        onSubmit={(data) => createProject.mutate(data)}
+        existingAreas={Array.from(new Set(projects.filter(p => !p.archived && p.area).map(p => p.area!)))}
+      />
+
+      <AreaDialog
+        open={addAreaOpen}
+        onOpenChange={setAddAreaOpen}
+        projects={projects}
+        onSubmit={(areaName, projectIds) => {
+          projectIds.forEach(id => {
+            updateProject.mutate({ id, data: { area: areaName } });
+          });
+          toast({ title: `Przestrzeń "${areaName}" utworzona`, description: projectIds.length > 0 ? `Przypisano ${projectIds.length} projekt(ów).` : "Przypisz projekty z menu kontekstowego (⋯ → Przestrzeń)." });
+        }}
+      />
 
       <SectionDialog
         open={addSectionOpen}

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
   Popover, PopoverContent, PopoverTrigger,
@@ -65,6 +66,8 @@ function SortableProjectItem({
   onRenamingChange,
   onRenameSubmit,
   onRenameCancel,
+  areas,
+  onMoveToArea,
 }: {
   project: TaskProject;
   tasks: Task[];
@@ -79,6 +82,8 @@ function SortableProjectItem({
   onRenamingChange?: (v: string) => void;
   onRenameSubmit?: () => void;
   onRenameCancel?: () => void;
+  areas?: string[];
+  onMoveToArea?: (projectId: number, area: string | null) => void;
 }) {
   const renameInputRef = useRef<HTMLInputElement>(null);
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `sidebar-project-${project.id}` });
@@ -161,6 +166,25 @@ function SortableProjectItem({
               <Pencil className="h-3.5 w-3.5 mr-2" />
               Zmień nazwę
             </DropdownMenuItem>
+            {areas && areas.length > 0 && onMoveToArea && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger data-testid={`menu-move-area-${project.id}`}>
+                  <Link2 className="h-3.5 w-3.5 mr-2" />
+                  Przestrzeń
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => onMoveToArea(project.id, null)} data-testid={`menu-area-none-${project.id}`}>
+                    {!project.area ? "✓ " : ""}Bez przestrzeni
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {areas.map((a) => (
+                    <DropdownMenuItem key={a} onClick={() => onMoveToArea(project.id, a)} data-testid={`menu-area-${a}-${project.id}`}>
+                      {project.area === a ? "✓ " : ""}{a}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuItem onClick={onArchive} data-testid={`menu-archive-project-${project.id}`}>
               <Archive className="h-3.5 w-3.5 mr-2" />
               {project.archived ? "Przywróć z archiwum" : "Archiwizuj"}
@@ -190,7 +214,7 @@ interface TaskSidebarProps {
   onViewChange: (view: ViewType) => void;
   onToggleArea: (area: string) => void;
   onAddProject: () => void;
-  onAddSection: () => void;
+  onAddArea: () => void;
   onOpenSettings: () => void;
   onOpenQuickFind: () => void;
   onUpdateProject: (id: number, data: Record<string, unknown>) => void;
@@ -325,6 +349,7 @@ function SortableProjectList({
   onRenamingChange,
   onRenameSubmit,
   onRenameCancel,
+  allAreas,
 }: {
   projectList: TaskProject[];
   tasks: Task[];
@@ -339,8 +364,12 @@ function SortableProjectList({
   onRenamingChange: (v: string) => void;
   onRenameSubmit: () => void;
   onRenameCancel: () => void;
+  allAreas?: string[];
 }) {
   const sortableIds = useMemo(() => projectList.map(p => `sortable-project-${p.id}`), [projectList]);
+  const handleMoveToArea = useCallback((projectId: number, area: string | null) => {
+    onUpdateProject(projectId, { area });
+  }, [onUpdateProject]);
 
   return (
     <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
@@ -360,6 +389,8 @@ function SortableProjectList({
           onRenamingChange={onRenamingChange}
           onRenameSubmit={onRenameSubmit}
           onRenameCancel={onRenameCancel}
+          areas={allAreas}
+          onMoveToArea={handleMoveToArea}
         />
       ))}
     </SortableContext>
@@ -379,7 +410,7 @@ export const TaskSidebar = memo(function TaskSidebar({
   onViewChange,
   onToggleArea,
   onAddProject,
-  onAddSection,
+  onAddArea,
   onOpenSettings,
   onOpenQuickFind,
   onUpdateProject,
@@ -531,6 +562,7 @@ export const TaskSidebar = memo(function TaskSidebar({
                   onUpdateProject={onUpdateProject}
                   onDeleteProject={onDeleteProject}
                   isDraggingTask={isDraggingTask}
+                  allAreas={areas}
                   {...renameProps}
                 />
               </div>
@@ -552,6 +584,7 @@ export const TaskSidebar = memo(function TaskSidebar({
             onUpdateProject={onUpdateProject}
             onDeleteProject={onDeleteProject}
             isDraggingTask={isDraggingTask}
+            allAreas={areas}
             {...renameProps}
           />
         </>
@@ -590,14 +623,14 @@ export const TaskSidebar = memo(function TaskSidebar({
 
 interface SidebarFooterProps {
   onAddProject: () => void;
-  onAddSection: () => void;
+  onAddArea: () => void;
   onOpenSettings: () => void;
   onLogout?: () => void;
 }
 
 export const SidebarFooter = memo(function SidebarFooter({
   onAddProject,
-  onAddSection,
+  onAddArea,
   onOpenSettings,
   onLogout,
 }: SidebarFooterProps) {
@@ -624,13 +657,13 @@ export const SidebarFooter = memo(function SidebarFooter({
           </button>
           <button
             className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm rounded-md hover:bg-muted/50 transition-colors"
-            onClick={onAddSection}
-            data-testid="button-new-section-popover"
+            onClick={onAddArea}
+            data-testid="button-new-area-popover"
           >
             <ListPlus className="h-4 w-4 text-emerald-500" />
             <div className="text-left">
               <div className="font-medium">Nowa Przestrzeń</div>
-              <div className="text-[10px] text-muted-foreground">Grupuj projekty i zadania według różnych obszarów odpowiedzialności.</div>
+              <div className="text-[10px] text-muted-foreground">Grupuj projekty na sidebarze według obszarów odpowiedzialności.</div>
             </div>
           </button>
         </PopoverContent>

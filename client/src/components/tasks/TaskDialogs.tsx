@@ -181,18 +181,22 @@ export function TaskDialog({
   );
 }
 
-export function ProjectDialog({ open, onOpenChange, onSubmit }: { open: boolean; onOpenChange: (o: boolean) => void; onSubmit: (data: Record<string, unknown>) => void }) {
+export function ProjectDialog({ open, onOpenChange, onSubmit, existingAreas = [] }: { open: boolean; onOpenChange: (o: boolean) => void; onSubmit: (data: Record<string, unknown>) => void; existingAreas?: string[] }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#5ADBFA");
   const [area, setArea] = useState("");
+  const [customArea, setCustomArea] = useState("");
 
   useEffect(() => {
     if (open) {
       setName("");
       setColor("#5ADBFA");
       setArea("");
+      setCustomArea("");
     }
   }, [open]);
+
+  const resolvedArea = area === "__new__" ? customArea.trim() : (area === "__none__" ? "" : area);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -211,7 +215,21 @@ export function ProjectDialog({ open, onOpenChange, onSubmit }: { open: boolean;
           </div>
           <div>
             <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Przestrzeń (opcjonalnie)</Label>
-            <Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="np. Praca, Dom" className="mt-1" data-testid="input-project-area" />
+            <Select value={area} onValueChange={setArea}>
+              <SelectTrigger className="mt-1" data-testid="select-project-area">
+                <SelectValue placeholder="Bez przestrzeni" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Bez przestrzeni</SelectItem>
+                {existingAreas.map((a) => (
+                  <SelectItem key={a} value={a}>{a}</SelectItem>
+                ))}
+                <SelectItem value="__new__">+ Nowa przestrzeń...</SelectItem>
+              </SelectContent>
+            </Select>
+            {area === "__new__" && (
+              <Input value={customArea} onChange={(e) => setCustomArea(e.target.value)} placeholder="Nazwa nowej przestrzeni" className="mt-2" data-testid="input-project-new-area" />
+            )}
           </div>
         </div>
         <DialogFooter>
@@ -221,10 +239,86 @@ export function ProjectDialog({ open, onOpenChange, onSubmit }: { open: boolean;
           <Button
             onClick={() => {
               if (!name.trim()) return;
-              onSubmit({ name: name.trim(), color, area: area.trim() || null });
+              onSubmit({ name: name.trim(), color, area: resolvedArea || null });
             }}
             disabled={!name.trim()}
             data-testid="button-save-project"
+          >
+            Utwórz
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function AreaDialog({ open, onOpenChange, onSubmit, projects = [] }: { open: boolean; onOpenChange: (o: boolean) => void; onSubmit: (areaName: string, projectIds: number[]) => void; projects?: TaskProject[] }) {
+  const [name, setName] = useState("");
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (open) {
+      setName("");
+      setSelectedProjectIds(new Set());
+    }
+  }, [open]);
+
+  const toggleProject = (id: number) => {
+    setSelectedProjectIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const unassignedProjects = projects.filter(p => !p.archived && !p.area);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm" data-testid="dialog-add-area">
+        <DialogHeader>
+          <DialogTitle>Nowa Przestrzeń</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Nazwa</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="np. Firma, Dom, Osobiste" className="mt-1" data-testid="input-area-name" autoFocus />
+          </div>
+          {unassignedProjects.length > 0 && (
+            <div>
+              <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Przypisz projekty</Label>
+              <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
+                {unassignedProjects.map(p => (
+                  <label key={p.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/30 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedProjectIds.has(p.id)}
+                      onChange={() => toggleProject(p.id)}
+                      className="rounded border-muted-foreground/30"
+                      data-testid={`checkbox-area-project-${p.id}`}
+                    />
+                    <Circle className="h-3 w-3 shrink-0" style={{ color: p.color || "#5ADBFA" }} strokeWidth={2.5} />
+                    <span className="truncate">{p.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground/50">Przestrzeń to nagłówek grupujący projekty na sidebarze. Projekty możesz też przypisywać później z menu kontekstowego (⋯ → Przestrzeń).</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-area">
+            Anuluj
+          </Button>
+          <Button
+            onClick={() => {
+              if (!name.trim()) return;
+              onSubmit(name.trim(), Array.from(selectedProjectIds));
+              onOpenChange(false);
+            }}
+            disabled={!name.trim()}
+            data-testid="button-save-area"
           >
             Utwórz
           </Button>
