@@ -24,7 +24,7 @@ import { TaskCheckbox } from "./TaskCheckbox";
 import { PRIORITY_FLAG_COLORS, PRIORITY_LABELS, PRIORITY_BORDER_COLORS, getTagColor, isDeadlineNear } from "./taskUtils";
 import {
   X, Trash2, Users, Flag, Calendar, Clock, Tag, FolderOpen, RefreshCw,
-  Moon, Sparkles, AlertTriangle, Plus, UserPlus,
+  Moon, Sparkles, AlertTriangle, Plus, UserPlus, Layers,
 } from "lucide-react";
 
 interface DetailPanelProps {
@@ -277,6 +277,36 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   >
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: p.color || "#5ADBFA" }} />
                     {p.name}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  task.area
+                    ? "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+                    : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                }`} data-testid="chip-area">
+                  <Layers className="h-3 w-3" />
+                  {task.area || "+ Przestrzeń"}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-1" align="start">
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors text-muted-foreground"
+                  onClick={() => onUpdate({ area: null })}
+                >
+                  Brak
+                </button>
+                {Array.from(new Set(projects.filter(p => !p.archived && p.area).map(p => p.area!))).map((a) => (
+                  <button
+                    key={a}
+                    className={`flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm hover:bg-muted/50 transition-colors ${task.area === a ? 'bg-muted/50 font-medium' : ''}`}
+                    onClick={() => onUpdate({ area: a })}
+                  >
+                    {a}
                   </button>
                 ))}
               </PopoverContent>

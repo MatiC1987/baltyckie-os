@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTasksApi } from "@/lib/tasksApiContext";
 import type { TaskProject, TaskSection } from "@shared/schema";
@@ -29,12 +29,14 @@ export function TaskDialog({
   projects,
   sections,
   defaultProjectId,
+  defaultArea,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   projects: TaskProject[];
   sections: TaskSection[];
   defaultProjectId?: number;
+  defaultArea?: string;
 }) {
   const { apiRequest } = useTasksApi();
   const queryClient = useQueryClient();
@@ -46,6 +48,9 @@ export function TaskDialog({
   const [tags, setTags] = useState("");
   const [projectId, setProjectId] = useState<string>(defaultProjectId ? String(defaultProjectId) : getStoredDefaultProject() || "none");
   const [sectionId, setSectionId] = useState<string>("none");
+  const [area, setArea] = useState<string>(defaultArea || "none");
+
+  const allAreas = useMemo(() => Array.from(new Set(projects.filter(p => !p.archived && p.area).map(p => p.area!))), [projects]);
 
   useEffect(() => {
     if (open) {
@@ -57,8 +62,9 @@ export function TaskDialog({
       setTags("");
       setProjectId(defaultProjectId ? String(defaultProjectId) : getStoredDefaultProject() || "none");
       setSectionId("none");
+      setArea(defaultArea || "none");
     }
-  }, [open, defaultProjectId]);
+  }, [open, defaultProjectId, defaultArea]);
 
   const createTask = useMutation({
     mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/tasks", data),
@@ -81,6 +87,7 @@ export function TaskDialog({
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
       projectId: projectId !== "none" ? Number(projectId) : null,
       sectionId: sectionId !== "none" ? Number(sectionId) : null,
+      area: area !== "none" ? area : null,
     });
   };
 
@@ -148,6 +155,22 @@ export function TaskDialog({
                     <SelectItem key={s.id} value={String(s.id)}>
                       {s.name}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {allAreas.length > 0 && (
+            <div>
+              <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Przestrzeń</Label>
+              <Select value={area} onValueChange={setArea}>
+                <SelectTrigger className="mt-1" data-testid="select-task-area">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Brak</SelectItem>
+                  {allAreas.map((a) => (
+                    <SelectItem key={a} value={a}>{a}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

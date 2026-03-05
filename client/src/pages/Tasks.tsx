@@ -570,28 +570,39 @@ export function TasksCore() {
     areaProjects.forEach(p => {
       updateProject.mutate({ id: p.id, data: { area: newName } });
     });
+    tasks.filter(t => t.area === oldName).forEach(t => {
+      updateTask.mutate({ id: t.id, data: { area: newName } });
+    });
     saveAreaOrder(areaOrder.map(a => a === oldName ? newName : a));
     if (isAreaView && (view as { area: string }).area === oldName) {
       setView({ area: newName });
     }
     toast({ title: "Nazwa zmieniona" });
-  }, [projects, updateProject, isAreaView, view, toast, areaOrder, saveAreaOrder]);
+  }, [projects, tasks, updateProject, updateTask, isAreaView, view, toast, areaOrder, saveAreaOrder]);
 
   const handleSidebarAreaDelete = useCallback((areaName: string) => {
     const areaProjects = projects.filter(p => p.area === areaName);
     areaProjects.forEach(p => {
       updateProject.mutate({ id: p.id, data: { area: null } });
     });
+    tasks.filter(t => t.area === areaName).forEach(t => {
+      updateTask.mutate({ id: t.id, data: { area: null } });
+    });
     saveAreaOrder(areaOrder.filter(a => a !== areaName));
     if (isAreaView && (view as { area: string }).area === areaName) {
       setView("inbox");
     }
     toast({ title: "Przestrzeń usunięta" });
-  }, [projects, updateProject, isAreaView, view, toast, areaOrder, saveAreaOrder]);
+  }, [projects, tasks, updateProject, updateTask, isAreaView, view, toast, areaOrder, saveAreaOrder]);
 
   const handleInlineSubmit = useCallback((data: Record<string, unknown>) => {
-    createTask.mutate(data);
-  }, [createTask]);
+    if (isAreaView) {
+      const areaName = (view as { area: string }).area;
+      createTask.mutate({ ...data, area: areaName });
+    } else {
+      createTask.mutate(data);
+    }
+  }, [createTask, isAreaView, view]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1100,53 +1111,54 @@ export function TasksCore() {
     }
 
     if (isAreaView && areaData) {
+      const areaTasks = tagFilteredTasks;
+      const sortedAreaTasks = sortTasks(areaTasks, sortBy);
       return (
         <div className="py-4" data-testid="area-view">
-          {areaData.tags.length > 0 && (
-            <div className={`flex flex-wrap gap-1.5 ${isMobile ? 'px-4' : 'px-6'} mb-5`} data-testid="area-tags">
-              {areaData.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium ${getTagColor(tag)}`}
-                  data-testid={`badge-area-tag-${tag}`}
-                >
-                  {tag}
-                </span>
-              ))}
+          {areaData.projects.length > 0 && (
+            <div className="mb-4">
+              <div className={`text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 ${isMobile ? 'px-4' : 'px-6'} mb-2`}>Projekty</div>
+              <div className="space-y-0.5">
+                {areaData.projects.map((p) => {
+                  const projectTasks = tasks.filter(t => t.projectId === p.id && t.parentTaskId === null);
+                  const completedCount = projectTasks.filter(t => t.completed).length;
+                  const totalCount = projectTasks.length;
+                  const color = p.color || "#5ADBFA";
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handleViewChange({ projectId: p.id })}
+                      className={`flex items-center gap-3 w-full text-left ${isMobile ? 'px-4 py-2.5' : 'px-6 py-2'} hover:bg-muted/20 transition-colors group`}
+                      data-testid={`area-project-${p.id}`}
+                    >
+                      <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-medium text-foreground truncate">{p.name}</div>
+                      </div>
+                      {totalCount > 0 && (
+                        <span className="text-[11px] text-muted-foreground/50 tabular-nums">{completedCount}/{totalCount}</span>
+                      )}
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/20 shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
-          <div className="space-y-0.5">
-            {areaData.projects.map((p) => {
-              const projectTasks = tasks.filter(t => t.projectId === p.id && t.parentTaskId === null);
-              const completedCount = projectTasks.filter(t => t.completed).length;
-              const totalCount = projectTasks.length;
-              const color = p.color || "#5ADBFA";
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => handleViewChange({ projectId: p.id })}
-                  className={`flex items-center gap-3 w-full text-left ${isMobile ? 'px-4 py-3.5' : 'px-6 py-3'} hover:bg-muted/20 transition-colors group`}
-                  data-testid={`area-project-${p.id}`}
-                >
-                  <Circle className="h-5 w-5 shrink-0" style={{ color, fill: color }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-medium text-foreground truncate">{p.name}</div>
-                    {totalCount > 0 && (
-                      <div className="text-[11px] text-muted-foreground/60 mt-0.5">
-                        {completedCount}/{totalCount} ukończonych
-                      </div>
-                    )}
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground/30 shrink-0" />
-                </button>
-              );
-            })}
-          </div>
-          {areaData.projects.length === 0 && (
+          {(areaData.projects.length > 0 && sortedAreaTasks.length > 0) && (
+            <div className={`${isMobile ? 'mx-4' : 'mx-6'} mb-3 border-t border-border/20`} />
+          )}
+          {sortedAreaTasks.length > 0 && (
+            <div>
+              <div className={`text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 ${isMobile ? 'px-4' : 'px-6'} mb-2`}>Zadania</div>
+              {sortedAreaTasks.map((t) => renderTaskItem(t))}
+            </div>
+          )}
+          {areaData.projects.length === 0 && sortedAreaTasks.length === 0 && (
             <div className="text-center text-muted-foreground/50 py-16" data-testid="text-area-empty">
               <Layers className="h-12 w-12 mx-auto mb-3 opacity-15" />
-              <p className="text-sm font-medium">Brak projektów w tej przestrzeni</p>
-              <p className="text-xs mt-1 text-muted-foreground/40">Dodaj projekt i przypisz go do tej przestrzeni</p>
+              <p className="text-sm font-medium">Brak projektów i zadań w tej przestrzeni</p>
+              <p className="text-xs mt-1 text-muted-foreground/40">Dodaj projekt lub zadanie do tej przestrzeni</p>
             </div>
           )}
         </div>
@@ -1664,7 +1676,7 @@ export function TasksCore() {
           <div className={`flex-1 overflow-y-auto task-list-transition ${isMobile ? 'pb-20' : 'pb-0'}`} style={{ fontSize: 'var(--tasks-font-size, 14px)' }}>
             {view === "inbox" && !inlineAddVisible && newToDoRow("top")}
 
-            {inlineAddVisible && view !== "logbook" && !isAreaView && (
+            {inlineAddVisible && view !== "logbook" && (
               <TaskInlineAdd
                 view={view}
                 projects={activeProjects}
@@ -1682,7 +1694,7 @@ export function TasksCore() {
               renderSortableTaskList(tagFilteredTasks)
             )}
 
-            {tagFilteredTasks.length === 0 && !inlineAddVisible && !isAreaView && (
+            {tagFilteredTasks.length === 0 && !inlineAddVisible && !isAreaView && !hasGroupedView && (
               <div className="text-center text-muted-foreground/50 py-20" data-testid="text-empty-tasks">
                 {emptyState.icon && <emptyState.icon className="h-12 w-12 mx-auto mb-3 opacity-15" />}
                 <p className="text-sm font-medium">{emptyState.title}</p>
@@ -1692,7 +1704,7 @@ export function TasksCore() {
 
             {view === "inbox" && !inlineAddVisible && newToDoRow("bottom")}
 
-            {view !== "logbook" && view !== "inbox" && !isAreaView && !inlineAddVisible && (
+            {view !== "logbook" && view !== "inbox" && !inlineAddVisible && (
               <button
                 className={`flex items-center gap-3 px-6 ${isMobile ? 'py-3' : 'py-2.5'} w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
                 onClick={() => setInlineAddVisible(true)}
@@ -1945,6 +1957,7 @@ export function TasksCore() {
         projects={projects}
         sections={sections}
         defaultProjectId={isProjectView ? (view as { projectId: number }).projectId : undefined}
+        defaultArea={isAreaView ? (view as { area: string }).area : undefined}
       />
 
       <ProjectDialog

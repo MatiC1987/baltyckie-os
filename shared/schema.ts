@@ -1148,6 +1148,7 @@ export const tasks = pgTable("tasks", {
   tags: text("tags").array(),
   projectId: integer("project_id").references(() => taskProjects.id, { onDelete: "set null" }),
   sectionId: integer("section_id").references(() => taskSections.id, { onDelete: "set null" }),
+  area: text("area"),
   parentTaskId: integer("parent_task_id"),
   sortOrder: integer("sort_order").default(0),
   recurring: text("recurring"),

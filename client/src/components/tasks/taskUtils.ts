@@ -161,7 +161,10 @@ export function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, sho
     const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
     return bTime - aTime;
   });
-  if (typeof view === "object" && "area" in view) return [];
+  if (typeof view === "object" && "area" in view) {
+    const areaName = (view as { area: string }).area;
+    return tasks.filter((t) => !t.completed && t.parentTaskId === null && t.area === areaName);
+  }
   return tasks.filter((t) => t.projectId === (view as { projectId: number }).projectId && !t.completed && t.parentTaskId === null);
 }
 
