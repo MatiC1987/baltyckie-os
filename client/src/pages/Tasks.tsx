@@ -30,8 +30,10 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor,
+  DndContext, DragOverlay, closestCenter, pointerWithin, rectIntersection,
+  KeyboardSensor, PointerSensor,
   useSensor, useSensors, type DragStartEvent, type DragEndEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove,
@@ -87,6 +89,18 @@ function SortableSectionItem({ id, children }: { id: string; children: (listener
     </div>
   );
 }
+
+const customCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) {
+    const sidebarHit = pointerCollisions.find(c =>
+      String(c.id).startsWith("sidebar-project-") || String(c.id) === "sidebar-inbox"
+    );
+    if (sidebarHit) return [sidebarHit];
+    return pointerCollisions;
+  }
+  return closestCenter(args);
+};
 
 export function TasksCore() {
   const { toast } = useToast();
@@ -1273,7 +1287,7 @@ export function TasksCore() {
 
   return (
     <div className="flex h-screen" style={{ '--tasks-font-size': `${fontSize}px` } as React.CSSProperties} data-testid="page-tasks">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={customCollisionDetection} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
       {isMobile && (
         <div
           className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-200 ${sidebarCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}
