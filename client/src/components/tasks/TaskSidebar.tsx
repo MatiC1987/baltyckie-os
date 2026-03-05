@@ -3,7 +3,7 @@ import type { Task, TaskProject, TaskSection } from "@shared/schema";
 import {
   Plus, SlidersHorizontal, FolderPlus, ListPlus, Archive, Circle,
   MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
-  LogOut, GripVertical,
+  LogOut,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -97,21 +97,14 @@ function SortableProjectItem({
     <div
       ref={(node) => { setDropRef(node); setSortRef(node); }}
       style={style}
-      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 cursor-pointer group ${
+      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 cursor-grab active:cursor-grabbing group touch-none ${
         isActive ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
       } ${dropHighlight}`}
+      {...attributes}
+      {...listeners}
       onClick={onClick}
       data-testid={`sidebar-project-${project.id}`}
     >
-      <button
-        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-1 shrink-0 text-muted-foreground/40 hover:text-muted-foreground/70 touch-none"
-        {...attributes}
-        {...listeners}
-        onClick={(e) => e.stopPropagation()}
-        data-testid={`drag-handle-project-${project.id}`}
-      >
-        <GripVertical className="h-3 w-3" />
-      </button>
       <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
       <span className="flex-1 truncate">{project.name}</span>
       {stats.total > 0 && (
@@ -254,7 +247,7 @@ function SortableProjectList({
   isDraggingTask?: boolean;
 }) {
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 

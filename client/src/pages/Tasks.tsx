@@ -150,7 +150,7 @@ export function TasksCore() {
   const { data: employees = [] } = useQuery<any[]>({ queryKey: ["/api/employees"] });
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -1077,15 +1077,11 @@ export function TasksCore() {
               <SortableSectionItem key={sec.id} id={`section-${sec.id}`}>
                 {(sectionListeners) => (
                   <div data-testid={`section-${sec.id}`}>
-                    <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider py-3 px-5 w-full text-left transition-colors text-muted-foreground/80 group border-b border-border/30 mt-2">
-                      <button
-                        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-2 shrink-0 text-muted-foreground/40 hover:text-muted-foreground/70 touch-none"
-                        {...sectionListeners}
-                        onClick={(e) => e.stopPropagation()}
-                        data-testid={`drag-handle-section-${sec.id}`}
-                      >
-                        <GripVertical className="h-3.5 w-3.5" />
-                      </button>
+                    <div
+                      className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider py-3 px-5 w-full text-left transition-colors text-muted-foreground/80 group border-b border-border/30 mt-2 cursor-grab active:cursor-grabbing touch-none"
+                      {...sectionListeners}
+                      data-testid={`section-header-${sec.id}`}
+                    >
                       <button
                         onClick={() => toggleSection(sec.id)}
                         className="flex items-center gap-1.5 flex-1 min-w-0"
