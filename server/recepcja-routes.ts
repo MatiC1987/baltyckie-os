@@ -276,11 +276,17 @@ export function registerRecepcjaRoutes(app: Express) {
     try {
       const [note] = await db.select().from(accountingNotes).where(eq(accountingNotes.id, Number(req.params.id)));
       if (!note) return res.status(404).json({ message: 'Nie znaleziono' });
-      const { objectStorage } = await import("./replit_integrations/object_storage");
-      const buffer = await objectStorage.readFile(note.objectPath);
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const parsedPath = (() => {
+        const p = note.objectPath.startsWith("/") ? note.objectPath.slice(1) : note.objectPath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      const [fileBuffer] = await storageFile.download();
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${note.fileName}"`);
-      res.send(buffer);
+      res.send(fileBuffer);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 

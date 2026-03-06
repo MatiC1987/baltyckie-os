@@ -176,7 +176,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                 data-testid="button-delete-detail"
               >
                 <Trash2 className="h-4 w-4" />
-                Delete Task
+                Usuń zadanie
               </button>
             </div>
           )}
@@ -734,7 +734,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                 className="w-full text-center text-red-400 text-[15px] font-medium py-2"
                 data-testid="button-delete-task-mobile"
               >
-                Delete Task
+                Usuń zadanie
               </button>
             </div>
           </>
@@ -742,7 +742,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
       </div>
 
       <AlertDialog open={deleteConfirm} onOpenChange={setDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[60]">
           <AlertDialogHeader>
             <AlertDialogTitle>Usunąć zadanie?</AlertDialogTitle>
             <AlertDialogDescription>Tej operacji nie można cofnąć.</AlertDialogDescription>
