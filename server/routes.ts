@@ -3516,11 +3516,11 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
   app.patch('/api/settlement-reports/:id/status', isAuthenticated, async (req, res) => {
     try {
-      const { paymentStatus } = req.body;
+      const { paymentStatus, paidDate, paymentMethod } = req.body;
       if (!paymentStatus || !["NIEOPLACONE", "OPLACONE"].includes(paymentStatus)) {
         return res.status(400).json({ message: "Nieprawidłowy status płatności" });
       }
-      const updated = await storage.updateMediaSettlementReportStatus(Number(req.params.id), paymentStatus);
+      const updated = await storage.updateMediaSettlementReportStatus(Number(req.params.id), paymentStatus, paidDate, paymentMethod);
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Błąd aktualizacji" });

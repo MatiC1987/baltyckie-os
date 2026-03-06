@@ -254,7 +254,7 @@ export interface IStorage {
 
   getMediaSettlementReports(subleaseId: number): Promise<MediaSettlementReport[]>;
   createMediaSettlementReport(report: InsertMediaSettlementReport): Promise<MediaSettlementReport>;
-  updateMediaSettlementReportStatus(id: number, status: string): Promise<MediaSettlementReport>;
+  updateMediaSettlementReportStatus(id: number, status: string, paidDate?: string | null, paymentMethod?: string | null): Promise<MediaSettlementReport>;
   updateMediaSettlementReport(id: number, data: Partial<InsertMediaSettlementReport>): Promise<MediaSettlementReport>;
   deleteMediaSettlementReport(id: number): Promise<void>;
 
@@ -1347,9 +1347,17 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateMediaSettlementReportStatus(id: number, status: string): Promise<MediaSettlementReport> {
+  async updateMediaSettlementReportStatus(id: number, status: string, paidDate?: string | null, paymentMethod?: string | null): Promise<MediaSettlementReport> {
+    const setData: Record<string, any> = { paymentStatus: status };
+    if (status === 'OPLACONE') {
+      setData.paidDate = paidDate || new Date().toISOString().slice(0, 10);
+      setData.paymentMethod = paymentMethod || null;
+    } else {
+      setData.paidDate = null;
+      setData.paymentMethod = null;
+    }
     const [updated] = await db.update(mediaSettlementReports)
-      .set({ paymentStatus: status })
+      .set(setData)
       .where(eq(mediaSettlementReports.id, id))
       .returning();
     return updated;

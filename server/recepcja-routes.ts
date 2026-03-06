@@ -771,6 +771,47 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // ==================== MEDIA SETTLEMENTS ====================
+  app.get('/api/recepcja/media-settlements', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const reports = await db.select().from(mediaSettlementReports).orderBy(desc(mediaSettlementReports.generatedAt));
+      const allSubleases = await db.select().from(subleases);
+      const allApartments = await db.select().from(apartments);
+      const notes = await db.select().from(accountingNotes);
+      const aptMap = new Map(allApartments.map(a => [a.id, a.name || `#${a.id}`]));
+      const subleaseMap = new Map(allSubleases.map(s => [s.id, s]));
+      const noteByReport = new Map(notes.map(n => [n.reportId, n]));
+
+      const result = reports.map(r => {
+        const sub = subleaseMap.get(r.subleaseId);
+        const tenantName = sub ? (sub.companyName || `${sub.firstName || ''} ${sub.lastName || ''}`.trim()) : '—';
+        const aptName = sub?.apartmentId ? (aptMap.get(sub.apartmentId) || `#${sub.apartmentId}`) : '—';
+        const note = noteByReport.get(r.id);
+        return {
+          ...r,
+          tenantName,
+          apartmentName: aptName,
+          noteNumber: note?.noteNumber || null,
+          noteId: note?.id || null,
+        };
+      });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/media-settlements/:id/payment', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { paymentStatus, paidDate, paymentMethod } = req.body;
+      if (!paymentStatus || !['NIEOPLACONE', 'OPLACONE'].includes(paymentStatus)) {
+        return res.status(400).json({ message: 'Nieprawidłowy status' });
+      }
+      const updated = await storage.updateMediaSettlementReportStatus(id, paymentStatus, paidDate, paymentMethod);
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'media_settlement_report', id.toString(), { paymentStatus, paidDate, paymentMethod });
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // ==================== DASHBOARD ====================
   app.get('/api/recepcja/dashboard', isRecepcjaAuth as any, async (req: any, res) => {
     try {
@@ -803,11 +844,15 @@ export function registerRecepcjaRoutes(app: Express) {
       const aptMap = new Map(allApartments.map(a => [a.id, a.name || `#${a.id}`]));
       const subleaseMap = new Map(allSubleases.map(s => [s.id, s]));
 
+      const allNotes = await db.select().from(accountingNotes);
+      const noteByReport = new Map(allNotes.map(n => [n.reportId, n]));
+
       const unpaidMediaList = unpaidReports.map(r => {
         const sub = subleaseMap.get(r.subleaseId);
         const tenantName = sub ? (sub.companyName || `${sub.firstName || ''} ${sub.lastName || ''}`.trim()) : '—';
         const aptName = sub?.apartmentId ? (aptMap.get(sub.apartmentId) || `#${sub.apartmentId}`) : '—';
-        return { id: r.id, tenantName, apartmentName: aptName, totalCost: r.totalCost, generatedAt: r.generatedAt };
+        const note = noteByReport.get(r.id);
+        return { id: r.id, tenantName, apartmentName: aptName, totalCost: r.totalCost, generatedAt: r.generatedAt, noteNumber: note?.noteNumber || null };
       }).slice(0, 10);
 
       const in30days = new Date();

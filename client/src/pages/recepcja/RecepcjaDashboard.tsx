@@ -50,7 +50,7 @@ export default function RecepcjaDashboard() {
     { label: "Oczekujący najemcy", value: data?.pendingSubmissions || 0, icon: UserPlus, color: "text-purple-600", link: "/recepcja/podnajem/nowy-najemca" },
     { label: "Otwarte usterki", value: data?.openIssues || 0, icon: AlertTriangle, color: "text-yellow-600", link: "/recepcja/usterki" },
     { label: "Nowe noty do wydrukowania", value: newNotesCount, icon: FileText, color: "text-teal-600", link: "/recepcja/dokumenty" },
-    { label: "Nieopłacone media", value: data?.unpaidMediaCount || 0, icon: Zap, color: "text-amber-600", link: "/recepcja/podnajem/rozliczenia" },
+    { label: "Nieopłacone media", value: data?.unpaidMediaCount || 0, icon: Zap, color: "text-amber-600", link: "/recepcja/dokumenty" },
     { label: "Kończące się podnajmy", value: data?.subleasesEndingSoonCount || 0, icon: CalendarClock, color: "text-violet-600", link: "/recepcja/podnajem" },
     { label: "Nadchodzące płatności (7 dni)", value: data?.upcomingPaymentsCount || 0, icon: CreditCard, color: "text-sky-600", link: "/recepcja/podnajem/rozliczenia" },
   ];
@@ -134,6 +134,7 @@ export default function RecepcjaDashboard() {
                 <div>
                   <span className="font-medium">{r.tenantName}</span>
                   <span className="text-muted-foreground ml-2 text-xs">{r.apartmentName}</span>
+                  {r.noteNumber && <span className="text-muted-foreground ml-2 text-xs">({r.noteNumber})</span>}
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="destructive" className="text-xs no-default-hover-elevate no-default-active-elevate">{formatAmount(r.totalCost)}</Badge>

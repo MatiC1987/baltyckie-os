@@ -601,6 +601,8 @@ export const mediaSettlementReports = pgTable("media_settlement_reports", {
   hotWaterCost: numeric("hot_water_cost", { precision: 12, scale: 2 }),
   totalCost: numeric("total_cost", { precision: 12, scale: 2 }),
   paymentStatus: text("payment_status").notNull().default("NIEOPLACONE"),
+  paidDate: date("paid_date"),
+  paymentMethod: text("payment_method"),
   generatedAt: timestamp("generated_at").defaultNow(),
 });
 
