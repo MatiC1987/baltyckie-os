@@ -1357,6 +1357,8 @@ function SubleaseMediaCard({
   const [activeTab, setActiveTab] = useState<string>("electricity");
   const [expanded, setExpanded] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [customPeriodFrom, setCustomPeriodFrom] = useState("");
+  const [customPeriodTo, setCustomPeriodTo] = useState("");
   const [priceHistoryOpen, setPriceHistoryOpen] = useState(false);
   const [priceHistoryType, setPriceHistoryType] = useState<MeterType>("electricity");
   const [newReadingDate, setNewReadingDate] = useState("");
@@ -1498,13 +1500,24 @@ function SubleaseMediaCard({
     return sorted[0].periodTo;
   }, [reports]);
 
-  const currentPeriodFrom = useMemo(() => {
+  const lastReadingDate = useMemo(() => {
+    const allDates = readings
+      .filter(r => r.readingDate)
+      .map(r => r.readingDate!)
+      .sort((a, b) => b.localeCompare(a));
+    return allDates.length > 0 ? allDates[0] : null;
+  }, [readings]);
+
+  const defaultPeriodFrom = useMemo(() => {
     return lastReportPeriodTo || sublease.startDate;
   }, [lastReportPeriodTo, sublease.startDate]);
 
-  const currentPeriodTo = useMemo(() => {
-    return new Date().toISOString().slice(0, 10);
-  }, []);
+  const defaultPeriodTo = useMemo(() => {
+    return lastReadingDate || new Date().toISOString().slice(0, 10);
+  }, [lastReadingDate]);
+
+  const currentPeriodFrom = customPeriodFrom || defaultPeriodFrom;
+  const currentPeriodTo = customPeriodTo || defaultPeriodTo;
 
   const getElectricityChargesAtDate = useCallback((date: string) => {
     const chargesByName = new Map<string, SubleaseElectricityCharge>();
@@ -2106,6 +2119,8 @@ function SubleaseMediaCard({
               data-testid={`button-generate-report-${sublease.id}`}
               onClick={(e) => {
                 e.stopPropagation();
+                setCustomPeriodFrom(defaultPeriodFrom);
+                setCustomPeriodTo(defaultPeriodTo);
                 setGenerateOpen(true);
               }}
             >
@@ -2347,11 +2362,30 @@ function SubleaseMediaCard({
               const elecItem = data.items.find(i => i.type === "electricity");
               return (
                 <div className="space-y-3">
-                  <div className="p-3 bg-muted/50 rounded-md">
+                  <div className="p-3 bg-muted/50 rounded-md space-y-2">
                     <p className="text-sm font-medium">Okres rozliczeniowy:</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(data.periodFrom)} — {formatDate(data.periodTo)}
-                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Od</Label>
+                        <Input
+                          type="date"
+                          value={customPeriodFrom}
+                          onChange={(e) => setCustomPeriodFrom(e.target.value)}
+                          className="mt-1"
+                          data-testid="input-period-from"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Do</Label>
+                        <Input
+                          type="date"
+                          value={customPeriodTo}
+                          onChange={(e) => setCustomPeriodTo(e.target.value)}
+                          className="mt-1"
+                          data-testid="input-period-to"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {data.useNewCharges && elecItem && elecItem.totalConsumption > 0 && (
