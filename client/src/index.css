@@ -673,7 +673,7 @@ aside[data-sidebar-fs]::after {
 .task-checkmark-path {
   stroke-dasharray: 24;
   stroke-dashoffset: 0;
-  animation: checkmark-draw 200ms ease-out;
+  animation: checkmark-draw 250ms ease-out;
 }
 
 .task-checkbox-btn:hover .task-checkbox-circle-hover {
@@ -681,19 +681,97 @@ aside[data-sidebar-fs]::after {
 }
 
 .task-row {
-  transition: background-color 200ms ease, opacity 200ms ease, transform 200ms ease;
+  transition: background-color 200ms ease, opacity 200ms ease, transform 200ms ease, max-height 400ms ease;
+  max-height: 200px;
+  overflow: hidden;
 }
 
 .task-completing {
-  opacity: 0.5;
+  opacity: 0;
+  transform: translateX(-30px);
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-bottom-width: 0 !important;
+  transition: opacity 300ms ease, transform 300ms ease, max-height 400ms ease 200ms, padding 400ms ease 200ms, border 400ms ease 200ms;
 }
 
 .task-completing .text-foreground {
   text-decoration: line-through;
 }
 
+@keyframes task-slide-away {
+  0% { opacity: 1; transform: translateX(0); max-height: 80px; }
+  50% { opacity: 0; transform: translateX(-30px); max-height: 80px; }
+  100% { opacity: 0; transform: translateX(-30px); max-height: 0; padding: 0; }
+}
+
+.task-swipe-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.task-swipe-bg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+}
+
+.task-swipe-bg-left {
+  right: 0;
+  left: 0;
+  justify-content: flex-end;
+  background: #007AFF;
+}
+
+.task-swipe-bg-right {
+  left: 0;
+  right: 0;
+  justify-content: flex-start;
+  background: #FFD43B;
+}
+
+.task-swipe-content {
+  position: relative;
+  z-index: 1;
+  background: black;
+  will-change: transform;
+}
+
 .task-exit {
   transform: translateX(-20px);
   opacity: 0;
   transition: transform 300ms ease, opacity 300ms ease;
+}
+
+.tasks-mobile {
+  --tasks-bg: #000000;
+  --tasks-card: #1C1C1E;
+  --tasks-popup: #2C2C2E;
+  --tasks-text: #FFFFFF;
+  --tasks-text-secondary: rgba(255, 255, 255, 0.6);
+  --tasks-text-muted: rgba(255, 255, 255, 0.35);
+  --tasks-separator: rgba(255, 255, 255, 0.06);
+  font-family: -apple-system, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tasks-mobile .task-row {
+  border-color: var(--tasks-separator);
+}
+
+.task-view-transition {
+  animation: taskViewFadeIn 150ms ease-out;
+}
+
+@keyframes taskViewFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

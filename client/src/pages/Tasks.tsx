@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToast } from "@/hooks/use-toast";
 import { useTasksApi } from "@/lib/tasksApiContext";
 import {
-  Plus, Trash2, ChevronDown, ChevronRight, Circle,
+  Plus, Trash2, ChevronDown, ChevronRight, ChevronLeft, Circle,
   PanelLeftClose, PanelLeft, MoreHorizontal, ArrowRight,
   Copy, GripVertical, Menu, X, Flag, Pencil, Search,
   Inbox, Star, Sun, Moon, Clock, AlertTriangle, BookOpen, Sparkles,
@@ -44,7 +44,7 @@ import { WhenPopover } from "@/components/tasks/WhenPopover";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
-import { TaskRow } from "@/components/tasks/TaskRow";
+import { TaskRow, SwipeableTaskRow } from "@/components/tasks/TaskRow";
 import { TaskDetailPanel } from "@/components/tasks/TaskDetailPanel";
 import { TaskInlineCard } from "@/components/tasks/TaskInlineCard";
 import { TaskSidebar, SidebarFooter } from "@/components/tasks/TaskSidebar";
@@ -164,6 +164,10 @@ export function TasksCore() {
   const [bulkTagsOpen, setBulkTagsOpen] = useState(false);
   const [bulkDeadlineInput, setBulkDeadlineInput] = useState("");
   const [bulkDeadlineOpen, setBulkDeadlineOpen] = useState(false);
+  const [swipeWhenTaskId, setSwipeWhenTaskId] = useState<number | null>(null);
+  const [pullRefreshY, setPullRefreshY] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const pullStartRef = useRef({ y: 0, scrollTop: 0, active: false });
   const [areaOrder, setAreaOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("tasksAreaOrder") || "[]"); } catch { return []; }
   });
@@ -173,6 +177,57 @@ export function TasksCore() {
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+    let direction: "horizontal" | "vertical" | null = null;
+
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      tracking = sidebarCollapsed ? startX < 25 : true;
+      direction = null;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!tracking) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (!direction) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        direction = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+        if (direction === "vertical") { tracking = false; return; }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!tracking || direction !== "horizontal") { tracking = false; return; }
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - startX;
+      const velocity = Math.abs(dx) / 200;
+      const threshold = window.innerWidth * 0.35;
+      if (sidebarCollapsed && (dx > threshold || (dx > 50 && velocity > 1.5))) {
+        setSidebarCollapsed(false);
+      } else if (!sidebarCollapsed && (dx < -threshold || (dx < -50 && velocity > 1.5))) {
+        setSidebarCollapsed(true);
+      }
+      tracking = false;
+    };
+
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [isMobile, sidebarCollapsed]);
 
   useEffect(() => {
     if (renamingSectionId !== null && renameSectionInputRef.current) {
@@ -937,25 +992,46 @@ export function TasksCore() {
       );
     }
 
+    const taskRow = (
+      <TaskRow
+        task={t}
+        isSelected={selectedTasks.has(t.id)}
+        view={view}
+        hasChildren={hasChildren}
+        isExpanded={isExpanded}
+        childCompletedCount={children.filter(c => c.completed).length}
+        childTotalCount={children.length}
+        indent={indent}
+        project={project}
+        showProjectBar={showProjectBar}
+        isMobile={isMobile}
+        dragListeners={dragListeners}
+        onToggleComplete={handleToggleComplete}
+        onClick={handleTaskClick}
+        onToggleExpand={toggleExpand}
+      />
+    );
+
     return (
       <div key={t.id}>
-        <TaskRow
-          task={t}
-          isSelected={selectedTasks.has(t.id)}
-          view={view}
-          hasChildren={hasChildren}
-          isExpanded={isExpanded}
-          childCompletedCount={children.filter(c => c.completed).length}
-          childTotalCount={children.length}
-          indent={indent}
-          project={project}
-          showProjectBar={showProjectBar}
-          isMobile={isMobile}
-          dragListeners={dragListeners}
-          onToggleComplete={handleToggleComplete}
-          onClick={handleTaskClick}
-          onToggleExpand={toggleExpand}
-        />
+        {isMobile ? (
+          <SwipeableTaskRow
+            taskId={t.id}
+            onSwipeLeft={() => {
+              setSelectedTasks(prev => {
+                const next = new Set(prev);
+                next.has(t.id) ? next.delete(t.id) : next.add(t.id);
+                return next;
+              });
+              setMultiSelectMode(true);
+            }}
+            onSwipeRight={() => {
+              setSwipeWhenTaskId(t.id);
+            }}
+          >
+            {taskRow}
+          </SwipeableTaskRow>
+        ) : taskRow}
         {hasChildren && isExpanded && (
           <div>
             {children
@@ -1389,7 +1465,7 @@ export function TasksCore() {
   );
 
   return (
-    <div className="flex h-screen" style={{ '--tasks-font-size': `${fontSize}px` } as React.CSSProperties} data-testid="page-tasks">
+    <div className={`flex h-screen ${isMobile ? 'tasks-mobile' : ''}`} style={{ '--tasks-font-size': `${fontSize}px` } as React.CSSProperties} data-testid="page-tasks">
       <DndContext sensors={sensors} collisionDetection={customCollisionDetection} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
       {isMobile && (
         <div
@@ -1400,20 +1476,11 @@ export function TasksCore() {
       )}
       {isMobile ? (
         <aside
-          className={`fixed inset-y-0 left-0 z-50 shrink-0 border-r flex flex-col overflow-hidden bg-background w-[280px] transition-transform duration-200 ${
+          className={`fixed inset-0 z-50 shrink-0 flex flex-col overflow-hidden bg-black transition-transform duration-250 ease-out ${
             sidebarCollapsed ? "-translate-x-full" : "translate-x-0"
           }`}
           data-testid="tasks-sidebar"
         >
-          <div className="flex items-center justify-end p-2">
-            <button
-              onClick={() => setSidebarCollapsed(true)}
-              className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground"
-              data-testid="button-close-sidebar"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
           <TaskSidebar
             tasks={tasks}
             projects={projects}
@@ -1427,6 +1494,7 @@ export function TasksCore() {
             isDraggingProject={!!activeDragId && activeDragId.startsWith("sortable-project-")}
             isDraggingArea={!!activeDragId && activeDragId.startsWith("sortable-area-")}
             areaOrder={areaOrder}
+            isMobile={true}
             onViewChange={handleViewChange}
             onToggleArea={toggleArea}
             onAddProject={() => setAddProjectOpen(true)}
@@ -1438,12 +1506,14 @@ export function TasksCore() {
             onRenameArea={handleSidebarAreaRename}
             onDeleteArea={handleSidebarAreaDelete}
           />
-          <SidebarFooter
-            onAddProject={() => setAddProjectOpen(true)}
-            onAddArea={() => setAddAreaOpen(true)}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onLogout={onLogout}
-          />
+          {!isMobile && (
+            <SidebarFooter
+              onAddProject={() => setAddProjectOpen(true)}
+              onAddArea={() => setAddAreaOpen(true)}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onLogout={onLogout}
+            />
+          )}
         </aside>
       ) : (
         !sidebarCollapsed && (
@@ -1485,11 +1555,11 @@ export function TasksCore() {
         )
       )}
 
-      <main className="flex-1 flex flex-col overflow-hidden relative" data-testid="tasks-main">
-        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border/30">
+      <main className={`flex-1 flex flex-col overflow-hidden relative ${isMobile ? "bg-black" : ""}`} data-testid="tasks-main">
+        <div className={`flex items-center gap-3 ${isMobile ? "px-3 py-2 border-b border-white/[0.06]" : "px-5 py-3.5 border-b border-border/30"}`}>
           {isMobile && (
-            <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-1.5 rounded-full hover:bg-muted/50 text-muted-foreground" data-testid="button-mobile-menu">
-              <Menu className="h-4 w-4" />
+            <button onClick={() => setSidebarCollapsed(false)} className="p-1.5 -ml-1 text-blue-400" data-testid="button-mobile-menu">
+              <ChevronLeft className="h-6 w-6" />
             </button>
           )}
           <button
@@ -1500,9 +1570,9 @@ export function TasksCore() {
             {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <VIcon className="h-5 w-5 shrink-0" style={{ color: isAreaView ? "#4ECDC4" : view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "inbox" ? "#5ADBFA" : undefined }} />
+            <VIcon className={`${isMobile ? "h-6 w-6" : "h-5 w-5"} shrink-0`} style={{ color: isAreaView ? "#4ECDC4" : view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "inbox" ? "#5ADBFA" : undefined }} />
             <div>
-              <h2 className="text-lg font-semibold tracking-tight truncate" data-testid="text-view-title">
+              <h2 className={`${isMobile ? "text-[22px] font-bold tracking-tight" : "text-lg font-semibold tracking-tight"} truncate`} data-testid="text-view-title">
                 {isAreaView && renamingArea ? (
                   <Input
                     ref={renameAreaInputRef}
@@ -1673,7 +1743,41 @@ export function TasksCore() {
           );
         })()}
 
-          <div className={`flex-1 overflow-y-auto task-list-transition ${isMobile ? 'pb-20' : 'pb-0'}`} style={{ fontSize: 'var(--tasks-font-size, 14px)' }}>
+          <div
+            key={isMobile ? JSON.stringify(view) : undefined}
+            className={`flex-1 overflow-y-auto ${isMobile ? 'task-view-transition pb-20' : 'pb-0'}`}
+            style={{ fontSize: 'var(--tasks-font-size, 14px)' }}
+            onTouchStart={isMobile ? (e) => {
+              const el = e.currentTarget;
+              pullStartRef.current = { y: e.touches[0].clientY, scrollTop: el.scrollTop, active: el.scrollTop <= 0 };
+            } : undefined}
+            onTouchMove={isMobile ? (e) => {
+              if (!pullStartRef.current.active || isRefreshing) return;
+              const dy = e.touches[0].clientY - pullStartRef.current.y;
+              if (dy > 0 && e.currentTarget.scrollTop <= 0) {
+                setPullRefreshY(Math.min(dy * 0.4, 80));
+              }
+            } : undefined}
+            onTouchEnd={isMobile ? () => {
+              if (pullRefreshY > 60 && !isRefreshing) {
+                setIsRefreshing(true);
+                queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }).then(() => {
+                  setTimeout(() => {
+                    setIsRefreshing(false);
+                    setPullRefreshY(0);
+                  }, 500);
+                });
+              } else {
+                setPullRefreshY(0);
+              }
+              pullStartRef.current.active = false;
+            } : undefined}
+          >
+            {isMobile && (pullRefreshY > 0 || isRefreshing) && (
+              <div className="flex items-center justify-center transition-all" style={{ height: isRefreshing ? 48 : pullRefreshY }}>
+                <RefreshCw className={`h-5 w-5 text-white/40 ${isRefreshing ? 'animate-spin' : ''}`} style={{ transform: `rotate(${pullRefreshY * 3}deg)` }} />
+              </div>
+            )}
             {view === "inbox" && !inlineAddVisible && newToDoRow("top")}
 
             {inlineAddVisible && view !== "logbook" && (
@@ -1738,7 +1842,7 @@ export function TasksCore() {
           </DragOverlay>
 
         {(selectedTasks.size > 0 || inlineCardTaskId) && !(isMobile && detailTask) && (
-          <div className={`${isMobile ? 'fixed bottom-20' : 'absolute bottom-4'} left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-800 dark:bg-zinc-900 text-white rounded-2xl shadow-lg px-3 py-2 z-[60]`} data-testid="bottom-action-bar">
+          <div className={`${isMobile ? 'fixed bottom-6 left-4 right-4' : 'absolute bottom-4 left-1/2 -translate-x-1/2'} flex items-center ${isMobile ? 'justify-around' : 'gap-1'} bg-zinc-700/90 text-white rounded-2xl shadow-lg ${isMobile ? 'px-2 py-3' : 'px-3 py-2'} z-[60]`} data-testid="bottom-action-bar">
             <WhenPopover
               onSelectToday={() => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { dueDate: format(new Date(), "yyyy-MM-dd"), evening: false, someday: false } })); }}
               onSelectEvening={() => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { evening: true, dueDate: format(new Date(), "yyyy-MM-dd"), someday: false } })); }}
@@ -1747,62 +1851,94 @@ export function TasksCore() {
               onClear={() => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { dueDate: null, evening: false, someday: false } })); }}
               onSetReminder={(date, time) => { selectedTasksArray.forEach(id => updateTask.mutate({ id, data: { reminderDate: date, reminderTime: time } })); }}
             >
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-when">
-                <CalendarDays className="h-3.5 w-3.5" /> Kiedy
-              </Button>
+              {isMobile ? (
+                <button className="flex flex-col items-center gap-1 px-3 py-1 text-white/80 active:text-white" data-testid="button-action-when">
+                  <CalendarDays className="h-[18px] w-[18px]" />
+                  <span className="text-[11px]">Kiedy</span>
+                </button>
+              ) : (
+                <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-when">
+                  <CalendarDays className="h-3.5 w-3.5" /> Kiedy
+                </Button>
+              )}
             </WhenPopover>
 
-            <Popover onOpenChange={(open) => { if (open) setAssignCheckedIds(new Set()); }}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-assign">
-                  <UserPlus className="h-3.5 w-3.5" /> Przydziel
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="center" side="top" className="w-56 p-2" data-testid="popover-assign">
-                <div className="text-xs font-medium mb-2 px-1">Przydziel pracowników</div>
-                <div className="max-h-40 overflow-y-auto space-y-1">
-                  {employees.map((emp: any) => (
-                    <label key={emp.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-xs" data-testid={`assign-employee-${emp.id}`}>
-                      <Checkbox
-                        checked={assignCheckedIds.has(emp.id)}
-                        onCheckedChange={(checked) => {
-                          setAssignCheckedIds(prev => {
-                            const next = new Set(prev);
-                            checked ? next.add(emp.id) : next.delete(emp.id);
-                            return next;
-                          });
-                        }}
-                        data-testid={`checkbox-employee-${emp.id}`}
-                      />
-                      <span>{emp.firstName || emp.name || ""} {emp.lastName || ""}</span>
-                    </label>
-                  ))}
-                  {employees.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Brak pracowników</div>}
-                </div>
-                <Button
-                  size="sm"
-                  className="w-full mt-2"
-                  disabled={assignCheckedIds.size === 0}
-                  onClick={() => bulkAssign.mutate({ taskIds: selectedTasksArray, employeeIds: Array.from(assignCheckedIds) })}
-                  data-testid="button-confirm-assign"
-                >
-                  Przydziel ({assignCheckedIds.size})
-                </Button>
-              </PopoverContent>
-            </Popover>
+            {isMobile ? (
+              <button className="flex flex-col items-center gap-1 px-3 py-1 text-white/80 active:text-white" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
+                <ArrowRight className="h-[18px] w-[18px]" />
+                <span className="text-[11px]">Przenieś</span>
+              </button>
+            ) : (
+              <>
+                <Popover onOpenChange={(open) => { if (open) setAssignCheckedIds(new Set()); }}>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-assign">
+                      <UserPlus className="h-3.5 w-3.5" /> Przydziel
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="center" side="top" className="w-56 p-2" data-testid="popover-assign">
+                    <div className="text-xs font-medium mb-2 px-1">Przydziel pracowników</div>
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                      {employees.map((emp: any) => (
+                        <label key={emp.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-xs" data-testid={`assign-employee-${emp.id}`}>
+                          <Checkbox
+                            checked={assignCheckedIds.has(emp.id)}
+                            onCheckedChange={(checked) => {
+                              setAssignCheckedIds(prev => {
+                                const next = new Set(prev);
+                                checked ? next.add(emp.id) : next.delete(emp.id);
+                                return next;
+                              });
+                            }}
+                            data-testid={`checkbox-employee-${emp.id}`}
+                          />
+                          <span>{emp.firstName || emp.name || ""} {emp.lastName || ""}</span>
+                        </label>
+                      ))}
+                      {employees.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Brak pracowników</div>}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full mt-2"
+                      disabled={assignCheckedIds.size === 0}
+                      onClick={() => bulkAssign.mutate({ taskIds: selectedTasksArray, employeeIds: Array.from(assignCheckedIds) })}
+                      data-testid="button-confirm-assign"
+                    >
+                      Przydziel ({assignCheckedIds.size})
+                    </Button>
+                  </PopoverContent>
+                </Popover>
 
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
-              <ArrowRight className="h-3.5 w-3.5" />
-              Przenieś
-            </Button>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
-              <Trash2 className="h-3.5 w-3.5" /> Usuń
-            </Button>
+                <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setMoveDialogOpen(true)} data-testid="button-action-move">
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  Przenieś
+                </Button>
+              </>
+            )}
+
+            {isMobile ? (
+              <button className="flex flex-col items-center gap-1 px-3 py-1 text-white/80 active:text-white" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
+                <Trash2 className="h-[18px] w-[18px]" />
+                <span className="text-[11px]">Usuń</span>
+              </button>
+            ) : (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" onClick={() => setDeleteConfirmOpen(true)} data-testid="button-action-delete">
+                <Trash2 className="h-3.5 w-3.5" /> Usuń
+              </Button>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-more">
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </Button>
+                {isMobile ? (
+                  <button className="flex flex-col items-center gap-1 px-3 py-1 text-white/80 active:text-white" data-testid="button-action-more">
+                    <MoreHorizontal className="h-[18px] w-[18px]" />
+                    <span className="text-[11px]">Więcej</span>
+                  </button>
+                ) : (
+                  <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-white hover:text-white hover:bg-white/10" data-testid="button-action-more">
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="center" side="top" className="w-56">
                 <DropdownMenuItem onClick={() => bulkComplete.mutate({ taskIds: selectedTasksArray, completed: true })} data-testid="menu-action-complete">
@@ -1817,6 +1953,16 @@ export function TasksCore() {
                 <DropdownMenuItem onClick={() => bulkDuplicate.mutate({ taskIds: selectedTasksArray })} data-testid="menu-action-duplicate">
                   <Copy className="h-3.5 w-3.5 mr-2" /> Duplikuj
                 </DropdownMenuItem>
+                {isMobile && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => {
+                      setAssignCheckedIds(new Set());
+                    }} data-testid="menu-action-assign-mobile">
+                      <UserPlus className="h-3.5 w-3.5 mr-2" /> Przydziel
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem disabled data-testid="menu-action-share">
                   Udostępnij
@@ -1882,6 +2028,22 @@ export function TasksCore() {
             </Button>
           </PopoverContent>
         </Popover>
+
+        {swipeWhenTaskId !== null && (
+          <WhenPopover
+            currentDate={tasks.find(t => t.id === swipeWhenTaskId)?.dueDate}
+            evening={tasks.find(t => t.id === swipeWhenTaskId)?.evening || false}
+            someday={tasks.find(t => t.id === swipeWhenTaskId)?.someday || false}
+            onSelectToday={() => { updateTask.mutate({ id: swipeWhenTaskId, data: { dueDate: format(new Date(), "yyyy-MM-dd"), evening: false, someday: false } }); setSwipeWhenTaskId(null); }}
+            onSelectEvening={() => { updateTask.mutate({ id: swipeWhenTaskId, data: { evening: true, dueDate: format(new Date(), "yyyy-MM-dd"), someday: false } }); setSwipeWhenTaskId(null); }}
+            onSelectDate={(date) => { updateTask.mutate({ id: swipeWhenTaskId, data: { dueDate: date, evening: false, someday: false } }); setSwipeWhenTaskId(null); }}
+            onSelectSomeday={() => { updateTask.mutate({ id: swipeWhenTaskId, data: { someday: true, dueDate: null, evening: false } }); setSwipeWhenTaskId(null); }}
+            onClear={() => { updateTask.mutate({ id: swipeWhenTaskId, data: { dueDate: null, evening: false, someday: false } }); setSwipeWhenTaskId(null); }}
+            onSetReminder={(date, time) => { updateTask.mutate({ id: swipeWhenTaskId, data: { reminderDate: date, reminderTime: time } }); setSwipeWhenTaskId(null); }}
+          >
+            <span className="hidden" ref={(el) => { if (el && swipeWhenTaskId !== null) el.click(); }} />
+          </WhenPopover>
+        )}
 
         {view !== "logbook" && selectedTasks.size === 0 && !inlineCardTaskId && (
           <div className={`absolute ${isMobile ? 'bottom-24 right-4' : 'bottom-6 right-6'} z-40`}>

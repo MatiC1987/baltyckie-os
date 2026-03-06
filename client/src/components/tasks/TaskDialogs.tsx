@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTasksApi } from "@/lib/tasksApiContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { TaskProject, TaskSection } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ import {
 import type { SettingsPage } from "./taskUtils";
 import {
   Flag, Star, Calendar, Tag, Plus, Sun, Moon, Monitor, Check, ChevronRight,
-  Inbox, Circle, Type,
+  Inbox, Circle, Type, X, ChevronDown,
 } from "lucide-react";
 
 export function TaskDialog({
@@ -91,21 +92,79 @@ export function TaskDialog({
     });
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" data-testid="dialog-add-task">
-        <DialogHeader>
-          <DialogTitle>Nowe zadanie</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div>
-            <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Tytuł</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Tytuł zadania" className="mt-1" data-testid="input-task-title" autoFocus />
-          </div>
-          <div>
-            <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Notatki</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notatki..." className="mt-1 resize-none min-h-[60px]" data-testid="textarea-task-notes" />
-          </div>
+  const isMobile = useIsMobile();
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open && titleInputRef.current) {
+      setTimeout(() => titleInputRef.current?.focus(), 100);
+    }
+  }, [open]);
+
+  const formContent = (
+    <div className={`space-y-3 ${isMobile ? '' : 'py-2'}`}>
+      <div>
+        {!isMobile && <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Tytuł</Label>}
+        <Input
+          ref={titleInputRef}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={isMobile ? "Nowe zadanie" : "Tytuł zadania"}
+          className={isMobile ? "border-0 bg-transparent text-white text-[17px] font-medium px-0 py-2 focus-visible:ring-0 placeholder:text-white/30" : "mt-1"}
+          data-testid="input-task-title"
+          onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) handleSubmit(); }}
+        />
+      </div>
+      <div>
+        {!isMobile && <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Notatki</Label>}
+        <Textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Notes"
+          className={isMobile ? "border-0 bg-transparent text-white/80 text-[15px] px-0 py-1 resize-none min-h-[40px] focus-visible:ring-0 placeholder:text-white/25" : "mt-1 resize-none min-h-[60px]"}
+          data-testid="textarea-task-notes"
+        />
+      </div>
+      {isMobile && (
+        <div className="flex items-center gap-2 flex-wrap pt-1">
+          <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSectionId("none"); }}>
+            <SelectTrigger className="h-8 w-auto min-w-[80px] rounded-full bg-white/[0.08] border-0 text-white/60 text-[13px] px-3 gap-1.5" data-testid="select-task-project">
+              <Circle className="h-3 w-3 text-blue-400" />
+              <SelectValue placeholder="Projekt" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Brak</SelectItem>
+              {projects.filter((p) => !p.archived).map((p) => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={priority} onValueChange={setPriority}>
+            <SelectTrigger className="h-8 w-auto min-w-[70px] rounded-full bg-white/[0.08] border-0 text-white/60 text-[13px] px-3 gap-1.5" data-testid="select-task-priority">
+              <Flag className={`h-3 w-3 ${PRIORITY_FLAG_COLORS[priority]}`} />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(PRIORITY_LABELS).map(([val, label]) => (
+                <SelectItem key={val} value={val}>
+                  <div className="flex items-center gap-2">
+                    <Flag className={`h-3.5 w-3.5 ${PRIORITY_FLAG_COLORS[val]}`} />{label}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {dueDate ? (
+            <button className="h-8 rounded-full bg-amber-500/20 text-amber-400 text-[13px] px-3 flex items-center gap-1.5" onClick={() => setDueDate("")}>
+              <Calendar className="h-3 w-3" />{dueDate}<X className="h-3 w-3 ml-1 opacity-60" />
+            </button>
+          ) : (
+            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-8 w-auto rounded-full bg-white/[0.08] border-0 text-white/60 text-[13px] px-3" data-testid="input-task-due-date" />
+          )}
+        </div>
+      )}
+      {!isMobile && (
+        <>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Priorytet</Label>
@@ -117,8 +176,7 @@ export function TaskDialog({
                   {Object.entries(PRIORITY_LABELS).map(([val, label]) => (
                     <SelectItem key={val} value={val}>
                       <div className="flex items-center gap-2">
-                        <Flag className={`h-3.5 w-3.5 ${PRIORITY_FLAG_COLORS[val]}`} />
-                        {label}
+                        <Flag className={`h-3.5 w-3.5 ${PRIORITY_FLAG_COLORS[val]}`} />{label}
                       </div>
                     </SelectItem>
                   ))}
@@ -134,9 +192,7 @@ export function TaskDialog({
                 <SelectContent>
                   <SelectItem value="none">Brak</SelectItem>
                   {projects.filter((p) => !p.archived).map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name}
-                    </SelectItem>
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -152,9 +208,7 @@ export function TaskDialog({
                 <SelectContent>
                   <SelectItem value="none">Brak</SelectItem>
                   {projectSections.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -190,7 +244,49 @@ export function TaskDialog({
             <Label className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-semibold">Tagi</Label>
             <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="pilne, praca, dom" className="mt-1" data-testid="input-task-tags" />
           </div>
+        </>
+      )}
+    </div>
+  );
+
+  if (isMobile) {
+    if (!open) return null;
+    return (
+      <div className="fixed inset-0 z-50" data-testid="dialog-add-task">
+        <div className="absolute inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
+        <div
+          className="absolute bottom-0 left-0 right-0 rounded-t-2xl flex flex-col max-h-[85vh]"
+          style={{ backgroundColor: "#1C1C1E", fontFamily: "-apple-system, 'SF Pro Text', system-ui, sans-serif" }}
+        >
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <button onClick={() => onOpenChange(false)} className="text-white/50 text-[15px]" data-testid="button-cancel-task">
+              Anuluj
+            </button>
+            <span className="text-white font-semibold text-[15px]">Nowe zadanie</span>
+            <button
+              onClick={handleSubmit}
+              disabled={!title.trim() || createTask.isPending}
+              className="text-blue-400 font-semibold text-[15px] disabled:opacity-40"
+              data-testid="button-save-task"
+            >
+              Utwórz
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 pb-6" style={{ paddingBottom: "env(safe-area-inset-bottom, 24px)" }}>
+            {formContent}
+          </div>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-add-task">
+        <DialogHeader>
+          <DialogTitle>Nowe zadanie</DialogTitle>
+        </DialogHeader>
+        {formContent}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-task">
             Anuluj

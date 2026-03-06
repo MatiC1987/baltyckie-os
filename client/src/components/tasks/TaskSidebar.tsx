@@ -249,6 +249,7 @@ interface TaskSidebarProps {
   isDraggingProject?: boolean;
   isDraggingArea?: boolean;
   areaOrder: string[];
+  isMobile?: boolean;
   onViewChange: (view: ViewType) => void;
   onToggleArea: (area: string) => void;
   onAddProject: () => void;
@@ -450,6 +451,7 @@ export const TaskSidebar = memo(function TaskSidebar({
   isDraggingProject,
   isDraggingArea,
   areaOrder,
+  isMobile = false,
   onViewChange,
   onToggleArea,
   onAddProject,
@@ -524,14 +526,18 @@ export const TaskSidebar = memo(function TaskSidebar({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 space-y-0.5" style={{ fontSize: 'var(--tasks-font-size, 14px)' }} data-testid="tasks-sidebar-content">
+    <div className={`flex-1 overflow-y-auto ${isMobile ? "px-5 pt-[max(env(safe-area-inset-top),16px)] pb-4" : "p-3"} space-y-0.5`} style={{ fontSize: 'var(--tasks-font-size, 14px)' }} data-testid="tasks-sidebar-content">
       <button
         onClick={onOpenQuickFind}
-        className="flex items-center gap-2 w-full px-3 py-1.5 mb-3 min-h-[44px] rounded-lg bg-muted/40 hover:bg-muted/60 text-muted-foreground/60 text-[13px] transition-colors"
+        className={`flex items-center justify-center gap-2 w-full mb-4 min-h-[40px] transition-colors ${
+          isMobile
+            ? "rounded-xl bg-white/[0.08] text-white/40 text-[15px] py-2"
+            : "rounded-lg bg-muted/40 hover:bg-muted/60 text-muted-foreground/60 text-[13px] px-3 py-1.5"
+        }`}
         data-testid="sidebar-quick-find"
       >
-        <Search className="h-3.5 w-3.5" />
-        <span>Szybkie wyszukiwanie</span>
+        <Search className={isMobile ? "h-4 w-4" : "h-3.5 w-3.5"} />
+        <span>{isMobile ? "Quick Find" : "Szybkie wyszukiwanie"}</span>
       </button>
 
       {SMART_VIEWS.map((sv) => {
@@ -542,19 +548,25 @@ export const TaskSidebar = memo(function TaskSidebar({
           <SmartViewDroppable key={sv.key} id={isInbox ? "sidebar-inbox" : `sidebar-view-${sv.key}`} isInbox={isInbox} isDraggingTask={isDraggingTask}>
             <button
               onClick={() => onViewChange(sv.view)}
-              className={`flex items-center gap-2.5 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 ${
-                active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
+              className={`flex items-center w-full text-left transition-all duration-150 ${
+                isMobile
+                  ? `gap-3.5 px-1 py-[10px] min-h-[44px] rounded-lg ${active ? "text-white font-medium" : "text-white/80"}`
+                  : `gap-2.5 px-2.5 py-[7px] min-h-[44px] rounded-lg ${active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"}`
               }`}
-              style={{ fontSize: 'var(--tasks-font-size, 13px)' }}
+              style={{ fontSize: isMobile ? '17px' : 'var(--tasks-font-size, 13px)' }}
               data-testid={`button-view-${sv.key}`}
             >
-              <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
-                <sv.icon className="h-3.5 w-3.5" style={{ color: sv.color }} />
-              </div>
+              {isMobile ? (
+                <sv.icon className="h-[22px] w-[22px] shrink-0" style={{ color: sv.color, ...(sv.key === "today" || sv.key === "logbook" ? { fill: sv.color } : {}) }} />
+              ) : (
+                <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
+                  <sv.icon className="h-3.5 w-3.5" style={{ color: sv.color }} />
+                </div>
+              )}
               <span className="flex-1">{sv.label}</span>
               {sv.showCount && count > 0 && (
                 <span
-                  className="text-[11px] min-w-[18px] text-center tabular-nums text-muted-foreground/70 font-medium"
+                  className={`tabular-nums font-medium ${isMobile ? "text-[15px] text-white/35" : "text-[11px] min-w-[18px] text-center text-muted-foreground/70"}`}
                   data-testid={`badge-count-${sv.key}`}
                 >
                   {count}
@@ -566,7 +578,7 @@ export const TaskSidebar = memo(function TaskSidebar({
       })}
 
       {(areas.length > 0 || ungroupedProjects.length > 0) && (
-        <div className="mt-3 mb-1 mx-1 border-t border-border/20" />
+        <div className={`mt-4 mb-1 mx-1 border-t ${isMobile ? "border-white/[0.06]" : "border-border/20"}`} />
       )}
 
       <SortableContext items={areas.map(a => `sortable-area-${a}`)} strategy={verticalListSortingStrategy}>
@@ -584,16 +596,20 @@ export const TaskSidebar = memo(function TaskSidebar({
                   <div
                     role="button"
                     tabIndex={0}
-                    className={`flex items-center gap-2 w-full text-left px-2.5 py-1.5 mt-4 mb-0.5 min-h-[36px] rounded-md cursor-pointer group/area ${
-                      areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"
+                    className={`flex items-center w-full text-left mt-4 mb-0.5 min-h-[36px] rounded-md cursor-pointer group/area ${
+                      isMobile
+                        ? `gap-3 px-1 py-[10px] ${areaActive ? "text-white" : "text-white/70"}`
+                        : `gap-2 px-2.5 py-1.5 ${areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"}`
                     }`}
                     onClick={isRenamingThisArea ? undefined : () => onViewChange({ area })}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onViewChange({ area }); } }}
                     data-testid={`button-area-${area}`}
                   >
-                    <span {...(dragListeners || {})} className="cursor-grab active:cursor-grabbing touch-none shrink-0 flex items-center" onClick={(e) => e.stopPropagation()}>
-                      <Link2 className="h-4 w-4 text-muted-foreground/50" />
-                    </span>
+                    {!isMobile && (
+                      <span {...(dragListeners || {})} className="cursor-grab active:cursor-grabbing touch-none shrink-0 flex items-center" onClick={(e) => e.stopPropagation()}>
+                        <Link2 className="h-4 w-4 text-muted-foreground/50" />
+                      </span>
+                    )}
                     {isRenamingThisArea ? (
                       <Input
                         value={renamingAreaValue}
@@ -628,7 +644,7 @@ export const TaskSidebar = memo(function TaskSidebar({
                         data-testid={`input-rename-area-${area}`}
                       />
                     ) : (
-                      <span className={`flex-1 text-[12px] font-bold uppercase tracking-wider ${areaActive ? "text-foreground" : "text-foreground/70"}`}>{area}</span>
+                      <span className={`flex-1 ${isMobile ? "text-[15px] font-semibold" : "text-[12px] font-bold uppercase tracking-wider"} ${isMobile ? "" : areaActive ? "text-foreground" : "text-foreground/70"}`}>{area}</span>
                     )}
                     {!isRenamingThisArea && (
                       <DropdownMenu>

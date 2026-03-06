@@ -25,7 +25,10 @@ export const TaskCheckbox = memo(function TaskCheckbox({
     e.stopPropagation();
     if (!checked) {
       setAnimating(true);
-      setTimeout(() => setAnimating(false), 400);
+      if ('vibrate' in navigator) {
+        try { navigator.vibrate(10); } catch {}
+      }
+      setTimeout(() => setAnimating(false), 500);
     }
     onToggle();
   }, [checked, onToggle]);
@@ -34,11 +37,20 @@ export const TaskCheckbox = memo(function TaskCheckbox({
     <button
       onClick={handleClick}
       className={`shrink-0 flex items-center justify-center task-checkbox-btn ${className}`}
-      style={{ width: size, height: size }}
+      style={{ width: size + 8, height: size + 8 }}
       data-testid={testId}
       type="button"
     >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="task-checkbox-svg">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="task-checkbox-svg"
+        style={{
+          transform: animating ? 'scale(1.15)' : 'scale(1)',
+          transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
+      >
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -46,9 +58,9 @@ export const TaskCheckbox = memo(function TaskCheckbox({
           fill={checked || animating ? color : "transparent"}
           stroke={color}
           strokeWidth={1.5}
-          className={`transition-all duration-150 ${!checked && !animating ? "task-checkbox-circle-hover" : ""}`}
+          className="transition-all duration-200"
           style={{
-            opacity: checked || animating ? 1 : 0.6,
+            opacity: checked || animating ? 1 : 0.5,
           }}
         />
         {(checked || animating) && (
