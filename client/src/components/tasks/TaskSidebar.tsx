@@ -154,7 +154,7 @@ function SortableProjectItem({
     <div
       ref={(node) => { setDropRef(node); setSortRef(node); }}
       style={style}
-      className={`flex items-center gap-2 px-2.5 py-[7px] min-h-[44px] rounded-lg w-full text-left transition-all duration-150 group ${
+      className={`flex items-center gap-2 px-2.5 py-[3px] rounded-md w-full text-left transition-all duration-150 group ${
         isRenaming ? "cursor-text" : "cursor-grab active:cursor-grabbing touch-none"
       } ${
         isActive ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"
@@ -164,7 +164,7 @@ function SortableProjectItem({
       onClick={isRenaming ? undefined : onClick}
       data-testid={`sidebar-project-${project.id}`}
     >
-      <Circle className="h-[15px] w-[15px] shrink-0" strokeWidth={2.5} style={{ color }} />
+      <Circle className="h-[13px] w-[13px] shrink-0" strokeWidth={2.5} style={{ color }} />
       {isRenaming ? (
         <Input
           ref={renameInputRef}
@@ -551,7 +551,7 @@ export const TaskSidebar = memo(function TaskSidebar({
               className={`flex items-center w-full text-left transition-all duration-150 ${
                 isMobile
                   ? `gap-3.5 px-1 py-[10px] min-h-[44px] rounded-lg ${active ? "text-white font-medium" : "text-white/80"}`
-                  : `gap-2.5 px-2.5 py-[7px] min-h-[44px] rounded-lg ${active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"}`
+                  : `gap-2 px-2.5 py-[3px] rounded-md ${active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"}`
               }`}
               style={{ fontSize: isMobile ? '17px' : 'var(--tasks-font-size, 13px)' }}
               data-testid={`button-view-${sv.key}`}
@@ -559,8 +559,8 @@ export const TaskSidebar = memo(function TaskSidebar({
               {isMobile ? (
                 <sv.icon className="h-[22px] w-[22px] shrink-0" style={{ color: sv.color, ...(sv.key === "today" || sv.key === "logbook" ? { fill: sv.color } : {}) }} />
               ) : (
-                <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
-                  <sv.icon className="h-3.5 w-3.5" style={{ color: sv.color }} />
+                <div className={`h-5 w-5 rounded flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
+                  <sv.icon className="h-3 w-3" style={{ color: sv.color }} />
                 </div>
               )}
               <span className="flex-1">{sv.label}</span>
@@ -596,10 +596,10 @@ export const TaskSidebar = memo(function TaskSidebar({
                   <div
                     role="button"
                     tabIndex={0}
-                    className={`flex items-center w-full text-left mt-4 mb-0.5 min-h-[36px] rounded-md cursor-pointer group/area ${
+                    className={`flex items-center w-full text-left mt-3 mb-0 rounded-md cursor-pointer group/area ${
                       isMobile
-                        ? `gap-3 px-1 py-[10px] ${areaActive ? "text-white" : "text-white/70"}`
-                        : `gap-2 px-2.5 py-1.5 ${areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"}`
+                        ? `gap-3 px-1 py-[10px] min-h-[36px] ${areaActive ? "text-white" : "text-white/70"}`
+                        : `gap-2 px-2.5 py-[2px] ${areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"}`
                     }`}
                     onClick={isRenamingThisArea ? undefined : () => onViewChange({ area })}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onViewChange({ area }); } }}
@@ -786,7 +786,7 @@ export const SidebarFooter = memo(function SidebarFooter({
     <div className="border-t px-3 py-2 flex items-center gap-1">
       <Popover>
         <PopoverTrigger asChild>
-          <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-1 min-h-[44px]" data-testid="button-new-list">
+          <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1 py-0.5" data-testid="button-new-list">
             <Plus className="h-3.5 w-3.5" />
             <span>Nowa Lista</span>
           </button>
@@ -819,7 +819,7 @@ export const SidebarFooter = memo(function SidebarFooter({
       <div className="flex-1" />
       {onLogout && (
         <button
-          className="p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+          className="p-1.5 flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
           onClick={onLogout}
           data-testid="button-logout"
         >
@@ -827,7 +827,7 @@ export const SidebarFooter = memo(function SidebarFooter({
         </button>
       )}
       <button
-        className="p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+        className="p-1.5 flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
         onClick={onOpenSettings}
         data-testid="button-settings"
       >

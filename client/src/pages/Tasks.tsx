@@ -1078,7 +1078,7 @@ export function TasksCore() {
           {renderSortableTaskList(todayGrouped.tasks)}
           {todayGrouped.evening.length > 0 && (
             <div>
-              <div className="px-6 py-2 text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider flex items-center gap-2 mt-2">
+              <div className="px-5 py-1 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider flex items-center gap-2 mt-1.5">
                 <Moon className="h-3 w-3 text-indigo-400/60" />
                 This Evening
               </div>
@@ -1095,13 +1095,13 @@ export function TasksCore() {
           {upcomingGroups.map((group) => (
             <div key={group.key} className="mb-1">
               {group.dayNumber && !group.isRange ? (
-                <div className={`${isMobile ? 'px-4' : 'px-6'} py-3 flex items-baseline gap-2 border-b border-border/15`}>
-                  <span className={`${isMobile ? 'text-[28px]' : 'text-[32px]'} font-bold leading-none text-foreground tabular-nums`}>{group.dayNumber}</span>
-                  <span className="text-[15px] text-muted-foreground/70 capitalize">{group.dayName}</span>
+                <div className={`${isMobile ? 'px-4 py-3' : 'px-5 py-1.5'} flex items-baseline gap-2 border-b border-border/15`}>
+                  <span className={`${isMobile ? 'text-[28px]' : 'text-[24px]'} font-bold leading-none text-foreground tabular-nums`}>{group.dayNumber}</span>
+                  <span className={`${isMobile ? 'text-[15px]' : 'text-[13px]'} text-muted-foreground/70 capitalize`}>{group.dayName}</span>
                 </div>
               ) : (
-                <div className={`${isMobile ? 'px-4' : 'px-6'} py-3 border-b border-border/15`}>
-                  <span className="text-[15px] font-semibold text-foreground capitalize">{group.label}</span>
+                <div className={`${isMobile ? 'px-4 py-3' : 'px-5 py-1.5'} border-b border-border/15`}>
+                  <span className={`${isMobile ? 'text-[15px]' : 'text-[13px]'} font-semibold text-foreground capitalize`}>{group.label}</span>
                 </div>
               )}
               {group.tasks.length > 0 ? (
@@ -1128,7 +1128,7 @@ export function TasksCore() {
               <div key={group.projectId} className="mb-2">
                 <button
                   onClick={() => handleViewChange({ projectId: group.projectId })}
-                  className={`flex items-center gap-2 ${isMobile ? 'px-4' : 'px-6'} py-2.5 w-full text-left hover:bg-muted/20 transition-colors`}
+                  className={`flex items-center gap-2 ${isMobile ? 'px-4 py-2.5' : 'px-5 py-1.5'} w-full text-left hover:bg-muted/20 transition-colors`}
                   data-testid={`anytime-project-${group.projectId}`}
                 >
                   <Circle className="h-4 w-4 shrink-0" style={{ color: group.projectColor, fill: group.projectColor }} />
@@ -1141,7 +1141,7 @@ export function TasksCore() {
                   return (
                     <div
                       key={t.id}
-                      className={`flex items-center gap-3 px-6 py-2 ${isMobile ? 'pl-8' : 'pl-12'} cursor-pointer hover:bg-muted/20 transition-colors ${selectedTasks.has(t.id) ? "bg-muted/30" : ""}`}
+                      className={`flex items-center gap-2 ${isMobile ? 'px-4 py-2 pl-8' : 'px-5 py-[5px] pl-10'} cursor-pointer hover:bg-muted/20 transition-colors ${selectedTasks.has(t.id) ? "bg-muted/30" : ""}`}
                       onClick={() => handleTaskClick(t)}
                       data-testid={`task-row-${t.id}`}
                     >
@@ -1178,7 +1178,7 @@ export function TasksCore() {
     if (view === "logbook" && logbookGrouped) {
       return logbookGrouped.map(({ label, tasks: groupTasks }) => (
         <div key={label}>
-          <div className="px-6 py-2 text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
+          <div className="px-5 py-1 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
             {label}
           </div>
           {groupTasks.map((t) => renderTaskItem(t))}
@@ -1193,7 +1193,7 @@ export function TasksCore() {
         <div className="py-4" data-testid="area-view">
           {areaData.projects.length > 0 && (
             <div className="mb-4">
-              <div className={`text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 ${isMobile ? 'px-4' : 'px-6'} mb-2`}>Projekty</div>
+              <div className={`text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 ${isMobile ? 'px-4 mb-2' : 'px-5 mb-1'}`}>Projekty</div>
               <div className="space-y-0.5">
                 {areaData.projects.map((p) => {
                   const projectTasks = tasks.filter(t => t.projectId === p.id && t.parentTaskId === null);
@@ -1204,7 +1204,7 @@ export function TasksCore() {
                     <button
                       key={p.id}
                       onClick={() => handleViewChange({ projectId: p.id })}
-                      className={`flex items-center gap-3 w-full text-left ${isMobile ? 'px-4 py-2.5' : 'px-6 py-2'} hover:bg-muted/20 transition-colors group`}
+                      className={`flex items-center gap-2 w-full text-left ${isMobile ? 'px-4 py-2.5' : 'px-5 py-[5px]'} hover:bg-muted/20 transition-colors group`}
                       data-testid={`area-project-${p.id}`}
                     >
                       <Circle className="h-4 w-4 shrink-0" style={{ color, fill: color }} />
@@ -1222,11 +1222,11 @@ export function TasksCore() {
             </div>
           )}
           {(areaData.projects.length > 0 && sortedAreaTasks.length > 0) && (
-            <div className={`${isMobile ? 'mx-4' : 'mx-6'} mb-3 border-t border-border/20`} />
+            <div className={`${isMobile ? 'mx-4' : 'mx-5'} mb-2 border-t border-border/20`} />
           )}
           {sortedAreaTasks.length > 0 && (
             <div>
-              <div className={`text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 ${isMobile ? 'px-4' : 'px-6'} mb-2`}>Zadania</div>
+              <div className={`text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 ${isMobile ? 'px-4 mb-2' : 'px-5 mb-1'}`}>Zadania</div>
               {sortedAreaTasks.map((t) => renderTaskItem(t))}
             </div>
           )}
@@ -1374,10 +1374,10 @@ export function TasksCore() {
         </SortableContext>
 
         {laterCount > 0 && (
-          <div className="px-6 py-2">
+          <div className="px-5 py-1">
             <button
               onClick={toggleHideLater}
-              className="text-[13px] text-primary/70 hover:text-primary transition-colors"
+              className="text-[12px] text-primary/70 hover:text-primary transition-colors"
               data-testid="button-toggle-hide-later"
             >
               {hideLater
@@ -1389,10 +1389,10 @@ export function TasksCore() {
         )}
 
         {loggedCount > 0 && (
-          <div className="px-6 py-2">
+          <div className="px-5 py-1">
             <button
               onClick={toggleShowLogged}
-              className="text-[13px] text-primary/70 hover:text-primary transition-colors"
+              className="text-[12px] text-primary/70 hover:text-primary transition-colors"
               data-testid="button-toggle-show-logged"
             >
               {showLogged
@@ -1412,7 +1412,7 @@ export function TasksCore() {
               return (
                 <div
                   key={t.id}
-                  className="flex items-center gap-3 px-6 py-2 cursor-pointer hover:bg-muted/20 transition-colors"
+                  className="flex items-center gap-2 px-5 py-[5px] cursor-pointer hover:bg-muted/20 transition-colors"
                   onClick={() => handleTaskClick(t)}
                   data-testid={`logged-task-${t.id}`}
                 >
@@ -1456,10 +1456,10 @@ export function TasksCore() {
   const newToDoRow = (position: "top" | "bottom") => (
     <button
       onClick={() => { setInlineAddVisible(true); }}
-      className={`flex items-center gap-3 px-6 ${isMobile ? 'py-3' : 'py-2.5'} w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
+      className={`flex items-center gap-2 ${isMobile ? 'px-4 py-3' : 'px-5 py-[5px]'} w-full text-left text-[13px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
       data-testid={`button-new-todo-${position}`}
     >
-      <div className="h-[18px] w-[18px] rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
+      <div className={`${isMobile ? 'h-[18px] w-[18px]' : 'h-[16px] w-[16px]'} rounded-full border-[1.5px] border-muted-foreground/20 shrink-0`} />
       <span>Nowe zadanie</span>
     </button>
   );
@@ -1556,7 +1556,7 @@ export function TasksCore() {
       )}
 
       <main className={`flex-1 flex flex-col overflow-hidden relative ${isMobile ? "bg-black" : ""}`} data-testid="tasks-main">
-        <div className={`flex items-center gap-3 ${isMobile ? "px-3 py-2 border-b border-white/[0.06]" : "px-5 py-3.5 border-b border-border/30"}`}>
+        <div className={`flex items-center gap-3 ${isMobile ? "px-3 py-2 border-b border-white/[0.06]" : "px-4 py-2 border-b border-border/30"}`}>
           {isMobile && (
             <button onClick={() => setSidebarCollapsed(false)} className="p-1.5 -ml-1 text-blue-400" data-testid="button-mobile-menu">
               <ChevronLeft className="h-6 w-6" />
@@ -1572,7 +1572,7 @@ export function TasksCore() {
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
             <VIcon className={`${isMobile ? "h-6 w-6" : "h-5 w-5"} shrink-0`} style={{ color: isAreaView ? "#4ECDC4" : view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "inbox" ? "#5ADBFA" : undefined }} />
             <div>
-              <h2 className={`${isMobile ? "text-[22px] font-bold tracking-tight" : "text-lg font-semibold tracking-tight"} truncate`} data-testid="text-view-title">
+              <h2 className={`${isMobile ? "text-[22px] font-bold tracking-tight" : "text-[15px] font-semibold tracking-tight"} truncate`} data-testid="text-view-title">
                 {isAreaView && renamingArea ? (
                   <Input
                     ref={renameAreaInputRef}
@@ -1732,7 +1732,7 @@ export function TasksCore() {
           const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
           const color = currentProject?.color || "#5ADBFA";
           return (
-            <div className="px-6 py-3" data-testid="project-header">
+            <div className={`${isMobile ? 'px-4 py-3' : 'px-5 py-1.5'}`} data-testid="project-header">
               <div className="text-[11px] text-muted-foreground/50 mb-1">
                 {completedCount} z {totalCount} zadań
               </div>
@@ -1810,11 +1810,11 @@ export function TasksCore() {
 
             {view !== "logbook" && view !== "inbox" && !inlineAddVisible && (
               <button
-                className={`flex items-center gap-3 px-6 ${isMobile ? 'py-3' : 'py-2.5'} w-full text-left text-[13.5px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
+                className={`flex items-center gap-2 ${isMobile ? 'px-4 py-3' : 'px-5 py-[5px]'} w-full text-left text-[13px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors`}
                 onClick={() => setInlineAddVisible(true)}
                 data-testid="button-inline-add"
               >
-                <div className="h-[18px] w-[18px] rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
+                <div className={`${isMobile ? 'h-[18px] w-[18px]' : 'h-[16px] w-[16px]'} rounded-full border-[1.5px] border-muted-foreground/20 shrink-0`} />
                 <span>Nowe zadanie</span>
               </button>
             )}

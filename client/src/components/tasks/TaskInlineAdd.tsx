@@ -86,9 +86,9 @@ export const TaskInlineAdd = memo(function TaskInlineAdd({
   const nextWeek = format(new Date(Date.now() + 7 * 86400000), "yyyy-MM-dd");
 
   return (
-    <div className="px-5 py-3 border-b border-border/30 bg-muted/5" data-testid="inline-add-task">
-      <div className="flex items-center gap-3">
-        <div className="h-5 w-5 rounded-full border-[1.5px] border-muted-foreground/20 shrink-0" />
+    <div className={`px-5 ${isMobile ? 'py-3' : 'py-1.5'} border-b border-border/30 bg-muted/5`} data-testid="inline-add-task">
+      <div className="flex items-center gap-2">
+        <div className={`${isMobile ? 'h-5 w-5' : 'h-4 w-4'} rounded-full border-[1.5px] border-muted-foreground/20 shrink-0`} />
         <Input
           ref={inputRef}
           value={title}
