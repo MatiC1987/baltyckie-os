@@ -1,10 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { recepcjaFetch } from "./RecepcjaApp";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import {
   Plane, PlaneLanding, AlertCircle, CheckSquare, UserPlus, LayoutDashboard, AlertTriangle, FileText,
+  Zap, CalendarClock, CreditCard,
 } from "lucide-react";
+
+function formatDate(d: string | null | undefined) {
+  if (!d) return "—";
+  try {
+    const parsed = d.length === 10 ? new Date(d + "T12:00:00") : new Date(d);
+    if (isNaN(parsed.getTime())) return String(d);
+    return parsed.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch { return String(d); }
+}
+
+function formatAmount(v: string | number | null | undefined) {
+  if (v == null) return "—";
+  return `${parseFloat(String(v)).toFixed(2)} zł`;
+}
 
 export default function RecepcjaDashboard() {
   const { data, isLoading } = useQuery({
@@ -34,6 +50,9 @@ export default function RecepcjaDashboard() {
     { label: "Oczekujący najemcy", value: data?.pendingSubmissions || 0, icon: UserPlus, color: "text-purple-600", link: "/recepcja/podnajem/nowy-najemca" },
     { label: "Otwarte usterki", value: data?.openIssues || 0, icon: AlertTriangle, color: "text-yellow-600", link: "/recepcja/usterki" },
     { label: "Nowe noty do wydrukowania", value: newNotesCount, icon: FileText, color: "text-teal-600", link: "/recepcja/dokumenty" },
+    { label: "Nieopłacone media", value: data?.unpaidMediaCount || 0, icon: Zap, color: "text-amber-600", link: "/recepcja/podnajem/rozliczenia" },
+    { label: "Kończące się podnajmy", value: data?.subleasesEndingSoonCount || 0, icon: CalendarClock, color: "text-violet-600", link: "/recepcja/podnajem" },
+    { label: "Nadchodzące płatności (7 dni)", value: data?.upcomingPaymentsCount || 0, icon: CreditCard, color: "text-sky-600", link: "/recepcja/podnajem/rozliczenia" },
   ];
 
   return (
@@ -45,7 +64,7 @@ export default function RecepcjaDashboard() {
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[...Array(7)].map((_, i) => (
+          {[...Array(10)].map((_, i) => (
             <Card key={i} className="p-4 animate-pulse"><div className="h-16 bg-muted rounded" /></Card>
           ))}
         </div>
@@ -98,6 +117,79 @@ export default function RecepcjaDashboard() {
               <div key={r.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
                 <span className="font-medium">{r.guestName}</span>
                 <span className="text-muted-foreground">{r.apartmentName || `Apt #${r.apartmentId}`}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {data?.unpaidMediaList?.length > 0 && (
+        <Card className="p-4" data-testid="card-unpaid-media-list">
+          <h2 className="font-semibold mb-3 flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-600" /> Nieopłacone rozliczenia mediów
+          </h2>
+          <div className="space-y-2">
+            {data.unpaidMediaList.map((r: any) => (
+              <div key={r.id} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
+                <div>
+                  <span className="font-medium">{r.tenantName}</span>
+                  <span className="text-muted-foreground ml-2 text-xs">{r.apartmentName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="destructive" className="text-xs no-default-hover-elevate no-default-active-elevate">{formatAmount(r.totalCost)}</Badge>
+                  <span className="text-xs text-muted-foreground">{formatDate(r.generatedAt)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {data?.upcomingPaymentsList?.length > 0 && (
+        <Card className="p-4" data-testid="card-upcoming-payments-list">
+          <h2 className="font-semibold mb-3 flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-sky-600" /> Nadchodzące płatności (7 dni)
+          </h2>
+          <div className="space-y-2">
+            {data.upcomingPaymentsList.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
+                <div>
+                  <span className="font-medium">{p.tenantName}</span>
+                  <span className="text-muted-foreground ml-2 text-xs">{p.title}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{formatAmount(p.amount)}</span>
+                  <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                    {formatDate(p.dueDate)}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {data?.subleasesEndingSoonList?.length > 0 && (
+        <Card className="p-4" data-testid="card-subleases-ending-list">
+          <h2 className="font-semibold mb-3 flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-violet-600" /> Kończące się podnajmy (30 dni)
+          </h2>
+          <div className="space-y-2">
+            {data.subleasesEndingSoonList.map((s: any) => (
+              <div key={s.id} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
+                <div>
+                  <span className="font-medium">{s.tenantName}</span>
+                  <span className="text-muted-foreground ml-2 text-xs">{s.apartmentName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{formatDate(s.endDate)}</span>
+                  <Badge
+                    variant={s.daysLeft <= 7 ? "destructive" : "outline"}
+                    className="text-xs no-default-hover-elevate no-default-active-elevate"
+                  >
+                    {s.daysLeft === 0 ? "dziś" : s.daysLeft === 1 ? "1 dzień" : `${s.daysLeft} dni`}
+                  </Badge>
+                </div>
               </div>
             ))}
           </div>

@@ -9,6 +9,7 @@ import {
   meterReadingsLog, subleaseChangeHistory, pushSubscriptions,
   saldoEntries, saldoInitialBalances, saldoCategories,
   subleases, subleasePayments, subleaseMeterReadings, subleaseMeterSettings,
+  mediaSettlementReports,
   apartments, reservations, handoverProtocols, handoverProtocolRooms,
   handoverProtocolItems, handoverProtocolMeters, technicalInspections,
   costInvoices, accountingNotes, tasks as tasksTable, taskProjects, taskSections,
@@ -795,6 +796,45 @@ export function registerRecepcjaRoutes(app: Express) {
         .where(sql`${issues.status} IN ('OTWARTE', 'W_REALIZACJI')`);
       const openIssuesCount = openIssues[0]?.count || 0;
 
+      const allSettlementReports = await db.select().from(mediaSettlementReports);
+      const unpaidReports = allSettlementReports.filter(r => r.paymentStatus === 'NIEOPLACONE');
+      const allSubleases = await db.select().from(subleases);
+      const allApartments = await db.select().from(apartments);
+      const aptMap = new Map(allApartments.map(a => [a.id, a.name || `#${a.id}`]));
+      const subleaseMap = new Map(allSubleases.map(s => [s.id, s]));
+
+      const unpaidMediaList = unpaidReports.map(r => {
+        const sub = subleaseMap.get(r.subleaseId);
+        const tenantName = sub ? (sub.companyName || `${sub.firstName || ''} ${sub.lastName || ''}`.trim()) : '—';
+        const aptName = sub?.apartmentId ? (aptMap.get(sub.apartmentId) || `#${sub.apartmentId}`) : '—';
+        return { id: r.id, tenantName, apartmentName: aptName, totalCost: r.totalCost, generatedAt: r.generatedAt };
+      }).slice(0, 10);
+
+      const in30days = new Date();
+      in30days.setDate(in30days.getDate() + 30);
+      const in30str = in30days.toISOString().slice(0, 10);
+      const endingSoon = allSubleases.filter(s =>
+        s.status === 'AKTYWNA' && s.endDate >= today && s.endDate <= in30str
+      );
+      const endingSoonList = endingSoon.map(s => {
+        const aptName = s.apartmentId ? (aptMap.get(s.apartmentId) || `#${s.apartmentId}`) : '—';
+        const tenantName = s.companyName || `${s.firstName || ''} ${s.lastName || ''}`.trim();
+        const daysLeft = Math.ceil((new Date(s.endDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+        return { id: s.id, tenantName, apartmentName: aptName, endDate: s.endDate, daysLeft };
+      }).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 10);
+
+      const in7days = new Date();
+      in7days.setDate(in7days.getDate() + 7);
+      const in7str = in7days.toISOString().slice(0, 10);
+      const upcomingPay = allPayments.filter(p =>
+        p.status === 'do_oplacenia' && p.dueDate && p.dueDate >= today && p.dueDate <= in7str
+      );
+      const upcomingPayList = upcomingPay.map(p => {
+        const sub = subleaseMap.get(p.subleaseId);
+        const tenantName = sub ? (sub.companyName || `${sub.firstName || ''} ${sub.lastName || ''}`.trim()) : '—';
+        return { id: p.id, tenantName, title: p.title, amount: p.amount, dueDate: p.dueDate };
+      }).sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).slice(0, 10);
+
       res.json({
         todayArrivals: todayArrivals.length,
         todayDepartures: todayDepartures.length,
@@ -804,6 +844,12 @@ export function registerRecepcjaRoutes(app: Express) {
         openIssues: openIssuesCount,
         arrivals: todayArrivals.slice(0, 10),
         departures: todayDepartures.slice(0, 10),
+        unpaidMediaCount: unpaidReports.length,
+        unpaidMediaList,
+        subleasesEndingSoonCount: endingSoon.length,
+        subleasesEndingSoonList: endingSoonList,
+        upcomingPaymentsCount: upcomingPay.length,
+        upcomingPaymentsList: upcomingPayList,
       });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
