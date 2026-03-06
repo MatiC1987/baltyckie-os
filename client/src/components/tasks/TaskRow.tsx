@@ -123,10 +123,10 @@ export const TaskRow = memo(function TaskRow({
 
   return (
     <div
-      className={`task-row flex items-start gap-3 px-6 py-2.5 cursor-pointer transition-colors duration-100 ${
+      className={`task-row flex items-start gap-2 px-5 py-[5px] cursor-pointer transition-colors duration-100 ${
         isSelected ? "bg-muted/30" : "hover:bg-muted/20"
       }`}
-      style={{ paddingLeft: `${24 + indent * 28}px` }}
+      style={{ paddingLeft: `${20 + indent * 24}px` }}
       onClick={handleClick}
       data-testid={`task-row-${task.id}`}
       {...(dragListeners || {})}
@@ -138,7 +138,7 @@ export const TaskRow = memo(function TaskRow({
         />
       )}
 
-      <div className="mt-[2px] shrink-0">
+      <div className="mt-[1px] shrink-0">
         <TaskCheckbox
           checked={!!task.completed}
           priority={task.priority || "BRAK"}
