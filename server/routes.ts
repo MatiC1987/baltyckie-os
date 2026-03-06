@@ -4120,7 +4120,6 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       doc.text(rd(`Rozliczenie mediow - ${aptName}`), 14, startY);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(rd(`Okres: ${formatDatePL(report.periodFrom)} - ${formatDatePL(report.periodTo)}`), 14, startY + 7);
 
       const rows: string[][] = [];
       const hasNewElecFields = report.electricityNetto && Number(report.electricityNetto) > 0;
@@ -4164,7 +4163,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       }
 
       autoTable(doc, {
-        startY: startY + 12,
+        startY: startY + 7,
         head: [["Medium", rd("Zuzycie"), "Netto", "VAT", "Brutto"]],
         body: rows,
         foot: [[rd("RAZEM DO ZAPLATY"), "", "", "", `${plnFmt(report.totalCost)} PLN`]],

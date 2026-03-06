@@ -573,12 +573,6 @@ function generateAccountingNoteTemplate(): Document {
           { text: "Rozliczenie mediów - ", bold: true },
           { text: "NAZWA_APARTAMENTU", placeholder: true },
         ]),
-        mixed([
-          { text: "Okres: " },
-          { text: "OKRES_OD", placeholder: true },
-          { text: " - " },
-          { text: "OKRES_DO", placeholder: true },
-        ]),
         emptyLine(),
         mediaTable,
         emptyLine(),
