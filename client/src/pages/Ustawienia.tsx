@@ -23,7 +23,7 @@ import {
   Type, Menu, ChevronDown, ChevronRight, PanelLeft, TrendingUp,
   Monitor, Shield, Bell, BellOff, BellRing, Loader2,
   Download, Upload, Mail, CalendarClock, CreditCard, FileCheck,
-  Clock,
+  Clock, Fingerprint, Smartphone, Trash2, Plus, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -681,6 +681,128 @@ function ForceMenuButton() {
   );
 }
 
+function WebAuthnCard() {
+  const { toast } = useToast();
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  const { data: credentials, isLoading } = useQuery<{ id: number; deviceName: string | null; createdAt: string }[]>({
+    queryKey: ["/api/webauthn/credentials"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (credId: number) => {
+      await apiRequest("DELETE", `/api/webauthn/credentials/${credId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/webauthn/credentials"] });
+      toast({ title: "Usunięto", description: "Klucz biometryczny został usunięty" });
+    },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się usunąć klucza", variant: "destructive" });
+    },
+  });
+
+  const handleRegister = async () => {
+    setIsRegistering(true);
+    try {
+      const { startRegistration } = await import("@simplewebauthn/browser");
+
+      const optionsRes = await fetch("/api/webauthn/register/options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!optionsRes.ok) throw new Error("Nie udało się pobrać opcji rejestracji");
+      const options = await optionsRes.json();
+
+      const regResponse = await startRegistration({ optionsJSON: options });
+
+      const verifyRes = await fetch("/api/webauthn/register/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(regResponse),
+      });
+      if (!verifyRes.ok) throw new Error("Weryfikacja nie powiodła się");
+
+      queryClient.invalidateQueries({ queryKey: ["/api/webauthn/credentials"] });
+      toast({ title: "Zarejestrowano", description: "Klucz biometryczny został dodany pomyślnie" });
+    } catch (err: any) {
+      if (err?.name !== "NotAllowedError") {
+        toast({ title: "Błąd", description: err?.message || "Nie udało się zarejestrować klucza biometrycznego", variant: "destructive" });
+      }
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  return (
+    <Card data-testid="card-webauthn">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <Fingerprint className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0 space-y-3">
+            <div>
+              <p className="font-medium text-sm">Logowanie biometryczne</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Face ID, Touch ID, odcisk palca lub klucz sprzętowy</p>
+            </div>
+
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Ładowanie...
+              </div>
+            ) : credentials && credentials.length > 0 ? (
+              <div className="space-y-2">
+                {credentials.map((cred) => (
+                  <div key={cred.id} className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5" data-testid={`webauthn-credential-${cred.id}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{cred.deviceName || "Urządzenie biometryczne"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {cred.createdAt ? new Date(cred.createdAt).toLocaleDateString("pl-PL") : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => deleteMutation.mutate(cred.id)}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-credential-${cred.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+                <ShieldCheck className="h-4 w-4" />
+                Brak zarejestrowanych kluczy
+              </div>
+            )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleRegister}
+              disabled={isRegistering}
+              data-testid="button-add-webauthn"
+            >
+              {isRegistering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Dodaj klucz biometryczny
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Ustawienia() {
   return (
     <div className="p-4 lg:p-6 space-y-6" data-testid="page-ustawienia">
@@ -703,6 +825,13 @@ export default function Ustawienia() {
             icon={PanelLeft}
             testId="card-sidebar-font-size"
           />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold tracking-wide text-muted-foreground uppercase" data-testid="section-Bezpieczeństwo">Bezpieczeństwo</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <WebAuthnCard />
         </div>
       </div>
 
