@@ -60,10 +60,10 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <SidebarProvider>
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-background overflow-x-hidden max-w-[100vw]">
       <NavigationProgress />
       <Sidebar style={sidebarStyle} />
-      <main className="flex-1 p-4 md:p-6 pt-4 pb-20 lg:pb-4 overflow-y-auto h-screen" style={mainStyle} data-page-fs>
+      <main className="flex-1 min-w-0 p-4 md:p-6 pt-4 pb-20 lg:pb-4 overflow-y-auto overflow-x-hidden h-screen" style={mainStyle} data-page-fs>
         <PageTransition>
           <div className="space-y-6 md:space-y-8 pb-12">
             {children}

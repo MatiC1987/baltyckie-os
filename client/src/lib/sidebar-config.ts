@@ -144,7 +144,7 @@ export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "customers", "podnajem"], color: "cyan" },
   { id: "nieruchomosci", title: "NIERUCHOMOŚCI", itemIds: ["apartments", "owners"], color: "orange" },
   { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "sprawy-sadowe"], color: "emerald" },
-  { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy"], color: "pink" },
+  { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy", "tasks"], color: "pink" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "source-comparison"], color: "blue" },
 ];
 
@@ -163,7 +163,7 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const STORAGE_KEY = "sidebar-config-v17";
+const STORAGE_KEY = "sidebar-config-v18";
 
 export function loadConfigFromStorage(): SidebarConfig | null {
   try {
