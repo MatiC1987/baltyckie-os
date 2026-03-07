@@ -3,10 +3,10 @@ import { pl } from "date-fns/locale";
 import type { Task, TaskProject } from "@shared/schema";
 import {
   Inbox, Star, CalendarDays, Layers, Sparkles, BookOpen, FolderOpen,
-  Sun, AlertCircle, Users,
+  Sun, AlertCircle, Users, CalendarRange,
 } from "lucide-react";
 
-export type ViewType = "inbox" | "today" | "tomorrow" | "upcoming" | "anytime" | "someday" | "priority" | "shared" | "logbook" | { projectId: number } | { area: string };
+export type ViewType = "inbox" | "today" | "tomorrow" | "upcoming" | "anytime" | "someday" | "priority" | "shared" | "logbook" | "calendar" | { projectId: number } | { area: string };
 
 export type SettingsPage = "main" | "appearance" | "general" | "counter" | "today_settings" | "week_settings" | "plus_settings" | "font_size";
 
@@ -156,6 +156,7 @@ export function filterTasks(tasks: Task[], view: ViewType, weekStart: 0 | 1, sho
   if (view === "shared") {
     return tasks.filter((t) => !t.completed && t.parentTaskId === null && currentUserId && (t.sharedWith || []).includes(currentUserId) && t.userId !== currentUserId);
   }
+  if (view === "calendar") return tasks.filter((t) => !t.completed && t.parentTaskId === null && t.dueDate);
   if (view === "logbook") return tasks.filter((t) => t.completed).sort((a, b) => {
     const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
     const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
@@ -228,6 +229,7 @@ export function viewLabel(view: ViewType, projects: TaskProject[]): string {
   if (view === "priority") return "Priorytetowe";
   if (view === "shared") return "Udostępnione mi";
   if (view === "logbook") return "Logbook";
+  if (view === "calendar") return "Kalendarz";
   if (typeof view === "object" && "area" in view) return view.area;
   const p = projects.find((pr) => pr.id === (view as { projectId: number }).projectId);
   return p?.name || "Projekt";
@@ -243,6 +245,7 @@ export function viewIcon(view: ViewType) {
   if (view === "priority") return AlertCircle;
   if (view === "shared") return Users;
   if (view === "logbook") return BookOpen;
+  if (view === "calendar") return CalendarRange;
   if (typeof view === "object" && "area" in view) return Layers;
   return FolderOpen;
 }
@@ -263,6 +266,7 @@ export const SMART_VIEWS: SmartView[] = [
   { key: "anytime", view: "anytime", icon: Layers, label: "Anytime", color: "#4ECDC4" },
   { key: "someday", view: "someday", icon: Sparkles, label: "Someday", color: "#C4B5FD" },
   { key: "logbook", view: "logbook", icon: BookOpen, label: "Logbook", color: "#868E96" },
+  { key: "calendar", view: "calendar", icon: CalendarRange, label: "Kalendarz", color: "#FF6B6B" },
 ];
 
 export interface UpcomingGroup {

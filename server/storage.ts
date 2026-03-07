@@ -61,10 +61,14 @@ import {
   taskSections, TaskSection, InsertTaskSection,
   tasks, Task, InsertTask,
   taskChecklistItems, TaskChecklistItem, InsertTaskChecklistItem,
+  taskComments, TaskComment, InsertTaskComment,
+  taskTemplates, TaskTemplate, InsertTaskTemplate,
+  taskTemplateItems, TaskTemplateItem, InsertTaskTemplateItem,
   aptCostData, AptCostData, InsertAptCostData,
   aptCostSettings, AptCostSettings, InsertAptCostSettings,
   opCostData, OpCostData, InsertOpCostData,
   appConfig, AppConfig,
+  pushSubscriptions, PushSubscription, InsertPushSubscription,
   insertImportMetadataSchema,
   timeEntries, TimeEntry, InsertTimeEntry,
   workSchedules, WorkSchedule, InsertWorkSchedule,
@@ -443,6 +447,21 @@ export interface IStorage {
   updateTaskChecklistItem(id: number, data: Partial<InsertTaskChecklistItem>): Promise<TaskChecklistItem>;
   deleteTaskChecklistItem(id: number): Promise<void>;
 
+  // Task Comments
+  getTaskComments(taskId: number): Promise<TaskComment[]>;
+  createTaskComment(data: InsertTaskComment): Promise<TaskComment>;
+  deleteTaskComment(id: number): Promise<void>;
+
+  // Task Templates
+  getTaskTemplates(userId?: string): Promise<TaskTemplate[]>;
+  getTaskTemplate(id: number): Promise<TaskTemplate | undefined>;
+  createTaskTemplate(data: InsertTaskTemplate): Promise<TaskTemplate>;
+  updateTaskTemplate(id: number, data: Partial<InsertTaskTemplate>): Promise<TaskTemplate>;
+  deleteTaskTemplate(id: number): Promise<void>;
+  getTaskTemplateItems(templateId: number): Promise<TaskTemplateItem[]>;
+  createTaskTemplateItem(data: InsertTaskTemplateItem): Promise<TaskTemplateItem>;
+  deleteTaskTemplateItem(id: number): Promise<void>;
+
   // Stats
   getDashboardStats(): Promise<{
     totalRevenue: number;
@@ -504,6 +523,7 @@ export interface IStorage {
   getBankTransactions(statementId?: number): Promise<BankTransaction[]>;
   createBankTransactionsBulk(data: InsertBankTransaction[]): Promise<BankTransaction[]>;
   updateBankTransaction(id: number, data: Partial<InsertBankTransaction>): Promise<BankTransaction>;
+  checkDuplicateTransactions(accountId: number, items: { date: string; amount: string; description: string }[]): Promise<{ date: string; amount: string; description: string; existingId: number }[]>;
 
   // Payroll
   getPayrollPeriods(): Promise<PayrollPeriod[]>;
@@ -527,6 +547,13 @@ export interface IStorage {
   // Dashboard Widgets
   getDashboardWidgets(userId: string): Promise<any>;
   saveDashboardWidgets(userId: string, widgets: any): Promise<any>;
+
+  // Push Subscriptions
+  getPushSubscriptions(userType?: string): Promise<PushSubscription[]>;
+  getPushSubscriptionByEndpoint(endpoint: string): Promise<PushSubscription | undefined>;
+  createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
+  deletePushSubscription(endpoint: string): Promise<void>;
+  deletePushSubscriptionById(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2130,6 +2157,55 @@ export class DatabaseStorage implements IStorage {
     await db.delete(taskChecklistItems).where(eq(taskChecklistItems.id, id));
   }
 
+  async getTaskComments(taskId: number): Promise<TaskComment[]> {
+    return await db.select().from(taskComments).where(eq(taskComments.taskId, taskId)).orderBy(desc(taskComments.createdAt));
+  }
+
+  async createTaskComment(data: InsertTaskComment): Promise<TaskComment> {
+    const [created] = await db.insert(taskComments).values(data).returning();
+    return created;
+  }
+
+  async deleteTaskComment(id: number): Promise<void> {
+    await db.delete(taskComments).where(eq(taskComments.id, id));
+  }
+
+  async getTaskTemplates(userId?: string): Promise<TaskTemplate[]> {
+    return await db.select().from(taskTemplates).orderBy(desc(taskTemplates.createdAt));
+  }
+
+  async getTaskTemplate(id: number): Promise<TaskTemplate | undefined> {
+    const [tpl] = await db.select().from(taskTemplates).where(eq(taskTemplates.id, id));
+    return tpl;
+  }
+
+  async createTaskTemplate(data: InsertTaskTemplate): Promise<TaskTemplate> {
+    const [created] = await db.insert(taskTemplates).values(data).returning();
+    return created;
+  }
+
+  async updateTaskTemplate(id: number, data: Partial<InsertTaskTemplate>): Promise<TaskTemplate> {
+    const [updated] = await db.update(taskTemplates).set(data).where(eq(taskTemplates.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTaskTemplate(id: number): Promise<void> {
+    await db.delete(taskTemplates).where(eq(taskTemplates.id, id));
+  }
+
+  async getTaskTemplateItems(templateId: number): Promise<TaskTemplateItem[]> {
+    return await db.select().from(taskTemplateItems).where(eq(taskTemplateItems.templateId, templateId)).orderBy(taskTemplateItems.sortOrder);
+  }
+
+  async createTaskTemplateItem(data: InsertTaskTemplateItem): Promise<TaskTemplateItem> {
+    const [created] = await db.insert(taskTemplateItems).values(data).returning();
+    return created;
+  }
+
+  async deleteTaskTemplateItem(id: number): Promise<void> {
+    await db.delete(taskTemplateItems).where(eq(taskTemplateItems.id, id));
+  }
+
   async clearAptCostData(year: number, entryId?: string): Promise<void> {
     if (entryId) {
       await db.delete(aptCostData).where(and(eq(aptCostData.year, year), eq(aptCostData.entryId, entryId)));
@@ -2382,6 +2458,24 @@ export class DatabaseStorage implements IStorage {
     return tx;
   }
 
+  async checkDuplicateTransactions(accountId: number, items: { date: string; amount: string; description: string }[]): Promise<{ date: string; amount: string; description: string; existingId: number }[]> {
+    if (items.length === 0) return [];
+    const existing = await db.select().from(bankTransactions)
+      .where(eq(bankTransactions.accountId, accountId));
+    const duplicates: { date: string; amount: string; description: string; existingId: number }[] = [];
+    for (const item of items) {
+      const match = existing.find(e =>
+        e.date === item.date &&
+        e.amount === item.amount &&
+        e.description === item.description
+      );
+      if (match) {
+        duplicates.push({ date: item.date, amount: item.amount, description: item.description, existingId: match.id });
+      }
+    }
+    return duplicates;
+  }
+
   // Payroll
   async getPayrollPeriods(): Promise<PayrollPeriod[]> {
     return db.select().from(payrollPeriods).orderBy(desc(payrollPeriods.year), desc(payrollPeriods.month));
@@ -2476,6 +2570,40 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(dashboardWidgetConfigs).values({ userId, widgets }).returning();
     return created;
+  }
+
+  // Push Subscriptions
+  async getPushSubscriptions(userType?: string): Promise<PushSubscription[]> {
+    if (userType) {
+      return db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userType, userType)).orderBy(desc(pushSubscriptions.createdAt));
+    }
+    return db.select().from(pushSubscriptions).orderBy(desc(pushSubscriptions.createdAt));
+  }
+
+  async getPushSubscriptionByEndpoint(endpoint: string): Promise<PushSubscription | undefined> {
+    const [row] = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+    return row;
+  }
+
+  async createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription> {
+    const existing = await this.getPushSubscriptionByEndpoint(data.endpoint);
+    if (existing) {
+      const [updated] = await db.update(pushSubscriptions)
+        .set({ p256dh: data.p256dh, auth: data.auth, userId: data.userId, userType: data.userType })
+        .where(eq(pushSubscriptions.endpoint, data.endpoint))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(pushSubscriptions).values(data).returning();
+    return created;
+  }
+
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  }
+
+  async deletePushSubscriptionById(id: number): Promise<void> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, id));
   }
 }
 

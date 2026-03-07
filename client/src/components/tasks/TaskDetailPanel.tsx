@@ -3,13 +3,14 @@ import { format, parseISO } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTasksApi } from "@/lib/tasksApiContext";
-import type { Task, TaskProject, TaskSection, TaskChecklistItem, Employee } from "@shared/schema";
+import type { Task, TaskProject, TaskSection, TaskChecklistItem, TaskComment, Employee } from "@shared/schema";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -25,7 +26,7 @@ import { PRIORITY_FLAG_COLORS, PRIORITY_LABELS, PRIORITY_BORDER_COLORS, getTagCo
 import {
   X, Trash2, Users, Flag, Calendar, Clock, Tag, FolderOpen, RefreshCw,
   Moon, Sparkles, AlertTriangle, Plus, UserPlus, Layers,
-  ChevronLeft, MoreHorizontal,
+  ChevronLeft, MoreHorizontal, MessageSquare, Send,
 } from "lucide-react";
 
 interface DetailPanelProps {
@@ -717,6 +718,10 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           </Select>
         </div>
 
+        <div className={`border-t mx-6 ${isMobile ? "border-white/[0.06]" : "border-border/30"}`} />
+
+        <TaskCommentsSection taskId={task.id} isMobile={isMobile} />
+
         {task.createdAt && (
           <div className={`${isMobile ? "px-5" : "px-6"} pb-4`}>
             <p className={`text-[10px] ${isMobile ? "text-white/20" : "text-muted-foreground/30"}`}>
@@ -828,5 +833,97 @@ function EmployeeAssignChip({ task, onUpdate }: { task: Task; onUpdate: (data: R
         })}
       </PopoverContent>
     </Popover>
+  );
+}
+
+function TaskCommentsSection({ taskId, isMobile }: { taskId: number; isMobile: boolean }) {
+  const { apiRequest } = useTasksApi();
+  const queryClient = useQueryClient();
+  const [newComment, setNewComment] = useState("");
+
+  const { data: comments = [] } = useQuery<TaskComment[]>({
+    queryKey: ["/api/task-comments", taskId],
+  });
+
+  const addComment = useMutation({
+    mutationFn: async (content: string) => {
+      await apiRequest("POST", "/api/task-comments", { taskId, content });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/task-comments", taskId] });
+      setNewComment("");
+    },
+  });
+
+  const deleteComment = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/task-comments/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/task-comments", taskId] });
+    },
+  });
+
+  return (
+    <div className={`${isMobile ? "px-5" : "px-6"} py-4`}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <MessageSquare className={`h-3 w-3 ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`} />
+        <span className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>
+          Komentarze ({comments.length})
+        </span>
+      </div>
+
+      {comments.map((c) => (
+        <div key={c.id} className={`py-2 group ${isMobile ? "border-b border-white/[0.04]" : "border-b border-border/20"}`}>
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <span className={`text-[11px] font-medium ${isMobile ? "text-white/60" : "text-muted-foreground"}`}>
+              {c.userName || "User"}
+            </span>
+            <div className="flex items-center gap-1">
+              {c.createdAt && (
+                <span className={`text-[10px] ${isMobile ? "text-white/20" : "text-muted-foreground/40"}`}>
+                  {format(new Date(c.createdAt), "d MMM HH:mm", { locale: pl })}
+                </span>
+              )}
+              <button
+                onClick={() => deleteComment.mutate(c.id)}
+                className="invisible group-hover:visible p-0.5 rounded hover:bg-muted/50 text-muted-foreground"
+                data-testid={`button-delete-comment-${c.id}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+          <p className={`text-xs whitespace-pre-wrap ${isMobile ? "text-white/80" : ""}`} data-testid={`text-comment-${c.id}`}>
+            {c.content}
+          </p>
+        </div>
+      ))}
+
+      <div className="flex items-center gap-2 mt-2">
+        <Input
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && newComment.trim()) {
+              e.preventDefault();
+              addComment.mutate(newComment.trim());
+            }
+          }}
+          placeholder="Dodaj komentarz..."
+          className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-xs h-auto py-1 flex-1 ${isMobile ? "text-[15px] text-white placeholder:text-white/25" : ""}`}
+          data-testid="input-comment-new"
+        />
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={!newComment.trim() || addComment.isPending}
+          onClick={() => newComment.trim() && addComment.mutate(newComment.trim())}
+          data-testid="button-submit-comment"
+        >
+          <Send className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -6,8 +6,9 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials } from "@shared/schema";
-import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc } from "drizzle-orm";
+import webpush from "web-push";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertTaskProjectSchema, insertTaskSectionSchema, insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, tasks as tasksTable, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries } from "@shared/schema";
+import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
 import multer from "multer";
@@ -433,6 +434,108 @@ export async function registerRoutes(
   seedServiceContractCategories().catch(console.error);
   seedAccounts().catch(console.error);
   backfillContractAllocations().catch(console.error);
+
+  // VAPID keys setup
+  async function getOrCreateVapidKeys(): Promise<{ publicKey: string; privateKey: string }> {
+    const pubKey = await storage.getAppConfig("vapid_public_key");
+    const privKey = await storage.getAppConfig("vapid_private_key");
+    if (pubKey && privKey) {
+      return { publicKey: pubKey, privateKey: privKey };
+    }
+    const keys = webpush.generateVAPIDKeys();
+    await storage.setAppConfig("vapid_public_key", keys.publicKey);
+    await storage.setAppConfig("vapid_private_key", keys.privateKey);
+    return keys;
+  }
+
+  const vapidKeysPromise = getOrCreateVapidKeys().then((keys) => {
+    webpush.setVapidDetails("mailto:admin@baltyckie.pl", keys.publicKey, keys.privateKey);
+    return keys;
+  }).catch((err) => {
+    console.error("Failed to initialize VAPID keys:", err);
+    return null;
+  });
+
+  app.get("/api/push/vapid-public-key", async (_req, res) => {
+    try {
+      const keys = await vapidKeysPromise;
+      res.json({ publicKey: keys?.publicKey || null });
+    } catch {
+      res.status(500).json({ message: "VAPID keys not available" });
+    }
+  });
+
+  app.post("/api/push/subscribe", async (req, res) => {
+    try {
+      const { endpoint, p256dh, auth, userType } = req.body;
+      if (!endpoint || !p256dh || !auth) {
+        return res.status(400).json({ message: "Missing subscription fields" });
+      }
+      const sub = await storage.createPushSubscription({
+        endpoint,
+        p256dh,
+        auth,
+        userType: userType || "admin",
+        userId: null,
+      });
+      res.json(sub);
+    } catch (err) {
+      console.error("Push subscribe error:", err);
+      res.status(500).json({ message: "Failed to save subscription" });
+    }
+  });
+
+  app.post("/api/push/unsubscribe", async (req, res) => {
+    try {
+      const { endpoint } = req.body;
+      if (!endpoint) return res.status(400).json({ message: "Missing endpoint" });
+      await storage.deletePushSubscription(endpoint);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to remove subscription" });
+    }
+  });
+
+  app.post("/api/push/send", isAuthenticated, async (req, res) => {
+    try {
+      const { title, body, url, tag, userType } = req.body;
+      if (!title || !body) return res.status(400).json({ message: "title and body required" });
+
+      const subs = await storage.getPushSubscriptions(userType || undefined);
+      const payload = JSON.stringify({ title, body, url: url || "/", tag: tag || "default" });
+
+      let sent = 0;
+      let failed = 0;
+      for (const sub of subs) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            payload
+          );
+          sent++;
+        } catch (err: any) {
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            await storage.deletePushSubscriptionById(sub.id);
+          }
+          failed++;
+        }
+      }
+      res.json({ sent, failed, total: subs.length });
+    } catch (err) {
+      console.error("Push send error:", err);
+      res.status(500).json({ message: "Failed to send notifications" });
+    }
+  });
+
+  app.get("/api/push/subscriptions", isAuthenticated, async (req, res) => {
+    try {
+      const userType = req.query.userType as string | undefined;
+      const subs = await storage.getPushSubscriptions(userType);
+      res.json({ count: subs.length, subscriptions: subs });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to get subscriptions" });
+    }
+  });
 
   app.get("/api/user-preferences", isAuthenticated, async (req: any, res) => {
     try {
@@ -3847,7 +3950,25 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
   app.put('/api/company-settings', isAuthenticated, async (req, res) => {
     try {
+      const oldSettings = await storage.getCompanySettings();
       const saved = await storage.upsertCompanySettings(req.body);
+      const changedFields: string[] = [];
+      if (req.body.companyName !== undefined && req.body.companyName !== oldSettings?.companyName) changedFields.push("nazwa firmy");
+      if (req.body.nip !== undefined && req.body.nip !== oldSettings?.nip) changedFields.push("NIP");
+      if (req.body.regon !== undefined && req.body.regon !== oldSettings?.regon) changedFields.push("REGON");
+      if (req.body.street !== undefined && req.body.street !== oldSettings?.street) changedFields.push("ulica");
+      if (req.body.city !== undefined && req.body.city !== oldSettings?.city) changedFields.push("miasto");
+      if (req.body.bankAccount !== undefined && req.body.bankAccount !== oldSettings?.bankAccount) changedFields.push("konto bankowe");
+      if (req.body.email !== undefined && req.body.email !== oldSettings?.email) changedFields.push("email");
+      if (req.body.phone !== undefined && req.body.phone !== oldSettings?.phone) changedFields.push("telefon");
+      if (changedFields.length > 0) {
+        await storage.createActivityLog({
+          action: "update",
+          entityType: "settings",
+          entityName: "Dane firmowe",
+          details: `Zmieniono: ${changedFields.join(", ")}`,
+        });
+      }
       res.json(saved);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -4441,6 +4562,10 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       if (req.body.status) updates.status = req.body.status;
       if (req.body.comment !== undefined) updates.comment = req.body.comment;
       if (req.body.linkedExpenseId !== undefined) updates.linkedExpenseId = req.body.linkedExpenseId;
+      if (req.body.ocrVendor !== undefined) updates.ocrVendor = req.body.ocrVendor;
+      if (req.body.ocrAmount !== undefined) updates.ocrAmount = req.body.ocrAmount;
+      if (req.body.ocrInvoiceNumber !== undefined) updates.ocrInvoiceNumber = req.body.ocrInvoiceNumber;
+      if (req.body.ocrProcessed !== undefined) updates.ocrProcessed = req.body.ocrProcessed;
       const updated = await storage.updateCostInvoice(id, updates);
       res.json(updated);
     } catch (err: any) {
@@ -4504,6 +4629,106 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       res.send(fileBuffer);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/cost-invoices/:id/ocr', isAuthenticated, async (req, res) => {
+    try {
+      const invoice = await storage.getCostInvoice(parseInt(req.params.id));
+      if (!invoice) return res.status(404).json({ message: "Nie znaleziono faktury" });
+
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const p = invoice.objectStoragePath.startsWith("/") ? invoice.objectStoragePath.slice(1) : invoice.objectStoragePath;
+      const parts = p.split("/");
+      const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+      const [fileBuffer] = await storageFile.download();
+
+      let base64Images: string[] = [];
+
+      if (invoice.mimeType.startsWith("image/")) {
+        base64Images.push(fileBuffer.toString("base64"));
+      } else if (invoice.mimeType === "application/pdf") {
+        const tmpDir = os.tmpdir();
+        const pdfPath = path.join(tmpDir, `ocr_${Date.now()}.pdf`);
+        fs.writeFileSync(pdfPath, fileBuffer);
+        try {
+          const outputPrefix = path.join(tmpDir, `ocr_page_${Date.now()}`);
+          execSync(`pdftoppm -png -r 200 -l 2 "${pdfPath}" "${outputPrefix}"`, { timeout: 30000 });
+          const pageFiles = fs.readdirSync(tmpDir)
+            .filter(f => f.startsWith(path.basename(outputPrefix)))
+            .sort()
+            .slice(0, 2);
+          for (const pf of pageFiles) {
+            const fullPath = path.join(tmpDir, pf);
+            const imgBuf = fs.readFileSync(fullPath);
+            base64Images.push(imgBuf.toString("base64"));
+            fs.unlinkSync(fullPath);
+          }
+        } catch (e) {
+          console.error('pdftoppm OCR error:', e);
+        }
+        fs.unlinkSync(pdfPath);
+      }
+
+      if (base64Images.length === 0) {
+        return res.status(400).json({ message: "Nie udało się przetworzyć pliku do OCR" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const content: any[] = [
+        {
+          type: "text",
+          text: `Analizujesz skan lub zdjęcie polskiej faktury kosztowej. Wyciągnij z niej następujące dane:
+- vendor: nazwa dostawcy/wystawcy faktury (firma lub osoba)
+- amount: kwota brutto do zapłaty (jako string z liczbą, np. "1234.56")
+- invoiceNumber: numer faktury (np. "FV/2025/01/123")
+
+Jeśli nie możesz odczytać któregoś z pól, wpisz null.
+
+Odpowiedz TYLKO prawidłowym JSON w formacie:
+{"vendor": "...", "amount": "...", "invoiceNumber": "..."}`
+        }
+      ];
+      for (const img of base64Images) {
+        content.push({
+          type: "image_url",
+          image_url: { url: `data:image/png;base64,${img}`, detail: "high" }
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content }],
+        max_tokens: 500,
+        temperature: 0,
+      });
+
+      const text = response.choices[0]?.message?.content || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(400).json({ message: "AI nie mogło odczytać danych z faktury" });
+      }
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      await storage.updateCostInvoice(invoice.id, {
+        ocrVendor: parsed.vendor || null,
+        ocrAmount: parsed.amount || null,
+        ocrInvoiceNumber: parsed.invoiceNumber || null,
+        ocrProcessed: true,
+      });
+
+      res.json({
+        vendor: parsed.vendor || null,
+        amount: parsed.amount || null,
+        invoiceNumber: parsed.invoiceNumber || null,
+      });
+    } catch (err: any) {
+      console.error("OCR error:", err);
+      res.status(500).json({ message: err.message || "Błąd OCR" });
     }
   });
 
@@ -8169,6 +8394,152 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // ==================== TASK COMMENTS ====================
+  app.get('/api/task-comments/:taskId', isAuthenticated, async (req, res) => {
+    try {
+      const data = await storage.getTaskComments(Number(req.params.taskId));
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-comments', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const userName = req.user?.claims?.first_name || req.user?.claims?.username || 'User';
+      const { taskId, content } = req.body;
+      if (!taskId || !content) return res.status(400).json({ message: "taskId and content required" });
+      const created = await storage.createTaskComment({ taskId, content, userId, userName });
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-comments/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTaskComment(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASK TEMPLATES ====================
+  app.get('/api/task-templates', isAuthenticated, async (req: any, res) => {
+    try {
+      const templates = await storage.getTaskTemplates();
+      res.json(templates);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/task-templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      const tpl = await storage.getTaskTemplate(Number(req.params.id));
+      if (!tpl) return res.status(404).json({ message: "Template not found" });
+      const items = await storage.getTaskTemplateItems(tpl.id);
+      res.json({ ...tpl, items });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-templates', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { name, description, items } = req.body;
+      if (!name) return res.status(400).json({ message: "name required" });
+      const tpl = await storage.createTaskTemplate({ name, description: description || null, userId });
+      if (items && Array.isArray(items)) {
+        for (let i = 0; i < items.length; i++) {
+          await storage.createTaskTemplateItem({
+            templateId: tpl.id,
+            title: items[i].title,
+            notes: items[i].notes || null,
+            priority: items[i].priority || "BRAK",
+            tags: items[i].tags || [],
+            sortOrder: i,
+          });
+        }
+      }
+      const createdItems = await storage.getTaskTemplateItems(tpl.id);
+      res.json({ ...tpl, items: createdItems });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/task-templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateTaskTemplate(Number(req.params.id), req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTaskTemplate(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-templates/:id/apply', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const tpl = await storage.getTaskTemplate(Number(req.params.id));
+      if (!tpl) return res.status(404).json({ message: "Template not found" });
+      const items = await storage.getTaskTemplateItems(tpl.id);
+      const { projectId, sectionId, dueDate } = req.body;
+      const created: any[] = [];
+      for (const item of items) {
+        const task = await storage.createTask({
+          title: item.title,
+          notes: item.notes,
+          priority: item.priority || "BRAK",
+          tags: item.tags || [],
+          projectId: projectId || null,
+          sectionId: sectionId || null,
+          dueDate: dueDate || null,
+          userId,
+          sortOrder: item.sortOrder || 0,
+        });
+        created.push(task);
+      }
+      res.json({ template: tpl, tasks: created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-template-items', isAuthenticated, async (req, res) => {
+    try {
+      const { templateId, title, notes, priority, tags, sortOrder } = req.body;
+      if (!templateId || !title) return res.status(400).json({ message: "templateId and title required" });
+      const created = await storage.createTaskTemplateItem({
+        templateId, title, notes: notes || null, priority: priority || "BRAK", tags: tags || [], sortOrder: sortOrder || 0,
+      });
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-template-items/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTaskTemplateItem(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/gus/lookup-nip/:nip', isAuthenticated, async (req, res) => {
     try {
       const nip = req.params.nip.replace(/[\s-]/g, '');
@@ -10961,6 +11332,143 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.get('/api/employees/:id/profile', isAuthenticated, async (req, res) => {
+    try {
+      const empId = Number(req.params.id);
+      const [emp] = await db.select().from(employees).where(eq(employees.id, empId));
+      if (!emp) return res.status(404).json({ message: "Employee not found" });
+
+      const contracts = await db.select().from(employeeContracts)
+        .where(eq(employeeContracts.employeeId, empId))
+        .orderBy(desc(employeeContracts.startDate));
+
+      const trainings = await db.select().from(employeeTrainings)
+        .where(eq(employeeTrainings.employeeId, empId))
+        .orderBy(desc(employeeTrainings.completedDate));
+
+      const exams = await db.select().from(medicalExams)
+        .where(eq(medicalExams.employeeId, empId))
+        .orderBy(desc(medicalExams.examDate));
+
+      const allPayrollEntries = await db.select().from(payrollEntries)
+        .where(eq(payrollEntries.employeeId, empId));
+      const periodIds = [...new Set(allPayrollEntries.map(e => e.periodId))];
+      let periods: any[] = [];
+      if (periodIds.length > 0) {
+        periods = await db.select().from(payrollPeriods)
+          .where(inArray(payrollPeriods.id, periodIds));
+      }
+      const periodMap = new Map(periods.map((p: any) => [p.id, p]));
+      const payroll = allPayrollEntries.map(entry => ({
+        ...entry,
+        month: periodMap.get(entry.periodId)?.month,
+        year: periodMap.get(entry.periodId)?.year,
+        periodStatus: periodMap.get(entry.periodId)?.status,
+      })).sort((a, b) => {
+        const yearDiff = (b.year || 0) - (a.year || 0);
+        if (yearDiff !== 0) return yearDiff;
+        return (b.month || 0) - (a.month || 0);
+      });
+
+      const totalCost = allPayrollEntries.reduce((sum, e) => sum + Number(e.grossPay || 0), 0);
+
+      const contractsWithStatus = contracts.map(c => ({
+        ...c,
+        computedStatus: computeContractStatus(c.status, c.endDate),
+      }));
+
+      const trainingsWithStatus = trainings.map(t => ({
+        ...t,
+        computedStatus: computeTrainingStatus(t.expiryDate),
+      }));
+
+      const timeline: any[] = [];
+      contractsWithStatus.forEach(c => {
+        timeline.push({ type: 'contract', date: c.startDate, title: c.title, status: c.computedStatus, data: c });
+        if (c.endDate) timeline.push({ type: 'contract_end', date: c.endDate, title: `Koniec: ${c.title}`, status: c.computedStatus, data: c });
+      });
+      trainingsWithStatus.forEach(t => {
+        timeline.push({ type: 'training', date: t.completedDate, title: t.name, status: t.computedStatus, data: t });
+      });
+      exams.forEach(e => {
+        timeline.push({ type: 'exam', date: e.examDate, title: e.examName, status: e.validUntil && new Date(e.validUntil) < new Date() ? 'WYGASŁE' : 'AKTUALNE', data: e });
+      });
+      timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      res.json({
+        employee: emp,
+        contracts: contractsWithStatus,
+        trainings: trainingsWithStatus,
+        exams,
+        payroll,
+        totalCost,
+        timeline,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/hr-calendar', isAuthenticated, async (_req, res) => {
+    try {
+      const allEmployees = await db.select().from(employees);
+      const empMap = new Map(allEmployees.map(e => [e.id, `${e.firstName} ${e.lastName}`]));
+
+      const contracts = await db.select().from(employeeContracts);
+      const trainings = await db.select().from(employeeTrainings);
+      const exams = await db.select().from(medicalExams);
+
+      const events: any[] = [];
+
+      contracts.forEach(c => {
+        if (c.endDate) {
+          events.push({
+            id: `contract-${c.id}`,
+            type: 'contract',
+            date: c.endDate,
+            title: c.title,
+            employeeName: empMap.get(c.employeeId) || '—',
+            employeeId: c.employeeId,
+            status: computeContractStatus(c.status, c.endDate),
+          });
+        }
+      });
+
+      trainings.forEach(t => {
+        if (t.expiryDate) {
+          events.push({
+            id: `training-${t.id}`,
+            type: 'training',
+            date: t.expiryDate,
+            title: t.name,
+            employeeName: empMap.get(t.employeeId) || '—',
+            employeeId: t.employeeId,
+            status: computeTrainingStatus(t.expiryDate),
+          });
+        }
+      });
+
+      exams.forEach(e => {
+        if (e.validUntil) {
+          events.push({
+            id: `exam-${e.id}`,
+            type: 'exam',
+            date: e.validUntil,
+            title: e.examName,
+            employeeName: empMap.get(e.employeeId) || '—',
+            employeeId: e.employeeId,
+            status: new Date(e.validUntil) < new Date() ? 'WYGASŁE' : new Date(e.validUntil) <= new Date(Date.now() + 30 * 86400000) ? 'WYGASAJĄCE' : 'AKTUALNE',
+          });
+        }
+      });
+
+      events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      res.json(events);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== BANK STATEMENTS ====================
   app.get("/api/bank-statements", async (_req, res) => {
     try {
@@ -11017,25 +11525,135 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.post("/api/bank-statements/check-duplicates", async (req, res) => {
+    try {
+      const { accountId, transactions } = req.body;
+      if (!accountId || !transactions) return res.status(400).json({ message: "Brak danych" });
+      const duplicates = await storage.checkDuplicateTransactions(accountId, transactions);
+      res.json({ duplicates });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/bank-statements/parse-csv", upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "Brak pliku" });
       const content = req.file.buffer.toString("utf-8");
+      const bankFormat = (req.body?.bankFormat || req.query?.bankFormat || "generic") as string;
       const lines = content.split("\n").filter(l => l.trim());
       const transactions: any[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(";").map(p => p.replace(/"/g, "").trim());
-        if (parts.length >= 4) {
-          transactions.push({
-            date: parts[0] || new Date().toISOString().split("T")[0],
-            description: parts[1] || parts[2] || "Transakcja",
-            amount: parts[3]?.replace(",", ".") || "0",
-            balance: parts[4]?.replace(",", ".") || null,
-            counterparty: parts[2] || null,
-          });
+
+      const cleanNum = (s: string) => s?.replace(/\s/g, "").replace(",", ".") || "0";
+      const cleanStr = (s: string) => s?.replace(/"/g, "").trim() || "";
+
+      if (bankFormat === "mbank") {
+        let dataStart = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes("#Data operacji") || lines[i].includes("#Data księgowania")) {
+            dataStart = i + 1;
+            break;
+          }
+        }
+        if (dataStart === 0) dataStart = 1;
+        for (let i = dataStart; i < lines.length; i++) {
+          const parts = lines[i].split(";").map(cleanStr);
+          if (parts.length >= 6 && parts[0].match(/\d{4}-\d{2}-\d{2}/)) {
+            transactions.push({
+              date: parts[0],
+              description: parts[3] || parts[2] || "Transakcja",
+              amount: cleanNum(parts[5] || parts[4]),
+              balance: parts[6] ? cleanNum(parts[6]) : null,
+              counterparty: parts[4] || parts[3] || null,
+            });
+          }
+        }
+      } else if (bankFormat === "pko") {
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(",").map(cleanStr);
+          if (parts.length < 4) {
+            const semiParts = lines[i].split(";").map(cleanStr);
+            if (semiParts.length >= 4 && semiParts[0].match(/\d{4}-?\d{2}-?\d{2}/)) {
+              const dateStr = semiParts[0].replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+              transactions.push({
+                date: dateStr,
+                description: semiParts[2] || semiParts[1] || "Transakcja",
+                amount: cleanNum(semiParts[3]),
+                balance: semiParts[4] ? cleanNum(semiParts[4]) : null,
+                counterparty: semiParts[1] || null,
+              });
+            }
+            continue;
+          }
+          if (parts[0].match(/\d{4}-?\d{2}-?\d{2}/)) {
+            const dateStr = parts[0].replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+            transactions.push({
+              date: dateStr,
+              description: parts[2] || parts[3] || "Transakcja",
+              amount: cleanNum(parts[4] || parts[3]),
+              balance: parts[5] ? cleanNum(parts[5]) : null,
+              counterparty: parts[3] || parts[2] || null,
+            });
+          }
+        }
+      } else if (bankFormat === "ing") {
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(";").map(cleanStr);
+          if (parts.length >= 5 && parts[0].match(/\d{4}-\d{2}-\d{2}/)) {
+            transactions.push({
+              date: parts[0],
+              description: parts[2] || parts[3] || "Transakcja",
+              amount: cleanNum(parts[8] || parts[4]),
+              balance: parts[9] ? cleanNum(parts[9]) : (parts[5] ? cleanNum(parts[5]) : null),
+              counterparty: parts[4] || parts[3] || null,
+            });
+          }
+        }
+      } else if (bankFormat === "santander") {
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(",").map(cleanStr);
+          if (parts.length < 4) {
+            const semiParts = lines[i].split(";").map(cleanStr);
+            if (semiParts.length >= 4 && semiParts[0].match(/\d{2}-\d{2}-\d{4}/)) {
+              const dp = semiParts[0].split("-");
+              const dateStr = `${dp[2]}-${dp[1]}-${dp[0]}`;
+              transactions.push({
+                date: dateStr,
+                description: semiParts[2] || semiParts[1] || "Transakcja",
+                amount: cleanNum(semiParts[3]),
+                balance: semiParts[4] ? cleanNum(semiParts[4]) : null,
+                counterparty: semiParts[1] || null,
+              });
+            }
+            continue;
+          }
+          if (parts[0].match(/\d{2}-\d{2}-\d{4}/)) {
+            const dp = parts[0].split("-");
+            const dateStr = `${dp[2]}-${dp[1]}-${dp[0]}`;
+            transactions.push({
+              date: dateStr,
+              description: parts[2] || parts[1] || "Transakcja",
+              amount: cleanNum(parts[5] || parts[3]),
+              balance: parts[6] ? cleanNum(parts[6]) : (parts[4] ? cleanNum(parts[4]) : null),
+              counterparty: parts[3] || parts[1] || null,
+            });
+          }
+        }
+      } else {
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(";").map(p => p.replace(/"/g, "").trim());
+          if (parts.length >= 4) {
+            transactions.push({
+              date: parts[0] || new Date().toISOString().split("T")[0],
+              description: parts[1] || parts[2] || "Transakcja",
+              amount: parts[3]?.replace(",", ".") || "0",
+              balance: parts[4]?.replace(",", ".") || null,
+              counterparty: parts[2] || null,
+            });
+          }
         }
       }
-      res.json({ transactions, rowCount: transactions.length });
+      res.json({ transactions, rowCount: transactions.length, bankFormat });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -11401,6 +12019,122 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       });
 
       res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/rcp/monthly-trend", isAuthenticated, async (req, res) => {
+    try {
+      const months = Number(req.query.months) || 6;
+      const now = new Date();
+      const allEmployees = await storage.getEmployees();
+      const activeEmployees = allEmployees.filter(e => e.status === "AKTYWNY");
+
+      const trend: any[] = [];
+      const monthNames = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
+
+      for (let i = months - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const y = d.getFullYear();
+        const m = d.getMonth();
+        const firstDay = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+        const lastDayNum = new Date(y, m + 1, 0).getDate();
+        const lastDay = `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+
+        const entries = await storage.getTimeEntries({ from: firstDay, to: lastDay });
+        const schedules = await storage.getWorkSchedules({ from: firstDay, to: lastDay });
+        const scheduleMap = new Map<string, any>();
+        for (const s of schedules) {
+          scheduleMap.set(`${s.employeeId}-${s.date}`, s);
+        }
+
+        let totalLate = 0;
+        let totalOvertimeMin = 0;
+        let totalWorkMin = 0;
+        let totalMissedClockIns = 0;
+
+        for (const entry of entries) {
+          if (entry.clockIn && entry.clockOut) {
+            const workMs = new Date(entry.clockOut).getTime() - new Date(entry.clockIn).getTime();
+            const workMin = Math.round(workMs / 60000) - (entry.breakMinutes || 0);
+            totalWorkMin += workMin;
+            if (workMin > 480) totalOvertimeMin += workMin - 480;
+
+            const sched = scheduleMap.get(`${entry.employeeId}-${entry.date}`);
+            if (sched && sched.startTime) {
+              const [sh, sm] = sched.startTime.split(":").map(Number);
+              const schedTime = new Date(`${entry.date}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`);
+              const clockIn = new Date(entry.clockIn);
+              const diff = Math.round((clockIn.getTime() - schedTime.getTime()) / 60000);
+              if (diff > 5) totalLate++;
+            }
+          }
+        }
+
+        for (let day = 1; day <= lastDayNum; day++) {
+          const dateStr = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const dateObj = new Date(dateStr + "T12:00:00");
+          const dow = dateObj.getDay();
+          if (dow === 0 || dow === 6) continue;
+          if (new Date(dateStr) > now) continue;
+
+          for (const emp of activeEmployees) {
+            const sched = scheduleMap.get(`${emp.id}-${dateStr}`);
+            if (sched) {
+              const hasEntry = entries.some(e => e.employeeId === emp.id && e.date === dateStr);
+              if (!hasEntry) totalMissedClockIns++;
+            }
+          }
+        }
+
+        trend.push({
+          month: `${monthNames[m]} ${y}`,
+          lateCount: totalLate,
+          overtimeHours: Math.round(totalOvertimeMin / 60 * 10) / 10,
+          totalWorkHours: Math.round(totalWorkMin / 60 * 10) / 10,
+          missedClockIns: totalMissedClockIns,
+        });
+      }
+
+      res.json(trend);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/rcp/missing-clockins", isAuthenticated, async (_req, res) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const allEmployees = await storage.getEmployees();
+      const activeEmployees = allEmployees.filter(e => e.status === "AKTYWNY");
+      const todaySchedules = await storage.getWorkSchedules({ from: today, to: today });
+      const todayEntries = await storage.getTimeEntriesByDay(today);
+
+      const now = new Date();
+      const missing: any[] = [];
+
+      for (const sched of todaySchedules) {
+        const emp = activeEmployees.find(e => e.id === sched.employeeId);
+        if (!emp) continue;
+        const hasEntry = todayEntries.some(e => e.employeeId === sched.employeeId);
+        if (!hasEntry) {
+          const [sh, sm] = sched.startTime.split(":").map(Number);
+          const schedTime = new Date(`${today}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`);
+          const diffMin = Math.round((now.getTime() - schedTime.getTime()) / 60000);
+          if (diffMin > 0) {
+            missing.push({
+              employeeId: emp.id,
+              employeeName: `${emp.firstName} ${emp.lastName}`,
+              position: emp.position,
+              scheduledStart: sched.startTime,
+              minutesOverdue: diffMin,
+            });
+          }
+        }
+      }
+
+      res.json(missing);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { Switch, Route, Redirect } from "wouter";
+import { getCachedData, setCachedData } from "@/lib/offline-queue";
 import RecepcjaLogin from "./RecepcjaLogin";
 import RecepcjaLayout from "./RecepcjaLayout";
 import RecepcjaDashboard from "./RecepcjaDashboard";
@@ -39,7 +40,15 @@ export function useRecepcjaAuth() {
   return useContext(RecepcjaAuthContext);
 }
 
-export function recepcjaFetch(method: string, url: string, data?: any) {
+const CACHEABLE_URLS = [
+  '/api/recepcja/dashboard',
+  '/api/recepcja/payment-trend',
+  '/api/recepcja/accounting-notes',
+  '/api/recepcja/rcp/employees',
+  '/api/recepcja/notifications/unread-count',
+];
+
+export async function recepcjaFetch(method: string, url: string, data?: any): Promise<Response> {
   const token = localStorage.getItem('recepcja_token');
   const opts: RequestInit = {
     method,
@@ -49,7 +58,30 @@ export function recepcjaFetch(method: string, url: string, data?: any) {
     },
   };
   if (data) opts.body = JSON.stringify(data);
-  return fetch(url, opts);
+
+  const isCacheable = method === 'GET' && CACHEABLE_URLS.some(u => url.startsWith(u));
+
+  try {
+    const response = await fetch(url, opts);
+    if (isCacheable && response.ok) {
+      const clone = response.clone();
+      clone.json().then(json => {
+        setCachedData(url, json, 5 * 60 * 1000).catch(() => {});
+      }).catch(() => {});
+    }
+    return response;
+  } catch (err) {
+    if (isCacheable) {
+      const cached = await getCachedData(url);
+      if (cached !== null) {
+        return new Response(JSON.stringify(cached), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'X-From-Cache': '1' },
+        });
+      }
+    }
+    throw err;
+  }
 }
 
 export default function RecepcjaApp() {

@@ -51,6 +51,7 @@ import {
   getSectionColorStyle,
 } from "@/lib/sidebar-config";
 import { useSidebar } from "@/contexts/SidebarContext";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: NavItem; isActive: boolean; onClick: () => void; badgeCount?: number; compact?: boolean }) {
   const Icon = ICON_MAP[item.iconName] || LayoutDashboard;
@@ -336,6 +337,8 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
               </button>
             )}
           </div>
+
+          <InstallPrompt variant={compact ? "compact" : "sidebar"} />
 
           <div className={cn("pb-3 pt-2 border-t border-white/10", compact ? "px-1" : "px-3")}>
             {!compact && (

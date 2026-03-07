@@ -25,8 +25,9 @@ import {
 import {
   Upload, FileText, Image, Trash2, Download, Package, ChevronDown, ChevronUp,
   X, AlertTriangle, Clock, Search, Filter, Eye, History, Plus, CheckCircle2,
-  Zap, Droplets
+  Zap, Droplets, LayoutGrid, LayoutList, ScanLine, Loader2, BookOpen
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const EXPENSE_CATEGORIES = [
   "WYNAGRODZENIA",
@@ -122,6 +123,33 @@ function DeadlineBanner() {
   );
 }
 
+function UnbookedReminder() {
+  const { data: invoices = [] } = useQuery<CostInvoice[]>({ queryKey: ["/api/cost-invoices"] });
+
+  const unbookedCount = invoices.filter(i => i.status === "WYSLANA").length;
+  const newCount = invoices.filter(i => i.status === "NOWA").length;
+
+  if (unbookedCount === 0 && newCount === 0) return null;
+
+  return (
+    <div className="mb-4 p-3 rounded-md border border-blue-500/30 bg-blue-500/10 flex items-center gap-3 flex-wrap" data-testid="banner-unbooked">
+      <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0" />
+      <div className="flex-1 min-w-0">
+        {unbookedCount > 0 && (
+          <span className="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>{unbookedCount}</strong> {unbookedCount === 1 ? "dokument wysłany" : unbookedCount < 5 ? "dokumenty wysłane" : "dokumentów wysłanych"}, ale niezaksięgowanych.
+          </span>
+        )}
+        {newCount > 0 && (
+          <span className="text-blue-800 dark:text-blue-200 text-sm ml-2">
+            <strong>{newCount}</strong> {newCount === 1 ? "nowy dokument" : newCount < 5 ? "nowe dokumenty" : "nowych dokumentów"} do wysłania.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CostInvoicesTab() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -144,6 +172,10 @@ function CostInvoicesTab() {
   const [expenseRecurrence, setExpenseRecurrence] = useState<string>("");
   const [expenseRecurrenceEnd, setExpenseRecurrenceEnd] = useState("");
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
+    try { return (localStorage.getItem("dok-view-mode") as "list" | "grid") || "list"; } catch { return "list"; }
+  });
+  const [ocrLoadingId, setOcrLoadingId] = useState<number | null>(null);
 
   const { data: invoices = [], isLoading } = useQuery<CostInvoice[]>({ queryKey: ["/api/cost-invoices"] });
   const { data: downloadHistory = [] } = useQuery<ZipDownloadHistory[]>({ queryKey: ["/api/zip-download-history"] });
@@ -230,6 +262,36 @@ function CostInvoicesTab() {
     },
     onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
   });
+
+  const handleOcr = useCallback(async (invoiceId: number) => {
+    setOcrLoadingId(invoiceId);
+    try {
+      const resp = await fetch(`/api/cost-invoices/${invoiceId}/ocr`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!resp.ok) {
+        const e = await resp.json();
+        throw new Error(e.message || "Błąd OCR");
+      }
+      const data = await resp.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-invoices"] });
+      toast({
+        title: "OCR zakończony",
+        description: `Dostawca: ${data.vendor || "—"}, Kwota: ${data.amount || "—"}, Nr: ${data.invoiceNumber || "—"}`,
+      });
+    } catch (err: any) {
+      toast({ title: "Błąd OCR", description: err.message, variant: "destructive" });
+    } finally {
+      setOcrLoadingId(null);
+    }
+  }, [toast]);
+
+  const toggleViewMode = useCallback(() => {
+    const next = viewMode === "list" ? "grid" : "list";
+    setViewMode(next);
+    try { localStorage.setItem("dok-view-mode", next); } catch {}
+  }, [viewMode]);
 
   const handleFilesDrop = useCallback((files: FileList | File[]) => {
     const arr = Array.from(files).filter(f =>
@@ -344,6 +406,7 @@ function CostInvoicesTab() {
   return (
     <div className="space-y-4">
       <DeadlineBanner />
+      <UnbookedReminder />
 
       {/* Drop Zone */}
       <div
@@ -416,6 +479,14 @@ function CostInvoicesTab() {
           <History className="h-4 w-4 mr-1" />
           Historia wysyłek
         </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" size="icon" onClick={toggleViewMode} data-testid="button-toggle-view">
+              {viewMode === "list" ? <LayoutGrid className="h-4 w-4" /> : <LayoutList className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{viewMode === "list" ? "Widok miniaturek" : "Widok listy"}</TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Download History Panel */}
@@ -506,8 +577,11 @@ function CostInvoicesTab() {
               onDelete={id => deleteMutation.mutate(id)}
               onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
               onPreview={setPreviewInvoice}
+              onOcr={handleOcr}
+              ocrLoadingId={ocrLoadingId}
               getStatusBadge={getStatusBadge}
               isImage={isImage}
+              viewMode={viewMode}
             />
           );
         })
@@ -705,7 +779,7 @@ function CostInvoicesTab() {
 
 function MonthGroup({
   year, month, invoices, selectedIds, allSelected,
-  onToggleSelect, onToggleSelectAll, onDelete, onStatusChange, onPreview, getStatusBadge, isImage
+  onToggleSelect, onToggleSelectAll, onDelete, onStatusChange, onPreview, onOcr, ocrLoadingId, getStatusBadge, isImage, viewMode
 }: {
   year: number; month: number; invoices: CostInvoice[];
   selectedIds: Set<number>; allSelected: boolean;
@@ -714,8 +788,11 @@ function MonthGroup({
   onDelete: (id: number) => void;
   onStatusChange: (id: number, status: string) => void;
   onPreview: (inv: CostInvoice) => void;
+  onOcr: (id: number) => void;
+  ocrLoadingId: number | null;
   getStatusBadge: (s: string) => JSX.Element;
   isImage: (mime: string) => boolean;
+  viewMode: "list" | "grid";
 }) {
   const [open, setOpen] = useState(true);
   const newCount = invoices.filter(i => i.status === "NOWA").length;
@@ -735,6 +812,75 @@ function MonthGroup({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-0">
+            {viewMode === "grid" ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {invoices.map(inv => (
+                  <div
+                    key={inv.id}
+                    className={`relative rounded-md border p-2 flex flex-col gap-2 cursor-pointer transition-colors ${
+                      selectedIds.has(inv.id) ? "border-primary bg-primary/5" : "hover-elevate"
+                    }`}
+                    data-testid={`card-invoice-${inv.id}`}
+                  >
+                    <div className="absolute top-2 left-2 z-10">
+                      <Checkbox
+                        checked={selectedIds.has(inv.id)}
+                        onCheckedChange={() => onToggleSelect(inv.id)}
+                        data-testid={`checkbox-grid-invoice-${inv.id}`}
+                      />
+                    </div>
+                    <div
+                      className="w-full aspect-[3/4] rounded overflow-hidden bg-muted flex items-center justify-center"
+                      onClick={() => onPreview(inv)}
+                    >
+                      {isImage(inv.mimeType) ? (
+                        <img
+                          src={`/api/cost-invoices/${inv.id}/file`}
+                          alt={inv.originalFileName}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <FileText className="h-12 w-12 text-muted-foreground/50" />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs truncate font-medium" title={inv.originalFileName} data-testid={`text-grid-filename-${inv.id}`}>
+                        {inv.originalFileName}
+                      </p>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {getStatusBadge(inv.status)}
+                        <span className="text-xs text-muted-foreground">{formatDate(inv.invoiceDate)}</span>
+                      </div>
+                      {inv.ocrProcessed && (inv.ocrVendor || inv.ocrAmount) && (
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                          {inv.ocrVendor && <p className="truncate" title={inv.ocrVendor}>{inv.ocrVendor}</p>}
+                          {inv.ocrAmount && <p className="font-medium">{inv.ocrAmount} PLN</p>}
+                          {inv.ocrInvoiceNumber && <p className="truncate" title={inv.ocrInvoiceNumber}>{inv.ocrInvoiceNumber}</p>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Button size="icon" variant="ghost" onClick={() => onPreview(inv)} data-testid={`button-grid-preview-${inv.id}`}>
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => onOcr(inv.id)}
+                        disabled={ocrLoadingId === inv.id}
+                        data-testid={`button-grid-ocr-${inv.id}`}
+                      >
+                        {ocrLoadingId === inv.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanLine className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => onDelete(inv.id)} data-testid={`button-grid-delete-${inv.id}`}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -748,6 +894,7 @@ function MonthGroup({
                   <TableHead>Plik</TableHead>
                   <TableHead>Data faktury</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>OCR</TableHead>
                   <TableHead>Dodał</TableHead>
                   <TableHead>Dodano</TableHead>
                   <TableHead>Komentarz</TableHead>
@@ -793,6 +940,37 @@ function MonthGroup({
                         </SelectContent>
                       </Select>
                     </TableCell>
+                    <TableCell>
+                      {inv.ocrProcessed ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-1 cursor-default">
+                              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                              <span className="text-xs text-muted-foreground truncate max-w-[100px]" data-testid={`text-ocr-vendor-${inv.id}`}>
+                                {inv.ocrVendor || "—"}
+                              </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="text-xs space-y-1">
+                              <p>Dostawca: {inv.ocrVendor || "—"}</p>
+                              <p>Kwota: {inv.ocrAmount || "—"} PLN</p>
+                              <p>Nr: {inv.ocrInvoiceNumber || "—"}</p>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => onOcr(inv.id)}
+                          disabled={ocrLoadingId === inv.id}
+                          data-testid={`button-ocr-${inv.id}`}
+                        >
+                          {ocrLoadingId === inv.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
+                        </Button>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm">{inv.uploadedBy}</TableCell>
                     <TableCell className="text-sm">{formatDateTime(inv.uploadedAt)}</TableCell>
                     <TableCell className="text-sm max-w-[200px] truncate" title={inv.comment || ""}>
@@ -817,6 +995,7 @@ function MonthGroup({
                 ))}
               </TableBody>
             </Table>
+            )}
           </CardContent>
         </CollapsibleContent>
       </Card>

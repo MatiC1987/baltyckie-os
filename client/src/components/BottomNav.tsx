@@ -1,22 +1,11 @@
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  TrendingUp,
-  Calculator,
-  Wallet,
-  Menu,
-} from "lucide-react";
-
-const navItems = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/v2/przychody", icon: TrendingUp, label: "Przychody" },
-  { href: "/v2/koszty", icon: Calculator, label: "Koszty" },
-  { href: "/saldo-firmowe", icon: Wallet, label: "Saldo" },
-];
+import { Menu } from "lucide-react";
+import { getBottomNavForPath } from "@/lib/bottom-nav-config";
 
 export function BottomNav() {
   const [location, navigate] = useLocation();
+  const navItems = getBottomNavForPath(location);
 
   return (
     <nav
@@ -24,20 +13,24 @@ export function BottomNav() {
       data-testid="nav-bottom"
     >
       {navItems.map((item) => {
-        const isActive = location === item.href;
+        const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href + "/"));
         return (
           <button
             key={item.href}
             type="button"
             onClick={() => navigate(item.href)}
             className={cn(
-              "flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 cursor-pointer min-w-[56px] bg-transparent border-0",
+              "flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 cursor-pointer min-w-[56px] bg-transparent border-0 transition-colors",
               isActive ? "text-primary" : "text-muted-foreground"
             )}
-            data-testid={`bottom-nav-${item.href === "/" ? "dashboard" : item.href.slice(1)}`}
+            data-testid={`bottom-nav-${item.testId}`}
           >
             <item.icon className={cn("h-5 w-5", isActive && "text-primary")} />
-            <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+            {isActive ? (
+              <span className="text-[10px] font-semibold leading-tight" data-testid={`bottom-nav-label-${item.testId}`}>
+                {item.label}
+              </span>
+            ) : null}
           </button>
         );
       })}
@@ -48,7 +41,6 @@ export function BottomNav() {
         data-testid="bottom-nav-menu"
       >
         <Menu className="h-5 w-5" />
-        <span className="text-[10px] font-medium leading-tight">Menu</span>
       </button>
     </nav>
   );

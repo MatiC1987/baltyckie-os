@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import type { SaldoEntry } from "@shared/schema";
 
 const PAGE_SIZE = 100;
@@ -36,6 +37,118 @@ const SALDO_PERSONS = [
   { key: "jg", name: "Jolanta Głodkowska" },
   { key: "mc", name: "Mateusz Cieślak" },
 ];
+
+function buildTrendData(entries: SaldoEntry[], initialBalance: number) {
+  const dailyMap = new Map<string, number>();
+  let running = initialBalance;
+  for (const e of entries) {
+    if (e.cashAmount) running += parseFloat(e.cashAmount);
+    if (e.date) dailyMap.set(e.date, running);
+  }
+  const sorted = Array.from(dailyMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  const last30 = sorted.slice(-30);
+  return last30.map(([date, saldo]) => ({
+    date: date.slice(5).replace("-", "."),
+    saldo: Math.round(saldo * 100) / 100,
+  }));
+}
+
+function SaldoSparkline({ entries, initialBalance, height = 80 }: { entries: SaldoEntry[]; initialBalance: number; height?: number }) {
+  const data = useMemo(() => buildTrendData(entries, initialBalance), [entries, initialBalance]);
+  if (data.length < 2) return null;
+  const minVal = Math.min(...data.map(d => d.saldo));
+  const maxVal = Math.max(...data.map(d => d.saldo));
+  const hasNegative = minVal < 0;
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+        <defs>
+          <linearGradient id="saldoGradientPos" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="saldoGradientNeg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="date" hide />
+        <YAxis domain={[minVal - Math.abs(minVal * 0.1), maxVal + Math.abs(maxVal * 0.1)]} hide />
+        {hasNegative && <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" strokeOpacity={0.5} />}
+        <Tooltip
+          contentStyle={{ fontSize: "11px", borderRadius: "6px", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}
+          formatter={(value: number) => [`${value.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł`, "Saldo"]}
+          labelFormatter={(label: string) => `Data: ${label}`}
+        />
+        <Area
+          type="monotone"
+          dataKey="saldo"
+          stroke={data[data.length - 1].saldo >= 0 ? "hsl(142, 71%, 45%)" : "hsl(0, 84%, 60%)"}
+          fill={data[data.length - 1].saldo >= 0 ? "url(#saldoGradientPos)" : "url(#saldoGradientNeg)"}
+          strokeWidth={1.5}
+          dot={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+function SaldoPersonCard({ person, isSelected, onSelect }: { person: typeof SALDO_PERSONS[0]; isSelected: boolean; onSelect: () => void }) {
+  const { data: entries = [] } = useQuery<SaldoEntry[]>({
+    queryKey: ["/api/saldo", { personName: person.name }],
+    queryFn: async () => {
+      const res = await fetch(`/api/saldo?personName=${encodeURIComponent(person.name)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+  const { data: initialBalanceData } = useQuery<{ personName: string; initialBalance: string }>({
+    queryKey: ["/api/saldo/initial-balance", { personName: person.name }],
+    queryFn: async () => {
+      const res = await fetch(`/api/saldo/initial-balance?personName=${encodeURIComponent(person.name)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+  const ib = parseFloat(initialBalanceData?.initialBalance || "0");
+  const currentSaldo = useMemo(() => {
+    let running = ib;
+    for (const e of entries) {
+      if (e.cashAmount) running += parseFloat(e.cashAmount);
+    }
+    return running;
+  }, [entries, ib]);
+  const entryCount = entries.length;
+  const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+
+  return (
+    <Card
+      className={`cursor-pointer transition-colors ${isSelected ? "ring-2 ring-primary" : "hover-elevate"}`}
+      onClick={onSelect}
+      data-testid={`card-person-${person.key}`}
+    >
+      <CardContent className="p-4 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold" data-testid={`text-person-name-${person.key}`}>{person.name}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {currentSaldo >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-green-600 dark:text-green-400" /> : <TrendingDown className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />}
+            <span className={`text-lg font-bold tabular-nums ${currentSaldo >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid={`text-person-saldo-${person.key}`}>
+              {currentSaldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+            </span>
+          </div>
+        </div>
+        <SaldoSparkline entries={entries} initialBalance={ib} height={60} />
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground flex-wrap">
+          <span>{entryCount} wpisów</span>
+          {lastEntry && <span>Ostatni: {formatDate(lastEntry.date)}</span>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Saldo({ personName: personNameProp }: { personName?: string }) {
   const [selectedPerson, setSelectedPerson] = useState(personNameProp || SALDO_PERSONS[0].name);
@@ -377,16 +490,14 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       } />
 
       {!personNameProp && (
-        <div className="flex items-center gap-1 border border-border rounded-md p-1 w-fit" data-testid="person-tabs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="person-tabs">
           {SALDO_PERSONS.map(p => (
-            <button
+            <SaldoPersonCard
               key={p.key}
-              className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${selectedPerson === p.name ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-              onClick={() => setSelectedPerson(p.name)}
-              data-testid={`tab-person-${p.key}`}
-            >
-              {p.name}
-            </button>
+              person={p}
+              isSelected={selectedPerson === p.name}
+              onSelect={() => setSelectedPerson(p.name)}
+            />
           ))}
         </div>
       )}
@@ -566,10 +677,21 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
 
       {activeTab === "wpisy" && <>
       <Card>
-        <CardContent className="p-6">
-          <div className="text-center">
-            <div className="text-sm text-muted-foreground uppercase tracking-wider mb-2">Aktualne saldo</div>
-            <div className={`text-4xl font-bold ${summary.lastSaldo >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-saldo-current">{summary.lastSaldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row items-center gap-4">
+            <div className="text-center md:text-left md:min-w-[200px]">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Aktualne saldo — {personName.split(" ")[0]}</div>
+              <div className={`text-3xl font-bold tabular-nums ${summary.lastSaldo >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-saldo-current">{summary.lastSaldo.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</div>
+              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground justify-center md:justify-start flex-wrap">
+                <span>{summary.count} wpisów</span>
+                <span>Got.: {summary.totalCash.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</span>
+                <span>Karta: {summary.totalCard.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</span>
+              </div>
+            </div>
+            <div className="flex-1 w-full min-w-0" data-testid="chart-saldo-trend">
+              <div className="text-xs text-muted-foreground mb-1">Trend salda (ostatnie 30 dni z wpisami)</div>
+              <SaldoSparkline entries={entries} initialBalance={initialBalance} height={100} />
+            </div>
           </div>
         </CardContent>
       </Card>

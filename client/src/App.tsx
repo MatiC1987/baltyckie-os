@@ -114,6 +114,20 @@ function useRouteRestoration() {
 function Router() {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
+  const prevPathRef = useRef(location);
+
+  useEffect(() => {
+    const getPrefix = (p: string) => {
+      if (p.startsWith('/recepcja')) return '/recepcja';
+      if (p.startsWith('/zadania')) return '/zadania';
+      if (p.startsWith('/rcp')) return '/rcp';
+      return '/';
+    };
+    if (getPrefix(location) !== getPrefix(prevPathRef.current)) {
+      import('./main').then((m) => m.setManifestForPath(location)).catch(() => {});
+    }
+    prevPathRef.current = location;
+  }, [location]);
 
   if (location === "/rcp") {
     return (

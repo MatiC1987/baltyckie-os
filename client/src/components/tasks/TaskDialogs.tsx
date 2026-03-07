@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTasksApi } from "@/lib/tasksApiContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { TaskProject, TaskSection } from "@shared/schema";
@@ -19,9 +19,10 @@ import {
   FONT_SIZE_OPTIONS, type TaskFontSize,
 } from "./taskUtils";
 import type { SettingsPage } from "./taskUtils";
+import { useToast } from "@/hooks/use-toast";
 import {
   Flag, Star, Calendar, Tag, Plus, Sun, Moon, Monitor, Check, ChevronRight,
-  Inbox, Circle, Type, X, ChevronDown,
+  Inbox, Circle, Type, X, ChevronDown, FileText, Trash2, Play,
 } from "lucide-react";
 
 export function TaskDialog({
@@ -816,6 +817,203 @@ export function MoveDialog({
             );
           })}
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface TemplateItem {
+  title: string;
+  notes?: string;
+  priority?: string;
+  tags?: string[];
+}
+
+interface TaskTemplate {
+  id: number;
+  name: string;
+  description: string | null;
+  items?: TemplateItem[];
+}
+
+export function TemplatesDialog({
+  open,
+  onOpenChange,
+  projects,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  projects: TaskProject[];
+}) {
+  const { apiRequest } = useTasksApi();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [mode, setMode] = useState<"list" | "create">("list");
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newItems, setNewItems] = useState<TemplateItem[]>([]);
+  const [newItemTitle, setNewItemTitle] = useState("");
+
+  const { data: templates = [] } = useQuery<TaskTemplate[]>({
+    queryKey: ["/api/task-templates"],
+    enabled: open,
+  });
+
+  const createTemplate = useMutation({
+    mutationFn: async (data: { name: string; description: string | null; items: TemplateItem[] }) => {
+      await apiRequest("POST", "/api/task-templates", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/task-templates"] });
+      setMode("list");
+      setNewName("");
+      setNewDesc("");
+      setNewItems([]);
+      toast({ title: "Szablon utworzony" });
+    },
+  });
+
+  const deleteTemplate = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/task-templates/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/task-templates"] });
+      toast({ title: "Szablon usunięty" });
+    },
+  });
+
+  const applyTemplate = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("POST", `/api/task-templates/${id}/apply`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      onOpenChange(false);
+      toast({ title: "Zadania utworzone z szablonu" });
+    },
+  });
+
+  const addItem = () => {
+    if (newItemTitle.trim()) {
+      setNewItems(prev => [...prev, { title: newItemTitle.trim() }]);
+      setNewItemTitle("");
+    }
+  };
+
+  const removeItem = (idx: number) => {
+    setNewItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-templates">
+        <DialogHeader>
+          <DialogTitle>{mode === "create" ? "Nowy szablon" : "Szablony zadań"}</DialogTitle>
+        </DialogHeader>
+
+        {mode === "list" ? (
+          <div className="space-y-2">
+            {templates.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6" data-testid="text-no-templates">
+                Brak szablonów. Utwórz pierwszy szablon.
+              </p>
+            )}
+            {templates.map((tpl) => (
+              <div key={tpl.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/30 group" data-testid={`template-item-${tpl.id}`}>
+                <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{tpl.name}</div>
+                  {tpl.description && <div className="text-xs text-muted-foreground truncate">{tpl.description}</div>}
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => applyTemplate.mutate(tpl.id)}
+                  disabled={applyTemplate.isPending}
+                  data-testid={`button-apply-template-${tpl.id}`}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => deleteTemplate.mutate(tpl.id)}
+                  disabled={deleteTemplate.isPending}
+                  data-testid={`button-delete-template-${tpl.id}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMode("create")} data-testid="button-create-template">
+                <Plus className="h-4 w-4 mr-1" /> Nowy szablon
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Nazwa szablonu</Label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="np. Sprint planning"
+                className="mt-1"
+                data-testid="input-template-name"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Opis (opcjonalnie)</Label>
+              <Input
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="Krótki opis..."
+                className="mt-1"
+                data-testid="input-template-desc"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Zadania w szablonie</Label>
+              <div className="space-y-1 mt-1">
+                {newItems.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate">{item.title}</span>
+                    <button onClick={() => removeItem(i)} className="p-0.5 text-muted-foreground hover:text-destructive" data-testid={`button-remove-template-item-${i}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newItemTitle}
+                    onChange={(e) => setNewItemTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
+                    placeholder="Dodaj zadanie..."
+                    className="flex-1"
+                    data-testid="input-template-item"
+                  />
+                  <Button size="icon" variant="ghost" onClick={addItem} data-testid="button-add-template-item">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { setMode("list"); setNewName(""); setNewDesc(""); setNewItems([]); }} data-testid="button-template-cancel">
+                Anuluj
+              </Button>
+              <Button
+                disabled={!newName.trim() || newItems.length === 0 || createTemplate.isPending}
+                onClick={() => createTemplate.mutate({ name: newName.trim(), description: newDesc.trim() || null, items: newItems })}
+                data-testid="button-template-save"
+              >
+                Zapisz
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

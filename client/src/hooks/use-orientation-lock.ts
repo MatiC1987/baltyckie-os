@@ -4,24 +4,23 @@ type OrientationType = "portrait" | "landscape";
 
 export function useOrientationLock(orientation: OrientationType) {
   useEffect(() => {
-    const screenOrientation = screen?.orientation;
-    if (!screenOrientation || !screenOrientation.lock) return;
+    const so = screen?.orientation as any;
+    if (!so || typeof so.lock !== "function") return;
 
-    const lockType: OrientationLockType =
+    const lockType =
       orientation === "portrait" ? "portrait-primary" : "landscape-primary";
 
     let locked = false;
 
-    screenOrientation
-      .lock(lockType)
+    so.lock(lockType)
       .then(() => {
         locked = true;
       })
       .catch(() => {});
 
     return () => {
-      if (locked) {
-        screenOrientation.unlock();
+      if (locked && typeof so.unlock === "function") {
+        so.unlock();
       }
     };
   }, [orientation]);

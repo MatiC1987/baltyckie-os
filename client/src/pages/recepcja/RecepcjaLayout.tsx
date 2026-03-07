@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocation, Link } from "wouter";
+import { useOrientationLock } from "@/hooks/use-orientation-lock";
 import { useRecepcjaAuth, recepcjaFetch } from "./RecepcjaApp";
 import { useTheme } from "@/components/ThemeProvider";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -16,10 +17,11 @@ import {
   Gauge, ClipboardList, FolderOpen, Search, CalendarDays, Hotel,
   Phone, CheckSquare, Clock, LogOut, Sun, Moon, Menu, X,
   PanelLeftClose, PanelLeft, ChevronDown, FileBarChart, AlertTriangle,
-  Bell, Check, CheckCheck,
+  Bell, Check, CheckCheck, Plus,
   type LucideIcon,
 } from "lucide-react";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 type NavItem = {
   label: string;
@@ -170,7 +172,7 @@ function RecepcjaNotificationBell() {
       if (!res.ok) return { count: 0 };
       return res.json();
     },
-    refetchInterval: 60000,
+    refetchInterval: 30000,
   });
 
   const { data: notificationsList, isLoading } = useQuery<any[]>({
@@ -292,7 +294,51 @@ function RecepcjaNotificationBell() {
   );
 }
 
+function RecepcjaFAB() {
+  const [open, setOpen] = useState(false);
+  const [, navigate] = useLocation();
+
+  const actions = [
+    { label: "Nowy odczyt", icon: Gauge, path: "/recepcja/liczniki", color: "bg-emerald-600" },
+    { label: "Zgłoś usterkę", icon: AlertTriangle, path: "/recepcja/usterki", color: "bg-amber-600" },
+    { label: "Raport dzienny", icon: FileBarChart, path: "/recepcja/raport-dzienny", color: "bg-blue-600" },
+  ];
+
+  return (
+    <div className="fixed bottom-20 right-4 z-40 lg:bottom-6 lg:right-6 flex flex-col-reverse items-end gap-2">
+      {open && actions.map((action) => {
+        const Icon = action.icon;
+        return (
+          <button
+            key={action.label}
+            onClick={() => { setOpen(false); navigate(action.path); }}
+            className={cn(
+              "flex items-center gap-2 rounded-full px-4 py-2.5 text-white shadow-lg transition-all duration-200",
+              action.color
+            )}
+            data-testid={`fab-action-${action.label.toLowerCase().replace(/\s+/g, '-')}`}
+          >
+            <Icon className="h-4 w-4" />
+            <span className="text-sm font-medium">{action.label}</span>
+          </button>
+        );
+      })}
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        className={cn(
+          "flex items-center justify-center w-14 h-14 rounded-full shadow-lg transition-all duration-200 text-white",
+          open ? "bg-red-600 rotate-45" : "bg-primary"
+        )}
+        data-testid="button-recepcja-fab"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+    </div>
+  );
+}
+
 export default function RecepcjaLayout({ children }: { children: React.ReactNode }) {
+  useOrientationLock("portrait");
   const [location] = useLocation();
   const { user, logout } = useRecepcjaAuth();
   const { theme, toggleTheme } = useTheme();
@@ -422,6 +468,8 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
             })}
           </nav>
 
+          <InstallPrompt variant={compact ? "compact" : "sidebar"} />
+
           <div className={cn("pb-3 pt-2 border-t border-white/10", compact ? "px-1" : "px-3")}>
             {!compact && (
               <div className="flex items-center gap-2.5 px-3 mb-2">
@@ -534,6 +582,7 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
         <div className="p-4 pt-2 max-w-7xl mx-auto">
           {children}
         </div>
+        <RecepcjaFAB />
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-slate-900 border-t border-white/10 lg:hidden" data-testid="nav-recepcja-bottom">

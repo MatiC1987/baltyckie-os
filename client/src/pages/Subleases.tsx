@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { Sublease, SubleasePayment, SubleaseAttachment, Apartment, SubleaseApartmentChange, DocumentTemplate } from "@shared/schema";
 import { format, addDays, addWeeks, addMonths, addQuarters, isBefore, isEqual } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -11,7 +12,7 @@ import {
   Building2, User, Briefcase, CreditCard, Paperclip, ClipboardCheck,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
   FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle, Zap, Droplets,
-  ChevronLeft, ChevronRight, TrendingUp
+  ChevronLeft, ChevronRight, TrendingUp, ChevronDown
 } from "lucide-react";
 import { HandoverProtocolsTab } from "./HandoverProtocols";
 import { PageHeader } from "@/components/PageHeader";
@@ -1183,8 +1184,106 @@ function ApartmentChangesSection({ subleaseId, apartments, currentApartmentIds }
   );
 }
 
+function SubleaseMobileCard({
+  sublease: s,
+  apartments,
+  allAttachments,
+  getTenantName,
+  resolveCurrentApartmentIds,
+  downloadAttachmentFile,
+  onEdit,
+  onDelete,
+}: {
+  sublease: Sublease;
+  apartments: Apartment[];
+  allAttachments: SubleaseAttachment[];
+  getTenantName: (s: Sublease) => string;
+  resolveCurrentApartmentIds: (s: Sublease) => number[];
+  downloadAttachmentFile: (attId: number, fileName: string) => void;
+  onEdit: (s: Sublease) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const aptIds = resolveCurrentApartmentIds(s);
+  const atts = allAttachments.filter(a => a.subleaseId === s.id);
+
+  return (
+    <Card
+      className="cursor-pointer"
+      onClick={() => onEdit(s)}
+      data-testid={`card-sublease-${s.id}`}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground shrink-0" /> : <User className="h-4 w-4 text-muted-foreground shrink-0" />}
+              <span className="font-medium text-sm">{getTenantName(s)}</span>
+              <Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge>
+            </div>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {aptIds.map(id => {
+                const apt = apartments.find(a => a.id === id);
+                return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+              })}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {s.startDate} — {s.endDate}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-sm font-semibold">{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} zł` : "—"}</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setExpanded(prev => !prev); }}
+              className="p-1 rounded-md text-muted-foreground"
+              data-testid="button-expand-card"
+            >
+              <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+        </div>
+
+        {expanded && (
+          <div className="mt-3 pt-3 border-t border-border space-y-2" data-testid="card-details">
+            <div className="flex items-start justify-between text-sm">
+              <span className="text-xs text-muted-foreground">Czynsz</span>
+              <span>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</span>
+            </div>
+            {atts.length > 0 && (
+              <div className="flex items-start justify-between text-sm">
+                <span className="text-xs text-muted-foreground">Załączniki</span>
+                <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                  {atts.map(att => (
+                    <button key={att.id} type="button" onClick={() => downloadAttachmentFile(att.id, att.fileName)} className="inline-flex">
+                      <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                        <FileText className="h-3 w-3" />
+                        {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
+                      </Badge>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-border" onClick={e => e.stopPropagation()} data-testid="card-actions">
+          <Button size="icon" variant="ghost" onClick={() => onEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={() => { if (window.confirm("Usunąć umowę?")) onDelete(s.id); }} data-testid={`button-delete-sublease-${s.id}`}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Subleases() {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("dane");
@@ -1951,14 +2050,30 @@ export default function Subleases() {
                 <Badge variant="outline" className="text-xs">{activeList.length}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className={isMobile ? "p-2" : "p-0"}>
               {activeList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                   <FileText className="h-8 w-8 mb-2" />
                   <p className="text-sm">Brak aktywnych umów</p>
                 </div>
+              ) : isMobile ? (
+                <div className="space-y-2" data-testid="responsive-table-mobile">
+                  {sortList(activeList).map((s) => (
+                    <SubleaseMobileCard
+                      key={s.id}
+                      sublease={s}
+                      apartments={apartments}
+                      allAttachments={allAttachments}
+                      getTenantName={getTenantName}
+                      resolveCurrentApartmentIds={resolveCurrentApartmentIds}
+                      downloadAttachmentFile={downloadAttachmentFile}
+                      onEdit={openEdit}
+                      onDelete={(id) => deleteMut.mutate(id)}
+                    />
+                  ))}
+                </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" data-testid="responsive-table-desktop">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -2066,90 +2181,108 @@ export default function Subleases() {
                   <Badge variant="outline" className="text-xs">{archiveList.length}</Badge>
                 </div>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Najemca</TableHead>
-                        <TableHead>Typ</TableHead>
-                        <TableHead>Apartament</TableHead>
-                        <TableHead>Od</TableHead>
-                        <TableHead>Do</TableHead>
-                        <TableHead>Czynsz</TableHead>
-                        <TableHead>Załączniki</TableHead>
-                        <TableHead className="w-[100px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortList(archiveList).map((s) => (
-                        <TableRow key={s.id} className="cursor-pointer opacity-70" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
-                              {getTenantName(s)}
-                            </div>
-                          </TableCell>
-                          <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {resolveCurrentApartmentIds(s).map(id => {
-                                const apt = apartments.find(a => a.id === id);
-                                return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
-                              })}
-                              {resolveCurrentApartmentIds(s).length === 0 && "—"}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">{s.startDate}</TableCell>
-                          <TableCell className="text-sm">{s.endDate}</TableCell>
-                          <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
-                          <TableCell>
-                            {(() => {
-                              const atts = allAttachments.filter(a => a.subleaseId === s.id);
-                              if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
-                              return (
-                                <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                                  {atts.map(att => (
-                                    <button key={att.id} type="button" onClick={() => downloadAttachmentFile(att.id, att.fileName)} title={att.fileName} data-testid={`link-attachment-${att.id}`} className="inline-flex">
-                                      <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
-                                        <FileText className="h-3 w-3" />
-                                        {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
-                                      </Badge>
-                                    </button>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              <Button size="icon" variant="ghost" onClick={() => openEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button size="icon" variant="ghost" data-testid={`button-delete-sublease-${s.id}`}>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
-                                    <AlertDialogDescription>Usunięcie umowy usunie również powiązane opłaty i załączniki.</AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Anuluj</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => deleteMut.mutate(s.id)} data-testid="button-confirm-delete">Usuń</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
-                          </TableCell>
+              <CardContent className={isMobile ? "p-2" : "p-0"}>
+                {isMobile ? (
+                  <div className="space-y-2" data-testid="responsive-table-mobile">
+                    {sortList(archiveList).map((s) => (
+                      <SubleaseMobileCard
+                        key={s.id}
+                        sublease={s}
+                        apartments={apartments}
+                        allAttachments={allAttachments}
+                        getTenantName={getTenantName}
+                        resolveCurrentApartmentIds={resolveCurrentApartmentIds}
+                        downloadAttachmentFile={downloadAttachmentFile}
+                        onEdit={openEdit}
+                        onDelete={(id) => deleteMut.mutate(id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto" data-testid="responsive-table-desktop">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Najemca</TableHead>
+                          <TableHead>Typ</TableHead>
+                          <TableHead>Apartament</TableHead>
+                          <TableHead>Od</TableHead>
+                          <TableHead>Do</TableHead>
+                          <TableHead>Czynsz</TableHead>
+                          <TableHead>Załączniki</TableHead>
+                          <TableHead className="w-[100px]"></TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {sortList(archiveList).map((s) => (
+                          <TableRow key={s.id} className="cursor-pointer opacity-70" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
+                                {getTenantName(s)}
+                              </div>
+                            </TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {resolveCurrentApartmentIds(s).map(id => {
+                                  const apt = apartments.find(a => a.id === id);
+                                  return apt ? <Badge key={id} variant="outline" className="text-xs">{apt.name}</Badge> : null;
+                                })}
+                                {resolveCurrentApartmentIds(s).length === 0 && "—"}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">{s.startDate}</TableCell>
+                            <TableCell className="text-sm">{s.endDate}</TableCell>
+                            <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
+                            <TableCell>
+                              {(() => {
+                                const atts = allAttachments.filter(a => a.subleaseId === s.id);
+                                if (atts.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+                                return (
+                                  <div className="flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                                    {atts.map(att => (
+                                      <button key={att.id} type="button" onClick={() => downloadAttachmentFile(att.id, att.fileName)} title={att.fileName} data-testid={`link-attachment-${att.id}`} className="inline-flex">
+                                        <Badge variant="outline" className="text-xs gap-1 cursor-pointer">
+                                          <FileText className="h-3 w-3" />
+                                          {att.category === 'UMOWA' ? 'Umowa' : att.category === 'ANEKS' ? 'Aneks' : 'Inny'}
+                                        </Badge>
+                                      </button>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <Button size="icon" variant="ghost" onClick={() => openEdit(s)} data-testid={`button-edit-sublease-${s.id}`}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button size="icon" variant="ghost" data-testid={`button-delete-sublease-${s.id}`}>
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
+                                      <AlertDialogDescription>Usunięcie umowy usunie również powiązane opłaty i załączniki.</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => deleteMut.mutate(s.id)} data-testid="button-confirm-delete">Usuń</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

@@ -7,8 +7,59 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Save, Upload, X, Globe } from "lucide-react";
+import { Building2, Save, Upload, X, Globe, AlertCircle, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+
+function validateNIP(nip: string): { valid: boolean; message: string } {
+  const cleaned = nip.replace(/[\s-]/g, "");
+  if (!cleaned) return { valid: true, message: "" };
+  if (!/^\d{10}$/.test(cleaned)) return { valid: false, message: "NIP musi mieć 10 cyfr" };
+  const weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cleaned[i]) * weights[i];
+  }
+  const checkDigit = sum % 11;
+  if (checkDigit === 10) return { valid: false, message: "Nieprawidłowa suma kontrolna NIP" };
+  if (checkDigit !== parseInt(cleaned[9])) return { valid: false, message: "Nieprawidłowa suma kontrolna NIP" };
+  return { valid: true, message: "NIP prawidłowy" };
+}
+
+function validateREGON(regon: string): { valid: boolean; message: string } {
+  const cleaned = regon.replace(/[\s-]/g, "");
+  if (!cleaned) return { valid: true, message: "" };
+  if (!/^\d{9}$/.test(cleaned) && !/^\d{14}$/.test(cleaned)) {
+    return { valid: false, message: "REGON musi mieć 9 lub 14 cyfr" };
+  }
+  if (cleaned.length === 9) {
+    const weights9 = [8, 9, 2, 3, 4, 5, 6, 7];
+    let sum = 0;
+    for (let i = 0; i < 8; i++) {
+      sum += parseInt(cleaned[i]) * weights9[i];
+    }
+    const checkDigit = sum % 11 === 10 ? 0 : sum % 11;
+    if (checkDigit !== parseInt(cleaned[8])) return { valid: false, message: "Nieprawidłowa suma kontrolna REGON" };
+  } else {
+    const weights14 = [2, 4, 8, 5, 0, 9, 7, 3, 6, 1, 2, 4, 8];
+    let sum = 0;
+    for (let i = 0; i < 13; i++) {
+      sum += parseInt(cleaned[i]) * weights14[i];
+    }
+    const checkDigit = sum % 11 === 10 ? 0 : sum % 11;
+    if (checkDigit !== parseInt(cleaned[13])) return { valid: false, message: "Nieprawidłowa suma kontrolna REGON" };
+  }
+  return { valid: true, message: "REGON prawidłowy" };
+}
+
+function ValidationIndicator({ result }: { result: { valid: boolean; message: string } }) {
+  if (!result.message) return null;
+  return (
+    <div className={`flex items-center gap-1 mt-1 text-xs ${result.valid ? "text-green-600 dark:text-green-400" : "text-destructive"}`} data-testid={`text-validation-${result.valid ? "ok" : "error"}`}>
+      {result.valid ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+      <span>{result.message}</span>
+    </div>
+  );
+}
 
 export default function CompanySettings() {
   const { toast } = useToast();
@@ -143,6 +194,16 @@ export default function CompanySettings() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const nipResult = validateNIP(form.nip);
+    const regonResult = validateREGON(form.regon);
+    if (!nipResult.valid) {
+      toast({ title: "Błąd walidacji", description: nipResult.message, variant: "destructive" });
+      return;
+    }
+    if (!regonResult.valid) {
+      toast({ title: "Błąd walidacji", description: regonResult.message, variant: "destructive" });
+      return;
+    }
     mutation.mutate(form);
   };
 
@@ -300,8 +361,10 @@ export default function CompanySettings() {
                   id="nip"
                   value={form.nip}
                   onChange={handleChange("nip")}
+                  placeholder="0000000000"
                   data-testid="input-nip"
                 />
+                <ValidationIndicator result={validateNIP(form.nip)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="regon">REGON</Label>
@@ -309,8 +372,10 @@ export default function CompanySettings() {
                   id="regon"
                   value={form.regon}
                   onChange={handleChange("regon")}
+                  placeholder="000000000"
                   data-testid="input-regon"
                 />
+                <ValidationIndicator result={validateREGON(form.regon)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="street">Ulica i numer</Label>

@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 import { eq, or, sql, inArray } from "drizzle-orm";
 import {
   taskPanelUsers, tasks as tasksTable, taskProjects, taskSections,
-  taskChecklistItems, employees,
+  taskChecklistItems, taskComments, taskTemplates, taskTemplateItems, employees,
   insertTaskProjectSchema, insertTaskSectionSchema,
 } from "@shared/schema";
 
@@ -262,6 +262,155 @@ export function registerTaskPanelRoutes(app: Express) {
         return res.status(403).json({ message: 'Brak dostępu' });
       }
       await storage.deleteTaskChecklistItem(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASK PANEL COMMENTS ====================
+  app.get('/api/task-panel/comments/:taskId', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      if (!(await verifyTaskAccess(req.taskPanelUser, Number(req.params.taskId)))) {
+        return res.status(403).json({ message: 'Brak dostępu' });
+      }
+      const data = await storage.getTaskComments(Number(req.params.taskId));
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/comments', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const user = req.taskPanelUser;
+      const { taskId, content } = req.body;
+      if (!taskId || !content) return res.status(400).json({ message: "taskId and content required" });
+      if (!(await verifyTaskAccess(user, taskId))) {
+        return res.status(403).json({ message: 'Brak dostępu' });
+      }
+      const virtualId = getEmployeeVirtualId(user.employeeId);
+      const created = await storage.createTaskComment({ taskId, content, userId: virtualId, userName: user.username || 'User' });
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-panel/comments/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const [existing] = await db.select().from(taskComments).where(eq(taskComments.id, Number(req.params.id)));
+      if (!existing || !(await verifyTaskAccess(req.taskPanelUser, existing.taskId))) {
+        return res.status(403).json({ message: 'Brak dostępu' });
+      }
+      await storage.deleteTaskComment(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== TASK PANEL TEMPLATES ====================
+  app.get('/api/task-panel/templates', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const templates = await storage.getTaskTemplates();
+      res.json(templates);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/task-panel/templates/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const tpl = await storage.getTaskTemplate(Number(req.params.id));
+      if (!tpl) return res.status(404).json({ message: "Template not found" });
+      const items = await storage.getTaskTemplateItems(tpl.id);
+      res.json({ ...tpl, items });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/templates', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const user = req.taskPanelUser;
+      const virtualId = getEmployeeVirtualId(user.employeeId);
+      const { name, description, items } = req.body;
+      if (!name) return res.status(400).json({ message: "name required" });
+      const tpl = await storage.createTaskTemplate({ name, description: description || null, userId: virtualId });
+      if (items && Array.isArray(items)) {
+        for (let i = 0; i < items.length; i++) {
+          await storage.createTaskTemplateItem({
+            templateId: tpl.id,
+            title: items[i].title,
+            notes: items[i].notes || null,
+            priority: items[i].priority || "BRAK",
+            tags: items[i].tags || [],
+            sortOrder: i,
+          });
+        }
+      }
+      const createdItems = await storage.getTaskTemplateItems(tpl.id);
+      res.json({ ...tpl, items: createdItems });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-panel/templates/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      await storage.deleteTaskTemplate(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/templates/:id/apply', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const user = req.taskPanelUser;
+      const virtualId = getEmployeeVirtualId(user.employeeId);
+      const tpl = await storage.getTaskTemplate(Number(req.params.id));
+      if (!tpl) return res.status(404).json({ message: "Template not found" });
+      const items = await storage.getTaskTemplateItems(tpl.id);
+      const { projectId, sectionId, dueDate } = req.body || {};
+      const created: any[] = [];
+      for (const item of items) {
+        const task = await storage.createTask({
+          title: item.title,
+          notes: item.notes,
+          priority: item.priority || "BRAK",
+          tags: item.tags || [],
+          projectId: projectId || null,
+          sectionId: sectionId || null,
+          dueDate: dueDate || null,
+          userId: virtualId,
+          sortOrder: item.sortOrder || 0,
+        });
+        created.push(task);
+      }
+      res.json({ template: tpl, tasks: created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/task-panel/template-items', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      const { templateId, title, notes, priority, tags, sortOrder } = req.body;
+      if (!templateId || !title) return res.status(400).json({ message: "templateId and title required" });
+      const created = await storage.createTaskTemplateItem({
+        templateId, title, notes: notes || null, priority: priority || "BRAK", tags: tags || [], sortOrder: sortOrder || 0,
+      });
+      res.json(created);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/task-panel/template-items/:id', isTaskPanelAuth as any, async (req: any, res) => {
+    try {
+      await storage.deleteTaskTemplateItem(Number(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

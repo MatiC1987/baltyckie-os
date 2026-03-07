@@ -29,6 +29,7 @@ import {
 import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X, Eye, AlertTriangle, CheckCircle, UserCog } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
+import { ResponsiveTable, type ResponsiveColumn } from "@/components/ResponsiveTable";
 
 const POSITIONS: Record<string, string> = {
   KIEROWNIK_RECEPCJI: "Kierownik recepcji",
@@ -376,82 +377,116 @@ export default function Employees() {
       )}
 
       {employees && employees.length > 0 && (
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="text-xs font-semibold w-12"></TableHead>
-                <TableHead className="text-xs font-semibold">Imię i nazwisko</TableHead>
-                <TableHead className="text-xs font-semibold">Stanowisko</TableHead>
-                <TableHead className="text-xs font-semibold">Kontakt</TableHead>
-                <TableHead className="text-xs font-semibold">Współpraca</TableHead>
-                <TableHead className="text-xs font-semibold">Umowa</TableHead>
-                <TableHead className="text-xs font-semibold">Stawka/h</TableHead>
-                <TableHead className="text-xs font-semibold">Status</TableHead>
-                <TableHead className="text-xs font-semibold w-28">Akcje</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {employees.map(emp => (
-                <TableRow key={emp.id} data-testid={`row-employee-${emp.id}`} className={emp.status === "NIEAKTYWNY" ? "opacity-50" : ""}>
-                  <TableCell>
-                    {emp.photoUrl ? (
-                      <img src={emp.photoUrl} alt="" className="h-9 w-9 rounded-full object-cover border border-border" />
-                    ) : (
-                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                        {emp.firstName.charAt(0)}{emp.lastName.charAt(0)}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium text-sm whitespace-nowrap">
-                    {emp.firstName} {emp.lastName}
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {POSITIONS[emp.position] || emp.position}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <div className="flex flex-col gap-0.5">
-                      {emp.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-muted-foreground" /> {emp.phone}</span>}
-                      {emp.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" /> {emp.email}</span>}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {COOPERATION_TYPES[emp.cooperationType] || emp.cooperationType}
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {emp.cooperationType === "ETAT" ? (
-                      <div className="flex flex-col gap-0.5">
-                        <span>{CONTRACT_TYPES[emp.contractType || ""] || "—"}</span>
-                        {emp.contractStart && <span className="text-muted-foreground">{emp.contractStart}{emp.contractEnd ? ` — ${emp.contractEnd}` : ""}</span>}
-                      </div>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell className="text-xs font-semibold whitespace-nowrap">
-                    {emp.hourlyRate ? `${Number(emp.hourlyRate).toFixed(2)} zł` : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={emp.status === "AKTYWNY" ? "default" : "secondary"} data-testid={`badge-status-${emp.id}`}>
-                      {STATUS_LABELS[emp.status] || emp.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => openPreview(emp)} data-testid={`button-preview-employee-${emp.id}`}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(emp)} data-testid={`button-edit-employee-${emp.id}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(emp.id)} data-testid={`button-delete-employee-${emp.id}`}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <ResponsiveTable<Employee>
+          data={employees}
+          keyExtractor={(emp) => emp.id}
+          onRowClick={openPreview}
+          rowClassName={(emp) => emp.status === "NIEAKTYWNY" ? "opacity-50" : ""}
+          mobileTitle={(emp) => `${emp.firstName} ${emp.lastName}`}
+          mobileSubtitle={(emp) => POSITIONS[emp.position] || emp.position}
+          mobileBadge={(emp) => (
+            <Badge variant={emp.status === "AKTYWNY" ? "default" : "secondary"} data-testid={`badge-status-${emp.id}`}>
+              {STATUS_LABELS[emp.status] || emp.status}
+            </Badge>
+          )}
+          mobileActions={(emp) => (
+            <>
+              <Button size="icon" variant="ghost" onClick={() => openPreview(emp)} data-testid={`button-preview-employee-${emp.id}`}>
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => openEdit(emp)} data-testid={`button-edit-employee-${emp.id}`}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(emp.id)} data-testid={`button-delete-employee-${emp.id}`}>
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </>
+          )}
+          columns={[
+            {
+              header: "",
+              className: "w-12",
+              primary: false,
+              hideOnMobile: true,
+              render: (emp) => emp.photoUrl ? (
+                <img src={emp.photoUrl} alt="" className="h-9 w-9 rounded-full object-cover border border-border" />
+              ) : (
+                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                  {emp.firstName.charAt(0)}{emp.lastName.charAt(0)}
+                </div>
+              ),
+            },
+            {
+              header: "Imię i nazwisko",
+              primary: true,
+              hideOnMobile: true,
+              render: (emp) => <span className="font-medium text-sm whitespace-nowrap">{emp.firstName} {emp.lastName}</span>,
+            },
+            {
+              header: "Stanowisko",
+              primary: true,
+              mobileLabel: "Stanowisko",
+              render: (emp) => <span className="text-xs whitespace-nowrap">{POSITIONS[emp.position] || emp.position}</span>,
+            },
+            {
+              header: "Kontakt",
+              mobileLabel: "Kontakt",
+              render: (emp) => (
+                <div className="flex flex-col gap-0.5 text-xs">
+                  {emp.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-muted-foreground" /> {emp.phone}</span>}
+                  {emp.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-muted-foreground" /> {emp.email}</span>}
+                </div>
+              ),
+            },
+            {
+              header: "Współpraca",
+              mobileLabel: "Współpraca",
+              render: (emp) => <span className="text-xs whitespace-nowrap">{COOPERATION_TYPES[emp.cooperationType] || emp.cooperationType}</span>,
+            },
+            {
+              header: "Umowa",
+              mobileLabel: "Umowa",
+              render: (emp) => emp.cooperationType === "ETAT" ? (
+                <div className="flex flex-col gap-0.5 text-xs whitespace-nowrap">
+                  <span>{CONTRACT_TYPES[emp.contractType || ""] || "—"}</span>
+                  {emp.contractStart && <span className="text-muted-foreground">{emp.contractStart}{emp.contractEnd ? ` — ${emp.contractEnd}` : ""}</span>}
+                </div>
+              ) : <span className="text-xs">—</span>,
+            },
+            {
+              header: "Stawka/h",
+              mobileLabel: "Stawka/h",
+              render: (emp) => <span className="text-xs font-semibold whitespace-nowrap">{emp.hourlyRate ? `${Number(emp.hourlyRate).toFixed(2)} zł` : "—"}</span>,
+            },
+            {
+              header: "Status",
+              hideOnMobile: true,
+              render: (emp) => (
+                <Badge variant={emp.status === "AKTYWNY" ? "default" : "secondary"} data-testid={`badge-status-${emp.id}`}>
+                  {STATUS_LABELS[emp.status] || emp.status}
+                </Badge>
+              ),
+            },
+            {
+              header: "Akcje",
+              className: "w-28",
+              hideOnMobile: true,
+              render: (emp) => (
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); openPreview(emp); }} data-testid={`button-preview-employee-${emp.id}`}>
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(emp); }} data-testid={`button-edit-employee-${emp.id}`}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(emp.id); }} data-testid={`button-delete-employee-${emp.id}`}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ),
+            },
+          ]}
+        />
       )}
 
       <div className="text-sm text-muted-foreground" data-testid="text-employees-count">

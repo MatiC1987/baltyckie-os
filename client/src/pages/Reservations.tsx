@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCreateReservation, useUpdateReservation, useDeleteReservation } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home,
   CreditCard, X, Pencil, Clock, Download, FileText, ClipboardList, Search,
-  ChevronLeft, ChevronRight, Globe, Trash2, Save
+  ChevronLeft, ChevronRight, Globe, Trash2, Save, CheckCircle2, XCircle,
+  AlertTriangle, Star, StarOff, Bookmark, CheckSquare, Square
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -17,10 +18,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ResponsiveFormDialog } from "@/components/ResponsiveFormDialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertReservationSchema, type InsertReservation, type Reservation } from "@shared/schema";
@@ -30,6 +33,8 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { SwipeableRow } from "@/components/SwipeableRow";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type SortField = "reservationNumber" | "addDate" | "startDate" | "endDate" | "guestName" | "price" | "prepayment" | "paidAmount" | "status" | "source";
 type SortDir = "asc" | "desc";
@@ -96,14 +101,52 @@ function statusLabel(status: string): string {
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
     case "PRZYJETA":
-      return <Badge className="text-[10px] whitespace-nowrap bg-green-500 dark:bg-green-600 text-white border-green-600 dark:border-green-500 border font-semibold">{statusLabel(status)}</Badge>;
+      return (
+        <Badge className="text-[10px] whitespace-nowrap bg-emerald-500 dark:bg-emerald-600 text-white border-emerald-600 dark:border-emerald-500 border font-semibold gap-1" data-testid="badge-status-przyjeta">
+          <CheckCircle2 className="h-3 w-3" />
+          {statusLabel(status)}
+        </Badge>
+      );
     case "ANULOWANA":
-      return <Badge className="text-[10px] whitespace-nowrap bg-red-500 dark:bg-red-600 text-white border-red-600 dark:border-red-500 border font-semibold">{statusLabel(status)}</Badge>;
+      return (
+        <Badge className="text-[10px] whitespace-nowrap bg-red-500 dark:bg-red-600 text-white border-red-600 dark:border-red-500 border font-semibold gap-1" data-testid="badge-status-anulowana">
+          <XCircle className="h-3 w-3" />
+          {statusLabel(status)}
+        </Badge>
+      );
     case "DO_OPLACENIA":
-      return <Badge className="text-[10px] whitespace-nowrap bg-amber-500 dark:bg-amber-600 text-white border-amber-600 dark:border-amber-500 border font-semibold">{statusLabel(status)}</Badge>;
+      return (
+        <Badge className="text-[10px] whitespace-nowrap bg-amber-500 dark:bg-amber-600 text-white border-amber-600 dark:border-amber-500 border font-semibold gap-1" data-testid="badge-status-do-oplacenia">
+          <AlertTriangle className="h-3 w-3" />
+          {statusLabel(status)}
+        </Badge>
+      );
     default:
       return <Badge variant="outline" className="text-[10px] whitespace-nowrap font-semibold">{statusLabel(status)}</Badge>;
   }
+}
+
+interface SavedFilter {
+  id: string;
+  name: string;
+  dateFrom: string;
+  dateTo: string;
+  status: string;
+  source: string;
+  search: string;
+}
+
+const SAVED_FILTERS_KEY = "reservations-saved-filters";
+
+function loadSavedFilters(): SavedFilter[] {
+  try {
+    const raw = localStorage.getItem(SAVED_FILTERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function persistSavedFilters(filters: SavedFilter[]) {
+  localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(filters));
 }
 
 function PaymentProgressBar({ reservation }: { reservation: Reservation }) {
@@ -210,6 +253,14 @@ export default function Reservations() {
   const [searchText, setSearchText] = useState("");
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [detailInitialTab, setDetailInitialTab] = useState("preview");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(loadSavedFilters);
+  const [filterName, setFilterName] = useState("");
+  const [showSaveFilter, setShowSaveFilter] = useState(false);
+  const updateReservation = useUpdateReservation();
+  const deleteReservation = useDeleteReservation();
+  const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const debouncedSearch = useDebounce(searchText, 400);
   const debouncedDateFrom = useDebounce(filterDateFrom, 400);
@@ -261,6 +312,92 @@ export default function Reservations() {
 
   const hasActiveFilters = filterDateFrom || filterDateTo || filterStatus !== "ALL" || filterSource !== "ALL" || searchText;
 
+  const toggleSelectAll = () => {
+    if (selectedIds.size === reservations.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(reservations.map(r => r.id)));
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const batchUpdateStatus = (status: string) => {
+    const ids = Array.from(selectedIds);
+    let completed = 0;
+    ids.forEach(id => {
+      updateReservation.mutate({ id, data: { status } }, {
+        onSuccess: () => {
+          completed++;
+          if (completed === ids.length) {
+            queryClient.invalidateQueries({ queryKey: ["/api/reservations-paginated"] });
+            toast({ title: "Zaktualizowano", description: `Zmieniono status ${ids.length} rezerwacji` });
+            setSelectedIds(new Set());
+          }
+        }
+      });
+    });
+  };
+
+  const batchDelete = () => {
+    const ids = Array.from(selectedIds);
+    if (!window.confirm(`Czy na pewno chcesz usunąć ${ids.length} rezerwacji?`)) return;
+    let completed = 0;
+    ids.forEach(id => {
+      deleteReservation.mutate(id, {
+        onSuccess: () => {
+          completed++;
+          if (completed === ids.length) {
+            queryClient.invalidateQueries({ queryKey: ["/api/reservations-paginated"] });
+            toast({ title: "Usunięto", description: `Usunięto ${ids.length} rezerwacji` });
+            setSelectedIds(new Set());
+          }
+        }
+      });
+    });
+  };
+
+  const saveCurrentFilter = () => {
+    if (!filterName.trim()) return;
+    const newFilter: SavedFilter = {
+      id: Date.now().toString(),
+      name: filterName.trim(),
+      dateFrom: filterDateFrom,
+      dateTo: filterDateTo,
+      status: filterStatus,
+      source: filterSource,
+      search: searchText,
+    };
+    const updated = [...savedFilters, newFilter];
+    setSavedFilters(updated);
+    persistSavedFilters(updated);
+    setFilterName("");
+    setShowSaveFilter(false);
+    toast({ title: "Zapisano filtr", description: `Filtr "${newFilter.name}" zapisany` });
+  };
+
+  const applySavedFilter = (f: SavedFilter) => {
+    setFilterDateFrom(f.dateFrom);
+    setFilterDateTo(f.dateTo);
+    setFilterStatus(f.status);
+    setFilterSource(f.source);
+    setSearchText(f.search);
+    setShowFilters(true);
+  };
+
+  const removeSavedFilter = (id: string) => {
+    const updated = savedFilters.filter(f => f.id !== id);
+    setSavedFilters(updated);
+    persistSavedFilters(updated);
+  };
+
   const handleExportCSV = () => {
     const header = "Nr rezerwacji;Źródło;Data dodania;Apartament;Od;Do;Gość;Cena;Zaliczka;Zapłacono;Pozostało;Status";
     const rows = reservations.map(r => {
@@ -301,19 +438,16 @@ export default function Reservations() {
               {hasActiveFilters && <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">!</Badge>}
             </Button>
             <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-add-reservation">
-                  <Plus className="mr-2 h-4 w-4" /> Dodaj
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>Nowa rezerwacja</DialogTitle>
-                </DialogHeader>
-                <ReservationForm onSuccess={() => setIsDialogOpen(false)} />
-              </DialogContent>
-            </Dialog>
+            <Button data-testid="button-add-reservation" onClick={() => setIsDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Dodaj
+            </Button>
+            <ResponsiveFormDialog
+              open={isDialogOpen}
+              onOpenChange={setIsDialogOpen}
+              title="Nowa rezerwacja"
+            >
+              <ReservationForm onSuccess={() => setIsDialogOpen(false)} />
+            </ResponsiveFormDialog>
           </>
         }
       />
@@ -356,6 +490,33 @@ export default function Reservations() {
           <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
         )}
       </div>
+
+      {savedFilters.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap" data-testid="saved-filters-bar">
+          <Bookmark className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">Zapisane:</span>
+          {savedFilters.map(f => (
+            <div key={f.id} className="flex items-center gap-0.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => applySavedFilter(f)}
+                data-testid={`button-saved-filter-${f.id}`}
+              >
+                {f.name}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => removeSavedFilter(f.id)}
+                data-testid={`button-remove-saved-filter-${f.id}`}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showFilters && (
         <Card data-testid="card-filters">
@@ -404,48 +565,170 @@ export default function Reservations() {
                   <X className="h-4 w-4 mr-1" /> Wyczyść
                 </Button>
               )}
+              {hasActiveFilters && (
+                <>
+                  {showSaveFilter ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="Nazwa filtra..."
+                        value={filterName}
+                        onChange={e => setFilterName(e.target.value)}
+                        className="h-9 w-36"
+                        onKeyDown={e => { if (e.key === "Enter") saveCurrentFilter(); }}
+                        data-testid="input-filter-name"
+                      />
+                      <Button size="sm" onClick={saveCurrentFilter} disabled={!filterName.trim()} data-testid="button-confirm-save-filter">
+                        <Save className="h-3.5 w-3.5 mr-1" /> Zapisz
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setShowSaveFilter(false)} data-testid="button-cancel-save-filter">
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => setShowSaveFilter(true)} data-testid="button-save-filter">
+                      <Bookmark className="h-3.5 w-3.5 mr-1" /> Zapisz filtr
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      <FullscreenWrapper title="Rezerwacje" isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} className="w-20" />
-                <TableHead className="text-xs font-semibold w-24">Źródło</TableHead>
-                <TableHead className="text-xs font-semibold">Apartament</TableHead>
-                <SortableHeader field="startDate" label="Termin pobytu" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <SortableHeader field="addDate" label="Dodane" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <SortableHeader field="guestName" label="Imię i nazwisko" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <SortableHeader field="price" label="Wartość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <SortableHeader field="status" label="Status" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
-                <TableHead className="w-16"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reservations.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
-                    {isLoading ? "Ładowanie..." : "Brak rezerwacji"}
-                  </TableCell>
-                </TableRow>
-              )}
-              {reservations.map(r => (
-                <ReservationRow
-                  key={r.id}
-                  reservation={r}
-                  apartments={apartments || []}
-                  onOpen={openDetail}
-                  onEdit={(res) => openDetail(res, "edit")}
-                />
-              ))}
-            </TableBody>
-          </Table>
+      {selectedIds.size > 0 && (
+        <Card data-testid="batch-actions-bar">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-medium" data-testid="text-selected-count">
+                Zaznaczono: {selectedIds.size}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => batchUpdateStatus("PRZYJETA")} disabled={updateReservation.isPending} data-testid="button-batch-przyjeta">
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1 text-emerald-500" /> Przyjmij
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => batchUpdateStatus("DO_OPLACENIA")} disabled={updateReservation.isPending} data-testid="button-batch-do-oplacenia">
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1 text-amber-500" /> Do opłacenia
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => batchUpdateStatus("ANULOWANA")} disabled={updateReservation.isPending} data-testid="button-batch-anuluj">
+                  <XCircle className="h-3.5 w-3.5 mr-1 text-red-500" /> Anuluj
+                </Button>
+                <Button size="sm" variant="destructive" onClick={batchDelete} disabled={deleteReservation.isPending} data-testid="button-batch-delete">
+                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Usuń
+                </Button>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection">
+                <X className="h-3.5 w-3.5 mr-1" /> Odznacz
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isMobile && (
+        <div className="space-y-2" data-testid="mobile-reservations-list">
+          {reservations.length === 0 && (
+            <Card className="p-8 text-center text-muted-foreground">
+              {isLoading ? "Ładowanie..." : "Brak rezerwacji"}
+            </Card>
+          )}
+          {reservations.map(r => {
+            const aptName = getApartmentName(r, apartments || []);
+            const remaining = calcRemaining(r);
+            const price = Number(r.price) || 0;
+            return (
+              <SwipeableRow
+                key={r.id}
+                onSwipeLeft={() => {
+                  if (window.confirm("Czy na pewno chcesz usunąć tę rezerwację?")) {
+                    deleteReservation.mutate(r.id);
+                  }
+                }}
+                leftLabel="Usuń"
+                leftIcon="delete"
+              >
+                <Card
+                  className="p-3 cursor-pointer"
+                  onClick={() => openDetail(r)}
+                  data-testid={`card-reservation-${r.id}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold" data-testid={`text-res-number-${r.id}`}>{r.reservationNumber}</span>
+                        <SourceBadge source={r.source} />
+                        <StatusBadge status={r.status} />
+                      </div>
+                      <div className="text-xs text-muted-foreground" data-testid={`text-res-guest-${r.id}`}>{r.guestName}</div>
+                      <div className="text-xs text-muted-foreground">{aptName}</div>
+                      <div className="text-xs text-muted-foreground">{r.startDate} › {r.endDate}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-bold" data-testid={`text-res-price-${r.id}`}>
+                        {price.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                      </div>
+                      {remaining > 0 && r.status !== "ANULOWANA" && (
+                        <div className="text-[10px] text-orange-600 dark:text-orange-400">
+                          {remaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              </SwipeableRow>
+            );
+          })}
         </div>
+      )}
+
+      {!isMobile && (
+      <FullscreenWrapper title="Rezerwacje" isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
+          <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto" data-testid="responsive-table-desktop">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={reservations.length > 0 && selectedIds.size === reservations.length}
+                      onCheckedChange={toggleSelectAll}
+                      data-testid="checkbox-select-all"
+                    />
+                  </TableHead>
+                  <SortableHeader field="reservationNumber" label="Numer" sortField={sortField} sortDir={sortDir} onSort={toggleSort} className="w-20" />
+                  <TableHead className="text-xs font-semibold w-24">Źródło</TableHead>
+                  <TableHead className="text-xs font-semibold">Apartament</TableHead>
+                  <SortableHeader field="startDate" label="Termin pobytu" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                  <SortableHeader field="addDate" label="Dodane" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                  <SortableHeader field="guestName" label="Imię i nazwisko" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                  <SortableHeader field="price" label="Wartość" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                  <SortableHeader field="status" label="Status" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                  <TableHead className="w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reservations.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
+                      {isLoading ? "Ładowanie..." : "Brak rezerwacji"}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {reservations.map(r => (
+                  <ReservationRow
+                    key={r.id}
+                    reservation={r}
+                    apartments={apartments || []}
+                    onOpen={openDetail}
+                    onEdit={(res) => openDetail(res, "edit")}
+                    isSelected={selectedIds.has(r.id)}
+                    onToggleSelect={toggleSelect}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
       </FullscreenWrapper>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="text-xs text-muted-foreground" data-testid="text-reservations-count">
@@ -558,7 +841,7 @@ function SortableHeader({ field, label, sortField, sortDir, onSort, className }:
   );
 }
 
-function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reservation: Reservation; apartments: any[]; onOpen: (r: Reservation) => void; onEdit: (r: Reservation) => void }) {
+function ReservationRow({ reservation: r, apartments, onOpen, onEdit, isSelected, onToggleSelect }: { reservation: Reservation; apartments: any[]; onOpen: (r: Reservation) => void; onEdit: (r: Reservation) => void; isSelected: boolean; onToggleSelect: (id: number) => void }) {
   const isCancelled = r.status === "ANULOWANA";
   const remaining = calcRemaining(r);
   const price = Number(r.price) || 0;
@@ -566,10 +849,17 @@ function ReservationRow({ reservation: r, apartments, onOpen, onEdit }: { reserv
 
   return (
     <TableRow
-      className={`cursor-pointer transition-colors ${isCancelled ? "bg-red-50/50 dark:bg-red-950/20 opacity-60" : "hover:bg-muted/30"}`}
+      className={`cursor-pointer transition-colors ${isSelected ? "bg-primary/5 dark:bg-primary/10" : ""} ${isCancelled ? "bg-red-50/50 dark:bg-red-950/20 opacity-60" : "hover:bg-muted/30"}`}
       onClick={() => onOpen(r)}
       data-testid={`row-reservation-${r.id}`}
     >
+      <TableCell className="py-3" onClick={e => e.stopPropagation()}>
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => onToggleSelect(r.id)}
+          data-testid={`checkbox-reservation-${r.id}`}
+        />
+      </TableCell>
       <TableCell className="py-3">
         <span className="text-sm font-bold text-foreground" data-testid={`text-res-number-${r.id}`}>
           {r.reservationNumber}
@@ -758,11 +1048,100 @@ function PreviewTab({ reservation: r, apartments }: { reservation: Reservation; 
         </div>
       )}
 
+      <ReservationTimeline reservation={r} />
+
       {r.addDate && (
         <div className="text-xs text-muted-foreground">
           Data dodania: {r.addDate}
         </div>
       )}
+    </div>
+  );
+}
+
+function ReservationTimeline({ reservation: r }: { reservation: Reservation }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startDate = new Date(r.startDate);
+  const endDate = new Date(r.endDate);
+  const addDate = r.addDate ? new Date(r.addDate) : null;
+  const createdAt = r.createdAt ? new Date(r.createdAt) : null;
+
+  const events: { date: Date; label: string; type: "past" | "current" | "future"; icon: typeof Calendar }[] = [];
+
+  if (createdAt) {
+    events.push({ date: createdAt, label: "Utworzono", type: createdAt <= today ? "past" : "future", icon: Clock });
+  }
+  if (addDate && (!createdAt || addDate.getTime() !== createdAt.getTime())) {
+    events.push({ date: addDate, label: "Dodano", type: addDate <= today ? "past" : "future", icon: FileText });
+  }
+
+  const isCheckedIn = startDate <= today;
+  events.push({
+    date: startDate,
+    label: "Przyjazd",
+    type: startDate.toDateString() === today.toDateString() ? "current" : (isCheckedIn ? "past" : "future"),
+    icon: Calendar,
+  });
+
+  const isCheckedOut = endDate <= today;
+  events.push({
+    date: endDate,
+    label: "Wyjazd",
+    type: endDate.toDateString() === today.toDateString() ? "current" : (isCheckedOut ? "past" : "future"),
+    icon: Calendar,
+  });
+
+  if (r.status === "ANULOWANA") {
+    events.push({
+      date: today,
+      label: "Anulowana",
+      type: "past",
+      icon: XCircle,
+    });
+  }
+
+  events.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-2" data-testid="reservation-timeline">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
+        <Clock className="h-3.5 w-3.5" /> Oś czasu
+      </div>
+      <div className="relative pl-4">
+        <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
+        {events.map((event, i) => {
+          const Icon = event.icon;
+          return (
+            <div key={i} className="flex items-start gap-3 py-2 relative" data-testid={`timeline-event-${i}`}>
+              <div className={`relative z-10 w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                event.type === "current"
+                  ? "bg-primary text-primary-foreground"
+                  : event.type === "past"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  event.type === "current" ? "bg-primary-foreground" : event.type === "past" ? "bg-white" : "bg-muted-foreground"
+                }`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={`text-sm font-medium ${
+                  event.type === "current" ? "text-primary" : event.type === "past" ? "text-foreground" : "text-muted-foreground"
+                }`}>
+                  {event.label}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {event.date.toLocaleDateString("pl-PL", { day: "numeric", month: "short", year: "numeric" })}
+                </div>
+              </div>
+              {event.type === "current" && (
+                <Badge className="text-[9px] bg-primary text-primary-foreground">DZIŚ</Badge>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1100,8 +1479,8 @@ export function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 grid grid-cols-2 gap-4">
-      <div className="space-y-2 col-span-2">
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="space-y-2 sm:col-span-2">
         <Label>Apartament</Label>
         <Controller
           control={form.control}
@@ -1191,7 +1570,7 @@ export function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
         />
       </div>
 
-      <div className="space-y-2 col-span-2">
+      <div className="space-y-2 sm:col-span-2">
         <Label>Notatki</Label>
         <textarea
           {...form.register("notes")}
@@ -1201,7 +1580,7 @@ export function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
         />
       </div>
 
-      <div className="col-span-2 flex justify-end">
+      <div className="sm:col-span-2 flex justify-end">
         <Button type="submit" disabled={createReservation.isPending} data-testid="button-submit-reservation">
           {createReservation.isPending ? "Zapisywanie..." : "Zapisz rezerwację"}
         </Button>

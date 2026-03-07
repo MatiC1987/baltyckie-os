@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import {
   Plus, SlidersHorizontal, FolderPlus, ListPlus, Archive, Circle,
   MoreHorizontal, Trash2, ChevronDown, ChevronRight, Search,
-  LogOut, Pencil, Link2,
+  LogOut, Pencil, Link2, Download, X as XIcon,
 } from "lucide-react";
+import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
   DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
@@ -776,6 +777,42 @@ interface SidebarFooterProps {
   onLogout?: () => void;
 }
 
+function TasksInstallBanner() {
+  const { showPrompt, isIos, canInstallNative, install, dismiss } = useInstallPrompt();
+  const [showSteps, setShowSteps] = useState(false);
+
+  if (!showPrompt) return null;
+
+  return (
+    <div className="border-t px-3 py-2">
+      <div className="flex items-center justify-between gap-1.5">
+        <button
+          onClick={isIos ? () => setShowSteps(!showSteps) : install}
+          className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+          data-testid="button-install-tasks"
+        >
+          <Download className="h-3.5 w-3.5 shrink-0" />
+          <span className="font-medium">Zainstaluj aplikację</span>
+        </button>
+        <button
+          onClick={dismiss}
+          className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-dismiss-install-tasks"
+        >
+          <XIcon className="h-3 w-3" />
+        </button>
+      </div>
+      {isIos && showSteps && (
+        <div className="mt-1.5 text-[11px] text-muted-foreground space-y-0.5">
+          <p>1. Kliknij ikonę udostępniania</p>
+          <p>2. Wybierz <b>Dodaj do ekranu głównego</b></p>
+          <p>3. Potwierdź klikając <b>Dodaj</b></p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const SidebarFooter = memo(function SidebarFooter({
   onAddProject,
   onAddArea,
@@ -783,6 +820,8 @@ export const SidebarFooter = memo(function SidebarFooter({
   onLogout,
 }: SidebarFooterProps) {
   return (
+    <>
+    <TasksInstallBanner />
     <div className="border-t px-3 py-2 flex items-center gap-1">
       <Popover>
         <PopoverTrigger asChild>
@@ -834,5 +873,6 @@ export const SidebarFooter = memo(function SidebarFooter({
         <SlidersHorizontal className="h-4 w-4" />
       </button>
     </div>
+    </>
   );
 });

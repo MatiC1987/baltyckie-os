@@ -905,6 +905,97 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // ==================== PAYMENT TREND (sparkline) ====================
+  app.get('/api/recepcja/payment-trend', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const allPayments = await db.select().from(subleasePayments);
+      const today = new Date();
+      const points: { date: string; amount: number }[] = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const ds = d.toISOString().slice(0, 10);
+        const dayTotal = allPayments
+          .filter(p => p.paidDate === ds)
+          .reduce((sum, p) => sum + parseFloat(String(p.amount || 0)), 0);
+        points.push({ date: ds, amount: dayTotal });
+      }
+      res.json(points);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== RCP MONTHLY REPORT ====================
+  app.get('/api/recepcja/rcp/monthly-report', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { month, year } = req.query;
+      const m = Number(month);
+      const y = Number(year);
+      if (!m || !y) return res.status(400).json({ message: 'month and year required' });
+
+      const emps = await storage.getEmployees();
+      const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
+      const lastDay = new Date(y, m, 0).getDate();
+      const endDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      const allEntries = await db.select().from(timeEntries)
+        .where(and(gte(timeEntries.date, startDate), lte(timeEntries.date, endDate)));
+
+      const schedules = await db.select().from(workSchedules)
+        .where(and(gte(workSchedules.date, startDate), lte(workSchedules.date, endDate)));
+
+      const report = emps.map(emp => {
+        const empEntries = allEntries.filter(e => e.employeeId === emp.id);
+        const empSchedules = schedules.filter(s => s.employeeId === emp.id);
+
+        let totalMinutes = 0;
+        let lateCount = 0;
+        let overtimeMinutes = 0;
+        let daysWorked = 0;
+
+        empEntries.forEach(entry => {
+          if (entry.clockIn && entry.clockOut) {
+            const inTime = new Date(entry.clockIn).getTime();
+            const outTime = new Date(entry.clockOut).getTime();
+            const breakMin = entry.totalBreakMinutes || 0;
+            const workedMin = Math.max(0, (outTime - inTime) / 60000 - breakMin);
+            totalMinutes += workedMin;
+            daysWorked++;
+
+            const schedule = empSchedules.find(s => s.date === entry.date);
+            if (schedule && schedule.shiftStart) {
+              const scheduledStart = new Date(`${entry.date}T${schedule.shiftStart}`).getTime();
+              if (inTime > scheduledStart + 5 * 60000) {
+                lateCount++;
+              }
+            }
+
+            const scheduledMin = schedule && schedule.shiftStart && schedule.shiftEnd
+              ? (new Date(`${entry.date}T${schedule.shiftEnd}`).getTime() - new Date(`${entry.date}T${schedule.shiftStart}`).getTime()) / 60000
+              : 480;
+            if (workedMin > scheduledMin + 15) {
+              overtimeMinutes += workedMin - scheduledMin;
+            }
+          }
+        });
+
+        const totalHours = Math.round(totalMinutes / 60 * 100) / 100;
+        const overtimeHours = Math.round(overtimeMinutes / 60 * 100) / 100;
+
+        return {
+          employeeId: emp.id,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          daysWorked,
+          totalHours,
+          lateCount,
+          overtimeHours,
+          scheduledDays: empSchedules.length,
+        };
+      });
+
+      res.json(report);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // ==================== DAILY REPORT ====================
   app.get('/api/recepcja/daily-report', isRecepcjaAuth as any, async (req: any, res) => {
     try {

@@ -775,3 +775,21 @@ aside[data-sidebar-fs]::after {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+@media (max-width: 767px) {
+  .mobile-form-stack .grid-cols-2,
+  .mobile-form-stack .sm\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+  .mobile-form-stack .col-span-2 {
+    grid-column: span 1 / span 1;
+  }
+  .mobile-form-stack input,
+  .mobile-form-stack select,
+  .mobile-form-stack textarea,
+  .mobile-form-stack button[role="combobox"],
+  .mobile-form-stack [data-slot="control"] {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}

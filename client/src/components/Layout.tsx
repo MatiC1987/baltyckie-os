@@ -6,6 +6,7 @@ import { PageTransition } from "./PageTransition";
 import { NavigationProgress } from "./NavigationProgress";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { useState, useEffect, useMemo } from "react";
+import { useAppBadge } from "@/hooks/use-app-badge";
 
 export const SIDEBAR_FONT_SIZE_KEY = "sidebarFontSize";
 export const PAGE_FONT_SIZE_KEY = "pageFontSize";
@@ -28,6 +29,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
+  useAppBadge();
   const [sidebarFontSize, setSidebarFontSize] = useState(() => loadFontSize(SIDEBAR_FONT_SIZE_KEY, 14));
   const [pageFontSize, setPageFontSize] = useState(() => loadFontSize(PAGE_FONT_SIZE_KEY, 14));
 

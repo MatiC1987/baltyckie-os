@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { ResponsiveFormDialog } from "@/components/ResponsiveFormDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
@@ -20,6 +21,7 @@ import {
   Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3, Archive, RotateCcw, MoreHorizontal,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { SwipeableRow } from "@/components/SwipeableRow";
 import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { format, addMonths, addQuarters, addYears, parseISO, isBefore, isAfter, startOfMonth } from "date-fns";
@@ -1855,7 +1857,17 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                         ).length;
 
                         return (
-                          <Card key={schedule.id} data-testid={`card-schedule-${schedule.id}`}>
+                          <SwipeableRow
+                            key={schedule.id}
+                            onSwipeLeft={() => {
+                              if (confirm("Usunąć ten harmonogram i wszystkie powiązane płatności?")) {
+                                deleteSchedule.mutate(schedule.id);
+                              }
+                            }}
+                            leftLabel="Usuń"
+                            leftIcon="delete"
+                          >
+                          <Card data-testid={`card-schedule-${schedule.id}`}>
                             <CardContent className="p-3 space-y-3">
                               <div className="flex items-center justify-between gap-2">
                                 <div>
@@ -1947,6 +1959,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                               )}
                             </CardContent>
                           </Card>
+                          </SwipeableRow>
                         );
                       })}
                     </div>
@@ -2332,11 +2345,25 @@ function ScheduleDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
+    <ResponsiveFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      className="max-w-lg max-h-[90vh] overflow-y-auto"
+      footer={
+        <div className="flex gap-2 w-full sm:w-auto sm:justify-end justify-stretch">
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)}>Anuluj</Button>
+          <Button
+            className="flex-1 sm:flex-none"
+            onClick={handleSubmit}
+            disabled={isPending || !name || !amount || !startDate}
+            data-testid="button-save-schedule"
+          >
+            {isPending ? "Zapisywanie..." : "Zapisz"}
+          </Button>
+        </div>
+      }
+    >
         <div className="space-y-4">
           <div className="space-y-1">
             <Label>Nazwa</Label>
@@ -2347,7 +2374,7 @@ function ScheduleDialog({
               data-testid="input-schedule-name"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Kategoria</Label>
               <Select value={category} onValueChange={setCategory}>
@@ -2381,7 +2408,7 @@ function ScheduleDialog({
               data-testid="input-schedule-amount"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Data rozpoczęcia</Label>
               <Input
@@ -2415,7 +2442,7 @@ function ScheduleDialog({
             <p className="text-xs text-muted-foreground mb-3">
               Wybierz pozycję w zakładce Koszty (Opłaty), aby automatycznie uzupełniać prognozę i rzeczywiste wydatki.
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Kategoria Opłaty</Label>
                 <Select
@@ -2469,19 +2496,6 @@ function ScheduleDialog({
             </div>
           )}
         </div>
-        <DialogFooter className="gap-2">
-          <DialogClose asChild>
-            <Button variant="outline">Anuluj</Button>
-          </DialogClose>
-          <Button
-            onClick={handleSubmit}
-            disabled={isPending || !name || !amount || !startDate}
-            data-testid="button-save-schedule"
-          >
-            {isPending ? "Zapisywanie..." : "Zapisz"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </ResponsiveFormDialog>
   );
 }

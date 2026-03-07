@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff, ClipboardList, CheckSquare, Clock, Wifi, WifiOff } from "lucide-react";
+import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff, ClipboardList, CheckSquare, Clock } from "lucide-react";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
 import { motion } from "framer-motion";
 import { setAuthToken } from "@/lib/auth-token";
@@ -278,8 +278,18 @@ export default function Landing() {
         initial={{ x: -60, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.7, ease: "easeOut" }}
-        className="relative flex-1 flex flex-col items-center justify-center p-8 lg:p-16 overflow-hidden bg-gradient-to-br from-[#051F51] via-[#0a3a7a] to-[#5ADBFA] dark:from-[#020d22] dark:via-[#051F51] dark:to-[#0a3a7a]"
+        className="relative flex-1 flex flex-col items-center justify-center p-8 lg:p-16 overflow-hidden"
+        style={{ background: "linear-gradient(135deg, #051F51, #0a3a7a, #5ADBFA, #051F51)", backgroundSize: "400% 400%", animation: "landingGradientShift 12s ease infinite" }}
       >
+        <style>{`
+          @keyframes landingGradientShift {
+            0% { background-position: 0% 50%; }
+            25% { background-position: 100% 0%; }
+            50% { background-position: 100% 100%; }
+            75% { background-position: 0% 100%; }
+            100% { background-position: 0% 50%; }
+          }
+        `}</style>
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <motion.div
             animate={{ y: [0, -20, 0], x: [0, 10, 0] }}
@@ -297,6 +307,31 @@ export default function Landing() {
             className="absolute top-[50%] right-[30%] w-40 h-40 rounded-full bg-white/5 blur-xl"
           />
         </div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, delay: 1.2 }}
+          className="absolute top-4 right-4 z-20 flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-sm px-3 py-1.5"
+          data-testid="status-system-online"
+        >
+          {isOnline ? (
+            <>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400" />
+              </span>
+              <span className="text-xs font-medium text-white/90">System online</span>
+            </>
+          ) : (
+            <>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-400" />
+              </span>
+              <span className="text-xs font-medium text-white/90">Brak połączenia</span>
+            </>
+          )}
+        </motion.div>
 
         <div className="relative z-10 flex flex-col items-center text-center max-w-md">
           <motion.img
@@ -320,7 +355,7 @@ export default function Landing() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.65 }}
-            className="text-lg text-white/70 mb-10"
+            className="text-lg text-white/70 mb-8"
           >
             Zarządzanie finansami wynajmu
           </motion.p>
@@ -328,7 +363,29 @@ export default function Landing() {
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.8 }}
+            transition={{ duration: 0.5, delay: 0.75 }}
+            className="flex items-center gap-3 mb-8 flex-wrap justify-center"
+          >
+            {quickAccessPanels.map((panel, i) => (
+              <motion.a
+                key={panel.href}
+                href={panel.href}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: 0.85 + i * 0.1 }}
+                className="flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-sm border border-white/20 px-4 py-2 text-white/90 text-sm font-medium transition-colors hover:bg-white/25"
+                data-testid={`link-quick-access-${panel.label.toLowerCase()}`}
+              >
+                <panel.icon className="h-4 w-4 text-[#5ADBFA]" />
+                {panel.label}
+              </motion.a>
+            ))}
+          </motion.div>
+
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.95 }}
             className="grid grid-cols-2 gap-4 w-full"
           >
             {features.map((f, i) => (
@@ -336,7 +393,7 @@ export default function Landing() {
                 key={f.label}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.9 + i * 0.1 }}
+                transition={{ duration: 0.4, delay: 1.05 + i * 0.1 }}
                 className="flex items-center gap-3 text-white/80 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3"
               >
                 <f.icon className="h-5 w-5 text-[#5ADBFA] shrink-0" aria-hidden="true" />

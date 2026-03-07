@@ -1,15 +1,17 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, useRef } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { serializeForServer } from "@/lib/sidebar-config";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -19,7 +21,9 @@ import {
   Building2, Users, UserCog, MapPin, Briefcase, Files,
   FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
   Type, Menu, ChevronDown, ChevronRight, PanelLeft, TrendingUp,
-  Monitor, Shield,
+  Monitor, Shield, Bell, BellOff, BellRing, Loader2,
+  Download, Upload, Mail, CalendarClock, CreditCard, FileCheck,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -298,6 +302,336 @@ function RecepcjaSidebarConfig() {
   );
 }
 
+function PushNotificationsCard() {
+  const { status, error, subscribe, unsubscribe } = usePushNotifications("admin");
+
+  const statusLabels: Record<string, { label: string; desc: string }> = {
+    loading: { label: "Sprawdzanie...", desc: "Sprawdzanie stanu powiadomień push" },
+    unsupported: { label: "Niedostępne", desc: "Twoja przeglądarka nie obsługuje powiadomień push" },
+    denied: { label: "Zablokowane", desc: "Powiadomienia push zostały zablokowane w ustawieniach przeglądarki" },
+    subscribed: { label: "Aktywne", desc: "Powiadomienia push są włączone na tym urządzeniu" },
+    unsubscribed: { label: "Wyłączone", desc: "Włącz powiadomienia push, aby otrzymywać alerty o nowych zadaniach, płatnościach i umowach" },
+    error: { label: "Błąd", desc: error || "Wystąpił błąd podczas konfiguracji powiadomień" },
+  };
+
+  const info = statusLabels[status] || statusLabels.error;
+  const Icon = status === "subscribed" ? BellRing : status === "denied" ? BellOff : Bell;
+
+  return (
+    <Card data-testid="card-push-notifications">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <Icon className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="font-medium text-sm">Powiadomienia push</p>
+              <span className={cn(
+                "text-xs px-2 py-0.5 rounded-md",
+                status === "subscribed" && "bg-green-500/10 text-green-600 dark:text-green-400",
+                status === "unsubscribed" && "bg-muted text-muted-foreground",
+                status === "denied" && "bg-destructive/10 text-destructive",
+                status === "unsupported" && "bg-muted text-muted-foreground",
+                status === "error" && "bg-destructive/10 text-destructive",
+                status === "loading" && "bg-muted text-muted-foreground",
+              )} data-testid="text-push-status">
+                {info.label}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-3">{info.desc}</p>
+            {status === "unsubscribed" && (
+              <Button onClick={subscribe} data-testid="button-push-subscribe" className="gap-2">
+                <Bell className="h-4 w-4" />
+                Włącz powiadomienia
+              </Button>
+            )}
+            {status === "subscribed" && (
+              <Button variant="outline" onClick={unsubscribe} data-testid="button-push-unsubscribe" className="gap-2">
+                <BellOff className="h-4 w-4" />
+                Wyłącz powiadomienia
+              </Button>
+            )}
+            {status === "loading" && (
+              <Button disabled data-testid="button-push-loading">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ConfigExportImport() {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    try {
+      const config: Record<string, string | null> = {};
+      const keysToExport = [
+        SIDEBAR_FONT_SIZE_KEY, PAGE_FONT_SIZE_KEY, LEGACY_FONT_SIZE_KEY,
+        "theme", "sidebarCollapsed",
+      ];
+      for (const key of keysToExport) {
+        config[key] = localStorage.getItem(key);
+      }
+      const allKeys = Object.keys(localStorage);
+      for (const key of allKeys) {
+        if (key.startsWith("sidebar") || key.startsWith("menu") || key.startsWith("dismissed") || key.startsWith("widget")) {
+          config[key] = localStorage.getItem(key);
+        }
+      }
+      const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), config }, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ustawienia-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Eksportowano", description: "Konfiguracja została pobrana jako plik JSON" });
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się wyeksportować konfiguracji", variant: "destructive" });
+    }
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (!data.config || typeof data.config !== "object") {
+          toast({ title: "Błąd", description: "Nieprawidłowy format pliku konfiguracji", variant: "destructive" });
+          return;
+        }
+        let imported = 0;
+        for (const [key, value] of Object.entries(data.config)) {
+          if (value !== null && value !== undefined) {
+            localStorage.setItem(key, String(value));
+            imported++;
+          }
+        }
+        window.dispatchEvent(new Event("fontSizeChanged"));
+        toast({ title: "Zaimportowano", description: `Przywrócono ${imported} ustawień. Odśwież stronę, aby zobaczyć wszystkie zmiany.` });
+      } catch {
+        toast({ title: "Błąd", description: "Nie udało się odczytać pliku konfiguracji", variant: "destructive" });
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <Card data-testid="card-config-export-import">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <ArrowUpDown className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm">Eksport / import konfiguracji</p>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-3">Zapisz ustawienia wyglądu i menu do pliku lub przywróć z pliku</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" onClick={handleExport} data-testid="button-export-config" className="gap-2">
+                <Download className="h-4 w-4" />
+                Eksportuj
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={handleImport}
+                data-testid="input-import-config"
+              />
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()} data-testid="button-import-config" className="gap-2">
+                <Upload className="h-4 w-4" />
+                Importuj
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NotificationConfigPanel() {
+  const NOTIFICATION_CONFIG_KEY = "notificationConfig";
+
+  const loadConfig = (): Record<string, boolean> => {
+    try {
+      const stored = localStorage.getItem(NOTIFICATION_CONFIG_KEY);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return {
+      pushNewTask: true,
+      pushPaymentOverdue: true,
+      pushLeaseExpiring: true,
+      pushMediaApproval: true,
+      emailDailySummary: false,
+      emailWeeklySummary: false,
+      emailPaymentOverdue: true,
+      emailLeaseExpiring: true,
+    };
+  };
+
+  const [config, setConfig] = useState(loadConfig);
+
+  const handleToggle = (key: string) => {
+    const next = { ...config, [key]: !config[key] };
+    setConfig(next);
+    localStorage.setItem(NOTIFICATION_CONFIG_KEY, JSON.stringify(next));
+  };
+
+  const items = [
+    { key: "pushNewTask", label: "Nowe zadania", icon: FileCheck, group: "push" },
+    { key: "pushPaymentOverdue", label: "Zaległe płatności", icon: CreditCard, group: "push" },
+    { key: "pushLeaseExpiring", label: "Kończące się umowy", icon: CalendarClock, group: "push" },
+    { key: "pushMediaApproval", label: "Zatwierdzenie mediów", icon: FileText, group: "push" },
+    { key: "emailDailySummary", label: "Podsumowanie dzienne", icon: Mail, group: "email" },
+    { key: "emailWeeklySummary", label: "Podsumowanie tygodniowe", icon: Mail, group: "email" },
+    { key: "emailPaymentOverdue", label: "Zaległe płatności", icon: CreditCard, group: "email" },
+    { key: "emailLeaseExpiring", label: "Kończące się umowy", icon: CalendarClock, group: "email" },
+  ];
+
+  const pushItems = items.filter(i => i.group === "push");
+  const emailItems = items.filter(i => i.group === "email");
+
+  return (
+    <Card data-testid="card-notification-config">
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <Bell className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-sm">Konfiguracja powiadomień</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Wybierz, o jakich zdarzeniach chcesz być powiadamiany</p>
+          </div>
+        </div>
+
+        <div data-testid="section-notification-push">
+          <div className="flex items-center gap-2 mb-2">
+            <BellRing className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-bold tracking-wide text-muted-foreground uppercase">Push</p>
+          </div>
+          <div className="space-y-1">
+            {pushItems.map(item => {
+              const Icon = item.icon;
+              return (
+                <div key={item.key} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md" data-testid={`toggle-notif-${item.key}`}>
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className={cn("text-sm", !config[item.key] && "text-muted-foreground")}>{item.label}</span>
+                  </div>
+                  <Switch checked={!!config[item.key]} onCheckedChange={() => handleToggle(item.key)} data-testid={`switch-notif-${item.key}`} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div data-testid="section-notification-email">
+          <div className="flex items-center gap-2 mb-2">
+            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-bold tracking-wide text-muted-foreground uppercase">Email</p>
+          </div>
+          <div className="space-y-1">
+            {emailItems.map(item => {
+              const Icon = item.icon;
+              return (
+                <div key={item.key} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md" data-testid={`toggle-notif-${item.key}`}>
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className={cn("text-sm", !config[item.key] && "text-muted-foreground")}>{item.label}</span>
+                  </div>
+                  <Switch checked={!!config[item.key]} onCheckedChange={() => handleToggle(item.key)} data-testid={`switch-notif-${item.key}`} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SettingsHistoryCard() {
+  const { data, isLoading } = useQuery<{ logs: Array<{ id: number; userName: string | null; action: string; entityName: string | null; details: string | null; createdAt: string }> }>({
+    queryKey: ["/api/activity-logs", "settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/activity-logs?entityType=settings&limit=20");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const logs = data?.logs || [];
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+
+  const actionLabels: Record<string, string> = {
+    update: "Zaktualizowano",
+    create: "Utworzono",
+    delete: "Usunięto",
+    import: "Zaimportowano",
+    export: "Wyeksportowano",
+  };
+
+  return (
+    <Card data-testid="card-settings-history">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <History className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-sm">Historia zmian ustawień</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Ostatnie zmiany w konfiguracji systemu</p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-settings-history">
+            Brak historii zmian ustawień
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            {logs.map((log) => (
+              <div key={log.id} className="flex items-start gap-3 py-2 px-2 rounded-md" data-testid={`row-settings-history-${log.id}`}>
+                <Clock className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="secondary" className="text-[10px]">{actionLabels[log.action] || log.action}</Badge>
+                    {log.entityName && <span className="text-xs font-medium">{log.entityName}</span>}
+                  </div>
+                  {log.details && <p className="text-xs text-muted-foreground mt-0.5 truncate">{log.details}</p>}
+                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                    <span>{formatDate(log.createdAt)}</span>
+                    {log.userName && <span>{log.userName}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ForceMenuButton() {
   const { config } = useSidebar();
   const { toast } = useToast();
@@ -372,6 +706,21 @@ export default function Ustawienia() {
         </div>
       </div>
 
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold tracking-wide text-muted-foreground uppercase" data-testid="section-Powiadomienia">Powiadomienia</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <PushNotificationsCard />
+          <NotificationConfigPanel />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold tracking-wide text-muted-foreground uppercase" data-testid="section-Konfiguracja">Konfiguracja</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <ConfigExportImport />
+        </div>
+      </div>
+
       <CollapsibleSection title="Personalizacja menu" icon={Menu} testId="toggle-menu-customization">
         <p className="text-sm text-muted-foreground">
           Dostosuj układ menu bocznego — zmieniaj kolejność sekcji strzałkami, przenoś strony między sekcjami, ukrywaj niepotrzebne elementy
@@ -392,6 +741,10 @@ export default function Ustawienia() {
       <SettingsGrid title="Zarządzanie" items={ZARZADZANIE_ITEMS} />
       <SettingsGrid title="Dane finansowe" items={FINANSE_ITEMS} />
       <SettingsGrid title="Narzędzia" items={NARZEDZIA_ITEMS} />
+
+      <CollapsibleSection title="Historia zmian ustawień" icon={History} testId="toggle-settings-history">
+        <SettingsHistoryCard />
+      </CollapsibleSection>
     </div>
   );
 }

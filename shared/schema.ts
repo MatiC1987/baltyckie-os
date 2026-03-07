@@ -928,6 +928,10 @@ export const costInvoices = pgTable("cost_invoices", {
   uploadedBy: text("uploaded_by").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
   linkedExpenseId: integer("linked_expense_id").references(() => expenses.id),
+  ocrVendor: text("ocr_vendor"),
+  ocrAmount: text("ocr_amount"),
+  ocrInvoiceNumber: text("ocr_invoice_number"),
+  ocrProcessed: boolean("ocr_processed").default(false),
 });
 
 export const insertCostInvoiceSchema = createInsertSchema(costInvoices).omit({ id: true, uploadedAt: true });
@@ -1208,6 +1212,57 @@ export const insertTaskChecklistItemSchema = createInsertSchema(taskChecklistIte
 export type TaskChecklistItem = typeof taskChecklistItems.$inferSelect;
 export type InsertTaskChecklistItem = z.infer<typeof insertTaskChecklistItemSchema>;
 
+export const taskComments = pgTable("task_comments", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
+  userId: text("user_id"),
+  userName: text("user_name"),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const taskCommentsRelations = relations(taskComments, ({ one }) => ({
+  task: one(tasks, { fields: [taskComments.taskId], references: [tasks.id] }),
+}));
+
+export const insertTaskCommentSchema = createInsertSchema(taskComments).omit({ id: true, createdAt: true });
+export type TaskComment = typeof taskComments.$inferSelect;
+export type InsertTaskComment = z.infer<typeof insertTaskCommentSchema>;
+
+export const taskTemplates = pgTable("task_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  userId: text("user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const taskTemplateItems = pgTable("task_template_items", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id").references(() => taskTemplates.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  notes: text("notes"),
+  priority: text("priority").default("BRAK"),
+  tags: text("tags").array(),
+  sortOrder: integer("sort_order").default(0),
+});
+
+export const taskTemplatesRelations = relations(taskTemplates, ({ many }) => ({
+  items: many(taskTemplateItems),
+}));
+
+export const taskTemplateItemsRelations = relations(taskTemplateItems, ({ one }) => ({
+  template: one(taskTemplates, { fields: [taskTemplateItems.templateId], references: [taskTemplates.id] }),
+}));
+
+export const insertTaskTemplateSchema = createInsertSchema(taskTemplates).omit({ id: true, createdAt: true });
+export type TaskTemplate = typeof taskTemplates.$inferSelect;
+export type InsertTaskTemplate = z.infer<typeof insertTaskTemplateSchema>;
+
+export const insertTaskTemplateItemSchema = createInsertSchema(taskTemplateItems).omit({ id: true });
+export type TaskTemplateItem = typeof taskTemplateItems.$inferSelect;
+export type InsertTaskTemplateItem = z.infer<typeof insertTaskTemplateItemSchema>;
+
 export const operationalCostForecasts = pgTable("operational_cost_forecasts", {
   id: serial("id").primaryKey(),
   year: integer("year").notNull(),
@@ -1447,11 +1502,15 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id"),
   userType: text("user_type").notNull(),
-  endpoint: text("endpoint").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true });
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
 
 export const issues = pgTable("issues", {
   id: serial("id").primaryKey(),

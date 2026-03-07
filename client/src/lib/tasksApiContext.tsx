@@ -48,6 +48,15 @@ function mapZadaniaUrl(url: string): string {
   if (url.startsWith("/api/task-checklist")) {
     return url.replace("/api/task-checklist", "/api/task-panel/checklist");
   }
+  if (url.startsWith("/api/task-comments")) {
+    return url.replace("/api/task-comments", "/api/task-panel/comments");
+  }
+  if (url.startsWith("/api/task-templates")) {
+    return url.replace("/api/task-templates", "/api/task-panel/templates");
+  }
+  if (url.startsWith("/api/task-template-items")) {
+    return url.replace("/api/task-template-items", "/api/task-panel/template-items");
+  }
   if (url === "/api/employees" || url.startsWith("/api/employees/")) {
     return url.replace("/api/employees", "/api/task-panel/employees");
   }

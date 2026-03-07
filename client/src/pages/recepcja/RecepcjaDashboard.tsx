@@ -1,12 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { recepcjaFetch } from "./RecepcjaApp";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import {
   Plane, PlaneLanding, AlertCircle, CheckSquare, UserPlus, LayoutDashboard, AlertTriangle, FileText,
-  Zap, CalendarClock, CreditCard,
+  Zap, CalendarClock, CreditCard, RefreshCw, TrendingUp, TrendingDown,
 } from "lucide-react";
+import { usePullRefresh } from "@/hooks/use-pull-refresh";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 function formatDate(d: string | null | undefined) {
   if (!d) return "—";
@@ -22,7 +24,62 @@ function formatAmount(v: string | number | null | undefined) {
   return `${parseFloat(String(v)).toFixed(2)} zł`;
 }
 
+function MiniSparkline({ data, width = 120, height = 32 }: { data: number[]; width?: number; height?: number }) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const stepX = width / (data.length - 1);
+
+  const points = data.map((v, i) => {
+    const x = i * stepX;
+    const y = height - ((v - min) / range) * (height - 4) - 2;
+    return `${x},${y}`;
+  }).join(" ");
+
+  const lastVal = data[data.length - 1];
+  const prevVal = data[data.length - 2];
+  const isUp = lastVal >= prevVal;
+  const color = isUp ? "#22c55e" : "#ef4444";
+
+  return (
+    <div className="flex items-center gap-2">
+      <svg width={width} height={height} className="overflow-visible">
+        <polyline
+          points={points}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          cx={data.length > 0 ? (data.length - 1) * stepX : 0}
+          cy={height - ((lastVal - min) / range) * (height - 4) - 2}
+          r="3"
+          fill={color}
+        />
+      </svg>
+      {isUp ? (
+        <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+      ) : (
+        <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+      )}
+    </div>
+  );
+}
+
 export default function RecepcjaDashboard() {
+  const qc = useQueryClient();
+  const isMobile = useIsMobile();
+  const { pullY, isRefreshing: isPullRefreshing, handlers: pullHandlers } = usePullRefresh({
+    onRefresh: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ["/api/recepcja/dashboard"] }),
+      qc.invalidateQueries({ queryKey: ["/api/recepcja/accounting-notes"] }),
+      qc.invalidateQueries({ queryKey: ["/api/recepcja/payment-trend"] }),
+    ]).then(() => {}),
+  });
+
   const { data, isLoading } = useQuery({
     queryKey: ["/api/recepcja/dashboard"],
     queryFn: async () => {
@@ -40,7 +97,19 @@ export default function RecepcjaDashboard() {
     },
   });
 
+  const { data: paymentTrend } = useQuery<{ date: string; amount: number }[]>({
+    queryKey: ["/api/recepcja/payment-trend"],
+    queryFn: async () => {
+      const res = await recepcjaFetch("GET", "/api/recepcja/payment-trend");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const newNotesCount = (accountingNotes || []).filter((n: any) => n.status === "NOWA").length;
+
+  const trendAmounts = (paymentTrend || []).map(p => p.amount);
+  const totalLast30 = trendAmounts.reduce((s, v) => s + v, 0);
 
   const cards = [
     { label: "Przyjazdy dziś", value: data?.todayArrivals || 0, icon: Plane, color: "text-green-600", link: "/recepcja/rezerwacje" },
@@ -56,11 +125,33 @@ export default function RecepcjaDashboard() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      onTouchStart={isMobile ? pullHandlers.onTouchStart : undefined}
+      onTouchMove={isMobile ? pullHandlers.onTouchMove : undefined}
+      onTouchEnd={isMobile ? pullHandlers.onTouchEnd : undefined}
+    >
+      {isMobile && (pullY > 0 || isPullRefreshing) && (
+        <div className="flex items-center justify-center transition-all" style={{ height: isPullRefreshing ? 48 : pullY }}>
+          <RefreshCw className={`h-5 w-5 text-muted-foreground ${isPullRefreshing ? 'animate-spin' : ''}`} style={{ transform: `rotate(${pullY * 3}deg)` }} />
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <LayoutDashboard className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold" data-testid="text-recepcja-dashboard-title">Dashboard</h1>
       </div>
+
+      {trendAmounts.length > 1 && (
+        <Card className="p-4" data-testid="card-payment-trend">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Wpłaty — ostatnie 30 dni</div>
+              <div className="text-lg font-bold" data-testid="text-payment-trend-total">{formatAmount(totalLast30)}</div>
+            </div>
+            <MiniSparkline data={trendAmounts} width={160} height={36} />
+          </div>
+        </Card>
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

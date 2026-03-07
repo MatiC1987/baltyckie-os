@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { haptic } from "@/lib/haptics";
+import { useOrientationLock } from "@/hooks/use-orientation-lock";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,8 @@ import {
   TreePalm,
   Timer,
   Briefcase,
+  Download,
+  X,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
 import type { Employee, TimeEntry, LeaveRequest } from "@shared/schema";
+import { useInstallPrompt } from "@/hooks/use-install-prompt";
 
 let rcpToken: string | null = null;
 
@@ -119,6 +123,66 @@ function ShiftTimer({ clockIn, breakMinutes }: { clockIn: string; breakMinutes: 
   );
 }
 
+function RcpInstallBanner() {
+  const { showPrompt, isIos, canInstallNative, install, dismiss } = useInstallPrompt();
+  const [showIosSteps, setShowIosSteps] = useState(false);
+
+  if (!showPrompt) return null;
+
+  if (isIos) {
+    return (
+      <Card className="w-full p-4">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <Download className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-sm font-medium">Zainstaluj aplikację</span>
+          </div>
+          <button onClick={dismiss} className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors" data-testid="button-dismiss-install-rcp">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <button
+          onClick={() => setShowIosSteps(!showIosSteps)}
+          className="text-xs text-primary hover:underline"
+          data-testid="button-ios-steps-rcp"
+        >
+          {showIosSteps ? "Ukryj instrukcję" : "Pokaż jak zainstalować"}
+        </button>
+        {showIosSteps && (
+          <div className="mt-2 text-xs text-muted-foreground space-y-1">
+            <p>1. Kliknij ikonę udostępniania na dole ekranu</p>
+            <p>2. Wybierz <b>Dodaj do ekranu głównego</b></p>
+            <p>3. Potwierdź klikając <b>Dodaj</b></p>
+          </div>
+        )}
+      </Card>
+    );
+  }
+
+  if (canInstallNative) {
+    return (
+      <Card className="w-full p-4">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2">
+            <Download className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-sm font-medium">Zainstaluj aplikację</span>
+          </div>
+          <button onClick={dismiss} className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors" data-testid="button-dismiss-install-rcp">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-2">Szybki dostęp z ekranu głównego.</p>
+        <Button onClick={install} size="sm" className="w-full" data-testid="button-install-rcp">
+          <Download className="h-3.5 w-3.5 mr-1.5" />
+          Zainstaluj
+        </Button>
+      </Card>
+    );
+  }
+
+  return null;
+}
+
 function PinLoginScreen({ onLogin }: { onLogin: (employee: Employee, entry: TimeEntry | null) => void }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -162,9 +226,11 @@ function PinLoginScreen({ onLogin }: { onLogin: (employee: Employee, entry: Time
     onSuccess: (data: { employee: Employee; activeEntry: TimeEntry | null; token: string }) => {
       setAttempts(0);
       rcpToken = data.token;
+      haptic('success');
       onLogin(data.employee, data.activeEntry);
     },
     onError: (err: Error) => {
+      haptic('medium');
       const newAttempts = attempts + 1;
       setAttempts(newAttempts);
       if (newAttempts >= 3) {
@@ -254,6 +320,7 @@ function PinLoginScreen({ onLogin }: { onLogin: (employee: Employee, entry: Time
             </Button>
           </form>
         </Card>
+        <RcpInstallBanner />
       </div>
     </div>
   );
@@ -1224,6 +1291,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function TimeClock() {
+  useOrientationLock("portrait");
   const [screen, setScreen] = useState<Screen>("login");
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [initialEntry, setInitialEntry] = useState<TimeEntry | null>(null);

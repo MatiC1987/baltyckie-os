@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DefaultTasksApiProvider } from "@/lib/tasksApiContext";
 import { AnimatePresence } from "framer-motion";
-import { format, parseISO, isToday, isTomorrow, isYesterday } from "date-fns";
+import { format, parseISO, isToday, isTomorrow, isYesterday, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, eachDayOfInterval, isSameMonth, isSameDay, addDays, differenceInCalendarDays, subDays } from "date-fns";
 import { pl } from "date-fns/locale";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { Task, TaskProject, TaskSection } from "@shared/schema";
@@ -27,6 +27,7 @@ import {
   Copy, GripVertical, Menu, X, Flag, Pencil, Search,
   Inbox, Star, Sun, Moon, Clock, AlertTriangle, BookOpen, Sparkles,
   CalendarDays, RefreshCw, Layers, Tag, ListPlus, CheckSquare, UserPlus, Check, Calendar,
+  FileText,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -40,6 +41,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+import { usePullRefresh } from "@/hooks/use-pull-refresh";
 import { WhenPopover } from "@/components/tasks/WhenPopover";
 import {
   Popover, PopoverContent, PopoverTrigger,
@@ -50,7 +52,7 @@ import { TaskInlineCard } from "@/components/tasks/TaskInlineCard";
 import { TaskSidebar, SidebarFooter } from "@/components/tasks/TaskSidebar";
 import { TaskInlineAdd } from "@/components/tasks/TaskInlineAdd";
 import { QuickFind } from "@/components/tasks/QuickFind";
-import { TaskDialog, ProjectDialog, SectionDialog, SettingsDialog, MoveDialog, AreaDialog } from "@/components/tasks/TaskDialogs";
+import { TaskDialog, ProjectDialog, SectionDialog, SettingsDialog, MoveDialog, AreaDialog, TemplatesDialog } from "@/components/tasks/TaskDialogs";
 import {
   type ViewType, type TaskFontSize,
   PRIORITY_FLAG_COLORS, PRIORITY_LABELS,
@@ -133,6 +135,7 @@ export function TasksCore() {
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [addAreaOpen, setAddAreaOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [quickFindOpen, setQuickFindOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set());
@@ -165,9 +168,9 @@ export function TasksCore() {
   const [bulkDeadlineInput, setBulkDeadlineInput] = useState("");
   const [bulkDeadlineOpen, setBulkDeadlineOpen] = useState(false);
   const [swipeWhenTaskId, setSwipeWhenTaskId] = useState<number | null>(null);
-  const [pullRefreshY, setPullRefreshY] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const pullStartRef = useRef({ y: 0, scrollTop: 0, active: false });
+  const { pullY: pullRefreshY, isRefreshing, handlers: pullHandlers } = usePullRefresh({
+    onRefresh: () => queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }),
+  });
   const [areaOrder, setAreaOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("tasksAreaOrder") || "[]"); } catch { return []; }
   });
@@ -909,6 +912,7 @@ export function TasksCore() {
     anytime: { icon: Layers, title: "Brak zadań w Kiedykolwiek", subtitle: "Przypisz zadania do projektów" },
     someday: { icon: Sparkles, title: "Kiedyś jest puste", subtitle: "Przenieś tutaj pomysły na później" },
     logbook: { icon: BookOpen, title: "Dziennik jest pusty", subtitle: "Ukończone zadania pojawią się tutaj" },
+    calendar: { icon: CalendarDays, title: "Brak zadań z datą", subtitle: "Przypisz daty do zadań, aby zobaczyć je w kalendarzu" },
     project: { icon: null, title: "Brak zadań w tym projekcie", subtitle: "Naciśnij N, aby dodać" },
   };
 
@@ -1241,10 +1245,14 @@ export function TasksCore() {
       );
     }
 
+    if (view === "calendar") {
+      return <TaskCalendarView tasks={tagFilteredTasks} onTaskClick={handleTaskClick} onToggleComplete={handleToggleComplete} isMobile={isMobile} />;
+    }
+
     return null;
   };
 
-  const hasGroupedView = view === "today" || view === "upcoming" || view === "anytime" || view === "logbook" || isAreaView;
+  const hasGroupedView = view === "today" || view === "upcoming" || view === "anytime" || view === "logbook" || view === "calendar" || isAreaView;
 
   const renderProjectView = () => {
     const currentProjectId = isProjectView ? (view as { projectId: number }).projectId : 0;
@@ -1507,12 +1515,15 @@ export function TasksCore() {
             onDeleteArea={handleSidebarAreaDelete}
           />
           {!isMobile && (
-            <SidebarFooter
-              onAddProject={() => setAddProjectOpen(true)}
-              onAddArea={() => setAddAreaOpen(true)}
-              onOpenSettings={() => setSettingsOpen(true)}
-              onLogout={onLogout}
-            />
+            <>
+              <TaskProductivityDashboard tasks={tasks} />
+              <SidebarFooter
+                onAddProject={() => setAddProjectOpen(true)}
+                onAddArea={() => setAddAreaOpen(true)}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onLogout={onLogout}
+              />
+            </>
           )}
         </aside>
       ) : (
@@ -1545,6 +1556,7 @@ export function TasksCore() {
               onRenameArea={handleSidebarAreaRename}
               onDeleteArea={handleSidebarAreaDelete}
             />
+            <TaskProductivityDashboard tasks={tasks} />
             <SidebarFooter
               onAddProject={() => setAddProjectOpen(true)}
               onAddArea={() => setAddAreaOpen(true)}
@@ -1570,7 +1582,7 @@ export function TasksCore() {
             {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <VIcon className={`${isMobile ? "h-6 w-6" : "h-5 w-5"} shrink-0`} style={{ color: isAreaView ? "#4ECDC4" : view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "inbox" ? "#5ADBFA" : undefined }} />
+            <VIcon className={`${isMobile ? "h-6 w-6" : "h-5 w-5"} shrink-0`} style={{ color: isAreaView ? "#4ECDC4" : view === "today" ? "#FFD43B" : view === "upcoming" ? "#51CF66" : view === "anytime" ? "#4ECDC4" : view === "someday" ? "#C4B5FD" : view === "logbook" ? "#868E96" : view === "calendar" ? "#FF6B6B" : view === "inbox" ? "#5ADBFA" : undefined }} />
             <div>
               <h2 className={`${isMobile ? "text-[22px] font-bold tracking-tight" : "text-[15px] font-semibold tracking-tight"} truncate`} data-testid="text-view-title">
                 {isAreaView && renamingArea ? (
@@ -1707,6 +1719,10 @@ export function TasksCore() {
                       </>
                     )}
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setTemplatesOpen(true)} data-testid="menu-templates">
+                      <FileText className="h-3.5 w-3.5 mr-2" /> Szablony
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => {
                         setMultiSelectMode(prev => !prev);
@@ -1747,31 +1763,9 @@ export function TasksCore() {
             key={isMobile ? JSON.stringify(view) : undefined}
             className={`flex-1 overflow-y-auto ${isMobile ? 'task-view-transition pb-20' : 'pb-0'}`}
             style={{ fontSize: 'var(--tasks-font-size, 14px)' }}
-            onTouchStart={isMobile ? (e) => {
-              const el = e.currentTarget;
-              pullStartRef.current = { y: e.touches[0].clientY, scrollTop: el.scrollTop, active: el.scrollTop <= 0 };
-            } : undefined}
-            onTouchMove={isMobile ? (e) => {
-              if (!pullStartRef.current.active || isRefreshing) return;
-              const dy = e.touches[0].clientY - pullStartRef.current.y;
-              if (dy > 0 && e.currentTarget.scrollTop <= 0) {
-                setPullRefreshY(Math.min(dy * 0.4, 80));
-              }
-            } : undefined}
-            onTouchEnd={isMobile ? () => {
-              if (pullRefreshY > 60 && !isRefreshing) {
-                setIsRefreshing(true);
-                queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }).then(() => {
-                  setTimeout(() => {
-                    setIsRefreshing(false);
-                    setPullRefreshY(0);
-                  }, 500);
-                });
-              } else {
-                setPullRefreshY(0);
-              }
-              pullStartRef.current.active = false;
-            } : undefined}
+            onTouchStart={isMobile ? pullHandlers.onTouchStart : undefined}
+            onTouchMove={isMobile ? pullHandlers.onTouchMove : undefined}
+            onTouchEnd={isMobile ? pullHandlers.onTouchEnd : undefined}
           >
             {isMobile && (pullRefreshY > 0 || isRefreshing) && (
               <div className="flex items-center justify-center transition-all" style={{ height: isRefreshing ? 48 : pullRefreshY }}>
@@ -2163,6 +2157,12 @@ export function TasksCore() {
         projects={projects}
       />
 
+      <TemplatesDialog
+        open={templatesOpen}
+        onOpenChange={setTemplatesOpen}
+        projects={projects}
+      />
+
       <MoveDialog
         open={moveDialogOpen}
         onOpenChange={setMoveDialogOpen}
@@ -2194,6 +2194,160 @@ export function TasksCore() {
         </AlertDialogContent>
       </AlertDialog>
       </DndContext>
+    </div>
+  );
+}
+
+function TaskCalendarView({ tasks, onTaskClick, onToggleComplete, isMobile }: { tasks: Task[]; onTaskClick: (t: Task) => void; onToggleComplete: (t: Task) => void; isMobile: boolean }) {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const days = eachDayOfInterval({ start: calStart, end: calEnd });
+
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    tasks.forEach(t => {
+      if (t.dueDate) {
+        const key = t.dueDate;
+        const arr = map.get(key) || [];
+        arr.push(t);
+        map.set(key, arr);
+      }
+    });
+    return map;
+  }, [tasks]);
+
+  const dayNames = ["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"];
+
+  return (
+    <div className={`${isMobile ? "px-3 py-3" : "px-5 py-4"}`} data-testid="calendar-view">
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <Button size="icon" variant="ghost" onClick={() => setCurrentMonth(m => subMonths(m, 1))} data-testid="button-calendar-prev">
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm font-semibold capitalize" data-testid="text-calendar-month">
+          {format(currentMonth, "LLLL yyyy", { locale: pl })}
+        </span>
+        <Button size="icon" variant="ghost" onClick={() => setCurrentMonth(m => addMonths(m, 1))} data-testid="button-calendar-next">
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-px mb-1">
+        {dayNames.map(d => (
+          <div key={d} className="text-center text-[10px] font-semibold text-muted-foreground/50 uppercase py-1">{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-px">
+        {days.map(day => {
+          const key = format(day, "yyyy-MM-dd");
+          const dayTasks = tasksByDate.get(key) || [];
+          const isCurrentMonth = isSameMonth(day, currentMonth);
+          const isCurrentDay = isToday(day);
+
+          return (
+            <div
+              key={key}
+              className={`min-h-[60px] p-1 rounded-md border border-transparent ${isCurrentMonth ? "" : "opacity-30"} ${isCurrentDay ? "bg-primary/5 border-primary/20" : "hover:bg-muted/30"}`}
+              data-testid={`calendar-day-${key}`}
+            >
+              <div className={`text-[11px] font-medium mb-0.5 ${isCurrentDay ? "text-primary font-bold" : "text-muted-foreground"}`}>
+                {format(day, "d")}
+              </div>
+              {dayTasks.slice(0, 3).map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => onTaskClick(t)}
+                  className="block w-full text-left text-[10px] leading-tight truncate rounded px-1 py-0.5 mb-0.5 hover:bg-muted/50 transition-colors"
+                  style={{ borderLeft: `2px solid ${t.priority === "PILNY" ? "#ef4444" : t.priority === "WYSOKI" ? "#f97316" : t.priority === "ŚREDNI" ? "#eab308" : "#9ca3af"}` }}
+                  data-testid={`calendar-task-${t.id}`}
+                >
+                  {t.title}
+                </button>
+              ))}
+              {dayTasks.length > 3 && (
+                <span className="text-[9px] text-muted-foreground/50 px-1">+{dayTasks.length - 3}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TaskProductivityDashboard({ tasks }: { tasks: Task[] }) {
+  const stats = useMemo(() => {
+    const now = new Date();
+    const completedTasks = tasks.filter(t => t.completed && t.completedAt);
+    const todayCompleted = completedTasks.filter(t => isToday(new Date(t.completedAt!)));
+    const totalActive = tasks.filter(t => !t.completed && t.parentTaskId === null).length;
+    const overdue = tasks.filter(t => !t.completed && t.dueDate && parseISO(t.dueDate) < now && !isToday(parseISO(t.dueDate))).length;
+
+    let streak = 0;
+    const dayCheck = new Date();
+    dayCheck.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 365; i++) {
+      const checkDate = subDays(dayCheck, i);
+      const dayStr = format(checkDate, "yyyy-MM-dd");
+      const hasCompleted = completedTasks.some(t => t.completedAt && format(new Date(t.completedAt), "yyyy-MM-dd") === dayStr);
+      if (hasCompleted) streak++;
+      else if (i > 0) break;
+    }
+
+    const last7 = Array.from({ length: 7 }, (_, i) => {
+      const d = subDays(now, 6 - i);
+      const dayStr = format(d, "yyyy-MM-dd");
+      return {
+        day: format(d, "EEE", { locale: pl }),
+        count: completedTasks.filter(t => t.completedAt && format(new Date(t.completedAt), "yyyy-MM-dd") === dayStr).length,
+      };
+    });
+    const maxCount = Math.max(...last7.map(d => d.count), 1);
+
+    return { todayCompleted: todayCompleted.length, totalActive, overdue, streak, last7, maxCount };
+  }, [tasks]);
+
+  return (
+    <div className="px-5 py-3 space-y-3" data-testid="productivity-dashboard">
+      <div className="grid grid-cols-4 gap-2">
+        <div className="text-center p-2 rounded-md bg-muted/30">
+          <div className="text-lg font-bold text-emerald-500" data-testid="text-today-completed">{stats.todayCompleted}</div>
+          <div className="text-[10px] text-muted-foreground/60">Dziś</div>
+        </div>
+        <div className="text-center p-2 rounded-md bg-muted/30">
+          <div className="text-lg font-bold text-primary" data-testid="text-total-active">{stats.totalActive}</div>
+          <div className="text-[10px] text-muted-foreground/60">Aktywne</div>
+        </div>
+        <div className="text-center p-2 rounded-md bg-muted/30">
+          <div className="text-lg font-bold text-red-500" data-testid="text-overdue-count">{stats.overdue}</div>
+          <div className="text-[10px] text-muted-foreground/60">Zaległe</div>
+        </div>
+        <div className="text-center p-2 rounded-md bg-muted/30">
+          <div className="text-lg font-bold text-amber-500" data-testid="text-streak">{stats.streak}</div>
+          <div className="text-[10px] text-muted-foreground/60">Seria dni</div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[10px] text-muted-foreground/50 uppercase tracking-wider font-semibold mb-2">Ostatnie 7 dni</div>
+        <div className="flex items-end gap-1 h-[40px]">
+          {stats.last7.map((d, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+              <div
+                className="w-full rounded-sm bg-emerald-500/70 transition-all"
+                style={{ height: `${Math.max((d.count / stats.maxCount) * 32, 2)}px` }}
+                data-testid={`bar-day-${i}`}
+              />
+              <span className="text-[8px] text-muted-foreground/40">{d.day}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

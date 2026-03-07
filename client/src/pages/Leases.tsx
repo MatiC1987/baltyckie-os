@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter
 } from "@/components/ui/dialog";
+import { ResponsiveFormDialog } from "@/components/ResponsiveFormDialog";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -115,19 +116,18 @@ export default function Leases() {
         description="Zarządzanie umowami najmu i kontraktami właścicieli."
         icon={FileSignature}
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-lease">
-                <Plus className="mr-2 h-4 w-4" /> Dodaj umowę najmu
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Nowa umowa najmu</DialogTitle>
-              </DialogHeader>
+          <>
+            <Button data-testid="button-add-lease" onClick={() => setIsDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Dodaj umowę najmu
+            </Button>
+            <ResponsiveFormDialog
+              open={isDialogOpen}
+              onOpenChange={setIsDialogOpen}
+              title="Nowa umowa najmu"
+            >
               <LeaseForm onSuccess={() => setIsDialogOpen(false)} />
-            </DialogContent>
-          </Dialog>
+            </ResponsiveFormDialog>
+          </>
         }
       />
 
@@ -520,8 +520,8 @@ function LeaseForm({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2 col-span-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2 sm:col-span-2">
           <Label>Apartament</Label>
           <Controller
             control={form.control}

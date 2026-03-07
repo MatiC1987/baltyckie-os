@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { CheckSquare, Plus, Loader2, Calendar, Trash2 } from "lucide-react";
+import { SwipeableRow } from "@/components/SwipeableRow";
 
 const PRIORITY_LABELS: Record<string, string> = {
   PILNY: "Pilny", WYSOKI: "Wysoki", SREDNI: "Średni", NISKI: "Niski", BRAK: "Brak",
@@ -93,34 +94,44 @@ export default function RecepcjaZadania() {
       ) : (
         <div className="space-y-2">
           {filtered.map((t: any) => (
-            <Card key={t.id} className="p-3 flex items-start gap-3">
-              <Checkbox
-                checked={t.completed}
-                onCheckedChange={(checked) => toggleMutation.mutate({ id: t.id, completed: !!checked })}
-                className="mt-0.5"
-                data-testid={`checkbox-task-${t.id}`}
-              />
-              <div className="flex-1 min-w-0">
-                <div className={`text-sm font-medium ${t.completed ? 'line-through text-muted-foreground' : ''}`}>{t.title}</div>
-                {t.notes && <div className="text-xs text-muted-foreground mt-0.5">{t.notes}</div>}
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {t.priority && t.priority !== 'BRAK' && (
-                    <span className={`text-[10px] font-medium ${PRIORITY_COLORS[t.priority]}`}>
-                      {PRIORITY_LABELS[t.priority]}
-                    </span>
-                  )}
-                  {t.dueDate && (
-                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                      <Calendar className="h-2.5 w-2.5" /> {t.dueDate}
-                    </span>
-                  )}
-                  {t.userId !== 'recepcja-user' && <Badge variant="outline" className="text-[10px] h-4">Przydzielone</Badge>}
+            <SwipeableRow
+              key={t.id}
+              onSwipeLeft={() => deleteMutation.mutate(t.id)}
+              onSwipeRight={!t.completed ? () => toggleMutation.mutate({ id: t.id, completed: true }) : undefined}
+              leftLabel="Usuń"
+              rightLabel="Wykonane"
+              leftIcon="delete"
+              rightIcon="done"
+            >
+              <Card className="p-3 flex items-start gap-3">
+                <Checkbox
+                  checked={t.completed}
+                  onCheckedChange={(checked) => toggleMutation.mutate({ id: t.id, completed: !!checked })}
+                  className="mt-0.5"
+                  data-testid={`checkbox-task-${t.id}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-medium ${t.completed ? 'line-through text-muted-foreground' : ''}`}>{t.title}</div>
+                  {t.notes && <div className="text-xs text-muted-foreground mt-0.5">{t.notes}</div>}
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {t.priority && t.priority !== 'BRAK' && (
+                      <span className={`text-[10px] font-medium ${PRIORITY_COLORS[t.priority]}`}>
+                        {PRIORITY_LABELS[t.priority]}
+                      </span>
+                    )}
+                    {t.dueDate && (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                        <Calendar className="h-2.5 w-2.5" /> {t.dueDate}
+                      </span>
+                    )}
+                    {t.userId !== 'recepcja-user' && <Badge variant="outline" className="text-[10px] h-4">Przydzielone</Badge>}
+                  </div>
                 </div>
-              </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive flex-shrink-0" onClick={() => deleteMutation.mutate(t.id)}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </Card>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive flex-shrink-0" onClick={() => deleteMutation.mutate(t.id)}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </Card>
+            </SwipeableRow>
           ))}
           {filtered.length === 0 && (
             <Card className="p-8 text-center text-muted-foreground">Brak zadań</Card>

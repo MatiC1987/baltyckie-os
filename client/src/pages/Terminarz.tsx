@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useOrientationLock } from "@/hooks/use-orientation-lock";
 import { useReservations, useCreateReservation } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,12 @@ import { insertReservationSchema, type InsertReservation, type Reservation, type
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle
+} from "@/components/ui/sheet";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Lock, ChevronLeft, ChevronRight, X, Settings2 } from "lucide-react";
+import { Plus, Lock, ChevronLeft, ChevronRight, X, Settings2, Calendar, MapPin, User, CreditCard, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -142,6 +147,7 @@ const COMPACT = { dayWidth: 22, aptColWidth: 100, rowHeight: 22, headerHeight: 3
 const MOBILE = { dayWidth: 18, aptColWidth: 90, rowHeight: 28, headerHeight: 40, monthLabelHeight: 16, dayHeaderHeight: 24, barTop: 2, barHeight: 24, aptFontSize: "9px", dayNameSize: "7px", dayNumSize: "8px", barFontSize: "8px", monthLabelSize: "8px" };
 
 export default function Terminarz() {
+  useOrientationLock("landscape");
   const { data: reservations, isLoading: loadingRes } = useReservations();
   const { data: apartments, isLoading: loadingApts } = useApartments();
   const { data: blockades, isLoading: loadingBlk } = useBlockades();
@@ -491,6 +497,20 @@ export default function Terminarz() {
         </Button>
       </div>
 
+      {isMobile ? (
+        <MobileAgendaView
+          days={days}
+          reservations={reservations || []}
+          blockades={blockades || []}
+          subleases={subleases}
+          allAptChanges={allAptChanges}
+          filteredApartments={filteredApartments}
+          colors={colors}
+          onAddReservation={() => setShowNewReservation(true)}
+          onAddBlockade={() => setShowNewBlockade(true)}
+        />
+      ) : (
+      <>
       <div className="rounded-lg border border-border bg-card shadow-sm overflow-auto relative" ref={scrollContainerRef} style={{ maxHeight: "calc(100vh - 220px)" }}>
         <div style={{ width: sz.aptColWidth + totalWidth, minWidth: sz.aptColWidth + totalWidth }}>
           <div className="flex sticky top-0 z-20 bg-card">
@@ -856,6 +876,8 @@ export default function Terminarz() {
           </label>
         </div>
       </div>
+      </>
+      )}
 
       {hoveredRes && (
         <div
@@ -1029,6 +1051,339 @@ export default function Terminarz() {
         </Dialog>
       )}
     </div>
+  );
+}
+
+interface AgendaItem {
+  type: "reservation" | "blockade" | "sublease";
+  id: number;
+  aptName: string;
+  aptId: number;
+  startDate: string;
+  endDate: string;
+  label: string;
+  color: string;
+  status?: string;
+  reservation?: Reservation;
+  blockade?: any;
+  sublease?: Sublease;
+}
+
+function MobileAgendaView({
+  days,
+  reservations,
+  blockades,
+  subleases,
+  allAptChanges,
+  filteredApartments,
+  colors,
+  onAddReservation,
+  onAddBlockade,
+}: {
+  days: Date[];
+  reservations: Reservation[];
+  blockades: any[];
+  subleases: Sublease[];
+  allAptChanges: SubleaseApartmentChange[];
+  filteredApartments: Apartment[];
+  colors: TerminarzColors;
+  onAddReservation: () => void;
+  onAddBlockade: () => void;
+}) {
+  const [selectedItem, setSelectedItem] = useState<AgendaItem | null>(null);
+
+  const agendaByDay = useMemo(() => {
+    const aptMap = new Map(filteredApartments.map(a => [a.id, a]));
+    const aptIds = new Set(filteredApartments.map(a => a.id));
+    const result: { date: Date; dateStr: string; items: AgendaItem[] }[] = [];
+
+    for (const day of days) {
+      const dateStr = formatDate(day);
+      const items: AgendaItem[] = [];
+
+      for (const res of reservations) {
+        if (res.status === "ANULOWANA") continue;
+        const resAptIds = res.apartmentIds && res.apartmentIds.length > 0
+          ? res.apartmentIds
+          : res.apartmentId ? [res.apartmentId] : [];
+        const matchingApts = resAptIds.filter(id => aptIds.has(id));
+        if (matchingApts.length === 0) continue;
+
+        if (dateStr >= res.startDate && dateStr <= res.endDate) {
+          const aptName = matchingApts.map(id => aptMap.get(id)?.name || `#${id}`).join(", ");
+          if (!items.find(i => i.type === "reservation" && i.id === res.id)) {
+            items.push({
+              type: "reservation",
+              id: res.id,
+              aptName,
+              aptId: matchingApts[0],
+              startDate: res.startDate,
+              endDate: res.endDate,
+              label: res.guestName || "Rezerwacja",
+              color: getColorForStatus(res.status || "PRZYJETA", colors),
+              status: res.status || undefined,
+              reservation: res,
+            });
+          }
+        }
+      }
+
+      for (const blk of blockades) {
+        if (!aptIds.has(blk.apartmentId)) continue;
+        if (dateStr >= blk.startDate && dateStr <= blk.endDate) {
+          items.push({
+            type: "blockade",
+            id: blk.id,
+            aptName: aptMap.get(blk.apartmentId)?.name || `#${blk.apartmentId}`,
+            aptId: blk.apartmentId,
+            startDate: blk.startDate,
+            endDate: blk.endDate,
+            label: blk.reason || "Blokada",
+            color: colors.BLOKADA,
+            blockade: blk,
+          });
+        }
+      }
+
+      for (const sub of subleases) {
+        const baseIds = sub.apartmentIds || (sub.apartmentId ? [sub.apartmentId] : []);
+        const changes = allAptChanges.filter(ch => ch.subleaseId === sub.id);
+        let activeApts = new Set(baseIds);
+
+        if (changes.length > 0) {
+          const sortedChanges = [...changes].sort((a, b) => new Date(a.changeDate).getTime() - new Date(b.changeDate).getTime());
+          for (const ch of sortedChanges) {
+            if (new Date(ch.changeDate).getTime() <= new Date(dateStr).getTime()) {
+              activeApts.delete(ch.oldApartmentId);
+              activeApts.add(ch.newApartmentId);
+            }
+          }
+        }
+
+        const matchingApts = [...activeApts].filter(id => aptIds.has(id));
+        if (matchingApts.length === 0) continue;
+
+        if (dateStr >= sub.startDate && dateStr <= sub.endDate) {
+          const tenantName = sub.tenantType === 'firma'
+            ? (sub.companyName || 'Podnajem')
+            : [sub.firstName, sub.lastName].filter(Boolean).join(' ') || 'Podnajem';
+          const aptName = matchingApts.map(id => aptMap.get(id)?.name || `#${id}`).join(", ");
+          if (!items.find(i => i.type === "sublease" && i.id === sub.id)) {
+            items.push({
+              type: "sublease",
+              id: sub.id,
+              aptName,
+              aptId: matchingApts[0],
+              startDate: sub.startDate,
+              endDate: sub.endDate,
+              label: tenantName,
+              color: colors.PODNAJEM,
+              sublease: sub,
+            });
+          }
+        }
+      }
+
+      if (items.length > 0) {
+        result.push({ date: day, dateStr, items });
+      }
+    }
+
+    return result;
+  }, [days, reservations, blockades, subleases, allAptChanges, filteredApartments, colors]);
+
+  const today = formatDate(new Date());
+
+  return (
+    <>
+      <div className="space-y-3" data-testid="mobile-agenda-view">
+        {agendaByDay.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground" data-testid="agenda-empty">
+            Brak wydarzeń w wybranym okresie
+          </div>
+        )}
+        {agendaByDay.map(({ date, dateStr, items }) => {
+          const isToday = dateStr === today;
+          const dow = date.getDay();
+          return (
+            <div key={dateStr} data-testid={`agenda-day-${dateStr}`}>
+              <div className={`flex items-center gap-2 px-1 py-1.5 sticky top-0 z-10 bg-background ${isToday ? "border-b-2 border-primary" : "border-b border-border"}`}>
+                <div className={`flex items-center justify-center rounded-md w-10 h-10 text-sm font-bold ${isToday ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  {date.getDate()}
+                </div>
+                <div>
+                  <div className={`text-sm font-semibold ${isToday ? "text-primary" : ""}`}>
+                    {DAY_NAMES_PL[dow]}
+                    {isToday && <span className="ml-1.5 text-xs font-normal text-primary">dzisiaj</span>}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {MONTH_NAMES_PL[date.getMonth()]} {date.getFullYear()}
+                  </div>
+                </div>
+                <Badge variant="secondary" className="ml-auto">{items.length}</Badge>
+              </div>
+              <div className="space-y-1.5 pt-1.5">
+                {items.map((item) => (
+                  <div
+                    key={`${item.type}-${item.id}`}
+                    className="flex items-center gap-3 rounded-md p-3 bg-card border border-border hover-elevate cursor-pointer"
+                    onClick={() => setSelectedItem(item)}
+                    data-testid={`agenda-item-${item.type}-${item.id}`}
+                  >
+                    <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm truncate">{item.label}</span>
+                        <Badge
+                          variant="secondary"
+                          className="text-xs text-white flex-shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        >
+                          {item.type === "reservation" ? (item.status || "PRZYJETA") : item.type === "blockade" ? "BLOKADA" : "PODNAJEM"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{item.aptName}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                        <Clock className="w-3 h-3 flex-shrink-0" />
+                        <span>{item.startDate} — {item.endDate}</span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <Sheet open={!!selectedItem} onOpenChange={(o) => { if (!o) setSelectedItem(null); }}>
+        <SheetContent side="bottom" className="h-[85vh] overflow-auto rounded-t-lg">
+          {selectedItem && (
+            <>
+              <SheetHeader className="pb-4">
+                <SheetTitle className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: selectedItem.color }} />
+                  {selectedItem.type === "reservation" ? "Rezerwacja" : selectedItem.type === "blockade" ? "Blokada" : "Podnajem"}
+                </SheetTitle>
+              </SheetHeader>
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <User className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <div>
+                      <div className="text-xs text-muted-foreground">
+                        {selectedItem.type === "reservation" ? "Gość" : selectedItem.type === "sublease" ? "Najemca" : "Opis"}
+                      </div>
+                      <div className="font-semibold">{selectedItem.label}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <MapPin className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <div>
+                      <div className="text-xs text-muted-foreground">Apartament</div>
+                      <div className="font-semibold">{selectedItem.aptName}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                    <div>
+                      <div className="text-xs text-muted-foreground">Okres</div>
+                      <div className="font-semibold">{selectedItem.startDate} — {selectedItem.endDate}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {Math.ceil((new Date(selectedItem.endDate).getTime() - new Date(selectedItem.startDate).getTime()) / (1000 * 60 * 60 * 24))} dni
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {selectedItem.reservation && (
+                  <div className="space-y-3 pt-2 border-t border-border">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">Numer rezerwacji</div>
+                        <div className="font-semibold">{selectedItem.reservation.reservationNumber}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs text-muted-foreground">Kwota</div>
+                        <div className="font-semibold">{Number(selectedItem.reservation.price || 0).toFixed(2)} PLN</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Zaliczka</div>
+                        <div className="font-semibold">{Number(selectedItem.reservation.prepayment || 0).toFixed(2)} PLN</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Wpłacono</div>
+                        <div className="font-semibold">{Number(selectedItem.reservation.paidAmount || 0).toFixed(2)} PLN</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Status</div>
+                        <Badge
+                          className="text-white mt-0.5"
+                          style={{ backgroundColor: selectedItem.color }}
+                        >
+                          {selectedItem.reservation.status}
+                        </Badge>
+                      </div>
+                    </div>
+                    {selectedItem.reservation.source && (
+                      <div>
+                        <div className="text-xs text-muted-foreground">Źródło</div>
+                        <div className="font-semibold">{selectedItem.reservation.source}</div>
+                      </div>
+                    )}
+                    {selectedItem.reservation.notes && (
+                      <div>
+                        <div className="text-xs text-muted-foreground">Uwagi</div>
+                        <div className="text-sm">{selectedItem.reservation.notes}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedItem.blockade && (
+                  <div className="space-y-3 pt-2 border-t border-border">
+                    {selectedItem.blockade.reason && (
+                      <div>
+                        <div className="text-xs text-muted-foreground">Powód</div>
+                        <div className="font-semibold">{selectedItem.blockade.reason}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedItem.sublease && (
+                  <div className="space-y-3 pt-2 border-t border-border">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs text-muted-foreground">Czynsz</div>
+                        <div className="font-semibold">{Number(selectedItem.sublease.rentAmount || 0).toFixed(2)} PLN</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Typ najemcy</div>
+                        <div className="font-semibold">{selectedItem.sublease.tenantType === 'firma' ? 'Firma' : 'Osoba'}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-4">
+                  <Button variant="ghost" className="flex-1" onClick={() => setSelectedItem(null)} data-testid="button-close-agenda-detail">
+                    Zamknij
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

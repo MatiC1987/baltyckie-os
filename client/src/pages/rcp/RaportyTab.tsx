@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Employee } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -19,15 +20,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileDown, Briefcase, Clock, Timer, Banknote, AlertCircle } from "lucide-react";
+import { FileDown, Briefcase, Clock, Timer, Banknote, AlertCircle, AlertTriangle, FileSpreadsheet, TrendingUp } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 const MONTH_NAMES = [
   "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
@@ -39,6 +51,22 @@ function formatMinutes(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
   return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
+interface MissingClockIn {
+  employeeId: number;
+  employeeName: string;
+  position: string;
+  scheduledStart: string;
+  minutesOverdue: number;
+}
+
+interface MonthlyTrend {
+  month: string;
+  lateCount: number;
+  overtimeHours: number;
+  totalWorkHours: number;
+  missedClockIns: number;
 }
 
 export default function RaportyTab() {
@@ -53,6 +81,14 @@ export default function RaportyTab() {
   const { data: report, isLoading } = useQuery<any>({
     queryKey: [qk!],
     enabled: !!empId,
+  });
+
+  const { data: missingClockIns = [] } = useQuery<MissingClockIn[]>({
+    queryKey: ["/api/rcp/missing-clockins"],
+  });
+
+  const { data: monthlyTrend = [] } = useQuery<MonthlyTrend[]>({
+    queryKey: ["/api/rcp/monthly-trend"],
   });
 
   const yearsRange = useMemo(() => {
@@ -89,7 +125,7 @@ export default function RaportyTab() {
           d.breakMinutes ? formatMinutes(d.breakMinutes) : "—",
           formatMinutes(d.workMinutes),
           overtime > 0 ? formatMinutes(overtime) : "—",
-          d.status || "",
+          d.lateMinutes > 0 ? `Spóźnienie (${d.lateMinutes} min)` : d.status || "",
         ];
       } else if (d.type === "leave") {
         return [d.date, d.dayName, "", "", "", "", "", d.leaveType];
@@ -123,9 +159,11 @@ export default function RaportyTab() {
     doc.text(`Dni pracy: ${s.workDays}`, 14, finalY + 14);
     doc.text(`Godziny ogółem: ${s.totalHours}h`, 14, finalY + 19);
     doc.text(`Przerwy ogółem: ${formatMinutes(s.totalBreakMinutes)}`, 14, finalY + 24);
+    doc.text(`Nadgodziny: ${formatMinutes(s.totalOvertimeMinutes)}`, 14, finalY + 29);
+    doc.text(`Spóźnienia: ${lateCount}`, 14, finalY + 34);
     if (s.hourlyRate > 0) {
-      doc.text(`Stawka godzinowa: ${s.hourlyRate.toFixed(2)} PLN`, 14, finalY + 29);
-      doc.text(`Wynagrodzenie brutto: ${s.grossPay.toFixed(2)} PLN`, 14, finalY + 34);
+      doc.text(`Stawka godzinowa: ${s.hourlyRate.toFixed(2)} PLN`, 14, finalY + 39);
+      doc.text(`Wynagrodzenie brutto: ${s.grossPay.toFixed(2)} PLN`, 14, finalY + 44);
     }
 
     doc.setFontSize(7);
@@ -133,6 +171,71 @@ export default function RaportyTab() {
     doc.text(`Wygenerowano: ${new Date().toLocaleString("pl-PL")}`, 14, doc.internal.pageSize.getHeight() - 10);
 
     doc.save(`RCP_${empName.replace(/\s+/g, "_")}_${year}_${String(month).padStart(2, "0")}.pdf`);
+  }
+
+  function exportExcel() {
+    if (!report || !selectedEmployee) return;
+    const empName = `${selectedEmployee.firstName} ${selectedEmployee.lastName}`;
+    const monthName = MONTH_NAMES[Number(month) - 1];
+
+    const headerRows = [
+      ["Zestawienie czasu pracy"],
+      [empName],
+      [`${monthName} ${year}`],
+      selectedEmployee.position ? [`Stanowisko: ${selectedEmployee.position}`] : [],
+      [],
+      ["Data", "Dzień", "Wejście", "Wyjście", "Przerwa (min)", "Czas pracy (min)", "Nadgodziny (min)", "Status"],
+    ].filter(r => r.length > 0);
+
+    const dataRows = report.days.map((d: any) => {
+      if (d.type === "work") {
+        const overtime = d.workMinutes > 480 ? d.workMinutes - 480 : 0;
+        return [
+          d.date,
+          d.dayName,
+          d.clockIn || "",
+          d.clockOut || "",
+          d.breakMinutes || 0,
+          d.workMinutes || 0,
+          overtime,
+          d.lateMinutes > 0 ? `Spóźnienie (${d.lateMinutes} min)` : d.status || "",
+        ];
+      } else if (d.type === "leave") {
+        return [d.date, d.dayName, "", "", 0, 0, 0, d.leaveType];
+      } else if (d.type === "weekend") {
+        return [d.date, d.dayName, "", "", 0, 0, 0, "Dzień wolny"];
+      } else {
+        return [d.date, d.dayName, "", "", 0, 0, 0, "Nieobecność"];
+      }
+    });
+
+    const s = report.summary;
+    const summaryRows = [
+      [],
+      ["Podsumowanie"],
+      ["Dni pracy", s.workDays],
+      ["Godziny ogółem", s.totalHours],
+      ["Przerwy (min)", s.totalBreakMinutes],
+      ["Nadgodziny (min)", s.totalOvertimeMinutes],
+      ["Spóźnienia", lateCount],
+      ["Minuty spóźnień", totalLateMinutes],
+    ];
+    if (s.hourlyRate > 0) {
+      summaryRows.push(["Stawka godzinowa (PLN)", s.hourlyRate]);
+      summaryRows.push(["Wynagrodzenie brutto (PLN)", s.grossPay]);
+    }
+
+    const allRows = [...headerRows, ...dataRows, ...summaryRows];
+    const ws = XLSX.utils.aoa_to_sheet(allRows);
+
+    ws["!cols"] = [
+      { wch: 12 }, { wch: 6 }, { wch: 8 }, { wch: 8 },
+      { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 24 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Raport");
+    XLSX.writeFile(wb, `RCP_${empName.replace(/\s+/g, "_")}_${year}_${String(month).padStart(2, "0")}.xlsx`);
   }
 
   const overtimeMinutes = useMemo(() => {
@@ -143,8 +246,48 @@ export default function RaportyTab() {
     }, 0);
   }, [report]);
 
+  const lateCount = useMemo(() => {
+    if (!report?.days) return 0;
+    return report.days.filter((d: any) => d.type === "work" && d.lateMinutes > 0).length;
+  }, [report]);
+
+  const totalLateMinutes = useMemo(() => {
+    if (!report?.days) return 0;
+    return report.days.reduce((sum: number, d: any) => {
+      if (d.type === "work" && d.lateMinutes > 0) return sum + d.lateMinutes;
+      return sum;
+    }, 0);
+  }, [report]);
+
+  const absentDays = useMemo(() => {
+    if (!report?.days) return 0;
+    return report.days.filter((d: any) => d.type === "absent").length;
+  }, [report]);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {missingClockIns.length > 0 && (
+        <Card className="border-red-200 dark:border-red-800" data-testid="alert-missing-clockins">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <span className="font-semibold">Brak rejestracji wejścia</span>
+              <Badge variant="destructive">{missingClockIns.length}</Badge>
+            </div>
+            <div className="space-y-2">
+              {missingClockIns.map((m) => (
+                <div key={m.employeeId} className="flex items-center gap-3 flex-wrap text-sm" data-testid={`missing-clockin-${m.employeeId}`}>
+                  <span className="font-medium">{m.employeeName}</span>
+                  <span className="text-muted-foreground">{m.position}</span>
+                  <span className="text-muted-foreground">Plan: {m.scheduledStart}</span>
+                  <Badge variant="destructive" className="text-xs">{m.minutesOverdue} min temu</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
         <div className="flex-1 min-w-[200px]">
           <Label>Pracownik</Label>
@@ -188,9 +331,14 @@ export default function RaportyTab() {
           </Select>
         </div>
         {report && (
-          <Button onClick={exportPdf} data-testid="button-export-pdf">
-            <FileDown className="h-4 w-4 mr-1" /> Eksportuj PDF
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={exportPdf} data-testid="button-export-pdf">
+              <FileDown className="h-4 w-4 mr-1" /> PDF
+            </Button>
+            <Button variant="outline" onClick={exportExcel} data-testid="button-export-excel">
+              <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
+            </Button>
+          </div>
         )}
       </div>
 
@@ -206,10 +354,10 @@ export default function RaportyTab() {
 
       {report && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <Card>
               <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-blue-500/10">
+                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-blue-500/10 shrink-0">
                   <Briefcase className="h-5 w-5 text-blue-500" />
                 </div>
                 <div>
@@ -220,18 +368,18 @@ export default function RaportyTab() {
             </Card>
             <Card>
               <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-emerald-500/10">
+                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-emerald-500/10 shrink-0">
                   <Clock className="h-5 w-5 text-emerald-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Godziny ogółem</p>
+                  <p className="text-sm text-muted-foreground">Godziny</p>
                   <p className="text-2xl font-bold" data-testid="text-total-hours">{report.summary.totalHours}h</p>
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-amber-500/10">
+                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-amber-500/10 shrink-0">
                   <Timer className="h-5 w-5 text-amber-500" />
                 </div>
                 <div>
@@ -242,13 +390,36 @@ export default function RaportyTab() {
             </Card>
             <Card>
               <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-violet-500/10">
+                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-red-500/10 shrink-0">
+                  <AlertCircle className="h-5 w-5 text-red-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Spóźnienia</p>
+                  <p className="text-2xl font-bold" data-testid="text-late-count">{lateCount}</p>
+                  {totalLateMinutes > 0 && <p className="text-xs text-muted-foreground">{totalLateMinutes} min</p>}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-orange-500/10 shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-orange-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Nieobecności</p>
+                  <p className="text-2xl font-bold" data-testid="text-absent-days">{absentDays}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex items-center justify-center h-10 w-10 rounded-md bg-violet-500/10 shrink-0">
                   <Banknote className="h-5 w-5 text-violet-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Wynagrodzenie brutto</p>
+                  <p className="text-sm text-muted-foreground">Wynagrodzenie</p>
                   <p className="text-2xl font-bold" data-testid="text-gross-pay">
-                    {report.summary.grossPay > 0 ? `${report.summary.grossPay.toFixed(2)} PLN` : "—"}
+                    {report.summary.grossPay > 0 ? `${report.summary.grossPay.toFixed(0)} PLN` : "—"}
                   </p>
                 </div>
               </CardContent>
@@ -324,12 +495,37 @@ export default function RaportyTab() {
                   <TableCell>{formatMinutes(report.summary.totalBreakMinutes)}</TableCell>
                   <TableCell>{report.summary.totalHours}h</TableCell>
                   <TableCell>{overtimeMinutes > 0 ? formatMinutes(overtimeMinutes) : "—"}</TableCell>
-                  <TableCell></TableCell>
+                  <TableCell>{lateCount > 0 ? `${lateCount} spóźnień (${totalLateMinutes} min)` : ""}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
           </div>
         </>
+      )}
+
+      {monthlyTrend.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="h-5 w-5 text-muted-foreground" />
+              <h3 className="font-semibold">Trend spóźnień i nadgodzin (ostatnie 6 miesięcy)</h3>
+            </div>
+            <div className="h-64" data-testid="chart-monthly-trend">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <RechartsTooltip />
+                  <Legend />
+                  <Bar dataKey="lateCount" fill="hsl(var(--destructive))" name="Spóźnienia" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="overtimeHours" fill="hsl(var(--primary))" name="Nadgodziny (h)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="missedClockIns" fill="hsl(var(--chart-3, 30 80% 55%))" name="Brak rejestracji" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,16 +14,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3, Users, Clock, Award, ArrowUpDown, Search } from "lucide-react";
+import { BarChart3, Users, Clock, Award, ArrowUpDown, Search, FileSpreadsheet, AlertTriangle, TrendingUp } from "lucide-react";
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
+import * as XLSX from "xlsx";
 
 interface EmployeeStat {
   employeeId: number;
@@ -36,6 +41,22 @@ interface EmployeeStat {
   earlyLeaveCount: number;
   punctualityRate: number;
   outsideZoneCount: number;
+}
+
+interface MonthlyTrend {
+  month: string;
+  lateCount: number;
+  overtimeHours: number;
+  totalWorkHours: number;
+  missedClockIns: number;
+}
+
+interface MissingClockIn {
+  employeeId: number;
+  employeeName: string;
+  position: string;
+  scheduledStart: string;
+  minutesOverdue: number;
 }
 
 type SortField = "employeeName" | "totalDays" | "totalHours" | "overtimeHours" | "punctualityRate" | "lateCount";
@@ -71,6 +92,14 @@ export default function RcpStatystyki() {
       if (!res.ok) throw new Error("Błąd pobierania danych");
       return res.json();
     },
+  });
+
+  const { data: monthlyTrend = [] } = useQuery<MonthlyTrend[]>({
+    queryKey: ["/api/rcp/monthly-trend"],
+  });
+
+  const { data: missingClockIns = [] } = useQuery<MissingClockIn[]>({
+    queryKey: ["/api/rcp/missing-clockins"],
   });
 
   const toggleSort = (field: SortField) => {
@@ -112,12 +141,56 @@ export default function RcpStatystyki() {
   const bestPunctuality = totalEmployees > 0
     ? Math.max(...stats.map(s => s.punctualityRate))
     : 0;
+  const totalLateCount = stats.reduce((s, e) => s + e.lateCount, 0);
 
   const chartData = filtered.map(s => ({
     name: s.employeeName.length > 15 ? s.employeeName.slice(0, 15) + "..." : s.employeeName,
     godziny: s.totalHours,
     nadgodziny: s.overtimeHours,
   }));
+
+  function exportExcel() {
+    if (filtered.length === 0) return;
+    const headerRows = [
+      ["Statystyki pracowników"],
+      [`Okres: ${fromDate} — ${toDate}`],
+      [],
+      ["Pracownik", "Stanowisko", "Dni", "Godziny", "Śr. h/dzień", "Nadgodziny", "Spóźnienia", "Punktualność %", "Wcz. wyjścia", "Poza strefą"],
+    ];
+
+    const dataRows = filtered.map(s => [
+      s.employeeName,
+      POSITION_LABELS[s.position] || s.position,
+      s.totalDays,
+      s.totalHours,
+      s.avgHoursPerDay,
+      s.overtimeHours,
+      s.lateCount,
+      s.punctualityRate,
+      s.earlyLeaveCount,
+      s.outsideZoneCount,
+    ]);
+
+    const summaryRows = [
+      [],
+      ["Podsumowanie"],
+      ["Pracowników", totalEmployees],
+      ["Średnio godzin", avgHours],
+      ["Najlepsza punktualność", `${bestPunctuality}%`],
+      ["Łączne spóźnienia", totalLateCount],
+    ];
+
+    const allRows = [...headerRows, ...dataRows, ...summaryRows];
+    const ws = XLSX.utils.aoa_to_sheet(allRows);
+    ws["!cols"] = [
+      { wch: 24 }, { wch: 20 }, { wch: 6 }, { wch: 10 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Statystyki");
+    XLSX.writeFile(wb, `Statystyki_RCP_${fromDate}_${toDate}.xlsx`);
+  }
 
   const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <Button
@@ -153,11 +226,33 @@ export default function RcpStatystyki() {
               onChange={e => setToDate(e.target.value)}
               data-testid="input-date-to"
             />
+            <Button variant="outline" onClick={exportExcel} disabled={filtered.length === 0} data-testid="button-export-stats-excel">
+              <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel
+            </Button>
           </div>
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {missingClockIns.length > 0 && (
+        <Card className="border-red-200 dark:border-red-800" data-testid="alert-missing-clockins-stats">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <span className="font-semibold">Brak rejestracji wejścia dzisiaj</span>
+              <Badge variant="destructive">{missingClockIns.length}</Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {missingClockIns.map((m) => (
+                <Badge key={m.employeeId} variant="outline" data-testid={`badge-missing-${m.employeeId}`}>
+                  {m.employeeName} (plan: {m.scheduledStart}, {m.minutesOverdue} min temu)
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
@@ -197,6 +292,19 @@ export default function RcpStatystyki() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-red-500/10 shrink-0">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Łączne spóźnienia</p>
+              <p className="text-2xl font-bold" data-testid="text-total-late">
+                {isLoading ? <Skeleton className="h-7 w-10" /> : totalLateCount}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {filtered.length > 0 && (
@@ -209,10 +317,36 @@ export default function RcpStatystyki() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
+                  <RechartsTooltip />
+                  <Legend />
                   <Bar dataKey="godziny" fill="hsl(var(--primary))" name="Godziny" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="nadgodziny" fill="hsl(var(--destructive))" name="Nadgodziny" radius={[4, 4, 0, 0]} />
                 </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {monthlyTrend.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="h-5 w-5 text-muted-foreground" />
+              <h3 className="font-semibold">Trend spóźnień i nadgodzin (6 miesięcy)</h3>
+            </div>
+            <div className="h-64" data-testid="chart-trend-stats">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthlyTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <RechartsTooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="lateCount" stroke="hsl(var(--destructive))" name="Spóźnienia" strokeWidth={2} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="overtimeHours" stroke="hsl(var(--primary))" name="Nadgodziny (h)" strokeWidth={2} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="missedClockIns" stroke="hsl(var(--chart-3, 30 80% 55%))" name="Brak rejestracji" strokeWidth={2} dot={{ r: 4 }} />
+                </LineChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
