@@ -6,6 +6,7 @@ const STATIC_ASSETS = [
   '/icon-512.png',
   '/apple-touch-icon.png',
   '/manifest.json',
+  '/offline.html',
 ];
 
 const AUTH_PATHS = ['/api/login', '/api/logout', '/api/callback', '/api/auth/'];
@@ -39,7 +40,7 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('/'))
+      fetch(event.request).catch(() => caches.match('/offline.html'))
     );
     return;
   }

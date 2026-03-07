@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff } from "lucide-react";
+import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff, ClipboardList, CheckSquare, Clock, Wifi, WifiOff } from "lucide-react";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
 import { motion } from "framer-motion";
 import { setAuthToken } from "@/lib/auth-token";
@@ -19,6 +19,27 @@ const features = [
   { icon: Calendar, label: "Rezerwacje i kalendarz" },
   { icon: Shield, label: "Bezpieczne dane" },
 ];
+
+const quickAccessPanels = [
+  { label: "Recepcja", href: "/recepcja", icon: ClipboardList, desc: "Panel recepcji" },
+  { label: "Zadania", href: "/zadania", icon: CheckSquare, desc: "Zarządzanie zadaniami" },
+  { label: "RCP", href: "/rcp", icon: Clock, desc: "Rejestracja czasu pracy" },
+];
+
+function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+  return isOnline;
+}
 
 function useThemeLogo() {
   const [logoSrc, setLogoSrc] = useState(logoImg);
@@ -76,6 +97,7 @@ export default function Landing() {
   const themeLogo = useThemeLogo();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isOnline = useOnlineStatus();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

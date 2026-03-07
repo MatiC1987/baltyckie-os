@@ -10,6 +10,7 @@ import Landing from "@/pages/Landing";
 import { Layout } from "@/components/Layout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { TablePageSkeleton, DashboardSkeleton, AnalyticsSkeleton } from "@/components/PageSkeleton";
+import { UpdateNotification } from "@/components/UpdateNotification";
 
 const RecepcjaApp = lazy(() => import("@/pages/recepcja/RecepcjaApp"));
 const ZadaniaApp = lazy(() => import("@/pages/zadania/ZadaniaApp"));
@@ -246,6 +247,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
+          <UpdateNotification />
           <Router />
         </TooltipProvider>
       </QueryClientProvider>

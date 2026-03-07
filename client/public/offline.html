@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brak połączenia — Bałtyckie</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .container {
+      text-align: center;
+      max-width: 420px;
+    }
+    .icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 1.5rem;
+      opacity: 0.7;
+    }
+    .icon svg {
+      width: 100%;
+      height: 100%;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      color: #ffffff;
+    }
+    p {
+      font-size: 1rem;
+      line-height: 1.5;
+      margin-bottom: 2rem;
+      color: #a0a0b8;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 2rem;
+      background: #4361ee;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #3a56d4;
+    }
+    .btn:active {
+      background: #2f47b3;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="#a0a0b8" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0" />
+        <line x1="3" y1="3" x2="21" y2="21" stroke="#a0a0b8" stroke-width="1.5" stroke-linecap="round" />
+        <circle cx="12" cy="18" r="1.5" fill="#a0a0b8" stroke="none" />
+      </svg>
+    </div>
+    <h1>Brak połączenia z internetem</h1>
+    <p>Sprawdź swoje połączenie sieciowe i spróbuj ponownie.</p>
+    <button class="btn" data-testid="button-retry" onclick="window.location.reload()">Spróbuj ponownie</button>
+  </div>
+</body>
+</html>

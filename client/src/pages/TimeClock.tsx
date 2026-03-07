@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { haptic } from "@/lib/haptics";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -436,12 +437,14 @@ function EmployeeDashboard({
       setActiveEntry(data.entry);
       queryClient.invalidateQueries({ queryKey: ["/api/time-clock/team-status"] });
       if (data.entry.isOutsideZone) {
+        haptic('medium');
         toast({
           title: "Uwaga - poza strefa",
           description: "Zarejestrowano wejscie poza strefa lokalizacji. Wpis wymaga akceptacji.",
           variant: "destructive",
         });
       } else {
+        haptic('success');
         toast({ title: "Rozpoczeto prace" });
       }
     },
@@ -465,6 +468,7 @@ function EmployeeDashboard({
     onSuccess: (data) => {
       setActiveEntry(null);
       queryClient.invalidateQueries({ queryKey: ["/api/time-clock/team-status"] });
+      haptic('success');
       toast({ title: "Zakonczono prace" });
     },
     onError: (err: Error) => {
@@ -480,6 +484,7 @@ function EmployeeDashboard({
     onSuccess: (data) => {
       setActiveEntry(data.entry);
       queryClient.invalidateQueries({ queryKey: ["/api/time-clock/team-status"] });
+      haptic('light');
       toast({ title: "Przerwa rozpoczeta" });
     },
     onError: (err: Error) => {
@@ -495,6 +500,7 @@ function EmployeeDashboard({
     onSuccess: (data) => {
       setActiveEntry(data.entry);
       queryClient.invalidateQueries({ queryKey: ["/api/time-clock/team-status"] });
+      haptic('light');
       toast({ title: "Przerwa zakonczona" });
     },
     onError: (err: Error) => {

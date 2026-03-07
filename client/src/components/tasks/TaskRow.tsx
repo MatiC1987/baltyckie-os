@@ -1,4 +1,5 @@
 import { memo, useCallback, useRef, useState } from "react";
+import { haptic } from "@/lib/haptics";
 import { parseISO, isToday } from "date-fns";
 import type { Task, TaskProject } from "@shared/schema";
 import { Moon, RefreshCw, Star, ChevronRight, ChevronDown, Bell, Check, CalendarDays } from "lucide-react";
@@ -49,6 +50,7 @@ export const TaskRow = memo(function TaskRow({
   const handleClick = useCallback(() => onClick(task), [onClick, task]);
   const handleToggle = useCallback((e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    haptic(task.completed ? 'light' : 'success');
     onToggleComplete(task);
   }, [onToggleComplete, task]);
 
@@ -256,10 +258,10 @@ export function SwipeableTaskRow({ taskId, children, onSwipeLeft, onSwipeRight }
     const velocity = Math.abs(translateX) / Math.max(elapsed, 1) * 1000;
 
     if (translateX < -THRESHOLD || (translateX < -40 && velocity > 800)) {
-      if ('vibrate' in navigator) try { navigator.vibrate(5); } catch {}
+      haptic('medium');
       onSwipeLeft?.();
     } else if (translateX > THRESHOLD || (translateX > 40 && velocity > 800)) {
-      if ('vibrate' in navigator) try { navigator.vibrate(5); } catch {}
+      haptic('medium');
       onSwipeRight?.();
     }
 

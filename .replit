@@ -45,3 +45,9 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_database:1.0.0", "javascript_object_storage:2.0.0", "javascript_openai_ai_integrations:2.0.0"]
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BBAW7z7LGHt9jGcn3D8JFCGww5VNIPbq2nnrVUGStuhLhgq-j_ouUMOCYREkWcBnxPv4RxbIiQBFwU6m_jY53Xk"
+VAPID_SUBJECT = "mailto:mateusz.cieslak@baltyckie.pl"

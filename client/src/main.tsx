@@ -22,5 +22,9 @@ window.fetch = function(input: RequestInfo | URL, init?: RequestInit): Promise<R
 createRoot(document.getElementById("root")!).render(<App />);
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js');
+  navigator.serviceWorker.register('/sw.js').then((registration) => {
+    setInterval(() => {
+      registration.update();
+    }, 60 * 60 * 1000);
+  });
 }
