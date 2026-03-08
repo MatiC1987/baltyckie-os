@@ -35,7 +35,6 @@ import { UpcomingArrivalsTab } from "@/components/dashboard/UpcomingArrivalsTab"
 import { UpcomingDeparturesTab } from "@/components/dashboard/UpcomingDeparturesTab";
 import { UnpaidSubleasesTab } from "@/components/dashboard/UnpaidSubleasesTab";
 import { ExpiringLeasesTab } from "@/components/dashboard/ExpiringLeasesTab";
-import { TodayTasksWidget } from "@/components/dashboard/TodayTasksWidget";
 import { HrSummaryWidget } from "@/components/dashboard/HrSummaryWidget";
 import { RcpSummaryWidget } from "@/components/dashboard/RcpSummaryWidget";
 import { RecentActivityWidget } from "@/components/dashboard/RecentActivityWidget";
@@ -365,8 +364,6 @@ export default function Dashboard() {
             return <UnpaidSubleasesTab key="unpaid-subleases" payments={allSubleasePayments || []} apartments={apartments || []} />;
           case "expiring-leases":
             return <ExpiringLeasesTab key="expiring-leases" leases={leases || []} apartments={apartments || []} />;
-          case "today-tasks":
-            return <TodayTasksWidget key="today-tasks" />;
           case "rcp-summary":
             return <RcpSummaryWidget key="rcp-summary" />;
           case "recent-activity":

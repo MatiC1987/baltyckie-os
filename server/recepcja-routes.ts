@@ -12,13 +12,12 @@ import {
   mediaSettlementReports,
   apartments, reservations, handoverProtocols, handoverProtocolRooms,
   handoverProtocolItems, handoverProtocolMeters, technicalInspections,
-  costInvoices, accountingNotes, tasks as tasksTable, taskProjects, taskSections,
-  taskChecklistItems, employees, timeEntries, workSchedules, leaveRequests, locations,
+  costInvoices, accountingNotes, employees, timeEntries, workSchedules, leaveRequests, locations,
   issues, locationLogs, appConfig, insertIssueSchema,
   insertSaldoEntrySchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema,
   insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema,
-  insertTenantDataSubmissionSchema, insertTaskProjectSchema, insertTaskSectionSchema,
-  insertTaskSchema, insertTaskChecklistItemSchema, insertWorkScheduleSchema, insertLeaveRequestSchema,
+  insertTenantDataSubmissionSchema,
+  insertWorkScheduleSchema, insertLeaveRequestSchema,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -474,101 +473,6 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // ==================== TASKS ====================
-  const RECEPCJA_VIRTUAL_USER_ID = 'recepcja-user';
-
-  app.get('/api/recepcja/task-projects', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const projects = await db.select().from(taskProjects)
-        .where(eq(taskProjects.userId, RECEPCJA_VIRTUAL_USER_ID));
-      res.json(projects);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.post('/api/recepcja/task-projects', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const [proj] = await db.insert(taskProjects).values({ ...req.body, userId: RECEPCJA_VIRTUAL_USER_ID }).returning();
-      res.json(proj);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.patch('/api/recepcja/task-projects/:id', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const [proj] = await db.update(taskProjects).set(req.body).where(eq(taskProjects.id, Number(req.params.id))).returning();
-      res.json(proj);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.delete('/api/recepcja/task-projects/:id', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      await db.delete(taskProjects).where(eq(taskProjects.id, Number(req.params.id)));
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.get('/api/recepcja/task-sections', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const sections = await db.select().from(taskSections);
-      res.json(sections);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.post('/api/recepcja/task-sections', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const [sec] = await db.insert(taskSections).values(req.body).returning();
-      res.json(sec);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.get('/api/recepcja/tasks', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const ownTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, RECEPCJA_VIRTUAL_USER_ID));
-      const allTasks = await db.select().from(tasksTable);
-      const sharedWithMe = allTasks.filter(t =>
-        t.sharedWith && Array.isArray(t.sharedWith) && t.sharedWith.includes(RECEPCJA_VIRTUAL_USER_ID)
-      );
-      const combined = [...ownTasks];
-      for (const t of sharedWithMe) {
-        if (!combined.find(c => c.id === t.id)) combined.push(t);
-      }
-      res.json(combined);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.post('/api/recepcja/tasks', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const [task] = await db.insert(tasksTable).values({ ...req.body, userId: RECEPCJA_VIRTUAL_USER_ID }).returning();
-      res.json(task);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.patch('/api/recepcja/tasks/:id', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const [task] = await db.update(tasksTable).set(req.body).where(eq(tasksTable.id, Number(req.params.id))).returning();
-      res.json(task);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.delete('/api/recepcja/tasks/:id', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      await db.delete(tasksTable).where(eq(tasksTable.id, Number(req.params.id)));
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.get('/api/recepcja/task-checklist/:taskId', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const items = await db.select().from(taskChecklistItems).where(eq(taskChecklistItems.taskId, Number(req.params.taskId)));
-      res.json(items);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
-
-  app.post('/api/recepcja/task-checklist', isRecepcjaAuth as any, async (req: any, res) => {
-    try {
-      const [item] = await db.insert(taskChecklistItems).values(req.body).returning();
-      res.json(item);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
-  });
 
   // ==================== RCP ADMIN ====================
   app.get('/api/recepcja/rcp/employees', isRecepcjaAuth as any, async (req: any, res) => {
@@ -832,10 +736,6 @@ export function registerRecepcjaRoutes(app: Express) {
         p.status === 'do_oplacenia' && p.dueDate && p.dueDate < today
       );
 
-      const myTasks = await db.select().from(tasksTable)
-        .where(eq(tasksTable.userId, RECEPCJA_VIRTUAL_USER_ID));
-      const todayTasks = myTasks.filter(t => t.dueDate === today && !t.completed);
-
       const submissions = await db.select().from(tenantDataSubmissions);
       const pendingSubmissions = submissions.filter(s => ['NOWE', 'DO_PODPISANIA'].includes(s.status));
 
@@ -890,7 +790,7 @@ export function registerRecepcjaRoutes(app: Express) {
         todayArrivals: todayArrivals.length,
         todayDepartures: todayDepartures.length,
         overduePayments: overduePayments.length,
-        todayTasks: todayTasks.length,
+        todayTasks: 0,
         pendingSubmissions: pendingSubmissions.length,
         openIssues: openIssuesCount,
         arrivals: todayArrivals.slice(0, 10),
@@ -1010,9 +910,6 @@ export function registerRecepcjaRoutes(app: Express) {
 
       const readings = await db.select().from(meterReadingsLog).where(eq(meterReadingsLog.readingDate, date));
 
-      const myTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, RECEPCJA_VIRTUAL_USER_ID));
-      const completedToday = myTasks.filter(t => t.completed && t.dueDate === date);
-
       const timeEntriesDay = await storage.getTimeEntries(date);
 
       res.json({
@@ -1021,7 +918,7 @@ export function registerRecepcjaRoutes(app: Express) {
         departures,
         paidToday,
         meterReadings: readings,
-        completedTasks: completedToday,
+        completedTasks: [],
         timeEntries: timeEntriesDay,
       });
     } catch (err: any) { res.status(500).json({ message: err.message }); }

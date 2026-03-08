@@ -22,7 +22,7 @@ import {
   FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
   Type, Menu, ChevronDown, ChevronRight, PanelLeft, TrendingUp,
   Monitor, Shield, Bell, BellOff, BellRing, Loader2,
-  Download, Upload, Mail, CalendarClock, CreditCard, FileCheck,
+  Download, Upload, Mail, CalendarClock, CreditCard,
   Clock, Fingerprint, Smartphone, Trash2, Plus, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -219,7 +219,6 @@ const RECEPCJA_NAV_SECTIONS = [
     items: [
       { id: "rcp", label: "RCP", path: "/recepcja/rcp" },
       { id: "kontakty", label: "Kontakty najemców", path: "/recepcja/kontakty" },
-      { id: "zadania", label: "Zadania", path: "/recepcja/zadania" },
       { id: "raport-dzienny", label: "Raport dzienny", path: "/recepcja/raport-dzienny" },
     ],
   },
@@ -310,7 +309,7 @@ function PushNotificationsCard() {
     unsupported: { label: "Niedostępne", desc: "Twoja przeglądarka nie obsługuje powiadomień push" },
     denied: { label: "Zablokowane", desc: "Powiadomienia push zostały zablokowane w ustawieniach przeglądarki" },
     subscribed: { label: "Aktywne", desc: "Powiadomienia push są włączone na tym urządzeniu" },
-    unsubscribed: { label: "Wyłączone", desc: "Włącz powiadomienia push, aby otrzymywać alerty o nowych zadaniach, płatnościach i umowach" },
+    unsubscribed: { label: "Wyłączone", desc: "Włącz powiadomienia push, aby otrzymywać alerty o płatnościach i umowach" },
     error: { label: "Błąd", desc: error || "Wystąpił błąd podczas konfiguracji powiadomień" },
   };
 
@@ -489,7 +488,6 @@ function NotificationConfigPanel() {
   };
 
   const items = [
-    { key: "pushNewTask", label: "Nowe zadania", icon: FileCheck, group: "push" },
     { key: "pushPaymentOverdue", label: "Zaległe płatności", icon: CreditCard, group: "push" },
     { key: "pushLeaseExpiring", label: "Kończące się umowy", icon: CalendarClock, group: "push" },
     { key: "pushMediaApproval", label: "Zatwierdzenie mediów", icon: FileText, group: "push" },

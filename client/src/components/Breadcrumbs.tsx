@@ -32,7 +32,6 @@ const ROUTE_LABELS: Record<string, { label: string; parent?: string }> = {
   "/activity-log": { label: "Dziennik aktywności", parent: "/" },
   "/ustawienia": { label: "Ustawienia", parent: "/" },
   "/customers": { label: "Klienci", parent: "/" },
-  "/tasks": { label: "Zadania", parent: "/" },
   "/v2/przychody": { label: "Przychody v2", parent: "/" },
   "/v2/koszty": { label: "Koszty v2", parent: "/" },
   "/v2/prognoza": { label: "Prognoza finansowa v2", parent: "/" },

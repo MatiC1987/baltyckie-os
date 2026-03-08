@@ -9,7 +9,7 @@ export interface PendingRequest {
   headers: Record<string, string>;
   body: string | null;
   timestamp: number;
-  type: 'media-reading' | 'task-status' | 'rcp-checkin' | 'rcp-checkout' | 'generic';
+  type: 'media-reading' | 'rcp-checkin' | 'rcp-checkout' | 'generic';
 }
 
 function openDB(): Promise<IDBDatabase> {
@@ -165,7 +165,6 @@ export async function getCachedData<T = any>(key: string): Promise<T | null> {
 
 function detectRequestType(url: string, method: string): PendingRequest['type'] {
   if (url.includes('/api/meter-readings') || url.includes('/api/recepcja/readings')) return 'media-reading';
-  if (url.includes('/api/tasks') && (method === 'PATCH' || method === 'PUT')) return 'task-status';
   if (url.includes('/api/time-entries') || url.includes('/api/rcp')) {
     if (url.includes('check-in') || method === 'POST') return 'rcp-checkin';
     if (url.includes('check-out') || method === 'PATCH') return 'rcp-checkout';

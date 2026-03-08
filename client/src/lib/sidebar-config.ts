@@ -135,7 +135,6 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "apartment-comparison": { id: "apartment-comparison", href: "/apartment-comparison", label: "Porównanie apartamentów", iconName: "ArrowUpDown" },
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
   "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
-  tasks: { id: "tasks", href: "/tasks", label: "Zadania", iconName: "ClipboardList" },
   "sprawy-sadowe": { id: "sprawy-sadowe", href: "/sprawy-sadowe", label: "Sprawy sądowe", iconName: "Gavel" },
 };
 
@@ -144,7 +143,7 @@ export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "customers", "podnajem"], color: "cyan" },
   { id: "nieruchomosci", title: "NIERUCHOMOŚCI", itemIds: ["apartments", "owners"], color: "orange" },
   { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "sprawy-sadowe"], color: "emerald" },
-  { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy", "tasks"], color: "pink" },
+  { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy"], color: "pink" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "source-comparison"], color: "blue" },
 ];
 
@@ -287,7 +286,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
       { id: "main", itemIds: ["kokpit"] },
       { id: "all", title: "MENU", itemIds: ["calendar", "reservations", "podnajem", "apartments", "v2-przychody", "v2-koszty", "dokumenty-ksiegowe", "rcp"], color: "cyan" },
     ],
-    hiddenItems: ["source-comparison", "salda", "contracts-services", "customers", "owners", "tasks"],
+    hiddenItems: ["source-comparison", "salda", "contracts-services", "customers", "owners"],
   },
   {
     id: "full",
@@ -303,7 +302,7 @@ export const PRESET_LAYOUTS: PresetLayout[] = [
       { id: "main", itemIds: ["kokpit"] },
       { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations"], color: "cyan" },
       { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "source-comparison"], color: "emerald" },
-      { id: "inne", title: "INNE", itemIds: ["apartments", "owners", "podnajem", "customers", "rcp", "pracownicy", "tasks"], color: "violet" },
+      { id: "inne", title: "INNE", itemIds: ["apartments", "owners", "podnajem", "customers", "rcp", "pracownicy"], color: "violet" },
     ],
   },
 ];

@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   LayoutDashboard, Wallet, FileText, HandCoins, UserPlus, History,
   Gauge, ClipboardList, FolderOpen, Search, CalendarDays, Hotel,
-  Phone, CheckSquare, Clock, LogOut, Sun, Moon, Menu, X,
+  Phone, Clock, LogOut, Sun, Moon, Menu, X,
   PanelLeftClose, PanelLeft, ChevronDown, FileBarChart, AlertTriangle,
   Bell, Check, CheckCheck, Plus,
   type LucideIcon,
@@ -83,7 +83,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "RCP", path: "/recepcja/rcp", icon: Clock },
       { label: "Kontakty najemców", path: "/recepcja/kontakty", icon: Phone },
-      { label: "Zadania", path: "/recepcja/zadania", icon: CheckSquare },
       { label: "Raport dzienny", path: "/recepcja/raport-dzienny", icon: FileBarChart },
     ],
   },

@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import {
-  Plane, PlaneLanding, AlertCircle, CheckSquare, UserPlus, LayoutDashboard, AlertTriangle, FileText,
+  Plane, PlaneLanding, AlertCircle, UserPlus, LayoutDashboard, AlertTriangle, FileText,
   Zap, CalendarClock, CreditCard, RefreshCw, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { usePullRefresh } from "@/hooks/use-pull-refresh";
@@ -115,7 +115,6 @@ export default function RecepcjaDashboard() {
     { label: "Przyjazdy dziś", value: data?.todayArrivals || 0, icon: Plane, color: "text-green-600", link: "/recepcja/rezerwacje" },
     { label: "Wyjazdy dziś", value: data?.todayDepartures || 0, icon: PlaneLanding, color: "text-blue-600", link: "/recepcja/rezerwacje" },
     { label: "Zaległe płatności", value: data?.overduePayments || 0, icon: AlertCircle, color: "text-red-600", link: "/recepcja/podnajem/rozliczenia" },
-    { label: "Zadania na dziś", value: data?.todayTasks || 0, icon: CheckSquare, color: "text-orange-600", link: "/recepcja/zadania" },
     { label: "Oczekujący najemcy", value: data?.pendingSubmissions || 0, icon: UserPlus, color: "text-purple-600", link: "/recepcja/podnajem/nowy-najemca" },
     { label: "Otwarte usterki", value: data?.openIssues || 0, icon: AlertTriangle, color: "text-yellow-600", link: "/recepcja/usterki" },
     { label: "Nowe noty do wydrukowania", value: newNotesCount, icon: FileText, color: "text-teal-600", link: "/recepcja/dokumenty" },

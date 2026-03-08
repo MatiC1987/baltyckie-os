@@ -27,9 +27,6 @@ export function setManifestForPath(path?: string) {
   if (currentPath.startsWith('/recepcja')) {
     manifestHref = '/manifest-recepcja.json';
     themeColor = '#0f766e';
-  } else if (currentPath.startsWith('/zadania')) {
-    manifestHref = '/manifest-zadania.json';
-    themeColor = '#7c3aed';
   } else if (currentPath.startsWith('/rcp')) {
     manifestHref = '/manifest-rcp.json';
     themeColor = '#dc2626';

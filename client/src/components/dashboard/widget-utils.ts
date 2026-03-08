@@ -19,7 +19,6 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
   { id: "upcoming-arrivals", label: "Najbliższe przyjazdy", category: "operational", defaultVisible: true, description: "Rezerwacje w ciągu 7 dni" },
   { id: "upcoming-departures", label: "Najbliższe wyjazdy", category: "operational", defaultVisible: true, description: "Wyjazdy w ciągu 7 dni" },
   { id: "expiring-leases", label: "Kończące się umowy", category: "admin", defaultVisible: true, description: "Umowy najmu kończące się w 6 miesięcy" },
-  { id: "today-tasks", label: "Zadania na dziś", category: "operational", defaultVisible: true, description: "Zadania z terminem na dziś" },
   { id: "rcp-summary", label: "RCP — Pracownicy", category: "operational", defaultVisible: true, description: "Obecność i godziny pracowników" },
   { id: "recent-activity", label: "Ostatnia aktywność", category: "operational", defaultVisible: true, description: "Feed ostatnich zdarzeń w systemie" },
   { id: "hr-summary", label: "Kadry — podsumowanie", category: "admin", defaultVisible: true, description: "Alerty kadrowe: umowy, badania, szkolenia" },

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff, ClipboardList, CheckSquare, Clock } from "lucide-react";
+import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff, ClipboardList, Clock } from "lucide-react";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
 import { motion } from "framer-motion";
 import { setAuthToken } from "@/lib/auth-token";
@@ -22,7 +22,6 @@ const features = [
 
 const quickAccessPanels = [
   { label: "Recepcja", href: "/recepcja", icon: ClipboardList, desc: "Panel recepcji" },
-  { label: "Zadania", href: "/zadania", icon: CheckSquare, desc: "Zarządzanie zadaniami" },
   { label: "RCP", href: "/rcp", icon: Clock, desc: "Rejestracja czasu pracy" },
 ];
 

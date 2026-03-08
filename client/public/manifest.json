@@ -114,12 +114,6 @@
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Zadania",
-      "short_name": "Zadania",
-      "url": "/zadania",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    },
-    {
       "name": "RCP",
       "short_name": "RCP",
       "url": "/rcp",

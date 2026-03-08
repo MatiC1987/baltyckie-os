@@ -21,12 +21,6 @@ async function setAppBadge(count: number) {
 export function useAppBadge() {
   const isAuthenticated = !!getAuthToken();
 
-  const { data: tasks } = useQuery<any[]>({
-    queryKey: ["/api/tasks"],
-    refetchInterval: 60_000,
-    enabled: isAuthenticated,
-  });
-
   const { data: reminders } = useQuery<{
     overdueCosts: number;
     overdueSubleasePayments: number;
@@ -36,14 +30,10 @@ export function useAppBadge() {
     enabled: isAuthenticated,
   });
 
-  const incompleteTasks = tasks
-    ? tasks.filter((t: any) => !t.completed).length
-    : 0;
-
   const overduePayments =
     (reminders?.overdueCosts ?? 0) + (reminders?.overdueSubleasePayments ?? 0);
 
-  const totalBadgeCount = incompleteTasks + overduePayments;
+  const totalBadgeCount = overduePayments;
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -70,7 +60,6 @@ export function useAppBadge() {
   return {
     isSupported: isAppBadgeSupported(),
     badgeCount: totalBadgeCount,
-    incompleteTasks,
     overduePayments,
     updateBadge,
     clearBadge,

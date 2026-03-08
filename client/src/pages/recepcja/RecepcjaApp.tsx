@@ -11,7 +11,6 @@ import RecepcjaTerminarz from "./RecepcjaTerminarz";
 import RecepcjaRezerwacje from "./RecepcjaRezerwacje";
 import RecepcjaPrzeglady from "./RecepcjaPrzeglady";
 import RecepcjaDokumenty from "./RecepcjaDokumenty";
-import RecepcjaZadania from "./RecepcjaZadania";
 import RecepcjaRCP from "./RecepcjaRCP";
 import RecepcjaLiczniki from "./RecepcjaLiczniki";
 import RecepcjaProtokoly from "./RecepcjaProtokoly";
@@ -166,7 +165,6 @@ export default function RecepcjaApp() {
             <Route path="/recepcja/terminarz" component={RecepcjaTerminarz} />
             <Route path="/recepcja/rezerwacje" component={RecepcjaRezerwacje} />
             <Route path="/recepcja/kontakty" component={RecepcjaKontakty} />
-            <Route path="/recepcja/zadania" component={RecepcjaZadania} />
             <Route path="/recepcja/raport-dzienny" component={RecepcjaRaportDzienny} />
             <Route path="/recepcja/usterki" component={RecepcjaUsterki} />
             <Route>{() => <Redirect to="/recepcja" />}</Route>

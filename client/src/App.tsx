@@ -13,7 +13,6 @@ import { TablePageSkeleton, DashboardSkeleton, AnalyticsSkeleton } from "@/compo
 import { UpdateNotification } from "@/components/UpdateNotification";
 
 const RecepcjaApp = lazy(() => import("@/pages/recepcja/RecepcjaApp"));
-const ZadaniaApp = lazy(() => import("@/pages/zadania/ZadaniaApp"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const ApartamentyHub = lazy(() => import("@/pages/ApartamentyHub"));
 const Owners = lazy(() => import("@/pages/Owners"));
@@ -34,7 +33,6 @@ const CompanySettings = lazy(() => import("@/pages/CompanySettings"));
 const DokumentyHub = lazy(() => import("@/pages/DokumentyHub"));
 const Ustawienia = lazy(() => import("@/pages/Ustawienia"));
 const Customers = lazy(() => import("@/pages/Customers"));
-const Tasks = lazy(() => import("@/pages/Tasks"));
 const SourceComparison = lazy(() => import("@/pages/SourceComparison"));
 const OccupancyRates = lazy(() => import("@/pages/OccupancyRates"));
 const Profitability = lazy(() => import("@/pages/Profitability"));
@@ -119,7 +117,6 @@ function Router() {
   useEffect(() => {
     const getPrefix = (p: string) => {
       if (p.startsWith('/recepcja')) return '/recepcja';
-      if (p.startsWith('/zadania')) return '/zadania';
       if (p.startsWith('/rcp')) return '/rcp';
       return '/';
     };
@@ -141,14 +138,6 @@ function Router() {
     return (
       <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
         <RecepcjaApp />
-      </Suspense>
-    );
-  }
-
-  if (location.startsWith("/zadania")) {
-    return (
-      <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>}>
-        <ZadaniaApp />
       </Suspense>
     );
   }
@@ -205,7 +194,6 @@ function AuthenticatedRouter() {
       <Route path="/import-export" component={() => <AuthenticatedRoute component={ImportBackup} />} />
       <Route path="/activity-log" component={() => <AuthenticatedRoute component={ActivityLog} />} />
       <Route path="/customers" component={() => <AuthenticatedRoute component={Customers} />} />
-      <Route path="/tasks" component={() => <AuthenticatedRoute component={Tasks} />} />
       <Route path="/source-comparison" component={() => <AuthenticatedRoute component={SourceComparison} />} />
       <Route path="/v2/przychody" component={() => <AuthenticatedRoute component={PrzychodyHub} />} />
       <Route path="/v2/koszty" component={() => <AuthenticatedRoute component={V2Koszty} />} />
