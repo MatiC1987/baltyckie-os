@@ -167,7 +167,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
   return (
     <>
       {isOpen && (
-        <div className="lg:hidden fixed top-0 right-0 z-50 p-3">
+        <div className="lg:hidden fixed top-0 right-0 z-[65] p-3">
           <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="text-white bg-slate-900/80 backdrop-blur-sm rounded-full" data-testid="button-close-sidebar">
             <X className="h-5 w-5" />
           </Button>
@@ -175,11 +175,11 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
       )}
 
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-40 text-white transform transition-all duration-200 ease-in-out lg:translate-x-0 lg:static lg:h-screen shadow-xl",
+        "fixed inset-y-0 left-0 text-white transform transition-all duration-200 ease-in-out lg:translate-x-0 lg:static lg:h-screen shadow-xl",
         sidebarWidth,
-        isOpen ? "translate-x-0" : "-translate-x-full"
+        isOpen ? "translate-x-0 z-[60]" : "-translate-x-full z-40"
       )} style={{ ...style, position: style?.position || undefined }} data-sidebar-fs>
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col pb-20 lg:pb-0">
           <div className={cn("flex items-center justify-center", compact ? "px-2 pt-4 pb-3" : "px-5 pt-5 pb-5")}>
             {compact ? (
               <div className="w-8 h-8 rounded-lg bg-[#5ADBFA]/20 flex items-center justify-center" data-testid="img-logo-compact">
@@ -492,7 +492,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
 
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden backdrop-blur-sm"
+          className="fixed inset-0 bg-black/50 z-[55] lg:hidden backdrop-blur-sm"
           onClick={() => setIsOpen(false)}
         />
       )}
