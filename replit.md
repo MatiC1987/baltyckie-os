@@ -15,7 +15,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 **Frontend:** Developed with React, Vite, TypeScript, Tailwind CSS, shadcn/ui, Recharts, and Framer Motion, ensuring a responsive and intuitive user experience with dark mode support. Key UI/UX decisions include collapsible sidebars, global search, breadcrumbs, mobile responsiveness with a bottom navigation bar, and adaptive table layouts.
 **Backend:** Built on Express.js with TypeScript, providing robust API endpoints.
 **Database:** PostgreSQL hosted on Neon, managed with Drizzle ORM.
-**Authentication:** Custom email+password login with WebAuthn biometric support for the main application (30-day token persistence via `auth_tokens` table), complemented by a JWT-based system for the Recepcja Panel.
+**Authentication:** Custom email+password login (case-insensitive email) with WebAuthn biometric support for the main application (30-day token persistence via `auth_tokens` table), complemented by a JWT-based system for the Recepcja Panel. User management syncs passwords between `app_users` (UI) and `users` (auth) tables. Task panel userId is resolved via `resolveTaskUserId()` to match auth system IDs, ensuring consistent task ownership across main app and Zadania panel.
 **Data Handling:** Utilizes Zod schemas for API validation and TanStack Query for efficient data fetching and caching. An `IStorage` interface provides database abstraction.
 
 ## PWA Features

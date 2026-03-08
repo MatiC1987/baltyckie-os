@@ -118,7 +118,8 @@ export async function setupAuth(app: Express) {
 
   app.post("/api/login", async (req: any, res) => {
     try {
-      const { email, password } = req.body;
+      const { email: rawEmail, password } = req.body;
+      const email = rawEmail?.trim()?.toLowerCase();
       if (!email || !password) {
         return res.status(400).json({ message: "Email i hasło są wymagane" });
       }

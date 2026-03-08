@@ -49,6 +49,26 @@ function getEmployeeVirtualId(employeeId: number): string {
   return `employee-${employeeId}`;
 }
 
+const authUserIdCache = new Map<string, { id: string; ts: number }>();
+const CACHE_TTL = 5 * 60 * 1000;
+
+async function resolveTaskUserId(email: string, employeeId: number): Promise<string> {
+  const cacheKey = email.trim().toLowerCase();
+  const cached = authUserIdCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.id;
+  
+  const result = await db.execute(sql`SELECT id FROM users WHERE LOWER(TRIM(email)) = ${cacheKey} AND password_hash IS NOT NULL ORDER BY id LIMIT 1`);
+  if (result.rows.length > 0) {
+    const authId = result.rows[0].id as string;
+    authUserIdCache.set(cacheKey, { id: authId, ts: Date.now() });
+    return authId;
+  }
+  
+  const virtualId = getEmployeeVirtualId(employeeId);
+  authUserIdCache.set(cacheKey, { id: virtualId, ts: Date.now() });
+  return virtualId;
+}
+
 export function registerTaskPanelRoutes(app: Express) {
 
   app.post('/api/task-panel/login', async (req, res) => {
@@ -65,9 +85,10 @@ export function registerTaskPanelRoutes(app: Express) {
       if (user.employeeId === null) return res.status(403).json({ message: 'Konto nie jest powiązane z pracownikiem. Skontaktuj się z administratorem.' });
 
       const token = createTaskPanelToken(user.id);
+      const taskUserId = await resolveTaskUserId(user.email, user.employeeId!);
 
       res.json({
-        user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl, employeeId: user.employeeId, isAdmin: user.isAdmin },
+        user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl, employeeId: user.employeeId, isAdmin: user.isAdmin, taskUserId },
         token,
       });
     } catch (err: any) {
@@ -77,7 +98,8 @@ export function registerTaskPanelRoutes(app: Express) {
 
   app.get('/api/task-panel/auth/user', isTaskPanelAuth as any, async (req: any, res) => {
     const u = req.taskPanelUser;
-    res.json({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatarUrl, employeeId: u.employeeId, isAdmin: u.isAdmin });
+    const taskUserId = await resolveTaskUserId(u.email, u.employeeId);
+    res.json({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatarUrl, employeeId: u.employeeId, isAdmin: u.isAdmin, taskUserId });
   });
 
   app.post('/api/task-panel/logout', isTaskPanelAuth as any, async (_req: any, res) => {
@@ -93,10 +115,13 @@ export function registerTaskPanelRoutes(app: Express) {
       if (user.isAdmin) {
         allTasks = await db.select().from(tasksTable);
       } else {
+        const resolvedId = await resolveTaskUserId(user.email, user.employeeId);
         const virtualId = getEmployeeVirtualId(user.employeeId);
         allTasks = await db.select().from(tasksTable).where(
           or(
+            eq(tasksTable.userId, resolvedId),
             eq(tasksTable.userId, virtualId),
+            sql`${resolvedId} = ANY(${tasksTable.sharedWith})`,
             sql`${virtualId} = ANY(${tasksTable.sharedWith})`
           )
         );
@@ -145,8 +170,8 @@ export function registerTaskPanelRoutes(app: Express) {
   app.post('/api/task-panel/tasks', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const user = req.taskPanelUser;
-      const virtualId = getEmployeeVirtualId(user.employeeId);
-      const data = { ...req.body, userId: virtualId };
+      const resolvedId = await resolveTaskUserId(user.email, user.employeeId);
+      const data = { ...req.body, userId: resolvedId };
       const [task] = await db.insert(tasksTable).values(data).returning();
       res.json(task);
     } catch (err: any) {
@@ -157,11 +182,12 @@ export function registerTaskPanelRoutes(app: Express) {
   app.patch('/api/task-panel/tasks/:id', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const user = req.taskPanelUser;
+      const resolvedId = await resolveTaskUserId(user.email, user.employeeId);
       const virtualId = getEmployeeVirtualId(user.employeeId);
       const taskId = Number(req.params.id);
       const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
       if (!existing) return res.status(404).json({ message: 'Zadanie nie znalezione' });
-      if (!user.isAdmin && existing.userId !== virtualId && !(existing.sharedWith || []).includes(virtualId)) {
+      if (!user.isAdmin && existing.userId !== resolvedId && existing.userId !== virtualId && !(existing.sharedWith || []).includes(resolvedId) && !(existing.sharedWith || []).includes(virtualId)) {
         return res.status(403).json({ message: 'Brak dostępu' });
       }
       const updates: Record<string, any> = {};
@@ -184,11 +210,12 @@ export function registerTaskPanelRoutes(app: Express) {
   app.delete('/api/task-panel/tasks/:id', isTaskPanelAuth as any, async (req: any, res) => {
     try {
       const user = req.taskPanelUser;
+      const resolvedId = await resolveTaskUserId(user.email, user.employeeId);
       const virtualId = getEmployeeVirtualId(user.employeeId);
       const taskId = Number(req.params.id);
       const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
       if (!existing) return res.status(404).json({ message: 'Zadanie nie znalezione' });
-      if (!user.isAdmin && existing.userId !== virtualId) {
+      if (!user.isAdmin && existing.userId !== resolvedId && existing.userId !== virtualId) {
         return res.status(403).json({ message: 'Brak dostępu do usunięcia' });
       }
       await db.delete(taskChecklistItems).where(eq(taskChecklistItems.taskId, taskId));

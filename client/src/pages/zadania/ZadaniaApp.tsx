@@ -9,6 +9,7 @@ type ZadaniaUser = {
   email: string;
   avatarUrl: string | null;
   employeeId: number | null;
+  taskUserId?: string;
 };
 
 const ZadaniaAuthContext = createContext<{

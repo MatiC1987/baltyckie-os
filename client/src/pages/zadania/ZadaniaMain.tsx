@@ -7,7 +7,7 @@ export default function ZadaniaMain() {
 
   if (!user) return null;
 
-  const virtualUserId = user.employeeId ? `employee-${user.employeeId}` : String(user.id);
+  const virtualUserId = user.taskUserId || (user.employeeId ? `employee-${user.employeeId}` : String(user.id));
 
   return (
     <ZadaniaTasksApiProvider userId={virtualUserId} onLogout={logout}>

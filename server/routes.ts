@@ -3806,7 +3806,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
   app.post('/api/app-users', isAuthenticated, async (req, res) => {
     try {
-      const { email, firstName, lastName, password, permissions } = req.body;
+      const { email: rawEmail, firstName, lastName, password, permissions } = req.body;
+      const email = rawEmail?.trim()?.toLowerCase();
       if (!email || !firstName || !lastName || !password) {
         return res.status(400).json({ message: "Wszystkie pola są wymagane" });
       }
@@ -3818,9 +3819,9 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const passwordHash = await bcrypt.hash(password, 10);
       const user = await storage.createAppUser({ email, firstName, lastName, passwordHash, permissions: permissions || [], active: true });
 
-      const existingAuthUser = await db.execute(sql`SELECT id FROM users WHERE email = ${email}`);
+      const existingAuthUser = await db.execute(sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${email})`);
       if (existingAuthUser.rows.length > 0) {
-        await db.execute(sql`UPDATE users SET password_hash = ${passwordHash}, first_name = ${firstName}, last_name = ${lastName} WHERE email = ${email}`);
+        await db.execute(sql`UPDATE users SET password_hash = ${passwordHash}, first_name = ${firstName}, last_name = ${lastName}, email = ${email} WHERE LOWER(email) = LOWER(${email})`);
       } else {
         const crypto = await import('crypto');
         const userId = crypto.randomBytes(16).toString('hex');
@@ -3836,7 +3837,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
   app.put('/api/app-users/:id', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { email, firstName, lastName, password, permissions } = req.body;
+      const { email: rawEmail, firstName, lastName, password, permissions } = req.body;
+      const email = rawEmail?.trim()?.toLowerCase();
 
       const [currentAppUser] = await db.select().from(appUsers).where(eq(appUsers.id, id));
       if (!currentAppUser) return res.status(404).json({ message: "Nie znaleziono użytkownika" });
@@ -3854,16 +3856,16 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const user = await storage.updateAppUser(id, data);
 
       if (data.passwordHash || data.email || data.firstName || data.lastName) {
-        const existingAuthUser = await db.execute(sql`SELECT id FROM users WHERE email = ${oldEmail}`);
+        const existingAuthUser = await db.execute(sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${oldEmail})`);
         if (existingAuthUser.rows.length > 0) {
           const newEmail = (data.email && data.email !== oldEmail) ? data.email : oldEmail;
           const newFirstName = data.firstName || currentAppUser.firstName || '';
           const newLastName = data.lastName || currentAppUser.lastName || '';
           const newHash = data.passwordHash || null;
           if (newHash) {
-            await db.execute(sql`UPDATE users SET password_hash = ${newHash}, first_name = ${newFirstName}, last_name = ${newLastName}, email = ${newEmail} WHERE email = ${oldEmail}`);
+            await db.execute(sql`UPDATE users SET password_hash = ${newHash}, first_name = ${newFirstName}, last_name = ${newLastName}, email = ${newEmail} WHERE LOWER(email) = LOWER(${oldEmail})`);
           } else {
-            await db.execute(sql`UPDATE users SET first_name = ${newFirstName}, last_name = ${newLastName}, email = ${newEmail} WHERE email = ${oldEmail}`);
+            await db.execute(sql`UPDATE users SET first_name = ${newFirstName}, last_name = ${newLastName}, email = ${newEmail} WHERE LOWER(email) = LOWER(${oldEmail})`);
           }
         } else {
           const appUserHash = data.passwordHash || currentAppUser.passwordHash;
