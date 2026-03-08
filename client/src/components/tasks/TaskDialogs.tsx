@@ -111,7 +111,7 @@ export function TaskDialog({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={isMobile ? "Nowe zadanie" : "Tytuł zadania"}
-          className={isMobile ? "border-0 bg-transparent text-white text-[17px] font-medium px-0 py-2 focus-visible:ring-0 placeholder:text-white/30" : "mt-1"}
+          className={isMobile ? "border-0 bg-transparent text-foreground text-[17px] font-medium px-0 py-2 focus-visible:ring-0 placeholder:text-muted-foreground/50" : "mt-1"}
           data-testid="input-task-title"
           onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) handleSubmit(); }}
         />
@@ -122,14 +122,14 @@ export function TaskDialog({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Notes"
-          className={isMobile ? "border-0 bg-transparent text-white/80 text-[15px] px-0 py-1 resize-none min-h-[40px] focus-visible:ring-0 placeholder:text-white/25" : "mt-1 resize-none min-h-[60px]"}
+          className={isMobile ? "border-0 bg-transparent text-foreground/80 text-[15px] px-0 py-1 resize-none min-h-[40px] focus-visible:ring-0 placeholder:text-muted-foreground/40" : "mt-1 resize-none min-h-[60px]"}
           data-testid="textarea-task-notes"
         />
       </div>
       {isMobile && (
         <div className="flex items-center gap-2 flex-wrap pt-1">
           <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSectionId("none"); }}>
-            <SelectTrigger className="h-8 w-auto min-w-[80px] rounded-full bg-white/[0.08] border-0 text-white/60 text-[13px] px-3 gap-1.5" data-testid="select-task-project">
+            <SelectTrigger className="h-8 w-auto min-w-[80px] rounded-full bg-muted border-0 text-muted-foreground text-[13px] px-3 gap-1.5" data-testid="select-task-project">
               <Circle className="h-3 w-3 text-blue-400" />
               <SelectValue placeholder="Projekt" />
             </SelectTrigger>
@@ -141,7 +141,7 @@ export function TaskDialog({
             </SelectContent>
           </Select>
           <Select value={priority} onValueChange={setPriority}>
-            <SelectTrigger className="h-8 w-auto min-w-[70px] rounded-full bg-white/[0.08] border-0 text-white/60 text-[13px] px-3 gap-1.5" data-testid="select-task-priority">
+            <SelectTrigger className="h-8 w-auto min-w-[70px] rounded-full bg-muted border-0 text-muted-foreground text-[13px] px-3 gap-1.5" data-testid="select-task-priority">
               <Flag className={`h-3 w-3 ${PRIORITY_FLAG_COLORS[priority]}`} />
               <SelectValue />
             </SelectTrigger>
@@ -160,7 +160,7 @@ export function TaskDialog({
               <Calendar className="h-3 w-3" />{dueDate}<X className="h-3 w-3 ml-1 opacity-60" />
             </button>
           ) : (
-            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-8 w-auto rounded-full bg-white/[0.08] border-0 text-white/60 text-[13px] px-3" data-testid="input-task-due-date" />
+            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-8 w-auto rounded-full bg-muted border-0 text-muted-foreground text-[13px] px-3" data-testid="input-task-due-date" />
           )}
         </div>
       )}
@@ -256,14 +256,14 @@ export function TaskDialog({
       <div className="fixed inset-0 z-50" data-testid="dialog-add-task">
         <div className="absolute inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
         <div
-          className="absolute bottom-0 left-0 right-0 rounded-t-2xl flex flex-col max-h-[85vh]"
-          style={{ backgroundColor: "#1C1C1E", fontFamily: "-apple-system, 'SF Pro Text', system-ui, sans-serif" }}
+          className="absolute bottom-0 left-0 right-0 rounded-t-2xl flex flex-col max-h-[85vh] bg-background"
+          style={{ fontFamily: "-apple-system, 'SF Pro Text', system-ui, sans-serif" }}
         >
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
-            <button onClick={() => onOpenChange(false)} className="text-white/50 text-[15px]" data-testid="button-cancel-task">
+            <button onClick={() => onOpenChange(false)} className="text-muted-foreground text-[15px]" data-testid="button-cancel-task">
               Anuluj
             </button>
-            <span className="text-white font-semibold text-[15px]">Nowe zadanie</span>
+            <span className="text-foreground font-semibold text-[15px]">Nowe zadanie</span>
             <button
               onClick={handleSubmit}
               disabled={!title.trim() || createTask.isPending}

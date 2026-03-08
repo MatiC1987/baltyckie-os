@@ -1022,15 +1022,10 @@ export function TasksCore() {
           <SwipeableTaskRow
             taskId={t.id}
             onSwipeLeft={() => {
-              setSelectedTasks(prev => {
-                const next = new Set(prev);
-                next.has(t.id) ? next.delete(t.id) : next.add(t.id);
-                return next;
-              });
-              setMultiSelectMode(true);
+              setSwipeWhenTaskId(t.id);
             }}
             onSwipeRight={() => {
-              setSwipeWhenTaskId(t.id);
+              toggleComplete.mutate(t);
             }}
           >
             {taskRow}
@@ -1473,7 +1468,7 @@ export function TasksCore() {
   );
 
   return (
-    <div className={`flex h-screen ${isMobile ? 'tasks-mobile' : ''}`} style={{ '--tasks-font-size': `${fontSize}px` } as React.CSSProperties} data-testid="page-tasks">
+    <div className="flex h-screen" style={{ '--tasks-font-size': `${fontSize}px` } as React.CSSProperties} data-testid="page-tasks">
       <DndContext sensors={sensors} collisionDetection={customCollisionDetection} onDragStart={handleMainDragStart} onDragEnd={handleMainDragEnd}>
       {isMobile && (
         <div
@@ -1484,11 +1479,21 @@ export function TasksCore() {
       )}
       {isMobile ? (
         <aside
-          className={`fixed inset-0 z-50 shrink-0 flex flex-col overflow-hidden bg-black transition-transform duration-250 ease-out ${
+          className={`fixed inset-0 z-50 shrink-0 flex flex-col overflow-hidden bg-background transition-transform duration-250 ease-out ${
             sidebarCollapsed ? "-translate-x-full" : "translate-x-0"
           }`}
           data-testid="tasks-sidebar"
         >
+          <div className="flex items-center justify-between px-5 pt-[max(env(safe-area-inset-top),16px)] pb-2">
+            <h1 className="text-xl font-bold text-foreground" data-testid="text-sidebar-title">Zadania</h1>
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-close-sidebar"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
           <TaskSidebar
             tasks={tasks}
             projects={projects}
@@ -1514,17 +1519,14 @@ export function TasksCore() {
             onRenameArea={handleSidebarAreaRename}
             onDeleteArea={handleSidebarAreaDelete}
           />
-          {!isMobile && (
-            <>
-              <TaskProductivityDashboard tasks={tasks} />
-              <SidebarFooter
-                onAddProject={() => setAddProjectOpen(true)}
-                onAddArea={() => setAddAreaOpen(true)}
-                onOpenSettings={() => setSettingsOpen(true)}
-                onLogout={onLogout}
-              />
-            </>
-          )}
+          <div className="pb-[env(safe-area-inset-bottom)]">
+            <SidebarFooter
+              onAddProject={() => setAddProjectOpen(true)}
+              onAddArea={() => setAddAreaOpen(true)}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onLogout={onLogout}
+            />
+          </div>
         </aside>
       ) : (
         !sidebarCollapsed && (
@@ -1567,8 +1569,8 @@ export function TasksCore() {
         )
       )}
 
-      <main className={`flex-1 flex flex-col overflow-hidden relative ${isMobile ? "bg-black" : ""}`} data-testid="tasks-main">
-        <div className={`flex items-center gap-3 ${isMobile ? "px-3 py-2 border-b border-white/[0.06]" : "px-4 py-2 border-b border-border/30"}`}>
+      <main className="flex-1 flex flex-col overflow-hidden relative bg-background" data-testid="tasks-main">
+        <div className={`flex items-center gap-3 ${isMobile ? "px-3 py-2 border-b border-border/40" : "px-4 py-2 border-b border-border/30"}`}>
           {isMobile && (
             <button onClick={() => setSidebarCollapsed(false)} className="p-1.5 -ml-1 text-blue-400" data-testid="button-mobile-menu">
               <ChevronLeft className="h-6 w-6" />
@@ -2046,7 +2048,7 @@ export function TasksCore() {
                 <button
                   className="flex items-center justify-center h-14 w-14 rounded-full bg-blue-500 text-white shadow-xl hover:bg-blue-600 transition-colors"
                   onClick={() => setAddTaskOpen(true)}
-                  data-testid="button-fab-add"
+                  data-testid="fab-add-task"
                 >
                   <Plus className="h-6 w-6" />
                 </button>

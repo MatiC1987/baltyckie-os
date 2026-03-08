@@ -733,20 +733,20 @@ aside[data-sidebar-fs]::after {
   right: 0;
   left: 0;
   justify-content: flex-end;
-  background: #007AFF;
+  background: #3b82f6;
 }
 
 .task-swipe-bg-right {
   left: 0;
   right: 0;
   justify-content: flex-start;
-  background: #FFD43B;
+  background: #22c55e;
 }
 
 .task-swipe-content {
   position: relative;
   z-index: 1;
-  background: black;
+  background: hsl(var(--background));
   will-change: transform;
 }
 
@@ -756,21 +756,6 @@ aside[data-sidebar-fs]::after {
   transition: transform 300ms ease, opacity 300ms ease;
 }
 
-.tasks-mobile {
-  --tasks-bg: #000000;
-  --tasks-card: #1C1C1E;
-  --tasks-popup: #2C2C2E;
-  --tasks-text: #FFFFFF;
-  --tasks-text-secondary: rgba(255, 255, 255, 0.6);
-  --tasks-text-muted: rgba(255, 255, 255, 0.35);
-  --tasks-separator: rgba(255, 255, 255, 0.06);
-  font-family: -apple-system, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-
-.tasks-mobile .task-row {
-  border-color: var(--tasks-separator);
-}
 
 .task-view-transition {
   animation: taskViewFadeIn 150ms ease-out;

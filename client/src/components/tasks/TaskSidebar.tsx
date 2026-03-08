@@ -527,12 +527,12 @@ export const TaskSidebar = memo(function TaskSidebar({
   };
 
   return (
-    <div className={`flex-1 overflow-y-auto ${isMobile ? "px-5 pt-[max(env(safe-area-inset-top),16px)] pb-4" : "p-3"} space-y-0.5`} style={{ fontSize: 'var(--tasks-font-size, 14px)' }} data-testid="tasks-sidebar-content">
+    <div className={`flex-1 overflow-y-auto ${isMobile ? "px-5 pb-4" : "p-3"} space-y-0.5`} style={{ fontSize: 'var(--tasks-font-size, 14px)' }} data-testid="tasks-sidebar-content">
       <button
         onClick={onOpenQuickFind}
         className={`flex items-center justify-center gap-2 w-full mb-4 min-h-[40px] transition-colors ${
           isMobile
-            ? "rounded-xl bg-white/[0.08] text-white/40 text-[15px] py-2"
+            ? "rounded-xl bg-muted/40 text-muted-foreground/60 text-[15px] py-2"
             : "rounded-lg bg-muted/40 hover:bg-muted/60 text-muted-foreground/60 text-[13px] px-3 py-1.5"
         }`}
         data-testid="sidebar-quick-find"
@@ -551,14 +551,14 @@ export const TaskSidebar = memo(function TaskSidebar({
               onClick={() => onViewChange(sv.view)}
               className={`flex items-center w-full text-left transition-all duration-150 ${
                 isMobile
-                  ? `gap-3.5 px-1 py-[10px] min-h-[44px] rounded-lg ${active ? "text-white font-medium" : "text-white/80"}`
+                  ? `gap-3.5 px-1 py-2.5 min-h-[48px] rounded-lg ${active ? "text-foreground font-medium" : "text-foreground/80"}`
                   : `gap-2 px-2.5 py-[3px] rounded-md ${active ? "bg-gradient-to-r from-primary/8 to-primary/3 text-foreground font-medium shadow-sm" : "hover:bg-muted/30 text-foreground/80"}`
               }`}
               style={{ fontSize: isMobile ? '17px' : 'var(--tasks-font-size, 13px)' }}
               data-testid={`button-view-${sv.key}`}
             >
               {isMobile ? (
-                <sv.icon className="h-[22px] w-[22px] shrink-0" style={{ color: sv.color, ...(sv.key === "today" || sv.key === "logbook" ? { fill: sv.color } : {}) }} />
+                <sv.icon className="h-5 w-5 shrink-0" style={{ color: sv.color, ...(sv.key === "today" || sv.key === "logbook" ? { fill: sv.color } : {}) }} />
               ) : (
                 <div className={`h-5 w-5 rounded flex items-center justify-center shrink-0 ${active ? "" : "bg-muted/40"}`} style={active ? { backgroundColor: `${sv.color}20` } : undefined}>
                   <sv.icon className="h-3 w-3" style={{ color: sv.color }} />
@@ -567,7 +567,7 @@ export const TaskSidebar = memo(function TaskSidebar({
               <span className="flex-1">{sv.label}</span>
               {sv.showCount && count > 0 && (
                 <span
-                  className={`tabular-nums font-medium ${isMobile ? "text-[15px] text-white/35" : "text-[11px] min-w-[18px] text-center text-muted-foreground/70"}`}
+                  className={`tabular-nums font-medium ${isMobile ? "text-[15px] text-muted-foreground/60" : "text-[11px] min-w-[18px] text-center text-muted-foreground/70"}`}
                   data-testid={`badge-count-${sv.key}`}
                 >
                   {count}
@@ -579,7 +579,7 @@ export const TaskSidebar = memo(function TaskSidebar({
       })}
 
       {(areas.length > 0 || ungroupedProjects.length > 0) && (
-        <div className={`mt-4 mb-1 mx-1 border-t ${isMobile ? "border-white/[0.06]" : "border-border/20"}`} />
+        <div className={`mt-4 mb-1 mx-1 border-t ${isMobile ? "border-border/40" : "border-border/20"}`} />
       )}
 
       <SortableContext items={areas.map(a => `sortable-area-${a}`)} strategy={verticalListSortingStrategy}>
@@ -599,7 +599,7 @@ export const TaskSidebar = memo(function TaskSidebar({
                     tabIndex={0}
                     className={`flex items-center w-full text-left mt-3 mb-0 rounded-md cursor-pointer group/area ${
                       isMobile
-                        ? `gap-3 px-1 py-[10px] min-h-[36px] ${areaActive ? "text-white" : "text-white/70"}`
+                        ? `gap-3 px-1 py-2.5 min-h-[48px] ${areaActive ? "text-foreground" : "text-foreground/70"}`
                         : `gap-2 px-2.5 py-[2px] ${areaActive ? "bg-gradient-to-r from-primary/8 to-primary/3" : "hover:bg-muted/30"}`
                     }`}
                     onClick={isRenamingThisArea ? undefined : () => onViewChange({ area })}

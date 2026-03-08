@@ -57,7 +57,7 @@ export const TaskRow = memo(function TaskRow({
   if (isMobile) {
     return (
       <div
-        className={`task-row flex items-center gap-2.5 px-4 py-[10px] cursor-pointer transition-colors duration-100 border-b border-white/[0.06] ${
+        className={`task-row flex items-center gap-2.5 px-4 py-[10px] cursor-pointer transition-colors duration-100 border-b border-border/40 ${
           isSelected ? "bg-amber-500/10" : ""
         }`}
         style={{ paddingLeft: `${16 + indent * 24}px` }}
@@ -72,10 +72,20 @@ export const TaskRow = memo(function TaskRow({
           />
         )}
 
+        <div className="shrink-0 flex items-center justify-center w-[40px] h-[40px] -ml-1.5">
+          <TaskCheckbox
+            checked={!!task.completed}
+            priority={task.priority || "BRAK"}
+            onToggle={handleToggle}
+            size={22}
+            data-testid={`checkbox-task-${task.id}`}
+          />
+        </div>
+
         {hasChildren && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggleExpand(task.id); }}
-            className="shrink-0 text-white/30 p-0.5 -ml-0.5"
+            className="shrink-0 text-muted-foreground p-0.5 -ml-0.5"
             data-testid={`button-expand-${task.id}`}
           >
             {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -83,13 +93,13 @@ export const TaskRow = memo(function TaskRow({
         )}
 
         <div className="flex-1 min-w-0">
-          <div className={`text-[15px] leading-tight flex items-center gap-1.5 ${task.completed || isLogbook ? "line-through text-white/30" : "text-white"}`}>
+          <div className={`text-[15px] leading-tight flex items-center gap-1.5 ${task.completed || isLogbook ? "line-through text-muted-foreground" : "text-foreground"}`}>
             {isTaggedForToday && (
               <Star className="h-3 w-3 text-amber-400 fill-amber-400 shrink-0" />
             )}
             <span className="truncate">{task.title}</span>
             {isRecurring && (
-              <RefreshCw className="h-3 w-3 text-white/25 shrink-0" />
+              <RefreshCw className="h-3 w-3 text-muted-foreground/60 shrink-0" />
             )}
             {isEvening && (
               <Moon className="h-3 w-3 text-indigo-400/50 shrink-0" data-testid={`icon-evening-${task.id}`} />
@@ -99,25 +109,15 @@ export const TaskRow = memo(function TaskRow({
             )}
           </div>
           {task.notes && (
-            <div className="text-[11px] text-white/25 mt-0.5 truncate leading-tight" data-testid={`text-task-notes-${task.id}`}>
+            <div className="text-[11px] text-muted-foreground/60 mt-0.5 truncate leading-tight" data-testid={`text-task-notes-${task.id}`}>
               {task.notes}
             </div>
           )}
           {showProjectBar && project && (
-            <div className="text-[12px] text-white/35 mt-0.5 truncate">
+            <div className="text-[12px] text-muted-foreground/60 mt-0.5 truncate">
               {project.name}
             </div>
           )}
-        </div>
-
-        <div className="shrink-0 flex items-center justify-center w-[40px] h-[40px] -mr-1.5">
-          <TaskCheckbox
-            checked={!!task.completed}
-            priority={task.priority || "BRAK"}
-            onToggle={handleToggle}
-            size={22}
-            data-testid={`checkbox-task-${task.id}`}
-          />
         </div>
       </div>
     );
@@ -273,15 +273,15 @@ export function SwipeableTaskRow({ taskId, children, onSwipeLeft, onSwipeRight }
   return (
     <div className="task-swipe-container" data-testid={`swipeable-task-${taskId}`}>
       {translateX < 0 && (
-        <div className="task-swipe-bg task-swipe-bg-left">
-          <Check className="h-5 w-5" />
-          <span>Zaznacz</span>
+        <div className="task-swipe-bg task-swipe-bg-left" style={{ backgroundColor: "#3b82f6" }}>
+          <CalendarDays className="h-5 w-5" />
+          <span>Kiedy</span>
         </div>
       )}
       {translateX > 0 && (
-        <div className="task-swipe-bg task-swipe-bg-right" style={{ color: "#000" }}>
-          <CalendarDays className="h-5 w-5" />
-          <span>Kiedy</span>
+        <div className="task-swipe-bg task-swipe-bg-right" style={{ backgroundColor: "#22c55e" }}>
+          <Check className="h-5 w-5" />
+          <span>Ukończ</span>
         </div>
       )}
       <div

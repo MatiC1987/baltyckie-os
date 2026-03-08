@@ -149,7 +149,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
       animate={{ x: panelTranslateX || 0, opacity: panelTranslateX > 0 ? 1 - panelTranslateX / window.innerWidth * 0.5 : 1 }}
       exit={{ x: 400, opacity: 0 }}
       transition={panelSwiping ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
-      className={`${isMobile ? "fixed inset-0 z-50 w-full" : "w-[400px]"} shrink-0 ${isMobile ? "" : "border-l"} ${isMobile ? "bg-black" : "bg-background"} flex flex-col overflow-hidden`}
+      className={`${isMobile ? "fixed inset-0 z-50 w-full" : "w-[400px]"} shrink-0 ${isMobile ? "" : "border-l"} bg-background flex flex-col overflow-hidden`}
       style={isMobile ? { fontFamily: "-apple-system, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif", willChange: "transform" } : undefined}
       onTouchStart={handlePanelTouchStart}
       onTouchMove={handlePanelTouchMove}
@@ -164,13 +164,13 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           <div className="flex-1" />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-white/60"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground"
             data-testid="button-detail-more"
           >
             <MoreHorizontal className="h-5 w-5" />
           </button>
           {mobileMenuOpen && (
-            <div className="absolute right-4 top-14 z-50 rounded-xl py-2 min-w-[160px]" style={{ backgroundColor: "#2C2C2E" }}>
+            <div className="absolute right-4 top-14 z-50 rounded-xl py-2 min-w-[160px] bg-muted border border-border/40">
               <button
                 className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-400"
                 onClick={() => { setMobileMenuOpen(false); setDeleteConfirm(true); }}
@@ -215,7 +215,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
               onBlur={() => {
                 if (title.trim() && title !== task.title) onUpdate({ title: title.trim() });
               }}
-              className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-lg font-semibold h-auto py-0 leading-snug ${isMobile ? "text-[17px] text-white placeholder:text-white/30" : ""}`}
+              className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-lg font-semibold h-auto py-0 leading-snug ${isMobile ? "text-[17px] text-foreground placeholder:text-muted-foreground/50" : ""}`}
               data-testid="input-detail-title"
             />
           </div>
@@ -229,7 +229,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
               if (notes !== (task.notes || "")) onUpdate({ notes });
             }}
             placeholder={isMobile ? "Notes" : "Notatki..."}
-            className={`resize-none text-sm min-h-[80px] ${isMobile ? "text-[15px] bg-transparent border-0 text-white/80 placeholder:text-white/25 rounded-none focus-visible:ring-0" : "bg-muted/5 border-border/30 rounded-lg"}`}
+            className={`resize-none text-sm min-h-[80px] ${isMobile ? "text-[15px] bg-transparent border-0 text-foreground/80 placeholder:text-muted-foreground/40 rounded-none focus-visible:ring-0" : "bg-muted/5 border-border/30 rounded-lg"}`}
             data-testid="textarea-detail-notes"
           />
         </div>
@@ -242,9 +242,9 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   isMobile ? "rounded-full px-3 py-1.5" : "rounded-lg"
                 } ${
                   task.dueDate
-                    ? isMobile ? "text-white" : "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                    : isMobile ? "text-white/50" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                }`} style={isMobile ? { backgroundColor: task.dueDate ? "#1E6FD9" : "#2C2C2E" } : undefined} data-testid="chip-due-date">
+                    ? isMobile ? "text-foreground bg-blue-500/20 dark:bg-blue-900/30" : "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                    : isMobile ? "text-muted-foreground bg-muted" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                }`} data-testid="chip-due-date">
                   <Calendar className="h-3 w-3" />
                   {task.dueDate ? format(parseISO(task.dueDate), "d MMM", { locale: pl }) : "+ Data"}
                 </button>
@@ -266,13 +266,13 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   isMobile ? "rounded-full px-3 py-1.5" : "rounded-lg"
                 } ${
                   task.deadlineDate
-                    ? isMobile ? "text-white" :
+                    ? isMobile ? (deadlineStatus === "passed" || deadlineStatus === "urgent" ? "text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/40" : "text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-900/30") :
                       deadlineStatus === "passed" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
                     : deadlineStatus === "urgent" ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
                     : deadlineStatus === "warning" ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                     : "bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
-                  : isMobile ? "text-white/50" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                }`} style={isMobile ? { backgroundColor: task.deadlineDate ? (deadlineStatus === "passed" || deadlineStatus === "urgent" ? "#D32F2F" : "#E65100") : "#2C2C2E" } : undefined} data-testid="chip-deadline">
+                  : isMobile ? "text-muted-foreground bg-muted" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                }`} data-testid="chip-deadline">
                   <AlertTriangle className="h-3 w-3" />
                   {task.deadlineDate ? format(parseISO(task.deadlineDate), "d MMM", { locale: pl }) : "+ Deadline"}
                 </button>
@@ -289,7 +289,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
             </Popover>
 
             {task.dueTime && (
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-white" : "rounded-lg bg-muted/30 text-muted-foreground"}`} style={isMobile ? { backgroundColor: "#2C2C2E" } : undefined}>
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-foreground bg-muted" : "rounded-lg bg-muted/30 text-muted-foreground"}`}>
                 <Clock className="h-3 w-3" />
                 {task.dueTime}
               </span>
@@ -301,14 +301,12 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   isMobile ? "rounded-full px-3 py-1.5" : "rounded-lg"
                 } ${
                   task.priority && task.priority !== "BRAK"
-                    ? isMobile ? "text-white" : "bg-opacity-10"
-                    : isMobile ? "text-white/50" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                }`} style={task.priority && task.priority !== "BRAK" ? (isMobile ? {
-                  backgroundColor: PRIORITY_BORDER_COLORS[task.priority],
-                } : {
-                  backgroundColor: `${PRIORITY_BORDER_COLORS[task.priority]}15`,
+                    ? isMobile ? "text-foreground" : "bg-opacity-10"
+                    : isMobile ? "text-muted-foreground bg-muted" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                }`} style={task.priority && task.priority !== "BRAK" ? {
+                  backgroundColor: `${PRIORITY_BORDER_COLORS[task.priority]}${isMobile ? "30" : "15"}`,
                   color: PRIORITY_BORDER_COLORS[task.priority],
-                }) : (isMobile ? { backgroundColor: "#2C2C2E" } : undefined)} data-testid="chip-priority">
+                } : undefined} data-testid="chip-priority">
                   <Flag className="h-3 w-3" />
                   {PRIORITY_LABELS[task.priority || "BRAK"]}
                 </button>
@@ -334,14 +332,12 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   isMobile ? "rounded-full px-3 py-1.5" : "rounded-lg"
                 } ${
                   currentProject
-                    ? isMobile ? "text-white" : ""
-                    : isMobile ? "text-white/50" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                }`} style={currentProject ? (isMobile ? {
-                  backgroundColor: currentProject.color || "#5ADBFA",
-                } : {
-                  backgroundColor: `${currentProject.color || "#5ADBFA"}15`,
+                    ? isMobile ? "text-foreground" : ""
+                    : isMobile ? "text-muted-foreground bg-muted" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                }`} style={currentProject ? {
+                  backgroundColor: `${currentProject.color || "#5ADBFA"}${isMobile ? "30" : "15"}`,
                   color: currentProject.color || "#5ADBFA",
-                }) : (isMobile ? { backgroundColor: "#2C2C2E" } : undefined)} data-testid="chip-project">
+                } : undefined} data-testid="chip-project">
                   <FolderOpen className="h-3 w-3" />
                   {currentProject ? currentProject.name : "+ Projekt"}
                 </button>
@@ -372,9 +368,9 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   isMobile ? "rounded-full px-3 py-1.5" : "rounded-lg"
                 } ${
                   task.area
-                    ? isMobile ? "text-white" : "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
-                    : isMobile ? "text-white/50" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                }`} style={isMobile ? { backgroundColor: task.area ? "#0D7377" : "#2C2C2E" } : undefined} data-testid="chip-area">
+                    ? isMobile ? "text-teal-700 dark:text-teal-300 bg-teal-100 dark:bg-teal-900/30" : "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+                    : isMobile ? "text-muted-foreground bg-muted" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                }`} data-testid="chip-area">
                   <Layers className="h-3 w-3" />
                   {task.area || "+ Przestrzeń"}
                 </button>
@@ -401,7 +397,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
             <EmployeeAssignChip task={task} onUpdate={onUpdate} />
 
             {task.recurring && (
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-white" : "rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"}`} style={isMobile ? { backgroundColor: "#7C3AED" } : undefined}>
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30" : "rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"}`}>
                 <RefreshCw className="h-3 w-3" />
                 {task.recurring}
               </span>
@@ -409,8 +405,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
 
             {task.evening && (
               <button
-                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-white" : "rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"}`}
-                style={isMobile ? { backgroundColor: "#4338CA" } : undefined}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/30" : "rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"}`}
                 onClick={() => onUpdate({ evening: false })}
                 data-testid="chip-evening"
               >
@@ -421,8 +416,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
 
             {task.someday && (
               <button
-                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-white" : "rounded-lg bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"}`}
-                style={isMobile ? { backgroundColor: "#7C3AED" } : undefined}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30" : "rounded-lg bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"}`}
                 onClick={() => onUpdate({ someday: false })}
                 data-testid="chip-someday"
               >
@@ -434,8 +428,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
             {(task.tags || []).map((tag) => (
               <span
                 key={tag}
-                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-white" : `rounded-lg ${getTagColor(tag)}`}`}
-                style={isMobile ? { backgroundColor: "#2C2C2E" } : undefined}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium shrink-0 ${isMobile ? "rounded-full px-3 py-1.5 text-foreground bg-muted" : `rounded-lg ${getTagColor(tag)}`}`}
               >
                 <Tag className="h-3 w-3" />
                 {tag}
@@ -444,12 +437,12 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           </div>
         </div>
 
-        <div className={`border-t mx-6 ${isMobile ? "border-white/[0.06]" : "border-border/30"}`} />
+        <div className={`border-t mx-6 ${isMobile ? "border-border/40" : "border-border/30"}`} />
 
         <div className={`${isMobile ? "px-5" : "px-6"} py-4 space-y-4`}>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Kiedy (When)</Label>
+              <Label className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Kiedy (When)</Label>
               <Input
                 type="date"
                 value={task.dueDate || ""}
@@ -459,7 +452,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
               />
             </div>
             <div>
-              <Label className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Godzina</Label>
+              <Label className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Godzina</Label>
               <Input
                 type="time"
                 value={task.dueTime || ""}
@@ -472,7 +465,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Deadline</Label>
+              <Label className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Deadline</Label>
               <Input
                 type="date"
                 value={task.deadlineDate || ""}
@@ -482,7 +475,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
               />
             </div>
             <div>
-              <Label className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Przypomnienie</Label>
+              <Label className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Przypomnienie</Label>
               <Input
                 type="date"
                 value={task.reminderDate || ""}
@@ -495,7 +488,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
 
           {projectSections.length > 0 && (
             <div>
-              <Label className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Sekcja</Label>
+              <Label className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Sekcja</Label>
               <Select
                 value={task.sectionId ? String(task.sectionId) : "none"}
                 onValueChange={(v) => onUpdate({ sectionId: v === "none" ? null : Number(v) })}
@@ -516,7 +509,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           )}
 
           <div>
-            <Label className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Tagi (oddzielone przecinkami)</Label>
+            <Label className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Tagi (oddzielone przecinkami)</Label>
             <Input
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
@@ -528,7 +521,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           </div>
 
           <div>
-            <Label className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Powtarzanie</Label>
+            <Label className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Powtarzanie</Label>
             <Select
               value={task.recurring || "none"}
               onValueChange={(v) => onUpdate({ recurring: v === "none" ? null : v })}
@@ -549,7 +542,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Moon className="h-3.5 w-3.5 text-indigo-400" />
-              <span className={`text-xs ${isMobile ? "text-white/60" : "text-muted-foreground"}`}>Wieczorem</span>
+              <span className={`text-xs ${isMobile ? "text-muted-foreground" : "text-muted-foreground"}`}>Wieczorem</span>
             </div>
             <Switch
               checked={!!task.evening}
@@ -561,7 +554,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-              <span className={`text-xs ${isMobile ? "text-white/60" : "text-muted-foreground"}`}>Kiedyś</span>
+              <span className={`text-xs ${isMobile ? "text-muted-foreground" : "text-muted-foreground"}`}>Kiedyś</span>
             </div>
             <Switch
               checked={!!task.someday}
@@ -571,12 +564,12 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           </div>
         </div>
 
-        <div className={`border-t mx-6 ${isMobile ? "border-white/[0.06]" : "border-border/30"}`} />
+        <div className={`border-t mx-6 ${isMobile ? "border-border/40" : "border-border/30"}`} />
 
         <div className={`${isMobile ? "px-5" : "px-6"} py-4`}>
           <div className="flex items-center justify-between gap-2 mb-2">
-            <span className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Lista kontrolna</span>
-            <span className={`text-[10px] tabular-nums ${isMobile ? "text-white/40" : "text-muted-foreground"}`}>
+            <span className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Lista kontrolna</span>
+            <span className={`text-[10px] tabular-nums ${isMobile ? "text-muted-foreground" : "text-muted-foreground"}`}>
               {checklist.filter((c) => c.completed).length}/{checklist.length}
             </span>
           </div>
@@ -598,7 +591,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   size={16}
                   data-testid={`checkbox-checklist-${item.id}`}
                 />
-                <span className={`text-xs flex-1 ${isMobile ? "text-[14px]" : ""} ${item.completed ? `line-through ${isMobile ? "text-white/30" : "text-muted-foreground"}` : isMobile ? "text-white/80" : ""}`}>{item.title}</span>
+                <span className={`text-xs flex-1 ${isMobile ? "text-[14px]" : ""} ${item.completed ? `line-through text-muted-foreground` : isMobile ? "text-foreground/80" : ""}`}>{item.title}</span>
                 <button
                   onClick={() => deleteChecklistItem.mutate(item.id)}
                   className="invisible group-hover:visible p-0.5 rounded hover:bg-muted/50 text-muted-foreground"
@@ -609,7 +602,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
               </div>
             ))}
           <div className="flex items-center gap-2 mt-1">
-            <Plus className={`h-3.5 w-3.5 shrink-0 ${isMobile ? "text-white/25" : "text-muted-foreground/40"}`} />
+            <Plus className={`h-3.5 w-3.5 shrink-0 ${isMobile ? "text-muted-foreground/40" : "text-muted-foreground/40"}`} />
             <Input
               value={newChecklistTitle}
               onChange={(e) => setNewChecklistTitle(e.target.value)}
@@ -620,18 +613,18 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                 }
               }}
               placeholder={isMobile ? "Add item" : "Dodaj element..."}
-              className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-xs h-auto py-1 ${isMobile ? "text-[15px] text-white placeholder:text-white/25" : ""}`}
+              className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-xs h-auto py-1 ${isMobile ? "text-[15px] text-foreground placeholder:text-muted-foreground/40" : ""}`}
               data-testid="input-checklist-new"
             />
           </div>
         </div>
 
-        <div className={`border-t mx-6 ${isMobile ? "border-white/[0.06]" : "border-border/30"}`} />
+        <div className={`border-t mx-6 ${isMobile ? "border-border/40" : "border-border/30"}`} />
 
         <div className={`${isMobile ? "px-5" : "px-6"} py-4`}>
           <div className="flex items-center justify-between gap-2 mb-2">
-            <span className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>Podzadania</span>
-            <span className={`text-[10px] tabular-nums ${isMobile ? "text-white/40" : "text-muted-foreground"}`}>
+            <span className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>Podzadania</span>
+            <span className={`text-[10px] tabular-nums ${isMobile ? "text-muted-foreground" : "text-muted-foreground"}`}>
               {childTasks.filter((c) => c.completed).length}/{childTasks.length}
             </span>
           </div>
@@ -644,7 +637,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
                   onToggle={() => {}}
                   size={16}
                 />
-                <span className={`text-xs flex-1 ${isMobile ? "text-[14px]" : ""} ${child.completed ? `line-through ${isMobile ? "text-white/30" : "text-muted-foreground"}` : isMobile ? "text-white/80" : ""}`}>{child.title}</span>
+                <span className={`text-xs flex-1 ${isMobile ? "text-[14px]" : ""} ${child.completed ? `line-through text-muted-foreground` : isMobile ? "text-foreground/80" : ""}`}>{child.title}</span>
               </div>
             ))}
           <div className="flex items-center gap-2 mt-1">
@@ -665,11 +658,11 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           </div>
         </div>
 
-        <div className={`border-t mx-6 ${isMobile ? "border-white/[0.06]" : "border-border/30"}`} />
+        <div className={`border-t mx-6 ${isMobile ? "border-border/40" : "border-border/30"}`} />
 
         <div className={`${isMobile ? "px-5" : "px-6"} py-4`}>
           <div className="flex items-center justify-between gap-2 mb-2">
-            <span className={`text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1 ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>
+            <span className={`text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1 ${isMobile ? "text-muted-foreground/50" : "text-muted-foreground/50"}`}>
               <Users className="h-3 w-3" />
               Udostępnij
             </span>
@@ -718,13 +711,13 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
           </Select>
         </div>
 
-        <div className={`border-t mx-6 ${isMobile ? "border-white/[0.06]" : "border-border/30"}`} />
+        <div className={`border-t mx-6 ${isMobile ? "border-border/40" : "border-border/30"}`} />
 
         <TaskCommentsSection taskId={task.id} isMobile={isMobile} />
 
         {task.createdAt && (
           <div className={`${isMobile ? "px-5" : "px-6"} pb-4`}>
-            <p className={`text-[10px] ${isMobile ? "text-white/20" : "text-muted-foreground/30"}`}>
+            <p className={`text-[10px] ${isMobile ? "text-muted-foreground/30" : "text-muted-foreground/30"}`}>
               Utworzono: {format(new Date(task.createdAt), "d MMM yyyy, HH:mm", { locale: pl })}
             </p>
           </div>
@@ -732,7 +725,7 @@ export const TaskDetailPanel = memo(function TaskDetailPanel({
 
         {isMobile && (
           <>
-            <div className="border-t border-white/[0.06] mx-5" />
+            <div className="border-t border-border/40 mx-5" />
             <div className="px-5 py-6">
               <button
                 onClick={() => setDeleteConfirm(true)}
@@ -867,21 +860,21 @@ function TaskCommentsSection({ taskId, isMobile }: { taskId: number; isMobile: b
   return (
     <div className={`${isMobile ? "px-5" : "px-6"} py-4`}>
       <div className="flex items-center gap-1.5 mb-2">
-        <MessageSquare className={`h-3 w-3 ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`} />
-        <span className={`text-[10px] uppercase tracking-wider font-semibold ${isMobile ? "text-white/30" : "text-muted-foreground/50"}`}>
+        <MessageSquare className={`h-3 w-3 ${isMobile ? "text-muted-foreground/50" : "text-muted-foreground/50"}`} />
+        <span className={"text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/50"}>
           Komentarze ({comments.length})
         </span>
       </div>
 
       {comments.map((c) => (
-        <div key={c.id} className={`py-2 group ${isMobile ? "border-b border-white/[0.04]" : "border-b border-border/20"}`}>
+        <div key={c.id} className={`py-2 group ${isMobile ? "border-b border-border/20" : "border-b border-border/20"}`}>
           <div className="flex items-center justify-between gap-2 mb-0.5">
-            <span className={`text-[11px] font-medium ${isMobile ? "text-white/60" : "text-muted-foreground"}`}>
+            <span className={`text-[11px] font-medium ${isMobile ? "text-muted-foreground" : "text-muted-foreground"}`}>
               {c.userName || "User"}
             </span>
             <div className="flex items-center gap-1">
               {c.createdAt && (
-                <span className={`text-[10px] ${isMobile ? "text-white/20" : "text-muted-foreground/40"}`}>
+                <span className={`text-[10px] text-muted-foreground/40`}>
                   {format(new Date(c.createdAt), "d MMM HH:mm", { locale: pl })}
                 </span>
               )}
@@ -894,7 +887,7 @@ function TaskCommentsSection({ taskId, isMobile }: { taskId: number; isMobile: b
               </button>
             </div>
           </div>
-          <p className={`text-xs whitespace-pre-wrap ${isMobile ? "text-white/80" : ""}`} data-testid={`text-comment-${c.id}`}>
+          <p className={`text-xs whitespace-pre-wrap ${isMobile ? "text-foreground/80" : ""}`} data-testid={`text-comment-${c.id}`}>
             {c.content}
           </p>
         </div>
@@ -911,7 +904,7 @@ function TaskCommentsSection({ taskId, isMobile }: { taskId: number; isMobile: b
             }
           }}
           placeholder="Dodaj komentarz..."
-          className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-xs h-auto py-1 flex-1 ${isMobile ? "text-[15px] text-white placeholder:text-white/25" : ""}`}
+          className={`border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 text-xs h-auto py-1 flex-1 ${isMobile ? "text-[15px] text-foreground placeholder:text-muted-foreground/40" : ""}`}
           data-testid="input-comment-new"
         />
         <Button
