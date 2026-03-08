@@ -46,6 +46,7 @@ const TimeClock = lazy(() => import("@/pages/TimeClock"));
 const TimeAdmin = lazy(() => import("@/pages/TimeAdmin"));
 const PracownicyHub = lazy(() => import("@/pages/PracownicyHub"));
 const BankStatementImport = lazy(() => import("@/pages/BankStatementImport"));
+const BankConnections = lazy(() => import("@/pages/BankConnections"));
 const SprawySadowe = lazy(() => import("@/pages/SprawySadowe"));
 
 function LazyFallback() {
@@ -224,6 +225,7 @@ function AuthenticatedRouter() {
       <Route path="/v2/realizacja" component={() => <Redirect to="/v2/przychody" />} />
       <Route path="/rcp/admin" component={() => <AuthenticatedRoute component={TimeAdmin} />} />
       <Route path="/import-bankowy" component={() => <AuthenticatedRoute component={BankStatementImport} />} />
+      <Route path="/bank-connections" component={() => <AuthenticatedRoute component={BankConnections} />} />
       <Route path="/sprawy-sadowe" component={() => <AuthenticatedRoute component={SprawySadowe} />} />
 
       <Route path="/locations" component={() => <NavRedirect to="/apartments" tab="lokalizacje" />} />

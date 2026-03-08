@@ -72,6 +72,7 @@ import {
   payrollEntries, PayrollEntry, InsertPayrollEntry,
   checkoutSettlements, CheckoutSettlement, InsertCheckoutSettlement,
   dashboardWidgetConfigs,
+  gocardlessConnections, GocardlessConnection, InsertGocardlessConnection,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, type SQL } from "drizzle-orm";
@@ -507,6 +508,12 @@ export interface IStorage {
   createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
   deletePushSubscription(endpoint: string): Promise<void>;
   deletePushSubscriptionById(id: number): Promise<void>;
+
+  getGocardlessConnections(): Promise<GocardlessConnection[]>;
+  getGocardlessConnection(id: number): Promise<GocardlessConnection | undefined>;
+  createGocardlessConnection(data: InsertGocardlessConnection): Promise<GocardlessConnection>;
+  updateGocardlessConnection(id: number, data: Partial<InsertGocardlessConnection>): Promise<GocardlessConnection>;
+  deleteGocardlessConnection(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2405,6 +2412,29 @@ export class DatabaseStorage implements IStorage {
 
   async deletePushSubscriptionById(id: number): Promise<void> {
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, id));
+  }
+
+  async getGocardlessConnections(): Promise<GocardlessConnection[]> {
+    return await db.select().from(gocardlessConnections).orderBy(desc(gocardlessConnections.createdAt));
+  }
+
+  async getGocardlessConnection(id: number): Promise<GocardlessConnection | undefined> {
+    const [conn] = await db.select().from(gocardlessConnections).where(eq(gocardlessConnections.id, id));
+    return conn;
+  }
+
+  async createGocardlessConnection(data: InsertGocardlessConnection): Promise<GocardlessConnection> {
+    const [created] = await db.insert(gocardlessConnections).values(data).returning();
+    return created;
+  }
+
+  async updateGocardlessConnection(id: number, data: Partial<InsertGocardlessConnection>): Promise<GocardlessConnection> {
+    const [updated] = await db.update(gocardlessConnections).set(data).where(eq(gocardlessConnections.id, id)).returning();
+    return updated;
+  }
+
+  async deleteGocardlessConnection(id: number): Promise<void> {
+    await db.delete(gocardlessConnections).where(eq(gocardlessConnections.id, id));
   }
 }
 

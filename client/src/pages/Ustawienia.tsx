@@ -79,6 +79,7 @@ const NARZEDZIA_ITEMS: SettingsItem[] = [
   { href: "/reports", label: "Raporty PDF", description: "Generowanie raportów miesięcznych", icon: FileDown },
   { href: "/import-export", label: "Import i backup danych", description: "Import Excel, eksport danych, kopie zapasowe", icon: ArrowUpDown },
   { href: "/activity-log", label: "Historia zmian", description: "Dziennik aktywności użytkowników", icon: History },
+  { href: "/bank-connections", label: "Połączenia bankowe", description: "Automatyczny import transakcji z banków", icon: CreditCard },
 ];
 
 function SettingsGrid({ title, items }: { title: string; items: SettingsItem[] }) {

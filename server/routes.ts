@@ -14,6 +14,7 @@ import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { testConnection, fetchReservations } from "./hotres";
+import * as gocardless from "./gocardless";
 import { execSync } from "child_process";
 import os from "os";
 import OpenAI from "openai";
@@ -11988,6 +11989,299 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       res.json({ success: true, results });
     } catch (err: any) {
       console.error('[BOOTSTRAP]', err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== GOCARDLESS — INTEGRACJA BANKOWA ====================
+
+  app.get("/api/gocardless/status", isAuthenticated, async (_req, res) => {
+    res.json({ configured: gocardless.isConfigured() });
+  });
+
+  app.get("/api/gocardless/institutions", isAuthenticated, async (_req, res) => {
+    try {
+      if (!gocardless.isConfigured()) {
+        return res.status(400).json({ message: "GoCardless nie jest skonfigurowany. Ustaw GOCARDLESS_SECRET_ID i GOCARDLESS_SECRET_KEY." });
+      }
+      const institutions = await gocardless.listInstitutions("pl");
+      res.json(institutions);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gocardless/connect", isAuthenticated, async (req, res) => {
+    try {
+      if (!gocardless.isConfigured()) {
+        return res.status(400).json({ message: "GoCardless nie jest skonfigurowany." });
+      }
+      const { institutionId, institutionName } = req.body;
+      if (!institutionId || !institutionName) {
+        return res.status(400).json({ message: "Brak institutionId lub institutionName" });
+      }
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      const redirectUrl = `${protocol}://${host}/api/gocardless/callback`;
+      const requisition = await gocardless.createRequisition(institutionId, redirectUrl);
+      await storage.createGocardlessConnection({
+        institutionId,
+        institutionName,
+        requisitionId: requisition.id,
+        status: "PENDING",
+      });
+      res.json({ link: requisition.link, requisitionId: requisition.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/gocardless/callback", async (req, res) => {
+    try {
+      const ref = req.query.ref as string;
+      if (!ref) {
+        return res.redirect("/bank-connections?error=brak_ref");
+      }
+      const connections = await storage.getGocardlessConnections();
+      const conn = connections.find(c => c.requisitionId === ref || c.requisitionId.startsWith(ref.substring(0, 8)));
+      if (!conn) {
+        const allConns = await storage.getGocardlessConnections();
+        const pendingConn = allConns.find(c => c.status === "PENDING");
+        if (!pendingConn) {
+          return res.redirect("/bank-connections?error=nie_znaleziono");
+        }
+        const requisition = await gocardless.getRequisition(pendingConn.requisitionId);
+        if (requisition.accounts && requisition.accounts.length > 0) {
+          const gcAccountId = requisition.accounts[0];
+          let iban: string | null = null;
+          try {
+            const details = await gocardless.getAccountDetails(gcAccountId);
+            iban = details.iban || null;
+          } catch (e) {}
+          await storage.updateGocardlessConnection(pendingConn.id, {
+            accountId: gcAccountId,
+            iban,
+            status: "ACTIVE",
+          });
+        } else {
+          await storage.updateGocardlessConnection(pendingConn.id, { status: "ERROR" });
+        }
+        return res.redirect("/bank-connections?success=1");
+      }
+      const requisition = await gocardless.getRequisition(conn.requisitionId);
+      if (requisition.accounts && requisition.accounts.length > 0) {
+        const gcAccountId = requisition.accounts[0];
+        let iban: string | null = null;
+        try {
+          const details = await gocardless.getAccountDetails(gcAccountId);
+          iban = details.iban || null;
+        } catch (e) {}
+        await storage.updateGocardlessConnection(conn.id, {
+          accountId: gcAccountId,
+          iban,
+          status: "ACTIVE",
+        });
+      } else {
+        await storage.updateGocardlessConnection(conn.id, { status: "ERROR" });
+      }
+      res.redirect("/bank-connections?success=1");
+    } catch (err: any) {
+      console.error("[GoCardless callback error]", err);
+      res.redirect("/bank-connections?error=callback_error");
+    }
+  });
+
+  app.get("/api/gocardless/connections", isAuthenticated, async (_req, res) => {
+    try {
+      const connections = await storage.getGocardlessConnections();
+      res.json(connections);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/gocardless/connections/:id", isAuthenticated, async (req, res) => {
+    try {
+      const conn = await storage.getGocardlessConnection(parseInt(req.params.id));
+      if (conn) {
+        try {
+          await gocardless.deleteRequisition(conn.requisitionId);
+        } catch (e) {}
+      }
+      await storage.deleteGocardlessConnection(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gocardless/sync/:connectionId", isAuthenticated, async (req, res) => {
+    try {
+      const connId = parseInt(req.params.connectionId);
+      const conn = await storage.getGocardlessConnection(connId);
+      if (!conn) return res.status(404).json({ message: "Połączenie nie znalezione" });
+      if (!conn.accountId) return res.status(400).json({ message: "Konto nie zostało jeszcze autoryzowane" });
+      if (conn.status !== "ACTIVE") return res.status(400).json({ message: "Połączenie nie jest aktywne" });
+
+      const dateFrom = conn.lastSyncAt
+        ? new Date(conn.lastSyncAt).toISOString().split("T")[0]
+        : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const dateTo = new Date().toISOString().split("T")[0];
+
+      const txData = await gocardless.getAccountTransactions(conn.accountId, dateFrom, dateTo);
+      const bookedTxs = txData.booked || [];
+
+      let imported = 0;
+      let skipped = 0;
+
+      if (bookedTxs.length > 0 && conn.localAccountId) {
+        const txItems = bookedTxs.map(tx => ({
+          date: tx.bookingDate,
+          amount: tx.transactionAmount.amount,
+          description: gocardless.getTransactionDescription(tx),
+        }));
+        const duplicates = await storage.checkDuplicateTransactions(conn.localAccountId, txItems);
+        const dupSet = new Set(duplicates.map(d => `${d.date}|${d.amount}|${d.description}`));
+
+        const newTxs = bookedTxs.filter(tx => {
+          const key = `${tx.bookingDate}|${tx.transactionAmount.amount}|${gocardless.getTransactionDescription(tx)}`;
+          return !dupSet.has(key);
+        });
+
+        if (newTxs.length > 0) {
+          const statement = await storage.createBankStatement({
+            accountId: conn.localAccountId,
+            fileName: `GoCardless-${conn.institutionName}-${dateTo}`,
+            startDate: dateFrom,
+            endDate: dateTo,
+            transactionCount: newTxs.length,
+            status: "ZAIMPORTOWANY",
+          });
+
+          const bulkData = newTxs.map(tx => ({
+            statementId: statement.id,
+            accountId: conn.localAccountId!,
+            date: tx.bookingDate,
+            description: gocardless.getTransactionDescription(tx),
+            amount: tx.transactionAmount.amount,
+            balance: null as string | null,
+            counterparty: gocardless.getTransactionCounterparty(tx) || null,
+            category: null as string | null,
+          }));
+
+          await storage.createBankTransactionsBulk(bulkData);
+          imported = newTxs.length;
+        }
+        skipped = bookedTxs.length - imported;
+      } else if (bookedTxs.length > 0 && !conn.localAccountId) {
+        imported = 0;
+        skipped = bookedTxs.length;
+      }
+
+      await storage.updateGocardlessConnection(connId, {
+        lastSyncAt: new Date(),
+      });
+
+      let balanceInfo = null;
+      try {
+        const balances = await gocardless.getAccountBalances(conn.accountId);
+        if (balances.length > 0) {
+          balanceInfo = {
+            amount: balances[0].balanceAmount.amount,
+            currency: balances[0].balanceAmount.currency,
+            type: balances[0].balanceType,
+          };
+        }
+      } catch (e) {}
+
+      res.json({
+        imported,
+        skipped,
+        total: bookedTxs.length,
+        balance: balanceInfo,
+      });
+    } catch (err: any) {
+      console.error("[GoCardless sync error]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gocardless/sync-all", isAuthenticated, async (_req, res) => {
+    try {
+      const connections = await storage.getGocardlessConnections();
+      const activeConns = connections.filter(c => c.status === "ACTIVE" && c.accountId);
+      const results: { connectionId: number; institutionName: string; imported: number; skipped: number; error?: string }[] = [];
+
+      for (const conn of activeConns) {
+        try {
+          const dateFrom = conn.lastSyncAt
+            ? new Date(conn.lastSyncAt).toISOString().split("T")[0]
+            : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+          const dateTo = new Date().toISOString().split("T")[0];
+
+          const txData = await gocardless.getAccountTransactions(conn.accountId!, dateFrom, dateTo);
+          const bookedTxs = txData.booked || [];
+          let imported = 0;
+
+          if (bookedTxs.length > 0 && conn.localAccountId) {
+            const txItems = bookedTxs.map(tx => ({
+              date: tx.bookingDate,
+              amount: tx.transactionAmount.amount,
+              description: gocardless.getTransactionDescription(tx),
+            }));
+            const duplicates = await storage.checkDuplicateTransactions(conn.localAccountId, txItems);
+            const dupSet = new Set(duplicates.map(d => `${d.date}|${d.amount}|${d.description}`));
+
+            const newTxs = bookedTxs.filter(tx => {
+              const key = `${tx.bookingDate}|${tx.transactionAmount.amount}|${gocardless.getTransactionDescription(tx)}`;
+              return !dupSet.has(key);
+            });
+
+            if (newTxs.length > 0) {
+              const statement = await storage.createBankStatement({
+                accountId: conn.localAccountId,
+                fileName: `GoCardless-${conn.institutionName}-${dateTo}`,
+                startDate: dateFrom,
+                endDate: dateTo,
+                transactionCount: newTxs.length,
+                status: "ZAIMPORTOWANY",
+              });
+
+              const bulkData = newTxs.map(tx => ({
+                statementId: statement.id,
+                accountId: conn.localAccountId!,
+                date: tx.bookingDate,
+                description: gocardless.getTransactionDescription(tx),
+                amount: tx.transactionAmount.amount,
+                balance: null as string | null,
+                counterparty: gocardless.getTransactionCounterparty(tx) || null,
+                category: null as string | null,
+              }));
+
+              await storage.createBankTransactionsBulk(bulkData);
+              imported = newTxs.length;
+            }
+          }
+
+          await storage.updateGocardlessConnection(conn.id, { lastSyncAt: new Date() });
+          results.push({ connectionId: conn.id, institutionName: conn.institutionName, imported, skipped: bookedTxs.length - imported });
+        } catch (err: any) {
+          results.push({ connectionId: conn.id, institutionName: conn.institutionName, imported: 0, skipped: 0, error: err.message });
+        }
+      }
+
+      res.json({ results, totalConnections: activeConns.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/gocardless/connections/:id/link-account", isAuthenticated, async (req, res) => {
+    try {
+      const { localAccountId } = req.body;
+      const conn = await storage.updateGocardlessConnection(parseInt(req.params.id), { localAccountId });
+      res.json(conn);
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });

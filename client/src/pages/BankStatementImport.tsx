@@ -53,8 +53,83 @@ import {
   X,
   Settings2,
   Building2,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
-import type { Account, BankStatement, BankTransaction } from "@shared/schema";
+import { Link } from "wouter";
+import type { Account, BankStatement, BankTransaction, GocardlessConnection } from "@shared/schema";
+
+function AutoSyncBanner() {
+  const { toast } = useToast();
+  const { data: connections = [] } = useQuery<GocardlessConnection[]>({
+    queryKey: ["/api/gocardless/connections"],
+  });
+  const activeConns = connections.filter(c => c.status === "ACTIVE" && c.localAccountId);
+
+  const syncAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/gocardless/sync-all");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const totalImported = data.results.reduce((s: number, r: any) => s + r.imported, 0);
+      toast({
+        title: "Synchronizacja zakończona",
+        description: `Zaimportowano ${totalImported} nowych transakcji z ${data.totalConnections} kont.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-statements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/gocardless/connections"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd synchronizacji", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (activeConns.length === 0) return null;
+
+  return (
+    <Card className="border-primary/20 bg-primary/5" data-testid="card-auto-sync">
+      <CardContent className="p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="rounded-lg bg-primary/10 p-2 shrink-0">
+              <RefreshCw className="h-4 w-4 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Automatyczny import</p>
+              <p className="text-xs text-muted-foreground">
+                {activeConns.length} {activeConns.length === 1 ? "połączone konto" : activeConns.length < 5 ? "połączone konta" : "połączonych kont"}
+                {" — "}
+                {activeConns.map(c => c.institutionName).join(", ")}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              onClick={() => syncAllMutation.mutate()}
+              disabled={syncAllMutation.isPending}
+              data-testid="button-auto-sync"
+            >
+              {syncAllMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-1.5" />
+              )}
+              Pobierz nowe transakcje
+            </Button>
+            <Link href="/bank-connections">
+              <Button variant="ghost" size="sm" data-testid="link-bank-connections">
+                Zarządzaj
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 interface ParsedTransaction {
   date: string;
@@ -436,6 +511,8 @@ export default function BankStatementImport() {
           </div>
         }
       />
+
+      <AutoSyncBanner />
 
       {showPreview && parsedTransactions.length > 0 && balanceImpact && (
         <>

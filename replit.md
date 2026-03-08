@@ -53,7 +53,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **Dashboard:** Refactored into separate widget files in `client/src/components/dashboard/`. Widgets: CompanyBalanceCard, QuickActions, UnpaidArrivalsTab, UpcomingArrivalsTab, UpcomingDeparturesTab, UnpaidSubleasesTab, ExpiringLeasesTab, HrSummaryWidget, RcpSummaryWidget, RecentActivityWidget, BalanceForecastChartWidget.
 *   **Rezerwacje:** Enhanced status badges with icons, batch actions (select-all, status change, delete), saved filters (localStorage), mini timeline for reservation history.
 *   **Podnajem Hub:** Dashboard tab with active contracts, monthly rent, payments, overdue alerts. Expiring contract alerts (60/30/14 days). Tenant payment ranking. Rent timeline.
-*   **Bank Import:** Duplicate detection, categorization rules, balance impact preview, multi-bank CSV (mBank, PKO BP, ING, Santander).
+*   **Bank Import:** Duplicate detection, categorization rules, balance impact preview, multi-bank CSV (mBank, PKO BP, ING, Santander). GoCardless Bank Account Data API integration for automatic transaction fetching (PSD2/PolishAPI). Bank Connections page (`/bank-connections`) for managing GoCardless connections. Auto-sync banner in BankStatementImport page when connections exist.
 *   **Ustawienia:** NIP/REGON checksum validation, config export/import, notification config panel (push/email), settings change history.
 *   **Landing Page:** Animated gradient background, quick panel access buttons, system online indicator.
 *   **Salda:** Person overview cards with mini sparkline trend charts, color-coded balances.
@@ -69,3 +69,4 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **Leaflet + react-leaflet:** Powers interactive map functionalities for GPS location tracking in the RCP module.
 *   **jsonwebtoken + bcryptjs:** Employed for JWT-based authentication in the Recepcja panel.
 *   **web-push:** Push notification delivery with VAPID keys.
+*   **GoCardless Bank Account Data API:** Automatic bank transaction fetching via PSD2/PolishAPI. Module: `server/gocardless.ts`. DB table: `gocardless_connections`. Env vars: `GOCARDLESS_SECRET_ID`, `GOCARDLESS_SECRET_KEY`. Free tier (50 connections).

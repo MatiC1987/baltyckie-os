@@ -1621,3 +1621,19 @@ export const insertLegalCaseEventSchema = createInsertSchema(legalCaseEvents).om
 export type LegalCaseEvent = typeof legalCaseEvents.$inferSelect;
 export type InsertLegalCaseEvent = z.infer<typeof insertLegalCaseEventSchema>;
 
+export const gocardlessConnections = pgTable("gocardless_connections", {
+  id: serial("id").primaryKey(),
+  institutionId: text("institution_id").notNull(),
+  institutionName: text("institution_name").notNull(),
+  requisitionId: text("requisition_id").notNull(),
+  accountId: text("account_id"),
+  localAccountId: integer("local_account_id").references(() => accounts.id),
+  iban: text("iban"),
+  status: text("status").default("PENDING").notNull(),
+  lastSyncAt: timestamp("last_sync_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGocardlessConnectionSchema = createInsertSchema(gocardlessConnections).omit({ id: true, createdAt: true });
+export type GocardlessConnection = typeof gocardlessConnections.$inferSelect;
+export type InsertGocardlessConnection = z.infer<typeof insertGocardlessConnectionSchema>;
