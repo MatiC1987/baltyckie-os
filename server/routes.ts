@@ -3817,6 +3817,16 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const bcrypt = await import('bcryptjs');
       const passwordHash = await bcrypt.hash(password, 10);
       const user = await storage.createAppUser({ email, firstName, lastName, passwordHash, permissions: permissions || [], active: true });
+
+      const existingAuthUser = await db.execute(sql`SELECT id FROM users WHERE email = ${email}`);
+      if (existingAuthUser.rows.length > 0) {
+        await db.execute(sql`UPDATE users SET password_hash = ${passwordHash}, first_name = ${firstName}, last_name = ${lastName} WHERE email = ${email}`);
+      } else {
+        const crypto = await import('crypto');
+        const userId = crypto.randomBytes(16).toString('hex');
+        await db.execute(sql`INSERT INTO users (id, email, password_hash, first_name, last_name) VALUES (${userId}, ${email}, ${passwordHash}, ${firstName}, ${lastName})`);
+      }
+
       res.json({ ...user, passwordHash: undefined });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -3827,6 +3837,11 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     try {
       const id = parseInt(req.params.id);
       const { email, firstName, lastName, password, permissions } = req.body;
+
+      const [currentAppUser] = await db.select().from(appUsers).where(eq(appUsers.id, id));
+      if (!currentAppUser) return res.status(404).json({ message: "Nie znaleziono użytkownika" });
+      const oldEmail = currentAppUser.email;
+
       const data: any = {};
       if (email !== undefined) data.email = email;
       if (firstName !== undefined) data.firstName = firstName;
@@ -3837,6 +3852,32 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         data.passwordHash = await bcrypt.hash(password, 10);
       }
       const user = await storage.updateAppUser(id, data);
+
+      if (data.passwordHash || data.email || data.firstName || data.lastName) {
+        const existingAuthUser = await db.execute(sql`SELECT id FROM users WHERE email = ${oldEmail}`);
+        if (existingAuthUser.rows.length > 0) {
+          const newEmail = (data.email && data.email !== oldEmail) ? data.email : oldEmail;
+          const newFirstName = data.firstName || currentAppUser.firstName || '';
+          const newLastName = data.lastName || currentAppUser.lastName || '';
+          const newHash = data.passwordHash || null;
+          if (newHash) {
+            await db.execute(sql`UPDATE users SET password_hash = ${newHash}, first_name = ${newFirstName}, last_name = ${newLastName}, email = ${newEmail} WHERE email = ${oldEmail}`);
+          } else {
+            await db.execute(sql`UPDATE users SET first_name = ${newFirstName}, last_name = ${newLastName}, email = ${newEmail} WHERE email = ${oldEmail}`);
+          }
+        } else {
+          const appUserHash = data.passwordHash || currentAppUser.passwordHash;
+          if (appUserHash) {
+            const crypto = await import('crypto');
+            const userId = crypto.randomBytes(16).toString('hex');
+            const fn = data.firstName || currentAppUser.firstName || '';
+            const ln = data.lastName || currentAppUser.lastName || '';
+            const em = data.email || oldEmail;
+            await db.execute(sql`INSERT INTO users (id, email, password_hash, first_name, last_name) VALUES (${userId}, ${em}, ${appUserHash}, ${fn}, ${ln})`);
+          }
+        }
+      }
+
       res.json({ ...user, passwordHash: undefined });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
