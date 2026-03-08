@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge as AppStatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -40,6 +41,7 @@ import {
   WifiOff,
   Building2,
 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import type { GocardlessConnection, Account } from "@shared/schema";
 
 interface GCInstitution {
@@ -59,14 +61,7 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const info = statusLabels[status] || { label: status, variant: "outline" as const };
-  const Icon = status === "ACTIVE" ? CheckCircle2 : status === "PENDING" ? Clock : AlertCircle;
-  return (
-    <Badge variant={info.variant} className="gap-1" data-testid={`badge-status-${status}`}>
-      <Icon className="h-3 w-3" />
-      {info.label}
-    </Badge>
-  );
+  return <AppStatusBadge status={status} />;
 }
 
 function ConnectionCard({
@@ -401,21 +396,14 @@ export default function BankConnections() {
           ))}
         </div>
       ) : connections.length === 0 ? (
-        <Card data-testid="empty-connections">
-          <CardContent className="p-8 text-center">
-            <Landmark className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <h3 className="font-semibold text-lg mb-1">Brak połączeń bankowych</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Połącz swoje konto bankowe, aby automatycznie pobierać transakcje.
-            </p>
-            {isConfigured && (
-              <Button onClick={() => setShowBankPicker(true)} data-testid="button-add-first-connection">
-                <Plus className="h-4 w-4 mr-1.5" />
-                Połącz bank
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <EmptyState
+          variant="card"
+          icon={Landmark}
+          title="Brak połączeń bankowych"
+          description="Połącz swoje konto bankowe, aby automatycznie pobierać transakcje."
+          actionLabel={isConfigured ? "Połącz bank" : undefined}
+          onAction={isConfigured ? () => setShowBankPicker(true) : undefined}
+        />
       ) : (
         <div className="space-y-3">
           {connections.map(conn => (

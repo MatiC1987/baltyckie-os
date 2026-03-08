@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Trash2, Shield, ScrollText, Camera, X, Fingerprint, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -251,11 +252,7 @@ export default function UserAccounts() {
               </TableHeader>
               <TableBody>
                 {users.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                      Brak użytkowników. Dodaj pierwszego użytkownika.
-                    </TableCell>
-                  </TableRow>
+                  <EmptyState variant="inline" colSpan={4} icon={Shield} title="Brak użytkowników" description="Dodaj pierwszego użytkownika." />
                 ) : (
                   users.map((user, idx) => (
                     <TableRow key={user.id} className={idx % 2 === 1 ? "bg-muted/30" : ""} data-testid={`row-user-${user.id}`}>

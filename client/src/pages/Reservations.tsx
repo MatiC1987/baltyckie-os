@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCreateReservation, useUpdateReservation, useDeleteReservation } from "@/hooks/use-reservations";
 import { useApartments } from "@/hooks/use-apartments";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Plus, ArrowUpDown, ArrowUp, ArrowDown, Filter, Eye, Calendar, User, Home,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { FormSection } from "@/components/FormSection";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 import {
@@ -28,6 +30,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertReservationSchema, type InsertReservation, type Reservation } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -89,42 +92,7 @@ function calcPaidTotal(r: Reservation): number {
   return (Number(r.prepayment) || 0) + (Number(r.paidAmount) || 0);
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case "DO_OPLACENIA": return "DO OPŁACENIA";
-    case "PRZYJETA": return "PRZYJĘTA";
-    case "ANULOWANA": return "ANULOWANA";
-    default: return status;
-  }
-}
 
-function StatusBadge({ status }: { status: string }) {
-  switch (status) {
-    case "PRZYJETA":
-      return (
-        <Badge className="text-[10px] whitespace-nowrap bg-emerald-500 dark:bg-emerald-600 text-white border-emerald-600 dark:border-emerald-500 border font-semibold gap-1" data-testid="badge-status-przyjeta">
-          <CheckCircle2 className="h-3 w-3" />
-          {statusLabel(status)}
-        </Badge>
-      );
-    case "ANULOWANA":
-      return (
-        <Badge className="text-[10px] whitespace-nowrap bg-red-500 dark:bg-red-600 text-white border-red-600 dark:border-red-500 border font-semibold gap-1" data-testid="badge-status-anulowana">
-          <XCircle className="h-3 w-3" />
-          {statusLabel(status)}
-        </Badge>
-      );
-    case "DO_OPLACENIA":
-      return (
-        <Badge className="text-[10px] whitespace-nowrap bg-amber-500 dark:bg-amber-600 text-white border-amber-600 dark:border-amber-500 border font-semibold gap-1" data-testid="badge-status-do-oplacenia">
-          <AlertTriangle className="h-3 w-3" />
-          {statusLabel(status)}
-        </Badge>
-      );
-    default:
-      return <Badge variant="outline" className="text-[10px] whitespace-nowrap font-semibold">{statusLabel(status)}</Badge>;
-  }
-}
 
 interface SavedFilter {
   id: string;
@@ -1210,9 +1178,9 @@ function PaymentsTab({ reservation: r, onUpdated }: { reservation: Reservation; 
                       onKeyDown={e => { if (e.key === "Enter") savePayment(); if (e.key === "Escape") setEditField(null); }}
                       data-testid="input-edit-prepayment"
                     />
-                    <Button size="sm" onClick={savePayment} disabled={updateReservation.isPending} className="h-8" data-testid="button-save-prepayment">
+                    <LoadingButton size="sm" onClick={savePayment} isPending={updateReservation.isPending} className="h-8" data-testid="button-save-prepayment">
                       <Save className="h-3 w-3" />
-                    </Button>
+                    </LoadingButton>
                   </div>
                 ) : (
                   <span className="text-emerald-600 dark:text-emerald-400">{Number(r.prepayment).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} PLN</span>
@@ -1241,9 +1209,9 @@ function PaymentsTab({ reservation: r, onUpdated }: { reservation: Reservation; 
                       onKeyDown={e => { if (e.key === "Enter") savePayment(); if (e.key === "Escape") setEditField(null); }}
                       data-testid="input-edit-paid"
                     />
-                    <Button size="sm" onClick={savePayment} disabled={updateReservation.isPending} className="h-8" data-testid="button-save-paid">
+                    <LoadingButton size="sm" onClick={savePayment} isPending={updateReservation.isPending} className="h-8" data-testid="button-save-paid">
                       <Save className="h-3 w-3" />
-                    </Button>
+                    </LoadingButton>
                   </div>
                 ) : (
                   <span className="text-cyan-600 dark:text-cyan-400">{Number(r.paidAmount).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} PLN</span>
@@ -1322,119 +1290,128 @@ function EditTab({ reservation, apartments, onClose, onUpdated }: {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2 col-span-2">
-          <Label className="text-xs">Apartament</Label>
-          <Controller
-            control={form.control}
-            name="apartmentId"
-            render={({ field }) => (
-              <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
-                <SelectTrigger data-testid="edit-select-apartment" className="h-9">
-                  <SelectValue placeholder="Wybierz apartament" />
-                </SelectTrigger>
-                <SelectContent>
-                  {apartments?.map((apt) => (
-                    <SelectItem key={apt.id} value={apt.id.toString()}>{apt.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+      <FormSection title="Dane podstawowe" first>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2 col-span-2">
+            <Label className="text-xs">Apartament</Label>
+            <Controller
+              control={form.control}
+              name="apartmentId"
+              render={({ field }) => (
+                <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
+                  <SelectTrigger data-testid="edit-select-apartment" className="h-9">
+                    <SelectValue placeholder="Wybierz apartament" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {apartments?.map((apt) => (
+                      <SelectItem key={apt.id} value={apt.id.toString()}>{apt.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs">Numer rezerwacji</Label>
+            <Input {...form.register("reservationNumber")} className="h-9" data-testid="edit-input-number" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Gość</Label>
+            <Input {...form.register("guestName")} className="h-9" data-testid="edit-input-guest" />
+          </div>
+        </div>
+      </FormSection>
+
+      <FormSection title="Terminy">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-xs">Data przyjazdu</Label>
+            <Input type="date" {...form.register("startDate")} className="h-9" data-testid="edit-input-start" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Data wyjazdu</Label>
+            <Input type="date" {...form.register("endDate")} className="h-9" data-testid="edit-input-end" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Data dodania</Label>
+            <Input type="date" {...form.register("addDate")} className="h-9" data-testid="edit-input-adddate" />
+          </div>
+        </div>
+      </FormSection>
+
+      <FormSection title="Płatność">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-xs">Kwota pobytu (PLN)</Label>
+            <Input type="number" step="0.01" {...form.register("price")} className="h-9" data-testid="edit-input-price" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Zaliczka (PLN)</Label>
+            <Input type="number" step="0.01" {...form.register("prepayment")} className="h-9" data-testid="edit-input-prepayment" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Wpłacona kwota (PLN)</Label>
+            <Input type="number" step="0.01" {...form.register("paidAmount")} className="h-9" data-testid="edit-input-paid" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Dopłata (PLN)</Label>
+            <Input type="number" step="0.01" {...form.register("surcharge")} className="h-9" data-testid="edit-input-surcharge" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Status</Label>
+            <Controller
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger data-testid="edit-select-status" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DO_OPLACENIA">DO OPŁACENIA</SelectItem>
+                    <SelectItem value="PRZYJETA">PRZYJĘTA</SelectItem>
+                    <SelectItem value="ANULOWANA">ANULOWANA</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Źródło</Label>
+            <Controller
+              control={form.control}
+              name="source"
+              render={({ field }) => (
+                <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
+                  <SelectTrigger data-testid="edit-select-source" className="h-9">
+                    <SelectValue placeholder="Wybierz źródło" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brak</SelectItem>
+                    <SelectItem value="Booking.com">Booking.com</SelectItem>
+                    <SelectItem value="Airbnb">Airbnb</SelectItem>
+                    <SelectItem value="Recepcja">Recepcja</SelectItem>
+                    <SelectItem value="HotRes">HotRes</SelectItem>
+                    <SelectItem value="Inne">Inne</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+        </div>
+      </FormSection>
+
+      <FormSection title="Notatki">
+        <div className="space-y-2">
+          <textarea
+            {...form.register("notes")}
+            placeholder="Dodaj notatki..."
+            className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            data-testid="edit-input-notes"
           />
         </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">Numer rezerwacji</Label>
-          <Input {...form.register("reservationNumber")} className="h-9" data-testid="edit-input-number" />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs">Gość</Label>
-          <Input {...form.register("guestName")} className="h-9" data-testid="edit-input-guest" />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">Data przyjazdu</Label>
-          <Input type="date" {...form.register("startDate")} className="h-9" data-testid="edit-input-start" />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs">Data wyjazdu</Label>
-          <Input type="date" {...form.register("endDate")} className="h-9" data-testid="edit-input-end" />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">Kwota pobytu (PLN)</Label>
-          <Input type="number" step="0.01" {...form.register("price")} className="h-9" data-testid="edit-input-price" />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs">Zaliczka (PLN)</Label>
-          <Input type="number" step="0.01" {...form.register("prepayment")} className="h-9" data-testid="edit-input-prepayment" />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs">Wpłacona kwota (PLN)</Label>
-          <Input type="number" step="0.01" {...form.register("paidAmount")} className="h-9" data-testid="edit-input-paid" />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs">Dopłata (PLN)</Label>
-          <Input type="number" step="0.01" {...form.register("surcharge")} className="h-9" data-testid="edit-input-surcharge" />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">Status</Label>
-          <Controller
-            control={form.control}
-            name="status"
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger data-testid="edit-select-status" className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DO_OPLACENIA">DO OPŁACENIA</SelectItem>
-                  <SelectItem value="PRZYJETA">PRZYJĘTA</SelectItem>
-                  <SelectItem value="ANULOWANA">ANULOWANA</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs">Źródło</Label>
-          <Controller
-            control={form.control}
-            name="source"
-            render={({ field }) => (
-              <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
-                <SelectTrigger data-testid="edit-select-source" className="h-9">
-                  <SelectValue placeholder="Wybierz źródło" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Brak</SelectItem>
-                  <SelectItem value="Booking.com">Booking.com</SelectItem>
-                  <SelectItem value="Airbnb">Airbnb</SelectItem>
-                  <SelectItem value="Recepcja">Recepcja</SelectItem>
-                  <SelectItem value="HotRes">HotRes</SelectItem>
-                  <SelectItem value="Inne">Inne</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">Data dodania</Label>
-          <Input type="date" {...form.register("addDate")} className="h-9" data-testid="edit-input-adddate" />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label className="text-xs">Notatki</Label>
-        <textarea
-          {...form.register("notes")}
-          placeholder="Dodaj notatki..."
-          className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="edit-input-notes"
-        />
-      </div>
+      </FormSection>
 
       <div className="flex items-center justify-between pt-2">
         <Button type="button" variant="destructive" size="sm" onClick={handleDelete} disabled={deleteReservation.isPending} data-testid="button-delete-reservation">
@@ -1444,9 +1421,9 @@ function EditTab({ reservation, apartments, onClose, onUpdated }: {
           <Button type="button" variant="ghost" onClick={onClose} data-testid="button-cancel-edit">
             Anuluj
           </Button>
-          <Button type="submit" disabled={updateReservation.isPending} data-testid="button-submit-edit">
-            {updateReservation.isPending ? "Zapisywanie..." : "Zapisz zmiany"}
-          </Button>
+          <LoadingButton type="submit" isPending={updateReservation.isPending} loadingText="Zapisywanie..." data-testid="button-submit-edit">
+            Zapisz zmiany
+          </LoadingButton>
         </div>
       </div>
     </form>
@@ -1479,111 +1456,121 @@ export function ReservationForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="space-y-2 sm:col-span-2">
-        <Label>Apartament</Label>
-        <Controller
-          control={form.control}
-          name="apartmentId"
-          render={({ field }) => (
-            <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
-              <SelectTrigger data-testid="select-reservation-apartment">
-                <SelectValue placeholder="Wybierz apartament" />
-              </SelectTrigger>
-              <SelectContent>
-                {apartments?.map((apt) => (
-                  <SelectItem key={apt.id} value={apt.id.toString()}>{apt.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </div>
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+      <FormSection title="Dane podstawowe" first>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Apartament</Label>
+            <Controller
+              control={form.control}
+              name="apartmentId"
+              render={({ field }) => (
+                <Select onValueChange={(val) => field.onChange(Number(val))} value={field.value?.toString()}>
+                  <SelectTrigger data-testid="select-reservation-apartment">
+                    <SelectValue placeholder="Wybierz apartament" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {apartments?.map((apt) => (
+                      <SelectItem key={apt.id} value={apt.id.toString()}>{apt.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Numer rezerwacji</Label>
+            <Input {...form.register("reservationNumber")} data-testid="input-reservation-number" />
+          </div>
+          <div className="space-y-2">
+            <Label>Gość</Label>
+            <Input {...form.register("guestName")} placeholder="Imię i nazwisko" data-testid="input-reservation-guest" />
+          </div>
+        </div>
+      </FormSection>
 
-      <div className="space-y-2">
-        <Label>Numer rezerwacji</Label>
-        <Input {...form.register("reservationNumber")} data-testid="input-reservation-number" />
-      </div>
-      <div className="space-y-2">
-        <Label>Gość</Label>
-        <Input {...form.register("guestName")} placeholder="Imię i nazwisko" data-testid="input-reservation-guest" />
-      </div>
+      <FormSection title="Terminy">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Data przyjazdu</Label>
+            <Input type="date" {...form.register("startDate")} data-testid="input-reservation-start" />
+          </div>
+          <div className="space-y-2">
+            <Label>Data wyjazdu</Label>
+            <Input type="date" {...form.register("endDate")} data-testid="input-reservation-end" />
+          </div>
+        </div>
+      </FormSection>
 
-      <div className="space-y-2">
-        <Label>Data przyjazdu</Label>
-        <Input type="date" {...form.register("startDate")} data-testid="input-reservation-start" />
-      </div>
-      <div className="space-y-2">
-        <Label>Data wyjazdu</Label>
-        <Input type="date" {...form.register("endDate")} data-testid="input-reservation-end" />
-      </div>
+      <FormSection title="Płatność">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Kwota pobytu (PLN)</Label>
+            <Input type="number" step="0.01" {...form.register("price")} data-testid="input-reservation-price" />
+          </div>
+          <div className="space-y-2">
+            <Label>Zaliczka (PLN)</Label>
+            <Input type="number" step="0.01" {...form.register("prepayment")} data-testid="input-reservation-prepayment" />
+          </div>
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Controller
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger data-testid="select-reservation-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DO_OPLACENIA">DO OPŁACENIA</SelectItem>
+                    <SelectItem value="PRZYJETA">PRZYJĘTA</SelectItem>
+                    <SelectItem value="ANULOWANA">ANULOWANA</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Źródło</Label>
+            <Controller
+              control={form.control}
+              name="source"
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value || ""}>
+                  <SelectTrigger data-testid="select-reservation-source">
+                    <SelectValue placeholder="Wybierz źródło" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Brak</SelectItem>
+                    <SelectItem value="Booking.com">Booking.com</SelectItem>
+                    <SelectItem value="Airbnb">Airbnb</SelectItem>
+                    <SelectItem value="Recepcja">Recepcja</SelectItem>
+                    <SelectItem value="HotRes">HotRes</SelectItem>
+                    <SelectItem value="Inne">Inne</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+        </div>
+      </FormSection>
 
-      <div className="space-y-2">
-        <Label>Kwota pobytu (PLN)</Label>
-        <Input type="number" step="0.01" {...form.register("price")} data-testid="input-reservation-price" />
-      </div>
-      <div className="space-y-2">
-        <Label>Zaliczka (PLN)</Label>
-        <Input type="number" step="0.01" {...form.register("prepayment")} data-testid="input-reservation-prepayment" />
-      </div>
+      <FormSection title="Notatki">
+        <div className="space-y-2">
+          <textarea
+            {...form.register("notes")}
+            placeholder="Dodaj notatki do rezerwacji..."
+            className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            data-testid="input-reservation-notes"
+          />
+        </div>
+      </FormSection>
 
-      <div className="space-y-2">
-        <Label>Status</Label>
-        <Controller
-          control={form.control}
-          name="status"
-          render={({ field }) => (
-            <Select onValueChange={field.onChange} value={field.value}>
-              <SelectTrigger data-testid="select-reservation-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DO_OPLACENIA">DO OPŁACENIA</SelectItem>
-                <SelectItem value="PRZYJETA">PRZYJĘTA</SelectItem>
-                <SelectItem value="ANULOWANA">ANULOWANA</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label>Źródło</Label>
-        <Controller
-          control={form.control}
-          name="source"
-          render={({ field }) => (
-            <Select onValueChange={field.onChange} value={field.value || ""}>
-              <SelectTrigger data-testid="select-reservation-source">
-                <SelectValue placeholder="Wybierz źródło" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">Brak</SelectItem>
-                <SelectItem value="Booking.com">Booking.com</SelectItem>
-                <SelectItem value="Airbnb">Airbnb</SelectItem>
-                <SelectItem value="Recepcja">Recepcja</SelectItem>
-                <SelectItem value="HotRes">HotRes</SelectItem>
-                <SelectItem value="Inne">Inne</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </div>
-
-      <div className="space-y-2 sm:col-span-2">
-        <Label>Notatki</Label>
-        <textarea
-          {...form.register("notes")}
-          placeholder="Dodaj notatki do rezerwacji..."
-          className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          data-testid="input-reservation-notes"
-        />
-      </div>
-
-      <div className="sm:col-span-2 flex justify-end">
-        <Button type="submit" disabled={createReservation.isPending} data-testid="button-submit-reservation">
-          {createReservation.isPending ? "Zapisywanie..." : "Zapisz rezerwację"}
-        </Button>
+      <div className="flex justify-end pt-2">
+        <LoadingButton type="submit" isPending={createReservation.isPending} loadingText="Zapisywanie..." data-testid="button-submit-reservation">
+          Zapisz rezerwację
+        </LoadingButton>
       </div>
     </form>
   );

@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { CompanySettings as CompanySettingsType } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, Save, Upload, X, Globe, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -475,10 +476,10 @@ export default function CompanySettings() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button type="submit" disabled={mutation.isPending} data-testid="button-save-company-settings">
-                <Save className="h-4 w-4 mr-1" />
-                {mutation.isPending ? "Zapisywanie..." : "Zapisz"}
-              </Button>
+              <LoadingButton type="submit" isPending={mutation.isPending} loadingText="Zapisywanie..." data-testid="button-save-company-settings">
+                {!mutation.isPending && <Save className="h-4 w-4 mr-1" />}
+                Zapisz
+              </LoadingButton>
             </div>
           </form>
         </CardContent>

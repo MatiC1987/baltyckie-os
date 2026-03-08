@@ -2,8 +2,10 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useApartments, useCreateApartment, useUpdateApartment, useDeleteApartment } from "@/hooks/use-apartments";
 import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Progress } from "@/components/ui/progress";
 import { Plus, Home, Building2, Pencil, Trash2, Paperclip, FileText, Upload, X, Camera, ImageIcon, Wallet, CalendarDays, CheckSquare, FolderInput, ChevronDown, ChevronRight, ChevronLeft, Loader2, BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, BedDouble, AlertCircle, Clock, Eye, Copy, RefreshCw, Eraser, FileUp, Download, CheckCircle2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -652,9 +654,9 @@ function ApartmentForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <DialogFooter>
-        <Button type="submit" disabled={createApartment.isPending} data-testid="button-submit-apartment">
-          {createApartment.isPending ? "Dodawanie..." : "Dodaj apartament"}
-        </Button>
+        <LoadingButton type="submit" isPending={createApartment.isPending} loadingText="Dodawanie..." data-testid="button-submit-apartment">
+          Dodaj apartament
+        </LoadingButton>
       </DialogFooter>
     </form>
   );
@@ -916,7 +918,7 @@ function ContractCard({ contract, ownerName, onEdit, onDelete }: {
               <span>Czynsz: {contract.monthlyRent ? `${Number(contract.monthlyRent).toLocaleString("pl-PL")} zł` : "—"}</span>
               {contract.additionalFees && Number(contract.additionalFees) > 0 && <span>+ {Number(contract.additionalFees).toLocaleString("pl-PL")} zł</span>}
               <span>{contract.startDate || "—"} &rarr; {contract.endDate || "bezterminowo"}</span>
-              <Badge variant="default" className="text-[10px]">{contract.status}</Badge>
+              <StatusBadge status={contract.status || "AKTYWNA"} />
               <Badge variant="outline" className="text-[10px] bg-blue-50 dark:bg-blue-950">{contract.contractType}</Badge>
               {contract.paymentFrequency && (
                 <Badge variant="outline" className="text-[10px]">{
@@ -1801,9 +1803,9 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
             <Trash2 className="mr-2 h-4 w-4" />
             {deleteApartment.isPending ? "Usuwanie..." : "Usuń"}
           </Button>
-          <Button type="submit" disabled={updateApartment.isPending} data-testid="button-save-apartment">
-            {updateApartment.isPending ? "Zapisywanie..." : "Zapisz zmiany"}
-          </Button>
+          <LoadingButton type="submit" isPending={updateApartment.isPending} loadingText="Zapisywanie..." data-testid="button-save-apartment">
+            Zapisz zmiany
+          </LoadingButton>
         </DialogFooter>
       </form>
 
@@ -1852,7 +1854,7 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
                         <span className="font-medium text-foreground">{ownerName}</span>
                         <span>{c.monthlyRent ? `${Number(c.monthlyRent).toLocaleString("pl-PL")} zł` : "—"}</span>
                         <span>{c.startDate || "—"} &rarr; {c.endDate || "—"}</span>
-                        <Badge variant="secondary" className="text-[10px]">{c.status}</Badge>
+                        <StatusBadge status={c.status || "AKTYWNA"} />
                       </div>
                       <Button size="icon" variant="ghost" onClick={() => openContractForm(c)} data-testid={`btn-edit-apt-contract-${c.id}`}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -2284,10 +2286,9 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setContractFormOpen(false)}>Anuluj</Button>
-              <Button type="submit" disabled={contractMutation.isPending} data-testid="btn-save-apt-contract">
-                {contractMutation.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              <LoadingButton type="submit" isPending={contractMutation.isPending} data-testid="btn-save-apt-contract">
                 Zapisz
-              </Button>
+              </LoadingButton>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AnimatedTabContent } from "@/components/AnimatedTabContent";
 import { PageHeader } from "@/components/PageHeader";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { Building2, MapPin, ClipboardCheck, AlertTriangle } from "lucide-react";
@@ -58,29 +59,29 @@ export default function ApartamentyHub() {
           ))}
         </TabsList>
 
-        <TabsContent value="apartamenty" className="mt-4">
+        <AnimatedTabContent value="apartamenty" activeValue={activeTab} className="mt-4">
           <Suspense fallback={<TablePageSkeleton />}>
             <Apartments />
           </Suspense>
-        </TabsContent>
+        </AnimatedTabContent>
 
-        <TabsContent value="lokalizacje" className="mt-4">
+        <AnimatedTabContent value="lokalizacje" activeValue={activeTab} className="mt-4">
           <Suspense fallback={<TablePageSkeleton />}>
             <Lokalizacje />
           </Suspense>
-        </TabsContent>
+        </AnimatedTabContent>
 
-        <TabsContent value="przeglady" className="mt-4">
+        <AnimatedTabContent value="przeglady" activeValue={activeTab} className="mt-4">
           <Suspense fallback={<TablePageSkeleton />}>
             <TechnicalInspections />
           </Suspense>
-        </TabsContent>
+        </AnimatedTabContent>
 
-        <TabsContent value="usterki" className="mt-4">
+        <AnimatedTabContent value="usterki" activeValue={activeTab} className="mt-4">
           <Suspense fallback={<TablePageSkeleton />}>
             <Usterki />
           </Suspense>
-        </TabsContent>
+        </AnimatedTabContent>
       </Tabs>
     </div>
   );

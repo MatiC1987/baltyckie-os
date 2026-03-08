@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AnimatedTabContent } from "@/components/AnimatedTabContent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -432,21 +433,21 @@ export default function Podnajem() {
               );
             })}
           </TabsList>
-          <TabsContent value="dashboard" className="mt-0">
+          <AnimatedTabContent value="dashboard" activeValue={activeTab}>
             <PodnajemDashboard />
-          </TabsContent>
-          <TabsContent value="umowy" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="umowy" activeValue={activeTab}>
             <Subleases />
-          </TabsContent>
-          <TabsContent value="rozliczenia" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="rozliczenia" activeValue={activeTab}>
             <SubrentSettlement />
-          </TabsContent>
-          <TabsContent value="media" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="media" activeValue={activeTab}>
             <MediaSettlement />
-          </TabsContent>
-          <TabsContent value="checkout" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="checkout" activeValue={activeTab}>
             <CheckoutSettlement />
-          </TabsContent>
+          </AnimatedTabContent>
         </Tabs>
       </div>
     </div>

@@ -257,7 +257,11 @@
   .shadcn-card {
     @apply transition-all duration-200 ease-out;
   }
-  .shadcn-card:hover {
+
+  .card-interactive {
+    @apply transition-all duration-200 ease-out cursor-pointer;
+  }
+  .card-interactive:hover {
     @apply shadow-md;
     transform: translateY(-1px);
   }
@@ -668,6 +672,34 @@ aside[data-sidebar-fs]::after {
   .kpi-card {
     page-break-inside: avoid;
   }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
 @media (max-width: 767px) {

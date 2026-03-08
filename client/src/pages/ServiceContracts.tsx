@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -287,9 +288,9 @@ function AddCategoryDialog({ open, onClose, onSubmit, isPending }: {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" type="button" onClick={onClose}>Anuluj</Button>
-            <Button type="submit" disabled={isPending} data-testid="button-submit-category">
-              {isPending ? "Zapisywanie..." : "Dodaj"}
-            </Button>
+            <LoadingButton type="submit" isPending={isPending} loadingText="Zapisywanie..." data-testid="button-submit-category">
+              Dodaj
+            </LoadingButton>
           </div>
         </form>
       </DialogContent>
@@ -400,9 +401,9 @@ function AddContractDialog({ open, onClose, onSubmit, isPending, categories }: {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" type="button" onClick={onClose}>Anuluj</Button>
-            <Button type="submit" disabled={isPending} data-testid="button-submit-contract">
-              {isPending ? "Zapisywanie..." : "Zapisz"}
-            </Button>
+            <LoadingButton type="submit" isPending={isPending} loadingText="Zapisywanie..." data-testid="button-submit-contract">
+              Zapisz
+            </LoadingButton>
           </div>
         </form>
       </DialogContent>
@@ -530,9 +531,9 @@ function EditContractDialog({ contract, onClose, onSubmit, isPending, categories
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" type="button" onClick={handleClose} data-testid="button-cancel-edit-contract">Anuluj</Button>
-            <Button type="submit" disabled={isPending} data-testid="button-submit-edit-contract">
-              {isPending ? "Zapisywanie..." : "Zapisz"}
-            </Button>
+            <LoadingButton type="submit" isPending={isPending} loadingText="Zapisywanie..." data-testid="button-submit-edit-contract">
+              Zapisz
+            </LoadingButton>
           </div>
         </form>
 

@@ -1,8 +1,10 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AnimatedTabContent } from "@/components/AnimatedTabContent";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/PageHeader";
@@ -215,6 +217,10 @@ function getStatusLabel(status: string): string {
   return labels[status] || status;
 }
 
+function PracownicyStatusBadge({ status }: { status: string }) {
+  return <StatusBadge status={status} />;
+}
+
 function getTimelineIcon(type: string) {
   switch (type) {
     case "contract":
@@ -299,9 +305,7 @@ function EmployeeProfileDialog({
                 <p className="text-sm text-muted-foreground">{POSITIONS[profile.employee.position] || profile.employee.position}</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={profile.employee.status === "AKTYWNY" ? "default" : "secondary"}>
-                  {profile.employee.status === "AKTYWNY" ? "Aktywny" : "Nieaktywny"}
-                </Badge>
+                <StatusBadge status={profile.employee.status === "AKTYWNY" ? "AKTYWNY" : "NIEAKTYWNY"} />
               </div>
             </div>
 
@@ -357,9 +361,7 @@ function EmployeeProfileDialog({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium">{item.title}</span>
-                              <Badge variant={getStatusBadgeVariant(item.status)} className="text-xs">
-                                {getStatusLabel(item.status)}
-                              </Badge>
+                              <PracownicyStatusBadge status={item.status} />
                             </div>
                             <p className="text-xs text-muted-foreground mt-0.5">{formatDate(item.date)}</p>
                           </div>
@@ -381,9 +383,7 @@ function EmployeeProfileDialog({
                           <div className="flex items-center gap-2 flex-wrap">
                             <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                             <span className="font-medium text-sm">{c.title}</span>
-                            <Badge variant={getStatusBadgeVariant(c.computedStatus)} className="text-xs">
-                              {getStatusLabel(c.computedStatus)}
-                            </Badge>
+                            <PracownicyStatusBadge status={c.computedStatus} />
                           </div>
                           <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                             <span>Od: {formatDate(c.startDate)}</span>
@@ -409,9 +409,7 @@ function EmployeeProfileDialog({
                           <div className="flex items-center gap-2 flex-wrap">
                             <GraduationCap className="h-4 w-4 text-muted-foreground shrink-0" />
                             <span className="font-medium text-sm">{t.name}</span>
-                            <Badge variant={getStatusBadgeVariant(t.computedStatus)} className="text-xs">
-                              {getStatusLabel(t.computedStatus)}
-                            </Badge>
+                            <PracownicyStatusBadge status={t.computedStatus} />
                           </div>
                           <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                             <span>Ukończono: {formatDate(t.completedDate)}</span>
@@ -666,9 +664,7 @@ function HrCalendarTab() {
                   </Badge>
                   <span className="font-medium">{event.employeeName}</span>
                   <span className="text-muted-foreground truncate">{event.title}</span>
-                  <Badge variant={getStatusBadgeVariant(event.status)} className="text-xs ml-auto shrink-0">
-                    {getStatusLabel(event.status)}
-                  </Badge>
+                  <StatusBadge status={event.status} className="ml-auto shrink-0" />
                 </div>
               ))}
             </div>
@@ -981,24 +977,24 @@ export default function PracownicyHub() {
               );
             })}
           </TabsList>
-          <TabsContent value="dashboard" className="mt-0">
+          <AnimatedTabContent value="dashboard" activeValue={activeTab}>
             <DashboardTab onOpenProfile={openProfile} />
-          </TabsContent>
-          <TabsContent value="lista" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="lista" activeValue={activeTab}>
             <Employees />
-          </TabsContent>
-          <TabsContent value="umowy" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="umowy" activeValue={activeTab}>
             <UmowyPracownicze />
-          </TabsContent>
-          <TabsContent value="lista-plac" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="lista-plac" activeValue={activeTab}>
             <ListaPlac />
-          </TabsContent>
-          <TabsContent value="szkolenia" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="szkolenia" activeValue={activeTab}>
             <Szkolenia />
-          </TabsContent>
-          <TabsContent value="kalendarz" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="kalendarz" activeValue={activeTab}>
             <HrCalendarTab />
-          </TabsContent>
+          </AnimatedTabContent>
         </Tabs>
       </div>
 

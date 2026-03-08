@@ -7,6 +7,7 @@ import { DEFAULT_OPLATY_CATEGORIES, loadOplatyCategories, type OplatyCostCategor
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1931,15 +1932,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                                             <td className="py-1.5 px-1">
                                               <button onClick={() => handleTogglePaymentStatus(payment)} data-testid={`button-toggle-status-${payment.id}`}>
                                                 {payment.status === "OPLACONE" ? (
-                                                  <Badge className="bg-green-600 text-white text-[10px] no-default-hover-elevate no-default-active-elevate">
-                                                    <CheckCircle2 className="w-3 h-3 mr-0.5" />
-                                                    OPŁACONE
-                                                  </Badge>
+                                                  <StatusBadge status="OPLACONE" className="no-default-hover-elevate no-default-active-elevate" />
                                                 ) : (
-                                                  <Badge variant="destructive" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
-                                                    <XCircle className="w-3 h-3 mr-0.5" />
-                                                    NIEOPŁACONE
-                                                  </Badge>
+                                                  <StatusBadge status="DO_OPLACENIA" className="no-default-hover-elevate no-default-active-elevate" />
                                                 )}
                                               </button>
                                             </td>

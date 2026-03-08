@@ -23,21 +23,34 @@ const ROUTE_LABELS: Record<string, { label: string; parent?: string }> = {
   "/apartments": { label: "Apartamenty", parent: "/" },
   "/owners": { label: "Właściciele", parent: "/" },
   "/employees": { label: "Pracownicy", parent: "/" },
+  "/pracownicy": { label: "Pracownicy", parent: "/" },
   "/locations": { label: "Lokalizacje", parent: "/" },
   "/document-templates": { label: "Szablony dokumentów", parent: "/" },
   "/user-accounts": { label: "Konta użytkowników", parent: "/" },
   "/company-settings": { label: "Dane firmowe", parent: "/" },
   "/reports": { label: "Raporty", parent: "/" },
   "/import-export": { label: "Import / Eksport", parent: "/" },
+  "/import-bankowy": { label: "Import bankowy", parent: "/" },
   "/activity-log": { label: "Dziennik aktywności", parent: "/" },
   "/ustawienia": { label: "Ustawienia", parent: "/" },
+  "/ustawienia-menu": { label: "Menu ustawień", parent: "/" },
   "/customers": { label: "Klienci", parent: "/" },
-  "/v2/przychody": { label: "Przychody v2", parent: "/" },
-  "/v2/koszty": { label: "Koszty v2", parent: "/" },
-  "/v2/prognoza": { label: "Prognoza finansowa v2", parent: "/" },
-  "/v2/realizacja": { label: "Realizacja v2", parent: "/" },
-  "/source-comparison": { label: "Porównanie źródeł", parent: "/analizy" },
-  "/roi-analysis": { label: "Analiza ROI", parent: "/analizy" },
+  "/saldo-firmowe": { label: "Saldo firmowe", parent: "/" },
+  "/v2/przychody": { label: "Przychody", parent: "/" },
+  "/v2/koszty": { label: "Koszty", parent: "/" },
+  "/v2/prognoza": { label: "Prognoza finansowa", parent: "/" },
+  "/v2/realizacja": { label: "Realizacja", parent: "/" },
+  "/bank-connections": { label: "Połączenia bankowe", parent: "/import-bankowy" },
+  "/sprawy-sadowe": { label: "Sprawy sądowe", parent: "/" },
+  "/rcp/admin": { label: "RCP Admin", parent: "/" },
+  "/rcp/employee": { label: "RCP Pracownik", parent: "/" },
+  "/occupancy": { label: "Obłożenie", parent: "/" },
+  "/profitability": { label: "Rentowność", parent: "/" },
+  "/year-comparison": { label: "Porównanie rok do roku", parent: "/" },
+  "/apartment-comparison": { label: "Porównanie apartamentów", parent: "/" },
+  "/price-seasonality": { label: "Sezonowość cen", parent: "/" },
+  "/source-comparison": { label: "Porównanie źródeł", parent: "/" },
+  "/roi-analysis": { label: "Analiza ROI", parent: "/" },
   "/sublease-dashboard": { label: "Dashboard podnajmu", parent: "/podnajem" },
 };
 
@@ -110,7 +123,7 @@ export function Breadcrumbs() {
   const crumbs = buildBreadcrumbs(location);
 
   return (
-    <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4" data-testid="breadcrumbs">
+    <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4 animate-fade-in" data-testid="breadcrumbs">
       <div className="flex items-center gap-0.5 mr-2">
         <Button
           variant="ghost"

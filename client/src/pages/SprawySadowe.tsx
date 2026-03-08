@@ -10,9 +10,11 @@ import {
   Gavel, Users, DollarSign, Upload, Download,
   MessageSquare, CheckCircle, ArrowLeft, Paperclip, X, Loader2
 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
@@ -72,8 +74,7 @@ const EVENT_TYPES = [
 ];
 
 function getStatusBadge(status: string) {
-  const s = STATUSES.find(st => st.value === status);
-  return s ? <Badge variant="outline" className={s.color} data-testid={`badge-status-${status}`}>{s.label}</Badge> : <Badge variant="outline">{status}</Badge>;
+  return <StatusBadge status={status} />;
 }
 
 function getPriorityBadge(priority: string) {
@@ -595,13 +596,7 @@ export default function SprawySadowe() {
             </div>
 
             {events.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  <Clock className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p>Brak zdarzeń w tej sprawie</p>
-                  <p className="text-sm mt-1">Dodaj pierwsze zdarzenie do linii czasu.</p>
-                </CardContent>
-              </Card>
+              <EmptyState variant="card" icon={Clock} title="Brak zdarzeń w tej sprawie" description="Dodaj pierwsze zdarzenie do linii czasu." />
             ) : (
               <div className="relative ml-5">
                 <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-border" />
@@ -814,13 +809,7 @@ export default function SprawySadowe() {
             <Loader2 className="h-5 w-5 animate-spin mr-2" /> Ładowanie...
           </div>
         ) : filtered.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <Scale className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>Brak spraw sądowych</p>
-              <p className="text-sm mt-1">Kliknij "Nowa sprawa" aby dodać pierwszą sprawę.</p>
-            </CardContent>
-          </Card>
+          <EmptyState variant="card" icon={Scale} title="Brak spraw sądowych" description="Kliknij &quot;Nowa sprawa&quot; aby dodać pierwszą sprawę." />
         ) : (
           <div className="grid gap-3">
             {filtered.map(c => {

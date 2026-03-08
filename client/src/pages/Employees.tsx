@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FormSection } from "@/components/FormSection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -670,234 +671,240 @@ export default function Employees() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-5 pt-2">
-            <div className="flex items-center gap-4">
-              <div className="shrink-0">
-                {form.photoUrl ? (
-                  <img src={form.photoUrl} alt="" className="h-16 w-16 rounded-full object-cover border border-border" />
-                ) : (
-                  <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
-                    {(form.firstName || "?").charAt(0)}{(form.lastName || "?").charAt(0)}
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs text-muted-foreground">Zdjęcie profilowe</Label>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isUploading}
-                    onClick={() => fileInputRef.current?.click()}
-                    data-testid="button-upload-employee-photo"
-                  >
-                    <Upload className="mr-2 h-4 w-4" />
-                    {isUploading ? "Przesyłanie..." : form.photoUrl ? "Zmień zdjęcie" : "Dodaj zdjęcie"}
-                  </Button>
-                  {form.photoUrl && (
+            <FormSection title="Dane osobowe" first>
+              <div className="flex items-center gap-4">
+                <div className="shrink-0">
+                  {form.photoUrl ? (
+                    <img src={form.photoUrl} alt="" className="h-16 w-16 rounded-full object-cover border border-border" />
+                  ) : (
+                    <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                      {(form.firstName || "?").charAt(0)}{(form.lastName || "?").charAt(0)}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs text-muted-foreground">Zdjęcie profilowe</Label>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      onClick={() => setField("photoUrl", "")}
-                      data-testid="button-remove-employee-photo"
+                      disabled={isUploading}
+                      onClick={() => fileInputRef.current?.click()}
+                      data-testid="button-upload-employee-photo"
                     >
-                      <X className="mr-1 h-3 w-3" /> Usuń
+                      <Upload className="mr-2 h-4 w-4" />
+                      {isUploading ? "Przesyłanie..." : form.photoUrl ? "Zmień zdjęcie" : "Dodaj zdjęcie"}
                     </Button>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) await uploadFile(file);
-                      e.target.value = "";
-                    }}
-                    data-testid="input-employee-photo"
+                    {form.photoUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setField("photoUrl", "")}
+                        data-testid="button-remove-employee-photo"
+                      >
+                        <X className="mr-1 h-3 w-3" /> Usuń
+                      </Button>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) await uploadFile(file);
+                        e.target.value = "";
+                      }}
+                      data-testid="input-employee-photo"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Imię *</Label>
+                  <Input
+                    value={form.firstName}
+                    onChange={e => setField("firstName", e.target.value)}
+                    required
+                    data-testid="input-employee-first-name"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Nazwisko *</Label>
+                  <Input
+                    value={form.lastName}
+                    onChange={e => setField("lastName", e.target.value)}
+                    required
+                    data-testid="input-employee-last-name"
                   />
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Imię *</Label>
-                <Input
-                  value={form.firstName}
-                  onChange={e => setField("firstName", e.target.value)}
-                  required
-                  data-testid="input-employee-first-name"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Nazwisko *</Label>
-                <Input
-                  value={form.lastName}
-                  onChange={e => setField("lastName", e.target.value)}
-                  required
-                  data-testid="input-employee-last-name"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Numer telefonu</Label>
-                <Input
-                  value={form.phone || ""}
-                  onChange={e => setField("phone", e.target.value)}
-                  placeholder="+48..."
-                  data-testid="input-employee-phone"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">E-mail</Label>
-                <Input
-                  type="email"
-                  value={form.email || ""}
-                  onChange={e => setField("email", e.target.value)}
-                  placeholder="adres@email.pl"
-                  data-testid="input-employee-email"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">PESEL</Label>
-                <Input
-                  value={form.pesel || ""}
-                  onChange={e => setField("pesel", e.target.value)}
-                  placeholder="00000000000"
-                  maxLength={11}
-                  data-testid="input-employee-pesel"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Data urodzenia</Label>
-                <Input
-                  type="date"
-                  value={form.birthDate || ""}
-                  onChange={e => setField("birthDate", e.target.value)}
-                  data-testid="input-employee-birth-date"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Zakres współpracy *</Label>
-                <Select value={form.cooperationType} onValueChange={v => setField("cooperationType", v)}>
-                  <SelectTrigger data-testid="select-employee-cooperation">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(COOPERATION_TYPES).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Stanowisko *</Label>
-                <Select value={form.position} onValueChange={v => setField("position", v)}>
-                  <SelectTrigger data-testid="select-employee-position">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(POSITIONS).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {isEtat && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Rodzaj umowy</Label>
-                  <Select value={form.contractType || "CZAS_NIEOKRESLONY"} onValueChange={v => setField("contractType", v)}>
-                    <SelectTrigger data-testid="select-employee-contract-type">
+                  <Label className="text-xs text-muted-foreground">Numer telefonu</Label>
+                  <Input
+                    value={form.phone || ""}
+                    onChange={e => setField("phone", e.target.value)}
+                    placeholder="+48..."
+                    data-testid="input-employee-phone"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">E-mail</Label>
+                  <Input
+                    type="email"
+                    value={form.email || ""}
+                    onChange={e => setField("email", e.target.value)}
+                    placeholder="adres@email.pl"
+                    data-testid="input-employee-email"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">PESEL</Label>
+                  <Input
+                    value={form.pesel || ""}
+                    onChange={e => setField("pesel", e.target.value)}
+                    placeholder="00000000000"
+                    maxLength={11}
+                    data-testid="input-employee-pesel"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Data urodzenia</Label>
+                  <Input
+                    type="date"
+                    value={form.birthDate || ""}
+                    onChange={e => setField("birthDate", e.target.value)}
+                    data-testid="input-employee-birth-date"
+                  />
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection title="Zatrudnienie">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Zakres współpracy *</Label>
+                  <Select value={form.cooperationType} onValueChange={v => setField("cooperationType", v)}>
+                    <SelectTrigger data-testid="select-employee-cooperation">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.entries(CONTRACT_TYPES).map(([k, v]) => (
+                      {Object.entries(COOPERATION_TYPES).map(([k, v]) => (
                         <SelectItem key={k} value={k}>{v}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div />
-              </div>
-            )}
-
-            {isEtat && (
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Początek umowy</Label>
-                  <Input
-                    type="date"
-                    value={form.contractStart || ""}
-                    onChange={e => setField("contractStart", e.target.value)}
-                    data-testid="input-employee-contract-start"
-                  />
+                  <Label className="text-xs text-muted-foreground">Stanowisko *</Label>
+                  <Select value={form.position} onValueChange={v => setField("position", v)}>
+                    <SelectTrigger data-testid="select-employee-position">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(POSITIONS).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                {isCzasOkreslony && (
+              </div>
+
+              {isEtat && (
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Koniec umowy</Label>
+                    <Label className="text-xs text-muted-foreground">Rodzaj umowy</Label>
+                    <Select value={form.contractType || "CZAS_NIEOKRESLONY"} onValueChange={v => setField("contractType", v)}>
+                      <SelectTrigger data-testid="select-employee-contract-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(CONTRACT_TYPES).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div />
+                </div>
+              )}
+
+              {isEtat && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Początek umowy</Label>
                     <Input
                       type="date"
-                      value={form.contractEnd || ""}
-                      onChange={e => setField("contractEnd", e.target.value)}
-                      data-testid="input-employee-contract-end"
+                      value={form.contractStart || ""}
+                      onChange={e => setField("contractStart", e.target.value)}
+                      data-testid="input-employee-contract-start"
                     />
                   </div>
-                )}
-              </div>
-            )}
+                  {isCzasOkreslony && (
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Koniec umowy</Label>
+                      <Input
+                        type="date"
+                        value={form.contractEnd || ""}
+                        onChange={e => setField("contractEnd", e.target.value)}
+                        data-testid="input-employee-contract-end"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
-            <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Stawka godzinowa (PLN)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.hourlyRate || ""}
+                    onChange={e => setField("hourlyRate", e.target.value)}
+                    placeholder="0.00"
+                    data-testid="input-employee-hourly-rate"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <Select value={form.status} onValueChange={v => setField("status", v)}>
+                    <SelectTrigger data-testid="select-employee-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection title="Dodatkowe informacje">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Stawka godzinowa (PLN)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.hourlyRate || ""}
-                  onChange={e => setField("hourlyRate", e.target.value)}
-                  placeholder="0.00"
-                  data-testid="input-employee-hourly-rate"
+                <Label className="text-xs text-muted-foreground">Dodatkowy komentarz</Label>
+                <Textarea
+                  value={form.comment || ""}
+                  onChange={e => setField("comment", e.target.value)}
+                  placeholder="Uwagi, notatki..."
+                  className="resize-none"
+                  rows={3}
+                  data-testid="input-employee-comment"
                 />
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Status</Label>
-                <Select value={form.status} onValueChange={v => setField("status", v)}>
-                  <SelectTrigger data-testid="select-employee-status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Dodatkowy komentarz</Label>
-              <Textarea
-                value={form.comment || ""}
-                onChange={e => setField("comment", e.target.value)}
-                placeholder="Uwagi, notatki..."
-                className="resize-none"
-                rows={3}
-                data-testid="input-employee-comment"
-              />
-            </div>
+            </FormSection>
 
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={closeDialog} data-testid="button-cancel-employee">

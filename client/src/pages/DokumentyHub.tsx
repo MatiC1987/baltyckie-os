@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AnimatedTabContent } from "@/components/AnimatedTabContent";
 import { FileText, FileSpreadsheet } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DokumentyKsiegowe } from "@/pages/DokumentyKsiegowe";
@@ -53,12 +54,12 @@ export default function DokumentyHub() {
               );
             })}
           </TabsList>
-          <TabsContent value="dokumenty" className="mt-0">
+          <AnimatedTabContent value="dokumenty" activeValue={activeTab}>
             <DokumentyKsiegowe />
-          </TabsContent>
-          <TabsContent value="faktury" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="faktury" activeValue={activeTab}>
             <Invoices />
-          </TabsContent>
+          </AnimatedTabContent>
         </Tabs>
       </div>
     </div>

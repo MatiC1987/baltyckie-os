@@ -16,10 +16,14 @@ import {
 } from "lucide-react";
 import { HandoverProtocolsTab } from "./HandoverProtocols";
 import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
+import { FormSection } from "@/components/FormSection";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -57,104 +61,107 @@ function SubleaseFormFields({ form, setForm, apartments }: {
 
   return (
     <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
-      <div className="space-y-2">
-        <Label>Typ najemcy</Label>
-        <Select value={form.tenantType || "osoba_fizyczna"} onValueChange={(v) => setForm({ ...form, tenantType: v })}>
-          <SelectTrigger data-testid="select-tenant-type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="osoba_fizyczna">Osoba fizyczna</SelectItem>
-            <SelectItem value="firma">Firma</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <FormSection title="Najemca" first>
+        <div className="space-y-2">
+          <Label>Typ najemcy</Label>
+          <Select value={form.tenantType || "osoba_fizyczna"} onValueChange={(v) => setForm({ ...form, tenantType: v })}>
+            <SelectTrigger data-testid="select-tenant-type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="osoba_fizyczna">Osoba fizyczna</SelectItem>
+              <SelectItem value="firma">Firma</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-      {isCompany ? (
-        <>
-          <div className="space-y-2">
-            <Label>Nazwa firmy</Label>
-            <Input value={form.companyName || ""} onChange={(e) => setForm({ ...form, companyName: e.target.value })} data-testid="input-company-name" />
-          </div>
-          <div className="space-y-2">
-            <Label>NIP</Label>
-            <Input value={form.nip || ""} onChange={(e) => setForm({ ...form, nip: e.target.value })} data-testid="input-nip" />
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3">
+        {isCompany ? (
+          <>
             <div className="space-y-2">
-              <Label>Imię</Label>
-              <Input value={form.firstName || ""} onChange={(e) => setForm({ ...form, firstName: e.target.value })} data-testid="input-first-name" />
+              <Label>Nazwa firmy</Label>
+              <Input value={form.companyName || ""} onChange={(e) => setForm({ ...form, companyName: e.target.value })} data-testid="input-company-name" />
             </div>
             <div className="space-y-2">
-              <Label>Nazwisko</Label>
-              <Input value={form.lastName || ""} onChange={(e) => setForm({ ...form, lastName: e.target.value })} data-testid="input-last-name" />
+              <Label>NIP</Label>
+              <Input value={form.nip || ""} onChange={(e) => setForm({ ...form, nip: e.target.value })} data-testid="input-nip" />
             </div>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Imię</Label>
+                <Input value={form.firstName || ""} onChange={(e) => setForm({ ...form, firstName: e.target.value })} data-testid="input-first-name" />
+              </div>
+              <div className="space-y-2">
+                <Label>Nazwisko</Label>
+                <Input value={form.lastName || ""} onChange={(e) => setForm({ ...form, lastName: e.target.value })} data-testid="input-last-name" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>PESEL / Paszport</Label>
+              <Input value={form.peselOrPassport || ""} onChange={(e) => setForm({ ...form, peselOrPassport: e.target.value })} data-testid="input-pesel" />
+            </div>
+            <div className="space-y-2">
+              <Label>Nr dowodu osobistego</Label>
+              <Input value={form.idNumber || ""} onChange={(e) => setForm({ ...form, idNumber: e.target.value })} placeholder="np. ABC 123456" data-testid="input-id-number" />
+            </div>
+          </>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-2 col-span-1">
+            <Label>Ulica</Label>
+            <Input value={form.street || ""} onChange={(e) => setForm({ ...form, street: e.target.value })} data-testid="input-street" />
           </div>
           <div className="space-y-2">
-            <Label>PESEL / Paszport</Label>
-            <Input value={form.peselOrPassport || ""} onChange={(e) => setForm({ ...form, peselOrPassport: e.target.value })} data-testid="input-pesel" />
+            <Label>Kod pocztowy</Label>
+            <Input value={form.postalCode || ""} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} data-testid="input-postal-code" />
           </div>
           <div className="space-y-2">
-            <Label>Nr dowodu osobistego</Label>
-            <Input value={form.idNumber || ""} onChange={(e) => setForm({ ...form, idNumber: e.target.value })} placeholder="np. ABC 123456" data-testid="input-id-number" />
+            <Label>Miasto</Label>
+            <Input value={form.city || ""} onChange={(e) => setForm({ ...form, city: e.target.value })} data-testid="input-city" />
           </div>
-        </>
-      )}
+        </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div className="space-y-2 col-span-1">
-          <Label>Ulica</Label>
-          <Input value={form.street || ""} onChange={(e) => setForm({ ...form, street: e.target.value })} data-testid="input-street" />
-        </div>
-        <div className="space-y-2">
-          <Label>Kod pocztowy</Label>
-          <Input value={form.postalCode || ""} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} data-testid="input-postal-code" />
-        </div>
-        <div className="space-y-2">
-          <Label>Miasto</Label>
-          <Input value={form.city || ""} onChange={(e) => setForm({ ...form, city: e.target.value })} data-testid="input-city" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label>Telefon</Label>
-          <Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} data-testid="input-phone" />
-        </div>
-        <div className="space-y-2">
-          <Label>Email</Label>
-          <Input value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="input-email" />
-        </div>
-      </div>
-
-      {isCompany && (
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label>Email do faktur</Label>
-            <Input value={form.invoiceEmail || ""} onChange={(e) => setForm({ ...form, invoiceEmail: e.target.value })} data-testid="input-invoice-email" />
+            <Label>Telefon</Label>
+            <Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} data-testid="input-phone" />
           </div>
           <div className="space-y-2">
-            <Label>Stawka VAT</Label>
-            <Select value={form.vatRate || "23%"} onValueChange={(v) => setForm({ ...form, vatRate: v })}>
-              <SelectTrigger data-testid="select-vat-rate">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="23%">23%</SelectItem>
-                <SelectItem value="8%">8%</SelectItem>
-                <SelectItem value="0%">0%</SelectItem>
-                <SelectItem value="zw.">zw.</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Email</Label>
+            <Input value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="input-email" />
           </div>
         </div>
-      )}
 
-      <div className="space-y-2">
-        <Label>Apartamenty</Label>
+        {isCompany && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Email do faktur</Label>
+              <Input value={form.invoiceEmail || ""} onChange={(e) => setForm({ ...form, invoiceEmail: e.target.value })} data-testid="input-invoice-email" />
+            </div>
+            <div className="space-y-2">
+              <Label>Stawka VAT</Label>
+              <Select value={form.vatRate || "23%"} onValueChange={(v) => setForm({ ...form, vatRate: v })}>
+                <SelectTrigger data-testid="select-vat-rate">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="23%">23%</SelectItem>
+                  <SelectItem value="8%">8%</SelectItem>
+                  <SelectItem value="0%">0%</SelectItem>
+                  <SelectItem value="zw.">zw.</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+      </FormSection>
+
+      <FormSection title="Warunki">
+        <div className="space-y-2">
+          <Label>Apartamenty</Label>
         <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1" data-testid="select-apartments-multi">
           {apartments.map((a) => {
             const selectedIds: number[] = form.apartmentIds || (form.apartmentId ? [form.apartmentId] : []);
@@ -210,39 +217,42 @@ function SubleaseFormFields({ form, setForm, apartments }: {
           <Input type="number" min="1" max="28" value={form.paymentDay || ""} onChange={(e) => setForm({ ...form, paymentDay: e.target.value })} placeholder="np. 10" data-testid="input-payment-day" />
         </div>
       </div>
+      </FormSection>
 
-      <div className="flex items-center justify-between rounded-md border p-3">
-        <Label htmlFor="media-by-meters" className="text-sm font-medium cursor-pointer">Rozliczenie mediów według liczników</Label>
-        <Switch
-          id="media-by-meters"
-          checked={!!form.mediaByMeters}
-          onCheckedChange={(checked) => setForm({ ...form, mediaByMeters: checked })}
-          data-testid="switch-media-by-meters"
-        />
-      </div>
-
-      <div className="flex items-center justify-between rounded-md border p-3">
-        <Label htmlFor="has-deposit" className="text-sm font-medium cursor-pointer">Kaucja</Label>
-        <Switch
-          id="has-deposit"
-          checked={!!form.hasDeposit}
-          onCheckedChange={(checked) => setForm({ ...form, hasDeposit: checked, ...(!checked ? { depositAmount: "", depositReturnDate: "" } : {}) })}
-          data-testid="switch-has-deposit"
-        />
-      </div>
-
-      {form.hasDeposit && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label>Kwota kaucji (PLN)</Label>
-            <Input type="number" step="0.01" value={form.depositAmount || ""} onChange={(e) => setForm({ ...form, depositAmount: e.target.value })} data-testid="input-deposit-amount" />
-          </div>
-          <div className="space-y-2">
-            <Label>Termin zwrotu kaucji</Label>
-            <Input type="date" value={form.depositReturnDate || ""} onChange={(e) => setForm({ ...form, depositReturnDate: e.target.value })} data-testid="input-deposit-return-date" />
-          </div>
+      <FormSection title="Media i kaucja">
+        <div className="flex items-center justify-between rounded-md border p-3">
+          <Label htmlFor="media-by-meters" className="text-sm font-medium cursor-pointer">Rozliczenie mediów według liczników</Label>
+          <Switch
+            id="media-by-meters"
+            checked={!!form.mediaByMeters}
+            onCheckedChange={(checked) => setForm({ ...form, mediaByMeters: checked })}
+            data-testid="switch-media-by-meters"
+          />
         </div>
-      )}
+
+        <div className="flex items-center justify-between rounded-md border p-3">
+          <Label htmlFor="has-deposit" className="text-sm font-medium cursor-pointer">Kaucja</Label>
+          <Switch
+            id="has-deposit"
+            checked={!!form.hasDeposit}
+            onCheckedChange={(checked) => setForm({ ...form, hasDeposit: checked, ...(!checked ? { depositAmount: "", depositReturnDate: "" } : {}) })}
+            data-testid="switch-has-deposit"
+          />
+        </div>
+
+        {form.hasDeposit && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Kwota kaucji (PLN)</Label>
+              <Input type="number" step="0.01" value={form.depositAmount || ""} onChange={(e) => setForm({ ...form, depositAmount: e.target.value })} data-testid="input-deposit-amount" />
+            </div>
+            <div className="space-y-2">
+              <Label>Termin zwrotu kaucji</Label>
+              <Input type="date" value={form.depositReturnDate || ""} onChange={(e) => setForm({ ...form, depositReturnDate: e.target.value })} data-testid="input-deposit-return-date" />
+            </div>
+          </div>
+        )}
+      </FormSection>
     </div>
   );
 }
@@ -593,9 +603,9 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
             )}
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setShowAdd(false)}>Anuluj</Button>
-              <Button size="sm" onClick={() => createMut.mutate(payForm)} disabled={!payForm.title || !payForm.amount || !payForm.dueDate || createMut.isPending} data-testid="button-save-payment">
+              <LoadingButton size="sm" onClick={() => createMut.mutate(payForm)} isPending={createMut.isPending} disabled={!payForm.title || !payForm.amount || !payForm.dueDate} data-testid="button-save-payment">
                 Zapisz
-              </Button>
+              </LoadingButton>
             </div>
           </CardContent>
         </Card>
@@ -604,7 +614,7 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Ładowanie...</div>
       ) : payments.length === 0 ? (
-        <div className="text-sm text-muted-foreground text-center py-6">Brak opłat</div>
+        <EmptyState variant="inline" icon={CreditCard} title="Brak opłat" />
       ) : (
         <div className="max-h-[40vh] overflow-y-auto">
           <Table>
@@ -621,7 +631,7 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
             </TableHeader>
             <TableBody>
               {payments.map((p) => {
-                const st = PAYMENT_STATUSES[p.status] || { label: p.status, variant: "outline" as const };
+                const _st = PAYMENT_STATUSES[p.status] || { label: p.status, variant: "outline" as const };
                 const isEditing = editingPayment?.id === p.id;
 
                 if (isEditing) {
@@ -707,7 +717,7 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
                     <TableCell>
                       <Select value={p.status} onValueChange={(v) => updateMut.mutate({ id: p.id, data: { status: v } })}>
                         <SelectTrigger className="h-7 w-32" data-testid={`select-payment-status-${p.id}`}>
-                          <Badge variant={st.variant} className="text-xs">{st.label}</Badge>
+                          <StatusBadge status={p.status} />
                         </SelectTrigger>
                         <SelectContent>
                           {Object.entries(PAYMENT_STATUSES).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
@@ -2052,10 +2062,7 @@ export default function Subleases() {
             </CardHeader>
             <CardContent className={isMobile ? "p-2" : "p-0"}>
               {activeList.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                  <FileText className="h-8 w-8 mb-2" />
-                  <p className="text-sm">Brak aktywnych umów</p>
-                </div>
+                <EmptyState variant="inline" icon={FileText} title="Brak aktywnych umów" />
               ) : isMobile ? (
                 <div className="space-y-2" data-testid="responsive-table-mobile">
                   {sortList(activeList).map((s) => (
@@ -2362,9 +2369,9 @@ export default function Subleases() {
           {activeTab === "dane" && (
             <DialogFooter>
               <Button variant="outline" onClick={closeDialog}>Anuluj</Button>
-              <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending} data-testid="button-save-sublease">
+              <LoadingButton onClick={handleSave} isPending={createMut.isPending || updateMut.isPending} loadingText="Zapisywanie..." data-testid="button-save-sublease">
                 {editId ? "Zapisz zmiany" : "Dodaj umowę"}
-              </Button>
+              </LoadingButton>
             </DialogFooter>
           )}
         </DialogContent>
@@ -2548,10 +2555,10 @@ export default function Subleases() {
                 <Button variant="outline" onClick={() => { setPdfImportOpen(false); setPdfImportStep("upload"); setPdfExtracted(null); setPdfPaymentSchedule([]); }}>
                   Anuluj
                 </Button>
-                <Button onClick={handlePdfImportSave} disabled={createMut.isPending || !pdfImportForm.startDate || !pdfImportForm.endDate} data-testid="button-save-pdf-import">
-                  {createMut.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+                <LoadingButton onClick={handlePdfImportSave} isPending={createMut.isPending} disabled={!pdfImportForm.startDate || !pdfImportForm.endDate} data-testid="button-save-pdf-import">
+                  {!createMut.isPending && <Check className="h-4 w-4 mr-1" />}
                   Zapisz umowe
-                </Button>
+                </LoadingButton>
               </DialogFooter>
             </>
           )}

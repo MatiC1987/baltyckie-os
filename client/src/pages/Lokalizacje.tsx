@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, Trash2, Pencil, MapPin } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { useToast } from "@/hooks/use-toast";
 import type { Location } from "@shared/schema";
@@ -120,11 +121,7 @@ export default function Lokalizacje() {
                 </TableRow>
               ))}
               {(!locations || locations.length === 0) && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    Brak lokalizacji. Kliknij "Dodaj lokalizację" aby dodać pierwszą.
-                  </TableCell>
-                </TableRow>
+                <EmptyState variant="inline" colSpan={5} icon={MapPin} title="Brak lokalizacji" description="Kliknij &quot;Dodaj lokalizację&quot; aby dodać pierwszą." />
               )}
             </TableBody>
           </Table>

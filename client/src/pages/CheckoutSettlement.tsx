@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Eye, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -476,9 +477,9 @@ export default function CheckoutSettlementPage() {
               <Button type="button" variant="outline" onClick={closeDialog} data-testid="button-cancel">
                 Anuluj
               </Button>
-              <Button type="submit" disabled={isPending} data-testid="button-submit">
-                {isPending ? "Zapisywanie..." : editingId ? "Zapisz zmiany" : "Utwórz"}
-              </Button>
+              <LoadingButton type="submit" isPending={isPending} loadingText="Zapisywanie..." data-testid="button-submit">
+                {editingId ? "Zapisz zmiany" : "Utwórz"}
+              </LoadingButton>
             </div>
           </form>
         </DialogContent>

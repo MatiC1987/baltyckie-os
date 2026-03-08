@@ -19,6 +19,21 @@ import type { Loan, LoanPayment } from "@shared/schema";
 import type { CompanyBalance, CompanyBalanceAccount } from "./widget-utils";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
+import { motion } from "framer-motion";
+
+const accountGridVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.03,
+    },
+  },
+};
+
+const accountCardVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
+};
 
 function getAccountIcon(name: string) {
   const lower = name.toLowerCase();
@@ -500,34 +515,38 @@ export function CompanyBalanceCard({
 
     if (isLoan) {
       return (
-        <button
-          key={acc.id}
-          onClick={() => setLoansDialogOpen(true)}
-          className="rounded-lg border border-border p-2.5 hover-elevate block text-left w-full"
-          data-testid={`card-account-balance-${acc.id}`}
-        >
-          {content}
-        </button>
+        <motion.div key={acc.id} variants={accountCardVariants}>
+          <button
+            onClick={() => setLoansDialogOpen(true)}
+            className="rounded-lg border border-border p-2.5 hover-elevate block text-left w-full"
+            data-testid={`card-account-balance-${acc.id}`}
+          >
+            {content}
+          </button>
+        </motion.div>
       );
     }
 
     if (isAuto && saldoLink) {
       return (
-        <Link
-          key={acc.id}
-          href={saldoLink}
-          className="rounded-lg border border-border p-2.5 hover-elevate block"
-          data-testid={`card-account-balance-${acc.id}`}
-        >
-          {content}
-        </Link>
+        <motion.div key={acc.id} variants={accountCardVariants}>
+          <Link
+            href={saldoLink}
+            className="rounded-lg border border-border p-2.5 hover-elevate block"
+            data-testid={`card-account-balance-${acc.id}`}
+          >
+            {content}
+          </Link>
+        </motion.div>
       );
     }
 
     return (
-      <div key={acc.id} className="rounded-lg border border-border p-2.5" data-testid={`card-account-balance-${acc.id}`}>
-        {content}
-      </div>
+      <motion.div key={acc.id} variants={accountCardVariants}>
+        <div className="rounded-lg border border-border p-2.5" data-testid={`card-account-balance-${acc.id}`}>
+          {content}
+        </div>
+      </motion.div>
     );
   };
 
@@ -589,9 +608,14 @@ export function CompanyBalanceCard({
                     </span>
                   </button>
                   {isExpanded && (
-                    <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 pl-2">
+                    <motion.div
+                      className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 pl-2"
+                      variants={accountGridVariants}
+                      initial="hidden"
+                      animate="visible"
+                    >
                       {accs.map(renderAccountCard)}
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               );

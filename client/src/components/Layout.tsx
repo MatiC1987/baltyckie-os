@@ -5,8 +5,43 @@ import { NotificationBell } from "./NotificationBell";
 import { PageTransition } from "./PageTransition";
 import { NavigationProgress } from "./NavigationProgress";
 import { SidebarProvider } from "@/contexts/SidebarContext";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useAppBadge } from "@/hooks/use-app-badge";
+
+function useSwipeToOpen(threshold = 30, edgeZone = 25) {
+  const startX = useRef(0);
+  const startY = useRef(0);
+  const tracking = useRef(false);
+
+  const onTouchStart = useCallback((e: TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch.clientX <= edgeZone) {
+      startX.current = touch.clientX;
+      startY.current = touch.clientY;
+      tracking.current = true;
+    }
+  }, [edgeZone]);
+
+  const onTouchEnd = useCallback((e: TouchEvent) => {
+    if (!tracking.current) return;
+    tracking.current = false;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - startX.current;
+    const dy = Math.abs(touch.clientY - startY.current);
+    if (dx > threshold && dx > dy) {
+      window.dispatchEvent(new Event("toggle-mobile-sidebar"));
+    }
+  }, [threshold]);
+
+  useEffect(() => {
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [onTouchStart, onTouchEnd]);
+}
 
 export const SIDEBAR_FONT_SIZE_KEY = "sidebarFontSize";
 export const PAGE_FONT_SIZE_KEY = "pageFontSize";
@@ -30,6 +65,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   useAppBadge();
+  useSwipeToOpen();
   const [sidebarFontSize, setSidebarFontSize] = useState(() => loadFontSize(SIDEBAR_FONT_SIZE_KEY, 14));
   const [pageFontSize, setPageFontSize] = useState(() => loadFontSize(PAGE_FONT_SIZE_KEY, 14));
 

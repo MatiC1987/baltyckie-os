@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff, ClipboardList, Clock } from "lucide-react";
+import { LogIn, Building2, BarChart3, Calendar, Shield, Fingerprint, Loader2, Eye, EyeOff, ClipboardList, Clock, Mail } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import logoImg from "@assets/base_logo_white_background_1770751806017.png";
 import { motion } from "framer-motion";
 import { setAuthToken } from "@/lib/auth-token";
@@ -108,6 +109,17 @@ export default function Landing() {
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [showRegisterDialog, setShowRegisterDialog] = useState(false);
   const [registeringBiometric, setRegisteringBiometric] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem("bf_remember_me") === "true";
+  });
+  const [showForgotDialog, setShowForgotDialog] = useState(false);
+
+  useEffect(() => {
+    if (rememberMe) {
+      const savedEmail = localStorage.getItem("bf_saved_email");
+      if (savedEmail) setEmail(savedEmail);
+    }
+  }, []);
 
   const checkWebauthn = useCallback(async (emailValue: string) => {
     if (!emailValue || !emailValue.includes("@")) {
@@ -153,6 +165,14 @@ export default function Landing() {
       if (!res.ok) {
         setError(data.message || "Błąd logowania");
         return;
+      }
+
+      if (rememberMe) {
+        localStorage.setItem("bf_remember_me", "true");
+        localStorage.setItem("bf_saved_email", email);
+      } else {
+        localStorage.removeItem("bf_remember_me");
+        localStorage.removeItem("bf_saved_email");
       }
 
       setAuthToken(data.token);
@@ -272,12 +292,12 @@ export default function Landing() {
   }
 
   return (
-    <div className="fixed inset-0 flex flex-col lg:flex-row" data-testid="landing-page">
+    <div className="fixed inset-0 flex flex-col md:flex-row" data-testid="landing-page">
       <motion.div
         initial={{ x: -60, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.7, ease: "easeOut" }}
-        className="relative flex-1 flex flex-col items-center justify-center p-8 lg:p-16 overflow-hidden"
+        className="relative hidden md:flex flex-1 flex-col items-center justify-center p-8 lg:p-16 overflow-hidden"
         style={{ background: "linear-gradient(135deg, #051F51, #0a3a7a, #5ADBFA, #051F51)", backgroundSize: "400% 400%", animation: "landingGradientShift 12s ease infinite" }}
       >
         <style>{`
@@ -407,14 +427,29 @@ export default function Landing() {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
-        className="flex-1 flex items-center justify-center p-8 lg:p-16 bg-background"
+        className="flex-1 flex items-center justify-center p-6 md:p-8 lg:p-16 bg-background min-h-0 overflow-auto"
       >
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-sm mx-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            className="flex flex-col items-center mb-6 md:hidden"
+          >
+            <img
+              src={themeLogo}
+              alt="Bałtyckie Finanse"
+              className="w-20 h-20 rounded-xl shadow-lg object-contain bg-white/90 dark:bg-white/10 p-1.5 mb-3"
+              data-testid="img-logo-mobile"
+            />
+            <h1 className="text-xl font-bold text-foreground">Bałtyckie Finanse</h1>
+          </motion.div>
+
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.6 }}
-            className="rounded-2xl border border-border bg-card p-8 shadow-xl dark:bg-card/80 dark:backdrop-blur-xl dark:border-white/10 dark:shadow-2xl"
+            className="rounded-2xl border border-border bg-card p-6 md:p-8 shadow-xl dark:bg-card/80 dark:backdrop-blur-2xl dark:border-white/15 dark:shadow-2xl dark:ring-1 dark:ring-white/5"
             data-testid="login-card"
           >
             <div className="text-center mb-6">
@@ -465,6 +500,28 @@ export default function Landing() {
                 </div>
               </div>
 
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="remember-me"
+                    checked={rememberMe}
+                    onCheckedChange={(checked) => setRememberMe(checked === true)}
+                    data-testid="checkbox-remember-me"
+                  />
+                  <Label htmlFor="remember-me" className="text-sm font-normal text-muted-foreground cursor-pointer">
+                    Zapamiętaj mnie
+                  </Label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotDialog(true)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="button-forgot-password"
+                >
+                  Zapomniałem hasła
+                </button>
+              </div>
+
               {error && (
                 <motion.div
                   initial={{ opacity: 0, y: -5 }}
@@ -480,15 +537,20 @@ export default function Landing() {
                 type="submit"
                 size="lg"
                 disabled={loading || !email || !password}
-                className="w-full text-base bg-[#051F51] text-white shadow-lg hover:bg-[#0a2d6b]"
+                className="w-full text-base bg-[#051F51] text-white shadow-lg"
                 data-testid="button-login"
               >
                 {loading ? (
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Logowanie...
+                  </>
                 ) : (
-                  <LogIn className="mr-2 h-5 w-5" />
+                  <>
+                    <LogIn className="mr-2 h-5 w-5" />
+                    Zaloguj się
+                  </>
                 )}
-                Zaloguj się
               </Button>
 
               {hasWebauthn && (
@@ -517,6 +579,40 @@ export default function Landing() {
           </motion.div>
         </div>
       </motion.div>
+
+      <Dialog open={showForgotDialog} onOpenChange={setShowForgotDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-primary" />
+              Resetowanie hasła
+            </DialogTitle>
+            <DialogDescription>
+              Aby zresetować hasło, skontaktuj się z administratorem systemu:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-3 rounded-lg bg-muted p-4">
+            <Mail className="h-5 w-5 text-muted-foreground shrink-0" />
+            <a
+              href="mailto:mateusz.cieslak@baltyckie.pl"
+              className="text-sm font-medium text-foreground hover:underline"
+              data-testid="link-admin-email"
+            >
+              mateusz.cieslak@baltyckie.pl
+            </a>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowForgotDialog(false)}
+              className="w-full"
+              data-testid="button-close-forgot-dialog"
+            >
+              Zamknij
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showRegisterDialog} onOpenChange={setShowRegisterDialog}>
         <DialogContent className="max-w-sm">

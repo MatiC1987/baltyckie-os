@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AnimatedTabContent } from "@/components/AnimatedTabContent";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -164,7 +165,7 @@ export default function V2Koszty() {
           <TabsTrigger value="operacyjne" data-testid="tab-op-costs">Operacyjne</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard" className="space-y-4 mt-4">
+        <AnimatedTabContent value="dashboard" activeValue={tab} className="space-y-4 mt-4">
           <div>
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Rok {year} — podsumowanie roczne</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3" data-testid="v2-koszty-tiles">
@@ -206,7 +207,7 @@ export default function V2Koszty() {
               </ResponsiveContainer>
             </CardContent>
           </Card>
-        </TabsContent>
+        </AnimatedTabContent>
 
         <TabsContent value="apartamentowe" forceMount className="data-[state=inactive]:hidden">
           <CostsApartmentsContent

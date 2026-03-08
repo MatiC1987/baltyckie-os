@@ -22,12 +22,14 @@ import {
   PanelLeft,
   EyeOff,
   Eye,
+  Monitor,
+  Bell,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -52,9 +54,51 @@ import {
 } from "@/lib/sidebar-config";
 import { useSidebar } from "@/contexts/SidebarContext";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { PREFETCH_MAP } from "@/lib/prefetch-map";
+import { motion, AnimatePresence } from "framer-motion";
 
-function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: NavItem; isActive: boolean; onClick: () => void; badgeCount?: number; compact?: boolean }) {
+const SECTION_ICON_COLORS: Record<string, { active: string; hover: string }> = {
+  rezerwacje: { active: "text-cyan-400", hover: "group-hover/navitem:text-cyan-400" },
+  nieruchomosci: { active: "text-orange-400", hover: "group-hover/navitem:text-orange-400" },
+  finanse: { active: "text-emerald-400", hover: "group-hover/navitem:text-emerald-400" },
+  kadry: { active: "text-pink-400", hover: "group-hover/navitem:text-pink-400" },
+  analityka: { active: "text-blue-400", hover: "group-hover/navitem:text-blue-400" },
+};
+
+const CONTEXT_LABELS: Record<string, { label: string; href: string }> = {
+  "/reservations": { label: "Nowa rezerwacja", href: "/reservations?action=new" },
+  "/calendar": { label: "Nowa rezerwacja", href: "/reservations?action=new" },
+  "/podnajem": { label: "Nowy podnajem", href: "/podnajem?action=new" },
+  "/v2/koszty": { label: "Nowy koszt", href: "/koszty-operacyjne?action=new" },
+  "/koszty-operacyjne": { label: "Nowy koszt", href: "/koszty-operacyjne?action=new" },
+  "/pracownicy": { label: "Nowy pracownik", href: "/pracownicy?action=new" },
+  "/dokumenty-ksiegowe": { label: "Nowa faktura", href: "/dokumenty-ksiegowe" },
+  "/apartments": { label: "Nowy apartament", href: "/apartments?action=new" },
+};
+
+function NavItemLink({ item, isActive, onClick, badgeCount, compact, sectionId }: { item: NavItem; isActive: boolean; onClick: () => void; badgeCount?: number; compact?: boolean; sectionId?: string }) {
   const Icon = ICON_MAP[item.iconName] || LayoutDashboard;
+  const queryClient = useQueryClient();
+  const prefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    const keys = PREFETCH_MAP[item.href];
+    if (!keys) return;
+    prefetchTimer.current = setTimeout(() => {
+      keys.forEach(key => {
+        queryClient.prefetchQuery({ queryKey: [key], staleTime: 1000 * 60 * 2 });
+      });
+    }, 150);
+  }, [item.href, queryClient]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (prefetchTimer.current) {
+      clearTimeout(prefetchTimer.current);
+      prefetchTimer.current = null;
+    }
+  }, []);
+
+  const iconColors = sectionId ? SECTION_ICON_COLORS[sectionId] : undefined;
 
   if (compact) {
     return (
@@ -64,14 +108,21 @@ function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: N
             <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className="no-underline">
               <div
                 onClick={onClick}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
                 className={cn(
-                  "relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 cursor-pointer mx-auto",
+                  "group/navitem relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 cursor-pointer mx-auto",
                   isActive
-                    ? "!text-[#5ADBFA] bg-[#5ADBFA]/10 shadow-[0_0_10px_rgba(90,219,250,0.15)]"
+                    ? "bg-[#5ADBFA]/10 shadow-[inset_3px_0_0_#5ADBFA,0_0_10px_rgba(90,219,250,0.15)]"
                     : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
                 )}
               >
-                <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "")} />
+                <Icon className={cn(
+                  "h-4 w-4 shrink-0 transition-colors duration-200",
+                  isActive
+                    ? (iconColors?.active || "!text-[#5ADBFA]")
+                    : iconColors?.hover || ""
+                )} />
                 {badgeCount && badgeCount > 0 ? (
                   <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5" data-testid={`badge-overdue-${item.id}`}>
                     {badgeCount > 99 ? "99+" : badgeCount}
@@ -92,14 +143,21 @@ function NavItemLink({ item, isActive, onClick, badgeCount, compact }: { item: N
     <Link href={item.href} data-testid={`link-nav-${item.href === "/" ? "home" : item.href.slice(1)}`} className={cn("flex-1 min-w-0 no-underline", isActive ? "!text-[#5ADBFA]" : "")}>
       <div
         onClick={onClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         className={cn(
-          "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
+          "group/navitem flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer",
           isActive
             ? "!text-[#5ADBFA] sidebar-active-glow rounded-lg"
             : "text-slate-400 hover:text-slate-200 hover:bg-white/5 hover:shadow-[inset_2px_0_0_rgba(90,219,250,0.25)]"
         )}
       >
-        <Icon className={cn("h-4 w-4 shrink-0", isActive ? "!text-[#5ADBFA]" : "")} />
+        <Icon className={cn(
+          "h-4 w-4 shrink-0 transition-colors duration-200",
+          isActive
+            ? (iconColors?.active || "!text-[#5ADBFA]")
+            : iconColors?.hover || ""
+        )} />
         <span className="font-medium text-xs leading-tight">{item.label}</span>
         {badgeCount && badgeCount > 0 ? (
           <span className="ml-auto shrink-0 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" data-testid={`badge-overdue-${item.id}`}>
@@ -115,7 +173,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
   const [location, navigate] = useLocation();
   const { logout, user } = useAuth();
   const { toast } = useToast();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, mode, setMode, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
 
@@ -145,6 +203,12 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
     staleTime: 1000 * 60 * 5,
   });
 
+  const { data: notifData } = useQuery<{ unreadCount: number }>({
+    queryKey: ["/api/notifications/unread-count"],
+    staleTime: 1000 * 30,
+  });
+  const unreadNotifications = notifData?.unreadCount || 0;
+
   const badgeMap = useMemo<Record<string, number>>(() => {
     if (!overdueCounts) return {};
     const map: Record<string, number> = {};
@@ -162,7 +226,28 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
     setCompact(!compact);
   }, [compact, setCompact]);
 
+  const contextAction = CONTEXT_LABELS[location];
+
+  const handleQuickAction = useCallback(() => {
+    if (contextAction) {
+      navigate(contextAction.href);
+      setIsOpen(false);
+    } else {
+      setShowQuickActions(true);
+    }
+  }, [contextAction, navigate, setIsOpen, setShowQuickActions]);
+
   const sidebarWidth = compact ? "w-16" : "w-64";
+
+  const themeIcon = mode === "auto" ? <Monitor className="h-3.5 w-3.5" /> : mode === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />;
+  const themeLabel = mode === "auto" ? "Automatyczny" : mode === "dark" ? "Tryb jasny" : "Tryb ciemny";
+
+  const findSectionForItem = useCallback((itemId: string): string | undefined => {
+    for (const section of sections) {
+      if (section.itemIds.includes(itemId)) return section.id;
+    }
+    return undefined;
+  }, [sections]);
 
   return (
     <>
@@ -212,7 +297,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                         data-testid={`toggle-section-${section.id}`}
                       >
                         <span className={cn(
-                          "text-[10px] font-bold tracking-widest uppercase",
+                          "text-[11px] font-bold tracking-widest uppercase",
                           getSectionColorClass(section.color)
                         )} style={getSectionColorStyle(section.color)}>{section.title}</span>
                         {section.id !== "finanse" && (
@@ -231,39 +316,47 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                       </button>
                     </div>
                   )}
-                  <div className={cn(
-                    "transition-all duration-200 overflow-hidden",
-                    !compact && isCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
-                  )}>
-                    {section.itemIds.map((itemId) => {
-                      if (hiddenSet.has(itemId)) return null;
-                      if (itemId.startsWith("sep-")) {
-                        if (compact) return null;
-                        return <div key={itemId} className="my-2 mx-3 border-t border-white/10" />;
-                      }
-                      if (itemId.startsWith("label-")) {
-                        if (compact) return null;
-                        const labelItem = config.customItems[itemId];
-                        return (
-                          <div key={itemId} className="px-3 pt-2 pb-1">
-                            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{labelItem?.label || ""}</span>
-                          </div>
-                        );
-                      }
-                      const item = allItems[itemId];
-                      if (!item) return null;
-                      return (
-                        <NavItemLink
-                          key={item.id}
-                          item={item}
-                          isActive={location === item.href}
-                          onClick={() => setIsOpen(false)}
-                          badgeCount={badgeMap[item.id]}
-                          compact={compact}
-                        />
-                      );
-                    })}
-                  </div>
+                  <AnimatePresence initial={false}>
+                    {(!compact && isCollapsed) ? null : (
+                      <motion.div
+                        initial={compact ? false : { height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        {section.itemIds.map((itemId) => {
+                          if (hiddenSet.has(itemId)) return null;
+                          if (itemId.startsWith("sep-")) {
+                            if (compact) return null;
+                            return <div key={itemId} className="my-2 mx-3 border-t border-white/10" />;
+                          }
+                          if (itemId.startsWith("label-")) {
+                            if (compact) return null;
+                            const labelItem = config.customItems[itemId];
+                            return (
+                              <div key={itemId} className="px-3 pt-2 pb-1">
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{labelItem?.label || ""}</span>
+                              </div>
+                            );
+                          }
+                          const item = allItems[itemId];
+                          if (!item) return null;
+                          return (
+                            <NavItemLink
+                              key={item.id}
+                              item={item}
+                              isActive={location === item.href}
+                              onClick={() => setIsOpen(false)}
+                              badgeCount={badgeMap[item.id]}
+                              compact={compact}
+                              sectionId={section.id}
+                            />
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               );
             })}
@@ -316,24 +409,24 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => setShowQuickActions(true)}
+                      onClick={handleQuickAction}
                       className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors bg-[#5ADBFA] text-slate-900 hover:bg-[#5ADBFA]/85"
                       data-testid="button-quick-actions"
                     >
                       <Plus className="h-4 w-4" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs">Dodaj</TooltipContent>
+                  <TooltipContent side="right" className="text-xs">{contextAction?.label || "Dodaj"}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
               <button
-                onClick={() => setShowQuickActions(true)}
+                onClick={handleQuickAction}
                 className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-[#5ADBFA] text-slate-900 hover:bg-[#5ADBFA]/85"
                 data-testid="button-quick-actions"
               >
                 <Plus className="h-3.5 w-3.5" />
-                <span>Dodaj</span>
+                <span>{contextAction?.label || "Dodaj"}</span>
               </button>
             )}
           </div>
@@ -378,12 +471,33 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                   <span className="text-xs font-medium text-white truncate">{user?.firstName}</span>
                   <span className="text-[10px] text-slate-400 leading-tight">Admin</span>
                 </div>
+                {unreadNotifications > 0 && (
+                  <div className="ml-auto relative" data-testid="sidebar-notification-indicator">
+                    <Bell className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[7px] font-bold rounded-full min-w-[12px] h-[12px] flex items-center justify-center px-0.5">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
             {compact ? (
               <div className="flex flex-col items-center gap-1">
                 <TooltipProvider delayDuration={0}>
+                  {unreadNotifications > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="relative flex items-center justify-center w-10 h-10 rounded-lg text-slate-400" data-testid="sidebar-notification-indicator-compact">
+                          <Bell className="h-3.5 w-3.5" />
+                          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[7px] font-bold rounded-full min-w-[12px] h-[12px] flex items-center justify-center px-0.5">
+                            {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">{unreadNotifications} powiadomień</TooltipContent>
+                    </Tooltip>
+                  )}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Link href="/ustawienia">
@@ -412,6 +526,18 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="text-xs">Rozwiń menu</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={toggleTheme}
+                        className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+                        data-testid="button-toggle-theme"
+                      >
+                        {themeIcon}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="text-xs">{themeLabel}</TooltipContent>
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -469,10 +595,10 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                           className="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
                           data-testid="button-toggle-theme"
                         >
-                          {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                          {themeIcon}
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs">{theme === "dark" ? "Tryb jasny" : "Tryb ciemny"}</TooltipContent>
+                      <TooltipContent side="top" className="text-xs">{themeLabel}</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
@@ -512,7 +638,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
             ].map((action) => (
               <Card
                 key={action.href}
-                className="hover-elevate cursor-pointer"
+                className="card-interactive hover-elevate"
                 onClick={() => {
                   setShowQuickActions(false);
                   setIsOpen(false);

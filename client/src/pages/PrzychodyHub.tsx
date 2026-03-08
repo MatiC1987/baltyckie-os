@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AnimatedTabContent } from "@/components/AnimatedTabContent";
 import { PageHeader } from "@/components/PageHeader";
 import { Wallet, TrendingUp } from "lucide-react";
 import V2Przychody from "@/pages/V2Przychody";
@@ -48,12 +49,12 @@ export default function PrzychodyHub() {
               );
             })}
           </TabsList>
-          <TabsContent value="przychody" className="mt-0">
+          <AnimatedTabContent value="przychody" activeValue={activeTab}>
             <V2Przychody />
-          </TabsContent>
-          <TabsContent value="prognoza" className="mt-0">
+          </AnimatedTabContent>
+          <AnimatedTabContent value="prognoza" activeValue={activeTab}>
             <PriorityRevenueForecast />
-          </TabsContent>
+          </AnimatedTabContent>
         </Tabs>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { CostInvoice, ZipDownloadHistory, AccountingNote, Sublease, MediaSettlementReport } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -396,9 +397,7 @@ function CostInvoicesTab() {
   };
 
   const getStatusBadge = (status: string) => {
-    const opt = STATUS_OPTIONS.find(s => s.value === status);
-    if (!opt) return <Badge variant="secondary">{status}</Badge>;
-    return <Badge variant={opt.variant} data-testid={`badge-status-${status}`}>{opt.label}</Badge>;
+    return <StatusBadge status={status} />;
   };
 
   const isImage = (mime: string) => mime.startsWith("image/");
@@ -1231,9 +1230,7 @@ function AccountingNotesTab() {
   };
 
   const getNoteStatusBadge = (status: string) => {
-    const opt = NOTE_STATUS_OPTIONS.find(s => s.value === status);
-    if (!opt) return <Badge variant="secondary">{status}</Badge>;
-    return <Badge variant={opt.variant} data-testid={`badge-note-status-${status}`}>{opt.label}</Badge>;
+    return <StatusBadge status={status} data-testid={`badge-note-status-${status}`} />;
   };
 
   return (

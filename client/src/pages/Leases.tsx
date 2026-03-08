@@ -3,6 +3,7 @@ import { useLeases, useCreateLease } from "@/hooks/use-leases";
 import { useApartments } from "@/hooks/use-apartments";
 import { useOwners } from "@/hooks/use-owners";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, FileText, Home, Users, Search, FileSignature, AlertTriangle, Eraser } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -210,12 +212,7 @@ export default function Leases() {
           </div>
 
           {filteredOwnerContracts.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-                <Users className="h-12 w-12 text-muted-foreground/50" />
-                <p className="text-muted-foreground">Brak umów właścicieli pasujących do filtrów.</p>
-              </CardContent>
-            </Card>
+            <EmptyState variant="card" icon={Users} title="Brak umów właścicieli" description="Brak umów właścicieli pasujących do filtrów." />
           ) : (
             <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
               <Table>
@@ -289,12 +286,7 @@ export default function Leases() {
 
         <TabsContent value="tenant-leases" className="mt-4 space-y-4">
           {(!leases || leases.length === 0) ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-                <FileText className="h-12 w-12 text-muted-foreground/50" />
-                <p className="text-muted-foreground">Brak umów najmu. Kliknij "Dodaj umowę najmu" aby dodać pierwszą.</p>
-              </CardContent>
-            </Card>
+            <EmptyState variant="card" icon={FileText} title="Brak umów najmu" description="Kliknij &quot;Dodaj umowę najmu&quot; aby dodać pierwszą." />
           ) : (
             <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
               <Table>
@@ -435,12 +427,7 @@ function CostDiagnosticsTab() {
       )}
 
       {entries.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
-            <AlertTriangle className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-muted-foreground text-sm">Brak automatycznie wygenerowanych kosztów umownych.</p>
-          </CardContent>
-        </Card>
+        <EmptyState variant="card" icon={AlertTriangle} title="Brak kosztów umownych" description="Brak automatycznie wygenerowanych kosztów umownych." />
       ) : (
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
           <Table>
@@ -566,9 +553,9 @@ function LeaseForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <DialogFooter>
-        <Button type="submit" disabled={createLease.isPending} data-testid="button-submit-lease">
-          {createLease.isPending ? "Zapisywanie..." : "Zapisz umowę"}
-        </Button>
+        <LoadingButton type="submit" isPending={createLease.isPending} loadingText="Zapisywanie..." data-testid="button-submit-lease">
+          Zapisz umowę
+        </LoadingButton>
       </DialogFooter>
     </form>
   );
