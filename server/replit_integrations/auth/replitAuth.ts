@@ -107,7 +107,7 @@ export async function setupAuth(app: Express) {
 
   app.use(async (req: any, res, next) => {
     const authToken = req.headers['x-auth-token'] as string;
-    if (authToken && !req.user) {
+    if (authToken) {
       const userData = await loadAuthToken(authToken);
       if (userData) {
         req.user = userData;
@@ -258,8 +258,10 @@ export async function setupAuth(app: Express) {
         return res.status(400).json({ message: "Brak sesji rejestracji" });
       }
 
+      const credentialData = req.body.credential || req.body;
+
       const verification = await verifyRegistrationResponse({
-        response: req.body.credential,
+        response: credentialData,
         expectedChallenge: challenge,
         expectedOrigin: getOrigin(req),
         expectedRPID: getRpId(req),
@@ -276,7 +278,7 @@ export async function setupAuth(app: Express) {
         credentialId: credential.id,
         publicKey: Buffer.from(credential.publicKey).toString("base64url"),
         counter: credential.counter,
-        transports: req.body.credential?.response?.transports || [],
+        transports: credentialData?.response?.transports || [],
         deviceName: req.body.deviceName || "Urządzenie",
       });
 
