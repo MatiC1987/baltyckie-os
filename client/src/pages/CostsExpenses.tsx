@@ -672,13 +672,39 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     dragOverItemRef.current = null;
     if (!from || !to) return;
     if (from.catId === to.catId && from.idx === to.idx) return;
-    const newCats = categories.map(c => ({ ...c, items: [...c.items] }));
-    const fromCat = newCats.find(c => c.id === from.catId);
-    const toCat = newCats.find(c => c.id === to.catId);
-    if (!fromCat || !toCat) return;
-    const [movedItem] = fromCat.items.splice(from.idx, 1);
-    toCat.items.splice(to.idx, 0, movedItem);
+    if (from.catId !== to.catId) {
+      return;
+    }
+    const cat = categories.find(c => c.id === from.catId);
+    if (!cat) return;
+    const oldItems = cat.items.map((_, i) => i);
+    const newItems = [...oldItems];
+    const [moved] = newItems.splice(from.idx, 1);
+    newItems.splice(to.idx, 0, moved);
+    const oldToNew: Record<number, number> = {};
+    let changed = false;
+    for (let i = 0; i < newItems.length; i++) {
+      if (newItems[i] !== i) changed = true;
+      oldToNew[newItems[i]] = i;
+    }
+    const newCats = categories.map(c => {
+      if (c.id !== from.catId) return c;
+      const reordered = newItems.map(i => c.items[i]);
+      return { ...c, items: reordered };
+    });
     updateCategories(newCats);
+    if (changed) {
+      fetch("/api/op-cost-data/reindex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ catId: from.catId, oldToNew }),
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cost-schedules"] });
+      });
+    }
   }, [categories, updateCategories]);
 
   const handleYearChange = useCallback((year: string) => {
@@ -710,6 +736,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
   const startEditing = useCallback((key: CellKey) => {
     if (key.endsWith("__prognoza") && key in serverForecastLookup) {
+      setEditingCell(key);
+      setEditValue(serverForecastLookup[key]?.toString() || "");
       return;
     }
     setEditingCell(key);
@@ -719,6 +747,29 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const commitEdit = useCallback(() => {
     if (editingCell) {
       const val = parseFloat(editValue) || 0;
+
+      if (editingCell.endsWith("__prognoza") && editingCell in serverForecastLookup) {
+        const { catId, itemIdx, month } = parseCellKey(editingCell);
+        if (val === 0) {
+          fetch("/api/operational-cost-forecasts/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ year: selectedYear, month, categoryId: catId, itemIndex: itemIdx }),
+          }).then(() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+          });
+        } else {
+          apiRequest("POST", "/api/operational-cost-forecasts/bulk", {
+            entries: [{ year: selectedYear, month, categoryId: catId, itemIndex: itemIdx, forecast: String(val) }],
+          }).then(() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+          });
+        }
+        setEditingCell(null);
+        return;
+      }
+
       const newData = { ...cellData };
       if (val === 0) {
         delete newData[editingCell];
@@ -899,6 +950,14 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       return { ...cat, items: newItems };
     });
     updateCategories(newCats);
+    fetch(`/api/op-cost-data/item/${encodeURIComponent(catId)}/${itemIdx}`, {
+      method: "DELETE",
+      credentials: "include",
+    }).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedules"] });
+    });
   }, [categories, updateCategories]);
 
   const handleAddCategory = useCallback(() => {
@@ -1541,6 +1600,26 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                                   </button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="min-w-[140px]">
+                                  {serverForecasts.some(f => f.categoryId === cat.id && f.itemIndex === idx) && (
+                                    <DropdownMenuItem onClick={() => {
+                                      if (window.confirm(`Wyczyścić wszystkie prognozy dla "${item.name}"?`)) {
+                                        const toDelete = serverForecasts.filter(f => f.categoryId === cat.id && f.itemIndex === idx);
+                                        Promise.all(toDelete.map(f =>
+                                          fetch("/api/operational-cost-forecasts/delete", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            credentials: "include",
+                                            body: JSON.stringify({ year: f.year, month: f.month, categoryId: f.categoryId, itemIndex: f.itemIndex }),
+                                          })
+                                        )).then(() => {
+                                          queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+                                          toast({ title: "Wyczyszczono prognozy" });
+                                        });
+                                      }
+                                    }} data-testid={`button-clear-forecasts-${cat.id}-${idx}`}>
+                                      <XCircle className="h-3 w-3 mr-2" /> Wyczyść prognozy
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem onClick={() => handleArchiveItem(cat.id, idx)} data-testid={`button-archive-item-${cat.id}-${idx}`}>
                                     <Archive className="h-3 w-3 mr-2" /> Archiwizuj
                                   </DropdownMenuItem>

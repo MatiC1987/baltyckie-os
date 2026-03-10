@@ -340,6 +340,7 @@ export interface IStorage {
   getOperationalCostForecasts(year?: number): Promise<OperationalCostForecast[]>;
   upsertOperationalCostForecast(data: InsertOperationalCostForecast): Promise<OperationalCostForecast>;
   createOperationalCostForecastsBulk(data: InsertOperationalCostForecast[]): Promise<void>;
+  deleteOperationalCostForecast(year: number, month: number, categoryId: string, itemIndex: number): Promise<void>;
   deleteOperationalCostForecasts(year?: number): Promise<void>;
 
   // Variable Cost Forecasts
@@ -433,6 +434,8 @@ export interface IStorage {
   // Op Cost Data
   getOpCostData(year: number): Promise<OpCostData[]>;
   upsertOpCostCells(cells: InsertOpCostData[]): Promise<void>;
+  deleteOpCostItem(catId: string, itemIdx: number): Promise<void>;
+  reindexOpCostItems(catId: string, oldToNew: Record<number, number>): Promise<void>;
 
   // App Config (op-cost-categories, terminarz-colors)
   getAppConfig(key: string): Promise<string | null>;
@@ -1725,6 +1728,17 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async deleteOperationalCostForecast(year: number, month: number, categoryId: string, itemIndex: number): Promise<void> {
+    await db.delete(operationalCostForecasts).where(
+      and(
+        eq(operationalCostForecasts.year, year),
+        eq(operationalCostForecasts.month, month),
+        eq(operationalCostForecasts.categoryId, categoryId),
+        eq(operationalCostForecasts.itemIndex, itemIndex),
+      )
+    );
+  }
+
   async deleteOperationalCostForecasts(year?: number): Promise<void> {
     if (year) {
       await db.delete(operationalCostForecasts).where(eq(operationalCostForecasts.year, year));
@@ -2102,6 +2116,32 @@ export class DatabaseStorage implements IStorage {
           set: { realized: sql`EXCLUDED.realized` },
         });
     }
+  }
+
+  async deleteOpCostItem(catId: string, itemIdx: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(opCostData).where(and(eq(opCostData.catId, catId), eq(opCostData.itemIdx, itemIdx)));
+      await tx.delete(operationalCostForecasts).where(and(eq(operationalCostForecasts.categoryId, catId), eq(operationalCostForecasts.itemIndex, itemIdx)));
+      await tx.update(opCostData).set({ itemIdx: sql`${opCostData.itemIdx} - 1` }).where(and(eq(opCostData.catId, catId), sql`${opCostData.itemIdx} > ${itemIdx}`));
+      await tx.update(operationalCostForecasts).set({ itemIndex: sql`${operationalCostForecasts.itemIndex} - 1` }).where(and(eq(operationalCostForecasts.categoryId, catId), sql`${operationalCostForecasts.itemIndex} > ${itemIdx}`));
+      await tx.update(costSchedules).set({ linkItemIndex: null, linkCategoryId: null }).where(and(eq(costSchedules.linkCategoryId, catId), eq(costSchedules.linkItemIndex, itemIdx)));
+      await tx.update(costSchedules).set({ linkItemIndex: sql`${costSchedules.linkItemIndex} - 1` }).where(and(eq(costSchedules.linkCategoryId, catId), sql`${costSchedules.linkItemIndex} > ${itemIdx}`));
+    });
+  }
+
+  async reindexOpCostItems(catId: string, oldToNew: Record<number, number>): Promise<void> {
+    const tempOffset = 10000;
+    await db.transaction(async (tx) => {
+      for (const [oldIdx, newIdx] of Object.entries(oldToNew)) {
+        const old = Number(oldIdx);
+        await tx.update(opCostData).set({ itemIdx: tempOffset + Number(newIdx) }).where(and(eq(opCostData.catId, catId), eq(opCostData.itemIdx, old)));
+        await tx.update(operationalCostForecasts).set({ itemIndex: tempOffset + Number(newIdx) }).where(and(eq(operationalCostForecasts.categoryId, catId), eq(operationalCostForecasts.itemIndex, old)));
+        await tx.update(costSchedules).set({ linkItemIndex: tempOffset + Number(newIdx) }).where(and(eq(costSchedules.linkCategoryId, catId), eq(costSchedules.linkItemIndex, old)));
+      }
+      await tx.update(opCostData).set({ itemIdx: sql`${opCostData.itemIdx} - ${tempOffset}` }).where(and(eq(opCostData.catId, catId), sql`${opCostData.itemIdx} >= ${tempOffset}`));
+      await tx.update(operationalCostForecasts).set({ itemIndex: sql`${operationalCostForecasts.itemIndex} - ${tempOffset}` }).where(and(eq(operationalCostForecasts.categoryId, catId), sql`${operationalCostForecasts.itemIndex} >= ${tempOffset}`));
+      await tx.update(costSchedules).set({ linkItemIndex: sql`${costSchedules.linkItemIndex} - ${tempOffset}` }).where(and(eq(costSchedules.linkCategoryId, catId), sql`${costSchedules.linkItemIndex} >= ${tempOffset}`));
+    });
   }
 
   // App Config

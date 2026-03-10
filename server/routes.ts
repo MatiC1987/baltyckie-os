@@ -6498,6 +6498,19 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.post("/api/operational-cost-forecasts/delete", isAuthenticated, async (req, res) => {
+    try {
+      const { year, month, categoryId, itemIndex } = req.body;
+      if (year === undefined || month === undefined || !categoryId || itemIndex === undefined) {
+        return res.status(400).json({ message: "year, month, categoryId, itemIndex are required" });
+      }
+      await storage.deleteOperationalCostForecast(Number(year), Number(month), categoryId, Number(itemIndex));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/operational-cost-forecasts", isAuthenticated, async (req, res) => {
     try {
       const year = req.query.year ? Number(req.query.year) : undefined;
@@ -9090,6 +9103,27 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
       if (cells.length > 2000) return res.status(400).json({ message: 'Za dużo komórek (max 2000)' });
       await storage.upsertOpCostCells(cells);
       res.json({ updated: cells.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/op-cost-data/item/:catId/:itemIdx', isAuthenticated, async (req, res) => {
+    try {
+      const { catId, itemIdx } = req.params;
+      await storage.deleteOpCostItem(catId, Number(itemIdx));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/op-cost-data/reindex', isAuthenticated, async (req, res) => {
+    try {
+      const { catId, oldToNew } = req.body;
+      if (!catId || !oldToNew) return res.status(400).json({ message: 'Brak catId lub oldToNew' });
+      await storage.reindexOpCostItems(catId, oldToNew);
+      res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
