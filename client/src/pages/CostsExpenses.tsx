@@ -116,7 +116,12 @@ function cellDataToBulkPayload(year: number, cells: Record<CellKey, number>) {
     if (field === "prognoza") grouped[gk].prognoza = val;
     else grouped[gk].realized = val;
   }
-  return Object.values(grouped).map(g => ({ year, catId: g.catId, itemIdx: g.itemIdx, month: g.month, prognoza: g.prognoza ?? 0, realized: g.realized ?? 0 }));
+  return Object.values(grouped).map(g => {
+    const row: any = { year, catId: g.catId, itemIdx: g.itemIdx, month: g.month };
+    if (g.prognoza !== undefined) row.prognoza = g.prognoza;
+    if (g.realized !== undefined) row.realized = g.realized;
+    return row;
+  });
 }
 
 function parseDateLocal(dateStr: string): { year: number; month: number } {

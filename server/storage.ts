@@ -2066,17 +2066,40 @@ export class DatabaseStorage implements IStorage {
 
   async upsertOpCostCells(cells: InsertOpCostData[]): Promise<void> {
     if (cells.length === 0) return;
+    const bothFields: InsertOpCostData[] = [];
+    const prognozaOnly: InsertOpCostData[] = [];
+    const realizedOnly: InsertOpCostData[] = [];
+    for (const c of cells) {
+      const hasP = c.prognoza !== undefined && c.prognoza !== null;
+      const hasR = c.realized !== undefined && c.realized !== null;
+      if (hasP && hasR) bothFields.push(c);
+      else if (hasP) prognozaOnly.push({ ...c, realized: "0" });
+      else if (hasR) realizedOnly.push({ ...c, prognoza: "0" });
+      else bothFields.push({ ...c, prognoza: "0", realized: "0" });
+    }
     const BATCH = 200;
-    for (let i = 0; i < cells.length; i += BATCH) {
-      const chunk = cells.slice(i, i + BATCH);
-      await db.insert(opCostData)
-        .values(chunk)
+    for (let i = 0; i < bothFields.length; i += BATCH) {
+      const chunk = bothFields.slice(i, i + BATCH);
+      await db.insert(opCostData).values(chunk)
         .onConflictDoUpdate({
           target: [opCostData.year, opCostData.catId, opCostData.itemIdx, opCostData.month],
-          set: {
-            prognoza: sql`EXCLUDED.prognoza`,
-            realized: sql`EXCLUDED.realized`,
-          },
+          set: { prognoza: sql`EXCLUDED.prognoza`, realized: sql`EXCLUDED.realized` },
+        });
+    }
+    for (let i = 0; i < prognozaOnly.length; i += BATCH) {
+      const chunk = prognozaOnly.slice(i, i + BATCH);
+      await db.insert(opCostData).values(chunk)
+        .onConflictDoUpdate({
+          target: [opCostData.year, opCostData.catId, opCostData.itemIdx, opCostData.month],
+          set: { prognoza: sql`EXCLUDED.prognoza` },
+        });
+    }
+    for (let i = 0; i < realizedOnly.length; i += BATCH) {
+      const chunk = realizedOnly.slice(i, i + BATCH);
+      await db.insert(opCostData).values(chunk)
+        .onConflictDoUpdate({
+          target: [opCostData.year, opCostData.catId, opCostData.itemIdx, opCostData.month],
+          set: { realized: sql`EXCLUDED.realized` },
         });
     }
   }
