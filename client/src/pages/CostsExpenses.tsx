@@ -341,11 +341,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   }, []);
 
   const queueCellSave = useCallback((key: CellKey, val: number, year: number) => {
-    if (val === 0) {
-      delete pendingCellsRef.current[key];
-    } else {
-      pendingCellsRef.current[key] = val;
-    }
+    pendingCellsRef.current[key] = val;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => flushPendingCells(year), 600);
   }, [flushPendingCells]);
