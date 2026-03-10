@@ -208,11 +208,13 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const [isImportingHistory, setIsImportingHistory] = useState(false);
   const { toast } = useToast();
 
+  const [hasPendingEdits, setHasPendingEdits] = useState(false);
+
   // DB queries
   const { data: aptCostRows, isLoading: isLoadingCostData } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-data', year],
     staleTime: 30000,
-    refetchInterval: 30000,
+    refetchInterval: hasPendingEdits ? false : 30000,
   });
   const { data: compareCostRows } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-data', compareYear],
@@ -230,15 +232,20 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flushPendingCells = useCallback(async () => {
-    if (pendingCellsRef.current.size === 0) return;
+    if (pendingCellsRef.current.size === 0) { setHasPendingEdits(false); return; }
     const cells = Array.from(pendingCellsRef.current.values());
     pendingCellsRef.current.clear();
-    try { await dbBulkSaveCells(cells); } catch (err) { console.error('Błąd zapisu komórek:', err); }
-  }, []);
+    try {
+      await dbBulkSaveCells(cells);
+      queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', year] });
+    } catch (err) { console.error('Błąd zapisu komórek:', err); }
+    setHasPendingEdits(false);
+  }, [year]);
 
   // Populate data state from API
   useEffect(() => {
     if (!aptCostRows) return;
+    if (pendingCellsRef.current.size > 0) return;
     const m: DataMap = {};
     for (const r of aptCostRows) {
       const key = `${r.entryId}__${r.category}`;
@@ -509,13 +516,13 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
 
   const handleCellChange = useCallback((entryId: string, category: string, month: number, field: "p" | "r", value: string) => {
     const key = getCellKeyOld(entryId, category);
+    setHasPendingEdits(true);
     setData(prev => {
       const next = { ...prev };
       if (!next[key]) next[key] = {};
       if (!next[key][month]) next[key][month] = { p: 0, r: 0 };
       const newCell = { ...next[key][month], [field]: parseFloat(value) || 0 };
       next[key][month] = newCell;
-      // Queue for DB write
       const cellKey = `${year}__${entryId}__${category}__${month}`;
       pendingCellsRef.current.set(cellKey, { year, entryId, category, month, prognoza: String(newCell.p), realized: String(newCell.r) });
       return next;
