@@ -4610,7 +4610,15 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       if (req.body.ocrAmount !== undefined) updates.ocrAmount = req.body.ocrAmount;
       if (req.body.ocrInvoiceNumber !== undefined) updates.ocrInvoiceNumber = req.body.ocrInvoiceNumber;
       if (req.body.ocrProcessed !== undefined) updates.ocrProcessed = req.body.ocrProcessed;
+      if (req.body.invoiceDate !== undefined) {
+        updates.invoiceDate = req.body.invoiceDate;
+        const d = new Date(req.body.invoiceDate);
+        updates.invoiceMonth = d.getMonth() + 1;
+        updates.invoiceYear = d.getFullYear();
+      }
+      if (req.body.originalFileName !== undefined) updates.originalFileName = req.body.originalFileName;
       const updated = await storage.updateCostInvoice(id, updates);
+      await logActivity(req, "update", "cost_invoice", id, updates.originalFileName || "", "Zaktualizowano fakturę kosztową");
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

@@ -27,7 +27,7 @@ import {
 import {
   Upload, FileText, Image, Trash2, Download, Package, ChevronDown, ChevronUp,
   X, AlertTriangle, Clock, Search, Filter, Eye, History, Plus, CheckCircle2,
-  Zap, Droplets, LayoutGrid, LayoutList, ScanLine, Loader2, BookOpen
+  Zap, Droplets, LayoutGrid, LayoutList, ScanLine, Loader2, BookOpen, Pencil
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -178,6 +178,8 @@ function CostInvoicesTab() {
     try { return (localStorage.getItem("dok-view-mode") as "list" | "grid") || "list"; } catch { return "list"; }
   });
   const [ocrLoadingId, setOcrLoadingId] = useState<number | null>(null);
+  const [editInvoice, setEditInvoice] = useState<CostInvoice | null>(null);
+  const [editForm, setEditForm] = useState({ originalFileName: "", invoiceDate: "", comment: "", ocrVendor: "", ocrAmount: "", ocrInvoiceNumber: "" });
 
   const { data: invoices = [], isLoading } = useQuery<CostInvoice[]>({ queryKey: ["/api/cost-invoices"] });
   const { data: downloadHistory = [] } = useQuery<ZipDownloadHistory[]>({ queryKey: ["/api/zip-download-history"] });
@@ -207,6 +209,34 @@ function CostInvoicesTab() {
       toast({ title: "Usunięto fakturę" });
     },
   });
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, any> }) =>
+      apiRequest("PATCH", `/api/cost-invoices/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-invoices"] });
+      setEditInvoice(null);
+      toast({ title: "Zaktualizowano fakturę" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd aktualizacji", description: err.message, variant: "destructive" }),
+  });
+
+  const openEditDialog = (inv: CostInvoice) => {
+    setEditInvoice(inv);
+    setEditForm({
+      originalFileName: inv.originalFileName,
+      invoiceDate: inv.invoiceDate,
+      comment: inv.comment || "",
+      ocrVendor: inv.ocrVendor || "",
+      ocrAmount: inv.ocrAmount || "",
+      ocrInvoiceNumber: inv.ocrInvoiceNumber || "",
+    });
+  };
+
+  const handleEditSave = () => {
+    if (!editInvoice) return;
+    updateInvoiceMutation.mutate({ id: editInvoice.id, data: editForm });
+  };
 
   const deleteHistoryMutation = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/zip-download-history/${id}`),
@@ -577,6 +607,7 @@ function CostInvoicesTab() {
               onDelete={id => deleteMutation.mutate(id)}
               onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
               onPreview={setPreviewInvoice}
+              onEdit={openEditDialog}
               onOcr={handleOcr}
               ocrLoadingId={ocrLoadingId}
               getStatusBadge={getStatusBadge}
@@ -740,6 +771,88 @@ function CostInvoicesTab() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Dialog */}
+      <Dialog open={!!editInvoice} onOpenChange={() => setEditInvoice(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edycja faktury</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-fileName">Nazwa pliku</Label>
+              <Input
+                id="edit-fileName"
+                value={editForm.originalFileName}
+                onChange={e => setEditForm(f => ({ ...f, originalFileName: e.target.value }))}
+                data-testid="input-edit-filename"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-invoiceDate">Data faktury</Label>
+              <Input
+                id="edit-invoiceDate"
+                type="date"
+                value={editForm.invoiceDate}
+                onChange={e => setEditForm(f => ({ ...f, invoiceDate: e.target.value }))}
+                data-testid="input-edit-date"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-comment">Komentarz</Label>
+              <Input
+                id="edit-comment"
+                value={editForm.comment}
+                onChange={e => setEditForm(f => ({ ...f, comment: e.target.value }))}
+                placeholder="Opis faktury..."
+                data-testid="input-edit-comment"
+              />
+            </div>
+            <div className="border-t pt-4 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Dane OCR</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="edit-ocrVendor" className="text-xs">Dostawca</Label>
+                  <Input
+                    id="edit-ocrVendor"
+                    value={editForm.ocrVendor}
+                    onChange={e => setEditForm(f => ({ ...f, ocrVendor: e.target.value }))}
+                    placeholder="Nazwa dostawcy"
+                    data-testid="input-edit-vendor"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit-ocrAmount" className="text-xs">Kwota (PLN)</Label>
+                  <Input
+                    id="edit-ocrAmount"
+                    value={editForm.ocrAmount}
+                    onChange={e => setEditForm(f => ({ ...f, ocrAmount: e.target.value }))}
+                    placeholder="0.00"
+                    data-testid="input-edit-amount"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="edit-ocrInvoiceNumber" className="text-xs">Numer faktury</Label>
+                <Input
+                  id="edit-ocrInvoiceNumber"
+                  value={editForm.ocrInvoiceNumber}
+                  onChange={e => setEditForm(f => ({ ...f, ocrInvoiceNumber: e.target.value }))}
+                  placeholder="FV/2026/01/001"
+                  data-testid="input-edit-invoice-number"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditInvoice(null)} data-testid="button-edit-cancel">Anuluj</Button>
+            <Button onClick={handleEditSave} disabled={updateInvoiceMutation.isPending} data-testid="button-edit-save">
+              {updateInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Zapisz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Preview Dialog */}
       <Dialog open={!!previewInvoice} onOpenChange={() => setPreviewInvoice(null)}>
         <DialogContent className="max-w-3xl max-h-[80vh]">
@@ -779,7 +892,7 @@ function CostInvoicesTab() {
 
 function MonthGroup({
   year, month, invoices, selectedIds, allSelected,
-  onToggleSelect, onToggleSelectAll, onDelete, onStatusChange, onPreview, onOcr, ocrLoadingId, getStatusBadge, isImage, viewMode
+  onToggleSelect, onToggleSelectAll, onDelete, onStatusChange, onPreview, onEdit, onOcr, ocrLoadingId, getStatusBadge, isImage, viewMode
 }: {
   year: number; month: number; invoices: CostInvoice[];
   selectedIds: Set<number>; allSelected: boolean;
@@ -788,6 +901,7 @@ function MonthGroup({
   onDelete: (id: number) => void;
   onStatusChange: (id: number, status: string) => void;
   onPreview: (inv: CostInvoice) => void;
+  onEdit: (inv: CostInvoice) => void;
   onOcr: (id: number) => void;
   ocrLoadingId: number | null;
   getStatusBadge: (s: string) => JSX.Element;
@@ -863,6 +977,9 @@ function MonthGroup({
                     <div className="flex items-center gap-1 flex-wrap">
                       <Button size="icon" variant="ghost" onClick={() => onPreview(inv)} data-testid={`button-grid-preview-${inv.id}`}>
                         <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => onEdit(inv)} data-testid={`button-grid-edit-${inv.id}`}>
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         size="icon"
@@ -980,6 +1097,9 @@ function MonthGroup({
                       <div className="flex items-center justify-end gap-1">
                         <Button size="icon" variant="ghost" onClick={() => onPreview(inv)} data-testid={`button-preview-${inv.id}`}>
                           <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => onEdit(inv)} data-testid={`button-edit-${inv.id}`}>
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" asChild>
                           <a href={authenticatedUrl(`/api/cost-invoices/${inv.id}/file?download=true`)} download data-testid={`button-download-${inv.id}`}>
