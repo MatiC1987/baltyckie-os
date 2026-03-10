@@ -825,29 +825,40 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const handleMouseUp = useCallback(() => {
     if (fillDragging.current && selectedCell && fillRangeEnd !== null) {
       const source = parseCellKey(selectedCell);
-      const sourceVal = cellData[selectedCell] || 0;
+      const sourceVal = cellData[selectedCell] || serverForecastLookup[selectedCell] || 0;
       const startM = Math.min(source.month, fillRangeEnd);
       const endM = Math.max(source.month, fillRangeEnd);
       if (startM !== endM) {
-        const newData = { ...cellData };
-        for (let m = startM; m <= endM; m++) {
-          const k = makeCellKey(source.catId, source.itemIdx, m, source.field);
-          if (sourceVal === 0) {
-            delete newData[k];
-          } else {
-            newData[k] = sourceVal;
+        const isServerForecastSource = selectedCell in serverForecastLookup && source.field === "prognoza";
+        if (isServerForecastSource) {
+          const entries = [];
+          for (let m = startM; m <= endM; m++) {
+            entries.push({ year: selectedYear, month: m, categoryId: source.catId, itemIndex: source.itemIdx, forecast: String(sourceVal) });
           }
-        }
-        setCellData(newData);
-        for (let m2 = startM; m2 <= endM; m2++) {
-          const k2 = makeCellKey(source.catId, source.itemIdx, m2, source.field);
-          queueCellSave(k2, sourceVal, selectedYear);
+          apiRequest("POST", "/api/operational-cost-forecasts/bulk", { entries }).then(() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+          });
+        } else {
+          const newData = { ...cellData };
+          for (let m = startM; m <= endM; m++) {
+            const k = makeCellKey(source.catId, source.itemIdx, m, source.field);
+            if (sourceVal === 0) {
+              delete newData[k];
+            } else {
+              newData[k] = sourceVal;
+            }
+          }
+          setCellData(newData);
+          for (let m2 = startM; m2 <= endM; m2++) {
+            const k2 = makeCellKey(source.catId, source.itemIdx, m2, source.field);
+            queueCellSave(k2, sourceVal, selectedYear);
+          }
         }
       }
     }
     fillDragging.current = false;
     setFillRangeEnd(null);
-  }, [selectedCell, fillRangeEnd, cellData, selectedYear, parseCellKey, queueCellSave]);
+  }, [selectedCell, fillRangeEnd, cellData, serverForecastLookup, selectedYear, parseCellKey, queueCellSave]);
 
   const isInFillRange = useCallback((key: CellKey): boolean => {
     if (!selectedCell || fillRangeEnd === null) return false;
@@ -2352,7 +2363,7 @@ function EditableCell({
       data-testid={`cell-${cellKey}`}
     >
       {value !== 0 ? value.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
-      {isSelected && value !== 0 && !isServerManaged && (
+      {isSelected && value !== 0 && (
         <span
           onMouseDown={onFillHandleMouseDown}
           className="absolute -bottom-[3px] -right-[3px] w-[7px] h-[7px] bg-[#5ADBFA] border border-white cursor-crosshair z-20"
