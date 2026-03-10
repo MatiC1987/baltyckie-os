@@ -242,23 +242,15 @@ export default function SubrentSettlement() {
       const parts = dueDate.split("-");
       const dueYear = parseInt(parts[0]);
       const dueMonth = parseInt(parts[1]) - 1;
+      const isPast = dueYear < currentYear || (dueYear === currentYear && dueMonth < currentMonth);
+      const isCurrent = dueYear === currentYear && dueMonth === currentMonth;
 
-      if (item.payment.status === "oplacona") {
-        if (dueYear < currentYear || (dueYear === currentYear && dueMonth < currentMonth)) {
-          overdueItems.push(item);
-        } else if (dueYear === currentYear && dueMonth === currentMonth) {
-          currentItems.push(item);
-        } else {
-          futureItems.push(item);
-        }
-      } else {
-        if (dueYear < currentYear || (dueYear === currentYear && dueMonth < currentMonth)) {
-          overdueItems.push(item);
-        } else if (dueYear === currentYear && dueMonth === currentMonth) {
-          currentItems.push(item);
-        } else {
-          futureItems.push(item);
-        }
+      if (isPast && item.payment.status !== "oplacona") {
+        overdueItems.push(item);
+      } else if (isCurrent) {
+        currentItems.push(item);
+      } else if (!isPast) {
+        futureItems.push(item);
       }
     }
 
