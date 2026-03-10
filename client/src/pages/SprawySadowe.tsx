@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { authenticatedUrl, getAuthHeaders } from "@/lib/auth-token";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/PageHeader";
 import { format, differenceInDays, parseISO } from "date-fns";
@@ -225,6 +226,7 @@ export default function SprawySadowe() {
       const resp = await fetch(`/api/legal-case-events/${eventId}/upload`, {
         method: "POST",
         body: fd,
+        headers: getAuthHeaders(),
         credentials: "include",
       });
       if (!resp.ok) throw new Error((await resp.json()).message || "Błąd uploadu");
@@ -536,7 +538,7 @@ export default function SprawySadowe() {
                         {detail.documentUrls.map((url, i) => (
                           <a
                             key={i}
-                            href={`/api/legal-case-files?path=${encodeURIComponent(url)}`}
+                            href={authenticatedUrl(`/api/legal-case-files?path=${encodeURIComponent(url)}`)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/50 hover:bg-muted text-sm transition-colors"
@@ -674,7 +676,7 @@ export default function SprawySadowe() {
                                     <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                     <span className="flex-1 truncate text-xs">{extractFileName(url)}</span>
                                     <a
-                                      href={`/api/legal-case-files?path=${encodeURIComponent(url)}`}
+                                      href={authenticatedUrl(`/api/legal-case-files?path=${encodeURIComponent(url)}`)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="shrink-0 text-primary hover:text-primary/80"

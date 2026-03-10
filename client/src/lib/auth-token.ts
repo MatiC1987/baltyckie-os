@@ -19,3 +19,10 @@ export function getAuthHeaders(): Record<string, string> {
   }
   return {};
 }
+
+export function authenticatedUrl(url: string): string {
+  const token = getAuthToken();
+  if (!token) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}token=${encodeURIComponent(token)}`;
+}

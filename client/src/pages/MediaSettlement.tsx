@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { getAuthHeaders } from "@/lib/auth-token";
 import { useToast } from "@/hooks/use-toast";
 import type { Sublease, Apartment, SubleaseMeterReading, SubleaseMeterSetting, SubleaseMeterPrice, MediaSettlementReport, AccountingNote, SubleaseElectricityCharge } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +43,7 @@ function daysBetween(dateA: string, dateB: string): number {
 }
 
 async function downloadNoteById(noteId: number) {
-  const response = await fetch(`/api/accounting-notes/${noteId}/download`, { credentials: "include" });
+  const response = await fetch(`/api/accounting-notes/${noteId}/download`, { headers: getAuthHeaders(), credentials: "include" });
   if (!response.ok) throw new Error("Nie udało się pobrać noty");
   const blob = await response.blob();
   const contentDisposition = response.headers.get("Content-Disposition");
@@ -1712,7 +1713,7 @@ function SubleaseMediaCard({
 
   const downloadNoteById = async (noteId: number) => {
     try {
-      const res = await fetch(`/api/accounting-notes/${noteId}/download`, { credentials: "include" });
+      const res = await fetch(`/api/accounting-notes/${noteId}/download`, { headers: getAuthHeaders(), credentials: "include" });
       if (!res.ok) throw new Error("Nie udało się pobrać noty");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

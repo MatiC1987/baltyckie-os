@@ -435,5 +435,14 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return next();
   }
 
+  const qToken = req.query.token as string;
+  if (qToken) {
+    const userData = await loadAuthToken(qToken);
+    if (userData) {
+      (req as any).user = userData;
+      return next();
+    }
+  }
+
   return res.status(401).json({ message: "Unauthorized" });
 };

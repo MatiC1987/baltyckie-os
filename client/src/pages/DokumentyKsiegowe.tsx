@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { authenticatedUrl, getAuthHeaders } from "@/lib/auth-token";
 import { useToast } from "@/hooks/use-toast";
 import type { CostInvoice, ZipDownloadHistory, AccountingNote, Sublease, MediaSettlementReport } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -749,13 +750,13 @@ function CostInvoicesTab() {
             <div className="overflow-auto max-h-[60vh]">
               {isImage(previewInvoice.mimeType) ? (
                 <img
-                  src={`/api/cost-invoices/${previewInvoice.id}/file`}
+                  src={authenticatedUrl(`/api/cost-invoices/${previewInvoice.id}/file`)}
                   alt={previewInvoice.originalFileName}
                   className="max-w-full rounded-md"
                 />
               ) : (
                 <iframe
-                  src={`/api/cost-invoices/${previewInvoice.id}/file`}
+                  src={authenticatedUrl(`/api/cost-invoices/${previewInvoice.id}/file`)}
                   className="w-full h-[55vh] rounded-md border"
                   title={previewInvoice.originalFileName}
                 />
@@ -765,7 +766,7 @@ function CostInvoicesTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewInvoice(null)}>Zamknij</Button>
             <Button asChild>
-              <a href={`/api/cost-invoices/${previewInvoice?.id}/file?download=true`} download data-testid="button-download-preview">
+              <a href={authenticatedUrl(`/api/cost-invoices/${previewInvoice?.id}/file?download=true`)} download data-testid="button-download-preview">
                 <Download className="h-4 w-4 mr-1" /> Pobierz
               </a>
             </Button>
@@ -834,7 +835,7 @@ function MonthGroup({
                     >
                       {isImage(inv.mimeType) ? (
                         <img
-                          src={`/api/cost-invoices/${inv.id}/file`}
+                          src={authenticatedUrl(`/api/cost-invoices/${inv.id}/file`)}
                           alt={inv.originalFileName}
                           className="w-full h-full object-cover"
                           loading="lazy"
@@ -915,7 +916,7 @@ function MonthGroup({
                         {isImage(inv.mimeType) ? (
                           <div className="w-8 h-8 rounded overflow-hidden border shrink-0">
                             <img
-                              src={`/api/cost-invoices/${inv.id}/file`}
+                              src={authenticatedUrl(`/api/cost-invoices/${inv.id}/file`)}
                               alt=""
                               className="w-full h-full object-cover"
                             />
@@ -981,7 +982,7 @@ function MonthGroup({
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" asChild>
-                          <a href={`/api/cost-invoices/${inv.id}/file?download=true`} download data-testid={`button-download-${inv.id}`}>
+                          <a href={authenticatedUrl(`/api/cost-invoices/${inv.id}/file?download=true`)} download data-testid={`button-download-${inv.id}`}>
                             <Download className="h-4 w-4" />
                           </a>
                         </Button>
@@ -1154,7 +1155,7 @@ function AccountingNotesTab() {
   });
 
   const handleDownload = async (noteId: number) => {
-    const response = await fetch(`/api/accounting-notes/${noteId}/download`, { credentials: "include" });
+    const response = await fetch(`/api/accounting-notes/${noteId}/download`, { headers: getAuthHeaders(), credentials: "include" });
     if (!response.ok) return;
     const blob = await response.blob();
     const cd = response.headers.get("Content-Disposition");
@@ -1174,7 +1175,7 @@ function AccountingNotesTab() {
     try {
       const resp = await fetch("/api/accounting-notes/download-zip", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ noteIds: [...selectedIds] }),
         credentials: "include",
       });
