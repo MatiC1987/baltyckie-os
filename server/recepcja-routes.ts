@@ -169,10 +169,42 @@ export function registerRecepcjaRoutes(app: Express) {
 
   app.post('/api/recepcja/saldo/categories', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const { name } = req.body;
+      const { name: rawName } = req.body;
+      if (!rawName || typeof rawName !== 'string' || !rawName.trim()) return res.status(400).json({ message: "Podaj nazwę kategorii" });
+      const name = rawName.trim();
       const [cat] = await db.insert(saldoCategories).values({ personName: RECEPCJA_PERSON, name }).returning();
       await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'saldo_category', cat.id.toString(), { name });
       res.json(cat);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/saldo/categories/:name', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { newName } = req.body;
+      if (!newName || typeof newName !== 'string') return res.status(400).json({ message: "Podaj nową nazwę kategorii" });
+      await storage.updateSaldoCategory(req.params.name, newName.trim(), RECEPCJA_PERSON);
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_category', req.params.name, { newName: newName.trim() });
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete('/api/recepcja/saldo/categories/:name', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      await storage.deleteSaldoCategory(req.params.name, RECEPCJA_PERSON);
+      await logRecepcjaAction(req.recepcjaUser.id, 'DELETE', 'saldo_category', req.params.name);
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/saldo/categories/bulk-delete', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { names } = req.body;
+      if (!Array.isArray(names) || names.length === 0) return res.status(400).json({ message: "Podaj listę kategorii do usunięcia" });
+      for (const name of names) {
+        await storage.deleteSaldoCategory(name, RECEPCJA_PERSON);
+      }
+      await logRecepcjaAction(req.recepcjaUser.id, 'DELETE', 'saldo_categories_bulk', names.join(','), { names });
+      res.json({ success: true, deleted: names.length });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
