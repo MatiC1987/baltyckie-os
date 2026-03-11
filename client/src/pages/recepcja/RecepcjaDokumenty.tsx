@@ -1,12 +1,23 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { recepcjaFetch } from "./RecepcjaApp";
 import { queryClient } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { FolderOpen, Upload, Download, Loader2, FileText, CheckCircle, XCircle, Filter } from "lucide-react";
+
+function extractDateFromFilename(name: string): string | null {
+  const m1 = name.match(/(\d{4})[_\-.](\d{2})[_\-.](\d{2})/);
+  if (m1) return `${m1[1]}-${m1[2]}-${m1[3]}`;
+  const m2 = name.match(/(\d{2})[_\-.](\d{2})[_\-.](\d{4})/);
+  if (m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
+  return null;
+}
 
 export default function RecepcjaDokumenty() {
   const [tab, setTab] = useState<"invoices" | "notes" | "media">("invoices");
@@ -30,6 +41,11 @@ export default function RecepcjaDokumenty() {
 function CostInvoicesTab() {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadDate, setUploadDate] = useState("");
+  const [uploadComment, setUploadComment] = useState("");
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["/api/recepcja/cost-invoices"],
@@ -37,9 +53,7 @@ function CostInvoicesTab() {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append('file', file);
+    mutationFn: async (formData: FormData) => {
       const token = localStorage.getItem('recepcja_token');
       const r = await fetch('/api/recepcja/cost-invoices/upload', {
         method: 'POST',
@@ -51,55 +65,134 @@ function CostInvoicesTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recepcja/cost-invoices"] });
+      setShowUploadDialog(false);
+      setUploadFiles([]);
+      setUploadComment("");
+      setUploadDate("");
       toast({ title: "Przesłano fakturę" });
     },
     onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
   });
 
-  const handleFiles = (files: FileList) => {
-    for (const file of Array.from(files)) {
-      uploadMutation.mutate(file);
+  const handleFilesDrop = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files).filter(f =>
+      ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"].includes(f.type)
+    );
+    if (arr.length === 0) {
+      toast({ title: "Niedozwolony format", description: "Dozwolone: PDF, PNG, JPG, WEBP", variant: "destructive" });
+      return;
+    }
+    setUploadFiles(arr);
+    const suggestedDate = extractDateFromFilename(arr[0].name);
+    setUploadDate(suggestedDate || new Date().toISOString().slice(0, 10));
+    setUploadComment("");
+    setShowUploadDialog(true);
+  }, [toast]);
+
+  const handleUpload = async () => {
+    for (const file of uploadFiles) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("invoiceDate", uploadDate);
+      formData.append("comment", uploadComment);
+      await uploadMutation.mutateAsync(formData);
     }
   };
 
   return (
     <>
       <div
-        className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
+        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={e => { e.preventDefault(); setIsDragging(false); handleFilesDrop(e.dataTransfer.files); }}
+        className={`border-2 border-dashed rounded-md p-6 text-center transition-colors cursor-pointer ${
+          isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+        }`}
         onClick={() => fileRef.current?.click()}
-        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
-        onDrop={e => { e.preventDefault(); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); }}
         data-testid="dropzone-cost-invoices"
       >
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          multiple
+          accept=".pdf,.png,.jpg,.jpeg,.webp"
+          onChange={e => { if (e.target.files?.length) handleFilesDrop(e.target.files); e.target.value = ""; }}
+          data-testid="input-file-upload"
+        />
         <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Przeciągnij pliki lub kliknij aby wybrać</p>
-        <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG (max 20MB)</p>
-        <input ref={fileRef} type="file" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={e => e.target.files && handleFiles(e.target.files)} />
+        <p className="text-sm text-muted-foreground">
+          Przeciągnij i upuść pliki (PDF, PNG, JPG) lub <span className="text-primary font-medium">kliknij aby wybrać</span>
+        </p>
       </div>
-
-      {uploadMutation.isPending && <div className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Przesyłanie...</div>}
 
       <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="border-b bg-muted/50">
             <th className="p-2 text-left">Plik</th>
             <th className="p-2 text-left">Data faktury</th>
+            <th className="p-2 text-left">Komentarz</th>
             <th className="p-2 text-center">Status</th>
             <th className="p-2 text-left">Przesłał</th>
           </tr></thead>
           <tbody>
             {invoices.map((inv: any) => (
-              <tr key={inv.id} className="border-b hover:bg-muted/30">
-                <td className="p-2 flex items-center gap-1"><FileText className="h-3 w-3" />{inv.originalFileName || inv.fileName}</td>
-                <td className="p-2">{inv.invoiceDate}</td>
+              <tr key={inv.id} className="border-b hover:bg-muted/30" data-testid={`row-invoice-${inv.id}`}>
+                <td className="p-2"><div className="flex items-center gap-1"><FileText className="h-3 w-3 shrink-0" /><span className="truncate max-w-[200px]">{inv.originalFileName || inv.fileName}</span></div></td>
+                <td className="p-2 whitespace-nowrap">{inv.invoiceDate}</td>
+                <td className="p-2 text-muted-foreground truncate max-w-[200px]">{inv.comment || '-'}</td>
                 <td className="p-2 text-center"><Badge variant="secondary">{inv.status}</Badge></td>
                 <td className="p-2 text-muted-foreground">{inv.uploadedBy || '-'}</td>
               </tr>
             ))}
-            {invoices.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">Brak faktur</td></tr>}
+            {invoices.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">Brak faktur</td></tr>}
           </tbody>
         </table>
       </Card>
+
+      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dodaj fakturę kosztową</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Pliki</Label>
+              <div className="text-sm text-muted-foreground mt-1">
+                {uploadFiles.map(f => f.name).join(", ")}
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="upload-date">Data faktury</Label>
+              <Input
+                id="upload-date"
+                type="date"
+                value={uploadDate}
+                onChange={e => setUploadDate(e.target.value)}
+                data-testid="input-upload-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="upload-comment">Komentarz / opis</Label>
+              <Input
+                id="upload-comment"
+                placeholder="np. Faktura za prąd - grudzień"
+                value={uploadComment}
+                onChange={e => setUploadComment(e.target.value)}
+                data-testid="input-upload-comment"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUploadDialog(false)} data-testid="button-cancel-upload">
+              Anuluj
+            </Button>
+            <Button onClick={handleUpload} disabled={uploadMutation.isPending} data-testid="button-confirm-upload">
+              {uploadMutation.isPending ? "Wysyłanie..." : "Dodaj"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

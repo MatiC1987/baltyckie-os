@@ -269,24 +269,56 @@ export function registerRecepcjaRoutes(app: Express) {
   app.post('/api/recepcja/cost-invoices/upload', isRecepcjaAuth as any, upload.single('file') as any, async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: 'Brak pliku' });
-      const { objectStorage } = await import("./replit_integrations/object_storage");
-      const uniqueId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      const ext = req.file.originalname.split('.').pop() || 'pdf';
-      const objectPath = `private/cost-invoices/cost_invoice_${uniqueId}.${ext}`;
-      await objectStorage.writeFile(objectPath, req.file.buffer);
+      const allowedMimes = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({ message: "Dozwolone formaty: PDF, PNG, JPG, WEBP" });
+      }
 
-      const dateMatch = req.file.originalname.match(/(\d{4})-(\d{2})-(\d{2})/);
-      const invoiceDate = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : new Date().toISOString().slice(0, 10);
-      const parts = invoiceDate.split('-');
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
+
+      const uniqueId = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+      const ext = req.file.originalname.split('.').pop() || 'pdf';
+      const storedName = `cost_invoice_${uniqueId}.${ext}`;
+      const storagePath = `${privateDir}/cost-invoices/${storedName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(req.file.buffer, { contentType: req.file.mimetype });
+
+      let invoiceDate = req.body.invoiceDate;
+      if (!invoiceDate) {
+        const dateMatch = req.file.originalname.match(/(\d{4})[_\-.](\d{2})[_\-.](\d{2})/);
+        if (dateMatch) {
+          invoiceDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+        } else {
+          const dateMatch2 = req.file.originalname.match(/(\d{2})[_\-.](\d{2})[_\-.](\d{4})/);
+          if (dateMatch2) {
+            invoiceDate = `${dateMatch2[3]}-${dateMatch2[2]}-${dateMatch2[1]}`;
+          } else {
+            invoiceDate = new Date().toISOString().slice(0, 10);
+          }
+        }
+      }
+
+      const d = new Date(invoiceDate);
+      const invoiceMonth = d.getMonth() + 1;
+      const invoiceYear = d.getFullYear();
 
       const [invoice] = await db.insert(costInvoices).values({
-        fileName: req.file.originalname,
+        fileName: storedName,
         originalFileName: req.file.originalname,
         mimeType: req.file.mimetype || 'application/pdf',
-        objectStoragePath: objectPath,
+        objectStoragePath: storagePath,
         invoiceDate,
-        invoiceMonth: Number(parts[1]),
-        invoiceYear: Number(parts[0]),
+        invoiceMonth,
+        invoiceYear,
+        comment: req.body.comment || null,
         status: 'NOWA',
         uploadedBy: req.recepcjaUser.name,
       }).returning();
