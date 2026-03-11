@@ -57,6 +57,7 @@ export function UnpaidArrivalsTab({ reservations, apartments, isLoading, reminde
     const today = new Date().toISOString().split("T")[0];
     let data = reservations.filter(r => {
       if (r.status === "ANULOWANA") return false;
+      if (!r.startDate || r.startDate < "2026-01-01") return false;
       const remaining = calcRemaining(r);
       return remaining > 0 && r.endDate && r.endDate <= today;
     });
