@@ -53,7 +53,7 @@ export default function RecepcjaProtokoly() {
             <tbody>
               {protocols.map((p: any) => {
                 const sub = subleases.find((s: any) => s.id === p.subleaseId);
-                const name = sub ? (sub.tenantType === 'company' ? sub.companyName : `${sub.firstName || ''} ${sub.lastName || ''}`.trim()) : '-';
+                const name = sub ? (sub.tenantType === 'firma' ? (sub.companyName || '-') : `${sub.firstName || ''} ${sub.lastName || ''}`.trim()) : '-';
                 return (
                   <tr key={p.id} className="border-b hover:bg-muted/30">
                     <td className="p-2">{p.protocolDate || p.createdAt?.slice(0, 10)}</td>

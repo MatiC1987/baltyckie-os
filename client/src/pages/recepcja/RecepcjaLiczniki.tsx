@@ -79,7 +79,7 @@ function SubleaseMeters({ sublease }: { sublease: any }) {
     queryFn: async () => { const r = await recepcjaFetch("GET", `/api/recepcja/meter-readings/${sublease.id}`); return r.json(); },
   });
 
-  const tenantName = sublease.tenantType === 'company' ? sublease.companyName : `${sublease.firstName || ''} ${sublease.lastName || ''}`.trim();
+  const tenantName = sublease.tenantType === 'firma' ? (sublease.companyName || '-') : `${sublease.firstName || ''} ${sublease.lastName || ''}`.trim();
 
   return (
     <Card className="p-4">

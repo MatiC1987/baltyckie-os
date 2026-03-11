@@ -49,7 +49,7 @@ export default function RecepcjaRozliczenia() {
 
 function SubleasePayments({ sublease, apartmentName }: { sublease: any; apartmentName: string }) {
   const { toast } = useToast();
-  const tenantName = sublease.tenantType === 'company' ? sublease.companyName : `${sublease.firstName || ''} ${sublease.lastName || ''}`.trim();
+  const tenantName = sublease.tenantType === 'firma' ? (sublease.companyName || '-') : `${sublease.firstName || ''} ${sublease.lastName || ''}`.trim();
 
   const { data: payments = [], isLoading } = useQuery({
     queryKey: [`/api/recepcja/subleases/${sublease.id}/payments`],

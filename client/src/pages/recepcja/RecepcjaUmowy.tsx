@@ -43,7 +43,7 @@ export default function RecepcjaUmowy() {
             </thead>
             <tbody>
               {subleases.map((s: any) => {
-                const name = s.tenantType === 'company' ? s.companyName : `${s.firstName || ''} ${s.lastName || ''}`.trim();
+                const name = s.tenantType === 'firma' ? (s.companyName || '-') : `${s.firstName || ''} ${s.lastName || ''}`.trim();
                 const isActive = s.startDate <= new Date().toISOString().slice(0, 10) && s.endDate >= new Date().toISOString().slice(0, 10);
                 return (
                   <tr key={s.id} className="border-b hover:bg-muted/30">
