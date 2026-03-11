@@ -10,6 +10,8 @@ export type ForecastMonth = {
   forecast: number;
   reservationRevenue: number;
   subleaseRevenue: number;
+  climateFeeActual?: number;
+  climateFeeForecast?: number;
   daysInMonth: number;
   dayOfMonth: number;
   daysRemaining: number;
@@ -67,7 +69,7 @@ export default function RevenueForecastSection({ forecastData }: { forecastData:
                     {c.actual.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
                   </span>
                 </div>
-                {(c.reservationRevenue > 0 || c.subleaseRevenue > 0) && (
+                {(c.reservationRevenue > 0 || c.subleaseRevenue > 0 || (c.climateFeeActual || 0) > 0) && (
                   <div className="pl-2 border-l-2 border-muted space-y-0.5">
                     <div className="flex justify-between text-[10px]">
                       <span className="text-muted-foreground">Rezerwacje</span>
@@ -81,6 +83,14 @@ export default function RevenueForecastSection({ forecastData }: { forecastData:
                         {c.subleaseRevenue.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
                       </span>
                     </div>
+                    {(c.climateFeeActual || 0) > 0 && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-muted-foreground">Opł. klimat.</span>
+                        <span data-testid={`text-climate-fee-${c.year}-${c.month}`}>
+                          {(c.climateFeeActual || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="flex justify-between text-xs">

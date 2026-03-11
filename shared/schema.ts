@@ -848,6 +848,8 @@ export const revenueForecasts = pgTable("revenue_forecasts", {
   forecast: decimal("forecast", { precision: 12, scale: 2 }).default("0"),
   actual: decimal("actual", { precision: 12, scale: 2 }).default("0"),
   rentalType: text("rental_type"),
+  climateFeeForecast: decimal("climate_fee_forecast", { precision: 10, scale: 2 }).default("0"),
+  climateFeeActual: decimal("climate_fee_actual", { precision: 10, scale: 2 }).default("0"),
 });
 
 export const insertRevenueForecastSchema = createInsertSchema(revenueForecasts).omit({ id: true });

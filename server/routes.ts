@@ -1221,6 +1221,46 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/apartments/recalculate-cleaning-fees', isAuthenticated, async (req, res) => {
+    try {
+      const allApartments = await storage.getApartments();
+      const aptMap = new Map(allApartments.map(a => [a.id, a]));
+      const allReservations = await storage.getReservations();
+      const toUpdate = allReservations.filter(r =>
+        (!r.surcharge || Number(r.surcharge) === 0) && r.apartmentId
+      );
+
+      let updatedCount = 0;
+      const log: string[] = [];
+
+      for (const r of toUpdate) {
+        let totalCleaningFee = 0;
+        const aptIds = r.apartmentIds && r.apartmentIds.length > 0 ? r.apartmentIds : (r.apartmentId ? [r.apartmentId] : []);
+        for (const aptId of aptIds) {
+          const apt = aptMap.get(aptId);
+          if (apt && apt.cleaningFee && Number(apt.cleaningFee) > 0) {
+            totalCleaningFee += Number(apt.cleaningFee);
+          }
+        }
+        if (totalCleaningFee > 0) {
+          const basePrice = Number(r.price) || 0;
+          const newPrice = (basePrice + totalCleaningFee).toFixed(2);
+          await storage.updateReservation(r.id, {
+            price: newPrice,
+            surcharge: totalCleaningFee.toFixed(2),
+          });
+          updatedCount++;
+          log.push(`Rez. ${r.reservationNumber}: ${basePrice.toFixed(2)} → ${newPrice} (+${totalCleaningFee.toFixed(2)} sprzątanie)`);
+        }
+      }
+
+      res.json({ updated: updatedCount, log });
+    } catch (err: any) {
+      console.error("Error recalculating cleaning fees:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Reservations
   app.get(api.reservations.list.path, isAuthenticated, async (req, res) => {
     const pageParam = req.query.page ? Number(req.query.page) : undefined;
@@ -4942,6 +4982,17 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       months.push({ year, month: i, label: "" });
     }
 
+    const climateByMonth: Record<number, { forecast: number; actual: number }> = {};
+    for (let i = 0; i < 12; i++) {
+      climateByMonth[i] = { forecast: 0, actual: 0 };
+    }
+    for (const f of revForecasts) {
+      if (f.locationName === "RAZEM" && (f.climateFeeForecast || f.climateFeeActual)) {
+        climateByMonth[f.month].forecast += Number(f.climateFeeForecast || 0);
+        climateByMonth[f.month].actual += Number(f.climateFeeActual || 0);
+      }
+    }
+
     const result = months.map(m => {
       const daysInMonth = new Date(m.year, m.month + 1, 0).getDate();
       const isCurrentMonth = m.year === currentYear && m.month === currentMonth;
@@ -4966,8 +5017,10 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         }
       }
 
-      const actual = reservationRevenue + subleaseRevenue;
-      const forecast = forecastByMonth[m.month] || 0;
+      const climateFeeActual = climateByMonth[m.month]?.actual || 0;
+      const climateFeeForecast = climateByMonth[m.month]?.forecast || 0;
+      const actual = reservationRevenue + subleaseRevenue + climateFeeActual;
+      const forecast = (forecastByMonth[m.month] || 0) + climateFeeForecast;
 
       return {
         year: m.year,
@@ -4976,6 +5029,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         forecast,
         reservationRevenue,
         subleaseRevenue,
+        climateFeeActual,
+        climateFeeForecast,
         daysInMonth,
         dayOfMonth,
         daysRemaining,
@@ -6443,6 +6498,43 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       if (err.name === "ZodError") {
         return res.status(400).json({ message: "Nieprawidłowe dane prognozy", errors: err.errors });
       }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/revenue-forecasts/climate-fee", isAuthenticated, async (req, res) => {
+    try {
+      const { year, month, climateFeeForecast, climateFeeActual } = req.body;
+      if (!year || month === undefined) {
+        return res.status(400).json({ message: "year and month are required" });
+      }
+      const locationName = "RAZEM";
+      const existing = await db.select().from(revenueForecasts)
+        .where(and(
+          eq(revenueForecasts.year, year),
+          eq(revenueForecasts.month, month),
+          eq(revenueForecasts.locationName, locationName),
+        )).limit(1);
+
+      const updateData: any = {};
+      if (climateFeeForecast !== undefined) updateData.climateFeeForecast = String(climateFeeForecast);
+      if (climateFeeActual !== undefined) updateData.climateFeeActual = String(climateFeeActual);
+
+      if (existing.length > 0) {
+        const [updated] = await db.update(revenueForecasts).set(updateData)
+          .where(eq(revenueForecasts.id, existing[0].id)).returning();
+        return res.json(updated);
+      }
+      const [created] = await db.insert(revenueForecasts).values({
+        year,
+        month,
+        locationName,
+        forecast: "0",
+        actual: "0",
+        ...updateData,
+      }).returning();
+      res.json(created);
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
@@ -8749,10 +8841,25 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
         };
       });
 
+      const climateFeeSummary: Record<number, { forecast: number; actual: number }> = {};
+      for (let m = 0; m < 12; m++) {
+        climateFeeSummary[m] = { forecast: 0, actual: 0 };
+      }
+      for (const f of forecasts) {
+        if (f.locationName === "RAZEM" && (f.climateFeeForecast || f.climateFeeActual)) {
+          const m = f.month;
+          if (m >= 0 && m < 12) {
+            climateFeeSummary[m].forecast += Number(f.climateFeeForecast || 0);
+            climateFeeSummary[m].actual += Number(f.climateFeeActual || 0);
+          }
+        }
+      }
+
       res.json({
         year: yearParam,
         locations: allLocations,
         apartments: aptData,
+        climateFee: climateFeeSummary,
       });
     } catch (err: any) {
       console.error("V2 Revenue summary error:", err);

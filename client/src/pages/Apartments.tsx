@@ -597,9 +597,28 @@ export default function Apartments() {
 
 function CleaningFeeTab({ apartments }: { apartments: Apartment[] }) {
   const updateApartment = useUpdateApartment();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalcLog, setRecalcLog] = useState<string[] | null>(null);
+
+  const handleRecalculate = async () => {
+    if (!confirm("Czy na pewno chcesz przeliczyć opłaty za sprzątanie wstecz?\n\nDotyczy rezerwacji, które jeszcze nie mają doliczanej opłaty za sprzątanie (surcharge = 0).")) return;
+    setIsRecalculating(true);
+    try {
+      const res = await apiRequest("POST", "/api/apartments/recalculate-cleaning-fees");
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      setRecalcLog(data.log || []);
+      toast({ title: "Przeliczono", description: `Zaktualizowano ${data.updated} rezerwacji.` });
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się przeliczyć.", variant: "destructive" });
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
 
   const sorted = useMemo(() => [...apartments].sort((a, b) => a.name.localeCompare(b.name, "pl")), [apartments]);
 
@@ -625,10 +644,33 @@ function CleaningFeeTab({ apartments }: { apartments: Apartment[] }) {
 
   return (
     <div className="space-y-4 mt-4">
-      <div>
-        <h3 className="text-lg font-semibold" data-testid="text-cleaning-fee-title">Opłaty za sprzątanie końcowe</h3>
-        <p className="text-sm text-muted-foreground">Kwota doliczana automatycznie do ceny rezerwacji przy imporcie z HotRes.</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="text-lg font-semibold" data-testid="text-cleaning-fee-title">Opłaty za sprzątanie końcowe</h3>
+          <p className="text-sm text-muted-foreground">Kwota doliczana automatycznie do ceny rezerwacji przy imporcie z HotRes.</p>
+        </div>
+        <Button variant="outline" onClick={handleRecalculate} disabled={isRecalculating} data-testid="button-recalculate-cleaning">
+          {isRecalculating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+          Przelicz wstecz
+        </Button>
       </div>
+      {recalcLog && recalcLog.length > 0 && (
+        <Card className="border-blue-500/30">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Wynik przeliczenia</span>
+              <Button size="sm" variant="ghost" onClick={() => setRecalcLog(null)} data-testid="button-close-recalc-log">
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {recalcLog.map((line, i) => (
+                <div key={i} className="text-xs text-muted-foreground">{line}</div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

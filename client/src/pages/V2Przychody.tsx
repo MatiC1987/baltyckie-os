@@ -1,12 +1,15 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Location } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight, Copy, Sparkles, BarChart3 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ChevronDown, ChevronRight, Copy, Sparkles, BarChart3, Thermometer } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
@@ -35,6 +38,7 @@ type RevenueSummaryResponse = {
   year: number;
   locations: Location[];
   apartments: AptRevenueData[];
+  climateFee?: Record<number, { forecast: number; actual: number }>;
 };
 
 function formatNum(v: number): string {
@@ -330,18 +334,184 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
   );
 }
 
-function GrandTotalTable({ apartments, currentMonth }: { apartments: AptRevenueData[]; currentMonth: number }) {
+function ClimateFeeTable({ climateFee, currentMonth, year }: { climateFee?: Record<number, { forecast: number; actual: number }>; currentMonth: number; year: number }) {
+  const { toast } = useToast();
+  const [editingCell, setEditingCell] = useState<{ month: number; field: "forecast" | "actual" } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: async (data: { year: number; month: number; climateFeeForecast?: number; climateFeeActual?: number }) => {
+      const res = await apiRequest("PUT", "/api/revenue-forecasts/climate-fee", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/v2/revenue-summary?year=${year}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/dashboard/revenue-forecast?year=${year}`] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const startEdit = useCallback((month: number, field: "forecast" | "actual") => {
+    const val = climateFee?.[month]?.[field] || 0;
+    setEditValue(val === 0 ? "" : String(val));
+    setEditingCell({ month, field });
+  }, [climateFee]);
+
+  const commitEdit = useCallback(() => {
+    if (!editingCell) return;
+    const numVal = parseFloat(editValue) || 0;
+    const currentVal = climateFee?.[editingCell.month]?.[editingCell.field] || 0;
+    if (numVal !== currentVal) {
+      const payload: any = { year, month: editingCell.month };
+      if (editingCell.field === "forecast") payload.climateFeeForecast = numVal;
+      else payload.climateFeeActual = numVal;
+      mutation.mutate(payload);
+    }
+    setEditingCell(null);
+  }, [editingCell, editValue, climateFee, year, mutation]);
+
+  const yearFc = Object.values(climateFee || {}).reduce((s, v) => s + (v.forecast || 0), 0);
+  const yearAct = Object.values(climateFee || {}).reduce((s, v) => s + (v.actual || 0), 0);
+
+  return (
+    <div data-testid="climate-fee-section">
+      <div className="flex items-center gap-2 py-2 px-3 font-semibold text-sm mb-1">
+        <Thermometer className="h-4 w-4 text-orange-500" />
+        <span>Opłata klimatyczna</span>
+        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+          Plan: {formatNum(yearFc)} PLN | Realizacja: {formatNum(yearAct)} PLN
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[10px] sm:text-xs border-collapse" data-testid="climate-fee-table">
+          <thead>
+            <tr className="border-b bg-muted/30">
+              <th className="sticky left-0 z-20 bg-muted/30 text-left p-1.5 sm:p-2 min-w-[120px] sm:min-w-[160px] font-medium"></th>
+              <th className="text-left p-1.5 sm:p-2 min-w-[45px] sm:min-w-[60px] font-medium">Wiersz</th>
+              {MONTHS.map((m, i) => (
+                <th key={i} className={`text-right p-1.5 sm:p-2 min-w-[60px] sm:min-w-[80px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                  {m}
+                </th>
+              ))}
+              <th className="text-right p-1.5 sm:p-2 min-w-[70px] sm:min-w-[90px] font-bold">Razem</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b bg-orange-50/30 dark:bg-orange-950/10">
+              <td className="sticky left-0 z-10 bg-orange-50/30 dark:bg-orange-950/10 p-1.5 sm:p-2 font-medium">Opłata klim.</td>
+              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Plan</td>
+              {MONTHS.map((_, i) => {
+                const val = climateFee?.[i]?.forecast || 0;
+                const isEditing = editingCell?.month === i && editingCell?.field === "forecast";
+                return (
+                  <td key={i} className={`p-1 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`} data-testid={`climate-fee-forecast-${i}`}>
+                    {isEditing ? (
+                      <Input
+                        type="number"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={commitEdit}
+                        onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
+                        className="h-6 text-[10px] sm:text-xs text-right w-16 sm:w-20 ml-auto p-1"
+                        autoFocus
+                        data-testid={`input-climate-forecast-${i}`}
+                      />
+                    ) : (
+                      <button
+                        className="w-full text-right tabular-nums hover:bg-muted/50 rounded px-1 py-0.5 transition-colors cursor-text"
+                        onClick={() => startEdit(i, "forecast")}
+                        data-testid={`btn-edit-climate-forecast-${i}`}
+                      >
+                        {formatNum(val)}
+                      </button>
+                    )}
+                  </td>
+                );
+              })}
+              <td className="p-1.5 sm:p-2 text-right tabular-nums font-medium">{formatNum(yearFc)} PLN</td>
+            </tr>
+            <tr className="bg-orange-50/30 dark:bg-orange-950/10">
+              <td className="sticky left-0 z-10 bg-orange-50/30 dark:bg-orange-950/10 p-1.5 sm:p-2"></td>
+              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Rzecz.</td>
+              {MONTHS.map((_, i) => {
+                const val = climateFee?.[i]?.actual || 0;
+                const isEditing = editingCell?.month === i && editingCell?.field === "actual";
+                return (
+                  <td key={i} className={`p-1 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`} data-testid={`climate-fee-actual-${i}`}>
+                    {isEditing ? (
+                      <Input
+                        type="number"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={commitEdit}
+                        onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
+                        className="h-6 text-[10px] sm:text-xs text-right w-16 sm:w-20 ml-auto p-1"
+                        autoFocus
+                        data-testid={`input-climate-actual-${i}`}
+                      />
+                    ) : (
+                      <button
+                        className="w-full text-right tabular-nums hover:bg-muted/50 rounded px-1 py-0.5 transition-colors cursor-text"
+                        onClick={() => startEdit(i, "actual")}
+                        data-testid={`btn-edit-climate-actual-${i}`}
+                      >
+                        {formatNum(val)}
+                      </button>
+                    )}
+                  </td>
+                );
+              })}
+              <td className="p-1.5 sm:p-2 text-right tabular-nums font-medium">{formatNum(yearAct)} PLN</td>
+            </tr>
+            <tr className="border-t bg-orange-50/30 dark:bg-orange-950/10">
+              <td className="sticky left-0 z-10 bg-orange-50/30 dark:bg-orange-950/10 p-1.5 sm:p-2"></td>
+              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Odch.</td>
+              {MONTHS.map((_, i) => {
+                const fc = climateFee?.[i]?.forecast || 0;
+                const act = climateFee?.[i]?.actual || 0;
+                const dev = act - fc;
+                return (
+                  <td key={i} className={`p-1.5 sm:p-2 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
+                    {fc === 0 && act === 0 ? "—" : (
+                      <span className={`tabular-nums text-[10px] ${deviationColor(dev)}`}>
+                        {dev >= 0 ? "+" : ""}{formatNum(dev)}
+                      </span>
+                    )}
+                  </td>
+                );
+              })}
+              <td className="p-1.5 sm:p-2 text-right">
+                {yearFc === 0 && yearAct === 0 ? "—" : (
+                  <span className={`tabular-nums text-[10px] font-semibold ${deviationColor(yearAct - yearFc)}`}>
+                    {yearAct - yearFc >= 0 ? "+" : ""}{formatNum(yearAct - yearFc)} PLN
+                  </span>
+                )}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function GrandTotalTable({ apartments, currentMonth, climateFee }: { apartments: AptRevenueData[]; currentMonth: number; climateFee?: Record<number, { forecast: number; actual: number }> }) {
   const totals = useMemo(() => {
     const t: Record<number, { forecast: number; actual: number }> = {};
     for (let m = 0; m < 12; m++) {
-      t[m] = { forecast: 0, actual: 0 };
+      let fc = 0, act = 0;
       for (const apt of apartments) {
-        t[m].forecast += apt.months[m]?.forecast || 0;
-        t[m].actual += apt.months[m]?.actual || 0;
+        fc += apt.months[m]?.forecast || 0;
+        act += apt.months[m]?.actual || 0;
       }
+      fc += climateFee?.[m]?.forecast || 0;
+      act += climateFee?.[m]?.actual || 0;
+      t[m] = { forecast: fc, actual: act };
     }
     return t;
-  }, [apartments]);
+  }, [apartments, climateFee]);
 
   const yearTotalFc = Object.values(totals).reduce((s, t) => s + t.forecast, 0);
   const yearTotalAct = Object.values(totals).reduce((s, t) => s + t.actual, 0);
@@ -473,6 +643,8 @@ export function V2Przychody() {
     return locMap;
   }, [apartments, locations, locationFilter]);
 
+  const climateFee = data?.climateFee;
+
   const chartData = useMemo(() => {
     return MONTHS.map((m, i) => {
       let totalFc = 0, totalAct = 0;
@@ -480,9 +652,11 @@ export function V2Przychody() {
         totalFc += apt.months[i]?.forecast || 0;
         totalAct += apt.months[i]?.actual || 0;
       }
+      totalFc += climateFee?.[i]?.forecast || 0;
+      totalAct += climateFee?.[i]?.actual || 0;
       return { month: m, "Prognoza": totalFc, "Realizacja": totalAct };
     });
-  }, [apartments]);
+  }, [apartments, climateFee]);
 
   const yearTotals = useMemo(() => {
     let fc = 0, act = 0;
@@ -492,8 +666,12 @@ export function V2Przychody() {
         act += apt.months[m]?.actual || 0;
       }
     }
+    for (let m = 0; m < 12; m++) {
+      fc += climateFee?.[m]?.forecast || 0;
+      act += climateFee?.[m]?.actual || 0;
+    }
     return { forecast: fc, actual: act };
-  }, [apartments]);
+  }, [apartments, climateFee]);
 
   const currentMonthByLocation = useMemo(() => {
     const m = year === currentYear ? currentMonth : -1;
@@ -649,10 +827,16 @@ export function V2Przychody() {
         </Card>
       ))}
 
+      <Card data-testid="climate-fee-card">
+        <CardContent className="pt-4">
+          <ClimateFeeTable climateFee={data?.climateFee} currentMonth={year === currentYear ? currentMonth : -1} year={year} />
+        </CardContent>
+      </Card>
+
       {grouped.size > 1 && (
         <Card data-testid="revenue-grand-total">
           <CardContent className="pt-4">
-            <GrandTotalTable apartments={apartments} currentMonth={year === currentYear ? currentMonth : -1} />
+            <GrandTotalTable apartments={apartments} currentMonth={year === currentYear ? currentMonth : -1} climateFee={data?.climateFee} />
           </CardContent>
         </Card>
       )}
