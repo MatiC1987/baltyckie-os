@@ -5413,6 +5413,20 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
         const isGroupReservation = resolvedAptIds.length > 1;
 
+        let totalCleaningFee = 0;
+        for (const aptId of resolvedAptIds) {
+          const apt = apartments.find(a => a.id === aptId);
+          if (apt && apt.cleaningFee) {
+            totalCleaningFee += Number(apt.cleaningFee);
+          }
+        }
+        const basePrice = Number(hr.price) || 0;
+        const adjustedPrice = (basePrice + totalCleaningFee).toFixed(2);
+        const cleaningSurcharge = totalCleaningFee.toFixed(2);
+        if (totalCleaningFee > 0) {
+          log.push(`Rez. ${hr.reservationNumber}: doliczono sprzątanie ${totalCleaningFee.toFixed(2)} zł (${basePrice.toFixed(2)} → ${adjustedPrice})`);
+        }
+
         const existing = await storage.getReservationByNumber(hr.reservationNumber);
         if (existing) {
           await storage.updateReservation(existing.id, {
@@ -5421,9 +5435,10 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             startDate: hr.startDate,
             endDate: hr.endDate,
             guestName: hr.guestName,
-            price: hr.price,
+            price: adjustedPrice,
             prepayment: hr.prepayment || "0",
             paidAmount: hr.paidAmount || "0",
+            surcharge: cleaningSurcharge,
             status: hr.status,
             ...(hr.source && { source: hr.source }),
           });
@@ -5439,10 +5454,10 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           startDate: hr.startDate,
           endDate: hr.endDate,
           guestName: hr.guestName,
-          price: hr.price,
+          price: adjustedPrice,
           prepayment: hr.prepayment || "0",
           paidAmount: hr.paidAmount || "0",
-          surcharge: "0",
+          surcharge: cleaningSurcharge,
           status: hr.status,
           ...(hr.source && { source: hr.source }),
         });
@@ -5554,6 +5569,20 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
         const isGroupReservation = resolvedAptIds.length > 1;
 
+        let totalCleaningFee = 0;
+        for (const aptId of resolvedAptIds) {
+          const apt = apartments.find(a => a.id === aptId);
+          if (apt && apt.cleaningFee) {
+            totalCleaningFee += Number(apt.cleaningFee);
+          }
+        }
+        const basePrice = Number(hr.price) || 0;
+        const adjustedPrice = (basePrice + totalCleaningFee).toFixed(2);
+        const cleaningSurcharge = totalCleaningFee.toFixed(2);
+        if (totalCleaningFee > 0) {
+          log.push(`Rez. ${hr.reservationNumber}: doliczono sprzątanie ${totalCleaningFee.toFixed(2)} zł (${basePrice.toFixed(2)} → ${adjustedPrice})`);
+        }
+
         const existing = await storage.getReservationByNumber(hr.reservationNumber);
         if (existing) {
           await storage.updateReservation(existing.id, {
@@ -5562,9 +5591,10 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             startDate: hr.startDate,
             endDate: hr.endDate,
             guestName: hr.guestName,
-            price: hr.price,
+            price: adjustedPrice,
             prepayment: hr.prepayment || "0",
             paidAmount: hr.paidAmount || "0",
+            surcharge: cleaningSurcharge,
             status: hr.status,
             ...(hr.source && { source: hr.source }),
           });
@@ -5580,10 +5610,10 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           startDate: hr.startDate,
           endDate: hr.endDate,
           guestName: hr.guestName,
-          price: hr.price,
+          price: adjustedPrice,
           prepayment: hr.prepayment || "0",
           paidAmount: hr.paidAmount || "0",
-          surcharge: "0",
+          surcharge: cleaningSurcharge,
           status: hr.status,
           ...(hr.source && { source: hr.source }),
         });

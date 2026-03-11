@@ -27,6 +27,7 @@ export const apartments = pgTable("apartments", {
   photoUrl: text("photo_url"),
   leaseStartDate: date("lease_start_date"),
   leaseEndDate: date("lease_end_date"),
+  cleaningFee: decimal("cleaning_fee", { precision: 10, scale: 2 }).default("0"),
 });
 
 export const reservations = pgTable("reservations", {

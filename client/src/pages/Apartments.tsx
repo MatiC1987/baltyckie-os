@@ -334,8 +334,21 @@ export default function Apartments() {
     </div>
   );
 
+  const [mainTab, setMainTab] = useState("apartments");
+
   return (
     <div className="space-y-8">
+      <Tabs value={mainTab} onValueChange={setMainTab}>
+        <TabsList data-testid="tabs-apartments-main">
+          <TabsTrigger value="apartments" data-testid="tab-apartments">Apartamenty</TabsTrigger>
+          <TabsTrigger value="cleaning" data-testid="tab-cleaning">Sprzątanie</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="cleaning">
+          <CleaningFeeTab apartments={apartments || []} />
+        </TabsContent>
+
+        <TabsContent value="apartments">
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <Button variant="outline" onClick={selectAll} data-testid="button-select-all">
           <CheckSquare className="mr-2 h-4 w-4" />
@@ -531,6 +544,9 @@ export default function Apartments() {
         );
       })()}
 
+        </TabsContent>
+      </Tabs>
+
       <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -575,6 +591,104 @@ export default function Apartments() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function CleaningFeeTab({ apartments }: { apartments: Apartment[] }) {
+  const updateApartment = useUpdateApartment();
+  const { toast } = useToast();
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const sorted = useMemo(() => [...apartments].sort((a, b) => a.name.localeCompare(b.name, "pl")), [apartments]);
+
+  const handleSave = (id: number) => {
+    const val = parseFloat(editValue.replace(",", "."));
+    if (isNaN(val) || val < 0) {
+      toast({ title: "Błąd", description: "Podaj poprawną kwotę.", variant: "destructive" });
+      return;
+    }
+    updateApartment.mutate(
+      { id, cleaningFee: val.toFixed(2) },
+      {
+        onSuccess: () => {
+          toast({ title: "Zapisano", description: "Opłata za sprzątanie zaktualizowana." });
+          setEditingId(null);
+        },
+        onError: () => {
+          toast({ title: "Błąd", description: "Nie udało się zapisać.", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="space-y-4 mt-4">
+      <div>
+        <h3 className="text-lg font-semibold" data-testid="text-cleaning-fee-title">Opłaty za sprzątanie końcowe</h3>
+        <p className="text-sm text-muted-foreground">Kwota doliczana automatycznie do ceny rezerwacji przy imporcie z HotRes.</p>
+      </div>
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="py-3 px-4 font-medium">Apartament</th>
+                <th className="py-3 px-4 font-medium">Lokalizacja</th>
+                <th className="py-3 px-4 font-medium text-right">Opłata za sprzątanie (PLN)</th>
+                <th className="py-3 px-4 font-medium w-24"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(apt => (
+                <tr key={apt.id} className="border-b last:border-b-0 hover:bg-muted/50" data-testid={`row-cleaning-fee-${apt.id}`}>
+                  <td className="py-2 px-4 font-medium" data-testid={`text-cleaning-apt-name-${apt.id}`}>{apt.name}</td>
+                  <td className="py-2 px-4 text-muted-foreground">{apt.location || "—"}</td>
+                  <td className="py-2 px-4 text-right">
+                    {editingId === apt.id ? (
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleSave(apt.id); if (e.key === "Escape") setEditingId(null); }}
+                        className="w-32 ml-auto text-right"
+                        autoFocus
+                        data-testid={`input-cleaning-fee-${apt.id}`}
+                      />
+                    ) : (
+                      <span
+                        className="cursor-pointer hover:underline"
+                        onClick={() => { setEditingId(apt.id); setEditValue(String(apt.cleaningFee || "0")); }}
+                        data-testid={`text-cleaning-fee-${apt.id}`}
+                      >
+                        {Number(apt.cleaningFee || 0).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 px-4">
+                    {editingId === apt.id ? (
+                      <div className="flex gap-1">
+                        <Button size="sm" onClick={() => handleSave(apt.id)} disabled={updateApartment.isPending} data-testid={`button-save-cleaning-${apt.id}`}>
+                          {updateApartment.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} data-testid={`button-cancel-cleaning-${apt.id}`}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => { setEditingId(apt.id); setEditValue(String(apt.cleaningFee || "0")); }} data-testid={`button-edit-cleaning-${apt.id}`}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

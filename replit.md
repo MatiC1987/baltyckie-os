@@ -64,7 +64,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **PostgreSQL (Neon):** The core relational database.
 *   **xlsx library:** Used for parsing Excel files.
 *   **date-fns:** For date formatting and manipulation, specifically with Polish locale support.
-*   **HotRes:** Integrates for importing reservation data via CSV exports.
+*   **HotRes:** Integrates for importing reservation data via CSV exports. Per-apartment `cleaningFee` field is auto-added to reservation price during import (stored in `surcharge` field for audit). Managed via "Sprzątanie" tab on Apartments page.
 *   **jsPDF + jspdf-autotable:** Utilized for generating PDF reports and documents.
 *   **Leaflet + react-leaflet:** Powers interactive map functionalities for GPS location tracking in the RCP module.
 *   **jsonwebtoken + bcryptjs:** Employed for JWT-based authentication in the Recepcja panel.
