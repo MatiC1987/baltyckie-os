@@ -1,0 +1,249 @@
+Przeanalizuj istniejący projekt strony „Bałtyckie Apartamenty” i wykonaj finalny etap dopracowania projektu przed publikacją produkcyjną.
+
+Nie twórz projektu od zera. Nie zmieniaj istniejącej architektury aplikacji, routingu ani kluczowej logiki wyszukiwania i rezerwacji. Pracuj na obecnym kodzie.
+
+Cel:
+Dopracować branding, treści, SEO, spójność wizualną, jakość UX i gotowość produkcyjną strony.
+
+Kontekst marki:
+- nazwa marki: Bałtyckie Apartamenty
+- lokalizacja działalności: wyłącznie Ustka
+- 5 głównych lokalizacji:
+  - Grand Baltic
+  - Bulwar Portowy
+  - Na Wydmie
+  - Wczasowa
+  - Ustka – Przewłoka
+- 78 apartamentów
+- 16 lat doświadczenia
+- ponad 60 000 rezerwacji
+- ponad 190 000 obsłużonych gości
+
+1. Branding refinement
+Ujednolić branding całej strony.
+
+Zastosuj spójną paletę:
+- primary navy: #0F2A44
+- secondary blue: #2F6F8F
+- warm sand background: #F6F2EB
+- CTA accent: #F4A261
+- white: #FFFFFF
+- text: #1A1A1A
+
+Zasady:
+- 80% jasne tła
+- 15% granat
+- 5% CTA
+- CTA tylko w akcjach najważniejszych
+- ograniczyć przypadkowe użycie kolorów
+
+Ujednolić:
+- ikony
+- badge
+- przyciski
+- style formularzy
+- style kart
+- podkreślenia, linki, hover states
+
+2. Logo i obecna identyfikacja
+Przygotuj miejsce i styl użycia dla aktualnego logo marki „Bałtyckie Apartamenty”.
+
+Założenia:
+- nie zmieniaj znaku marki w kodzie na inny styl
+- zachowaj obecny charakter logo
+- dopracuj jego ekspozycję w:
+  - headerze
+  - footerze
+  - favicon / app icon
+- przygotuj komponent logo tak, aby łatwo było podmienić plik SVG / PNG na finalny plik marki
+
+Dodaj komentarz w kodzie, gdzie należy podmienić finalne pliki logo.
+
+3. Typografia i hierarchia
+Zachowaj premium typografię:
+- nagłówki: Playfair Display lub Libre Baskerville
+- tekst: Inter lub Manrope
+
+Dopracuj:
+- rozmiary H1 / H2 / H3
+- line-height
+- spacing między nagłówkiem i opisem
+- czytelność na mobile
+- spójność sekcji contentowych
+
+4. Finalne treści strony głównej
+Dopracuj i wprowadź finalne treści marketingowe dla homepage.
+
+Hero:
+Nagłówek:
+„Twój apartament nad morzem w Ustce”
+
+Krótki opis:
+„5 prestiżowych lokalizacji, 78 apartamentów i 16 lat doświadczenia. Znajdź swoje idealne miejsce na wypoczynek w Ustce.”
+
+Sekcja zaufania:
+- 16 lat doświadczenia
+- 78 apartamentów w Ustce
+- 60 000+ rezerwacji
+- 190 000+ zadowolonych gości
+- obsługa gości 24/7
+
+Sekcja „Dlaczego Bałtyckie”:
+Napisz zwięzły, elegancki copywriting premium.
+
+5. Opisy lokalizacji
+Dodaj unikalne, sensowne opisy dla lokalizacji:
+- Grand Baltic
+- Bulwar Portowy
+- Na Wydmie
+- Wczasowa
+- Przewłoka
+
+Każda lokalizacja powinna mieć:
+- krótki opis premium
+- dla kogo jest idealna
+- charakter miejsca
+- odległość od plaży / portu / centrum
+- CTA do przeglądania apartamentów
+
+Przykładowy styl:
+- Grand Baltic – blisko plaży, premium wypoczynek
+- Bulwar Portowy – klimat portu i restauracji
+- Na Wydmie – rodzinny wypoczynek blisko natury
+- Wczasowa – spokojna okolica
+- Przewłoka – cisza, zieleń i prywatność
+
+6. Opisy apartamentów
+Dla kart i stron apartamentów przygotuj bardziej naturalne i sprzedażowe opisy.
+
+Każdy apartament powinien mieć:
+- krótki lead
+- opis dla kogo jest najlepszy
+- najważniejsze udogodnienia
+- informację o lokalizacji
+- krótki język premium, ale prosty i konkretny
+
+7. Blog / inspiracje
+Dopracuj sekcję blogową i przygotuj 4 wpisy startowe:
+
+- Co robić w Ustce?
+- Najlepsze plaże w Ustce
+- Weekend w Ustce
+- Atrakcje Ustki dla rodzin
+
+Wymagania:
+- każdy wpis 800–1200 słów
+- naturalny język polski
+- SEO bez przesady
+- sensowna struktura H2 / H3
+- linkowanie do apartamentów, lokalizacji i ofert specjalnych
+
+8. SEO techniczne
+Dopracuj całą warstwę SEO.
+
+Dodaj i uzupełnij:
+- meta title
+- meta description
+- Open Graph
+- Twitter cards, jeśli stosowane
+- canonical tags
+- breadcrumbs gdzie ma sens
+- przyjazne URL
+- sitemap.xml
+- robots.txt
+
+Dla stron:
+- homepage
+- lokalizacje
+- listing apartamentów
+- karta apartamentu
+- blog
+- dla właścicieli
+- oferty specjalne
+
+9. Structured data
+Dodaj schema.org:
+- LodgingBusiness
+- Apartment / Accommodation
+- FAQPage
+- Article
+- BreadcrumbList
+
+Upewnij się, że structured data są poprawnie osadzone.
+
+10. FAQ
+Dodaj finalne FAQ dla:
+- gości
+- właścicieli
+
+FAQ gości:
+- jak wygląda rezerwacja?
+- czy apartamenty są blisko plaży?
+- czy dostępny jest parking?
+- czy można przyjechać z dzieckiem?
+- czy są apartamenty dla większych grup?
+
+FAQ właścicieli:
+- jak wygląda współpraca?
+- jak rozliczane są przychody?
+- czy zajmujecie się obsługą gości?
+- czy pomagacie w przygotowaniu apartamentu?
+- czy można zgłosić apartament w Ustce do współpracy?
+
+11. Sekcja dla właścicieli
+Dopracuj stronę „Dla właścicieli” jako landing premium B2B.
+
+Dodaj:
+- bardziej przekonujące treści
+- sekcję korzyści
+- sekcję procesu współpracy
+- sekcję zaufania
+- CTA
+- miejsce na kalkulator przychodów
+- formularz leadowy
+
+12. Produkcyjny polish UX
+Dokończ polishing UX:
+- sprawdź spójność spacingu
+- sprawdź hover states
+- sprawdź mobile spacing
+- popraw loading states
+- popraw empty states
+- popraw microcopy formularzy
+- dopracuj komunikaty błędów i sukcesów
+
+13. Wydajność i optymalizacja
+Dopracuj projekt pod produkcję:
+- lazy loading obrazów
+- optymalizacja rozmiarów zdjęć
+- poprawne width/height dla obrazów
+- ograniczenie CLS
+- sensowny preload fontów / krytycznych assetów
+- sprawdzenie semantyki HTML
+- dostępność podstawowa (ARIA, kontrast, focus states)
+
+14. Gotowość do publikacji
+Dodaj README / sekcję dokumentacji z checklistą publikacji:
+- jak podmienić logo
+- jak podmienić zdjęcia
+- gdzie wpiąć finalne dane Hotres
+- jak ustawić domenę
+- jak ustawić meta i analytics
+- jak przełączyć środowisko z mock na produkcję
+
+15. Finalna kontrola
+Na końcu:
+- przejrzyj całą stronę pod kątem spójności
+- usuń elementy wyglądające na tymczasowe
+- usuń zbyt generyczne placeholdery tam, gdzie to możliwe
+- dopracuj końcowy wygląd tak, aby strona wyglądała jak premium marka apartamentów w Ustce
+
+Na końcu odpowiedzi:
+1. wypisz wszystkie najważniejsze zmiany
+2. pokaż które pliki zostały zmienione
+3. wskaż miejsca wymagające jeszcze finalnej podmiany:
+   - prawdziwe zdjęcia
+   - prawdziwe logo
+   - dane Hotres
+   - dane kontaktowe
+4. przygotuj krótką checklistę “co zostało do publikacji”
