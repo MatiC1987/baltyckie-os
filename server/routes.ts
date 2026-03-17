@@ -6596,6 +6596,38 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const changes: any[] = [];
       const MAX_CHANGE_PERCENT = 50;
 
+      function shouldApplyRule(rule: any, dateStr: string, d: Date, existing: any): boolean {
+        const dayOfWeek = d.getDay();
+
+        if (rule.dayOfWeek && rule.dayOfWeek.length > 0 && !rule.dayOfWeek.includes(dayOfWeek)) {
+          return false;
+        }
+
+        const ruleType = rule.type || "seasonal";
+
+        if (ruleType === "weekend") {
+          if (dayOfWeek !== 5 && dayOfWeek !== 6) return false;
+        }
+
+        if (ruleType === "last_minute") {
+          const daysUntil = Math.floor((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const threshold = rule.minStayRule || 7;
+          if (daysUntil > threshold) return false;
+        }
+
+        if (ruleType === "long_stay") {
+          const minStay = existing.minStay || 1;
+          const requiredMin = rule.minStayRule || 7;
+          if (minStay < requiredMin) return false;
+        }
+
+        if (ruleType === "holiday" && rule.seasonType) {
+          // no-op if season matches
+        }
+
+        return true;
+      }
+
       for (const rule of rules) {
         const ruleFrom = rule.dateFrom && rule.dateFrom > from ? rule.dateFrom : from;
         const ruleTo = rule.dateTo && rule.dateTo < to ? rule.dateTo : to;
@@ -6621,15 +6653,14 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           const endD = new Date(ruleTo);
           while (d <= endD) {
             const dateStr = fmtDate(d);
-            const dayOfWeek = d.getDay();
 
-            if (rule.dayOfWeek && rule.dayOfWeek.length > 0 && !rule.dayOfWeek.includes(dayOfWeek)) {
+            const existing = priceMap.get(dateStr);
+            if (!existing) {
               d.setDate(d.getDate() + 1);
               continue;
             }
 
-            const existing = priceMap.get(dateStr);
-            if (!existing) {
+            if (!shouldApplyRule(rule, dateStr, d, existing)) {
               d.setDate(d.getDate() + 1);
               continue;
             }
@@ -6657,6 +6688,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
                 oldPrice,
                 newPrice,
                 ruleName: rule.name,
+                ruleType: rule.type,
                 skipped: true,
                 reason: `Zmiana ${changePercent.toFixed(1)}% > limit ${MAX_CHANGE_PERCENT}%`,
               });
@@ -6672,6 +6704,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
                 oldPrice,
                 newPrice,
                 ruleName: rule.name,
+                ruleType: rule.type,
                 skipped: false,
               });
 
@@ -6704,11 +6737,29 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
       const applied = dryRun ? 0 : changes.filter(c => !c.skipped).length;
 
+      if (!dryRun && pushToHotres && applied > 0) {
+        try {
+          const changedAptIds = [...new Set(changes.filter(c => !c.skipped).map(c => c.apartmentId))];
+          const hotresApts = allApartments.filter((a: any) => changedAptIds.includes(a.id) && a.hotresTypeId);
+          for (const apt of hotresApts) {
+            const aptChanges = changes.filter(c => c.apartmentId === apt.id && !c.skipped);
+            if (aptChanges.length === 0) continue;
+            const priceUpdates = aptChanges.map(c => ({
+              date: c.date,
+              price: String(c.newPrice),
+            }));
+            await updatePrices(apt.hotresTypeId!, apt.hotresRateId || 0, priceUpdates);
+          }
+        } catch (hotresErr: any) {
+          console.error("[PRICING-ENGINE] Hotres push error:", hotresErr.message);
+        }
+      }
+
       res.json({
         success: true,
         message: dryRun
           ? `Podgląd: ${changes.length} zmian (${changes.filter(c => c.skipped).length} pominiętych)`
-          : `Zastosowano ${applied} zmian cenowych`,
+          : `Zastosowano ${applied} zmian cenowych${pushToHotres ? " + wysłano do HotRes" : ""}`,
         dryRun,
         changes,
         applied,

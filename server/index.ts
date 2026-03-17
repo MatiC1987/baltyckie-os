@@ -5,6 +5,7 @@ import { registerRecepcjaRoutes, seedRecepcjaUser } from "./recepcja-routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runProdDataMigration } from "./prod-data-migrate";
+import { startPricingScheduler } from "./pricing-scheduler";
 
 const app = express();
 const httpServer = createServer(app);
@@ -110,6 +111,7 @@ app.use((req, res, next) => {
           console.error("[migrate] Migration error (non-fatal):", e);
         }
       }
+      startPricingScheduler();
     },
   );
 })();
