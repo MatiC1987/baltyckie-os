@@ -5598,7 +5598,34 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
-  function shouldApplyRuleForDate(r: any, d: Date, existing: any): boolean {
+  function getPolishHolidays(year: number): Set<string> {
+    const fixed = [
+      `${year}-01-01`, `${year}-01-06`, `${year}-05-01`, `${year}-05-03`,
+      `${year}-08-15`, `${year}-11-01`, `${year}-11-11`, `${year}-12-25`, `${year}-12-26`,
+    ];
+    const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+    const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    const easter = new Date(year, month - 1, day);
+    const easterMonday = new Date(easter); easterMonday.setDate(easter.getDate() + 1);
+    const corpusChristi = new Date(easter); corpusChristi.setDate(easter.getDate() + 60);
+    fixed.push(fmtDate(easterMonday), fmtDate(corpusChristi));
+    return new Set(fixed);
+  }
+
+  const holidayCache = new Map<number, Set<string>>();
+  function isPolishHoliday(dateStr: string): boolean {
+    const year = parseInt(dateStr.substring(0, 4));
+    if (!holidayCache.has(year)) holidayCache.set(year, getPolishHolidays(year));
+    return holidayCache.get(year)!.has(dateStr);
+  }
+
+  function shouldApplyRuleForDate(r: any, d: Date, existing: any, occupancyPct?: number): boolean {
     const dow = d.getDay();
     if (r.dayOfWeek && r.dayOfWeek.length > 0 && !r.dayOfWeek.includes(dow)) return false;
 
@@ -5612,6 +5639,19 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     if (ruleType === "long_stay") {
       const minStay = existing?.minStay || 1;
       if (minStay < (r.minStayRule || 7)) return false;
+    }
+    if (ruleType === "holiday") {
+      const dateStr = fmtDate(d);
+      if (!isPolishHoliday(dateStr)) return false;
+    }
+    if (ruleType === "occupancy") {
+      const threshold = r.minStayRule || 80;
+      const occ = occupancyPct ?? 0;
+      if (r.modifier && parseFloat(r.modifier) > 0) {
+        if (occ < threshold) return false;
+      } else {
+        if (occ >= threshold) return false;
+      }
     }
     return true;
   }
@@ -5674,7 +5714,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             continue;
           }
 
-          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
+          const basePrice = existing.length > 0 ? Number(existing[0].price) : (minP || 0);
+          if (basePrice === 0) { current.setDate(current.getDate() + 1); continue; }
           const newPrice = applyModifier(basePrice, r, minP, maxP);
 
           if (newPrice !== basePrice) {
@@ -5739,7 +5780,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             continue;
           }
 
-          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
+          const basePrice = existing.length > 0 ? Number(existing[0].price) : (minP || 0);
+          if (basePrice === 0) { current.setDate(current.getDate() + 1); continue; }
           const newPrice = applyModifier(basePrice, r, minP, maxP);
 
           if (newPrice !== basePrice) {
@@ -6610,36 +6652,15 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const changes: any[] = [];
       const MAX_CHANGE_PERCENT = 50;
 
-      function shouldApplyRule(rule: any, dateStr: string, d: Date, existing: any): boolean {
-        const dayOfWeek = d.getDay();
-
-        if (rule.dayOfWeek && rule.dayOfWeek.length > 0 && !rule.dayOfWeek.includes(dayOfWeek)) {
-          return false;
+      const allReservations = await storage.getReservations();
+      function getOccupancyForDate(dateStr: string): number {
+        const total = allApartments.length || 1;
+        let occupied = 0;
+        for (const r of allReservations) {
+          if (r.status === "ANULOWANA") continue;
+          if (r.startDate <= dateStr && r.endDate > dateStr) occupied++;
         }
-
-        const ruleType = rule.type || "seasonal";
-
-        if (ruleType === "weekend") {
-          if (dayOfWeek !== 5 && dayOfWeek !== 6) return false;
-        }
-
-        if (ruleType === "last_minute") {
-          const daysUntil = Math.floor((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-          const threshold = rule.minStayRule || 7;
-          if (daysUntil > threshold) return false;
-        }
-
-        if (ruleType === "long_stay") {
-          const minStay = existing.minStay || 1;
-          const requiredMin = rule.minStayRule || 7;
-          if (minStay < requiredMin) return false;
-        }
-
-        if (ruleType === "holiday" && rule.seasonType) {
-          // no-op if season matches
-        }
-
-        return true;
+        return Math.round((occupied / total) * 100);
       }
 
       for (const rule of rules) {
@@ -6669,29 +6690,18 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             const dateStr = fmtDate(d);
 
             const existing = priceMap.get(dateStr);
-            if (!existing) {
+            const minP = apt.minPrice ? parseFloat(apt.minPrice) : null;
+            const maxP = apt.maxPrice ? parseFloat(apt.maxPrice) : null;
+
+            const occupancyPct = getOccupancyForDate(dateStr);
+            if (!shouldApplyRuleForDate(rule, d, existing || null, occupancyPct)) {
               d.setDate(d.getDate() + 1);
               continue;
             }
 
-            if (!shouldApplyRule(rule, dateStr, d, existing)) {
-              d.setDate(d.getDate() + 1);
-              continue;
-            }
-
-            const oldPrice = parseFloat(existing.price);
-            let newPrice: number;
-
-            if (rule.modifierType === "percentage") {
-              newPrice = oldPrice * (1 + parseFloat(rule.modifier) / 100);
-            } else {
-              newPrice = oldPrice + parseFloat(rule.modifier);
-            }
-
-            const minP = apt.minPrice ? parseFloat(apt.minPrice) : 0;
-            const maxP = apt.maxPrice ? parseFloat(apt.maxPrice) : Infinity;
-            newPrice = Math.max(minP, Math.min(maxP, newPrice));
-            newPrice = Math.round(newPrice * 100) / 100;
+            const oldPrice = existing ? parseFloat(existing.price) : (minP || 0);
+            if (oldPrice === 0) { d.setDate(d.getDate() + 1); continue; }
+            let newPrice = applyModifier(oldPrice, rule, minP, maxP);
 
             const changePercent = oldPrice > 0 ? Math.abs((newPrice - oldPrice) / oldPrice) * 100 : 0;
             if (changePercent > MAX_CHANGE_PERCENT) {
@@ -6723,13 +6733,25 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
               });
 
               if (!dryRun) {
-                await db.update(dailyPrices).set({
-                  price: String(newPrice),
-                  isAutoPrice: true,
-                  ruleId: rule.id,
-                  source: "rule",
-                  updatedAt: new Date(),
-                }).where(eq(dailyPrices.id, existing.id));
+                if (existing) {
+                  await db.update(dailyPrices).set({
+                    price: String(newPrice),
+                    isAutoPrice: true,
+                    ruleId: rule.id,
+                    source: "rule",
+                    updatedAt: new Date(),
+                  }).where(eq(dailyPrices.id, existing.id));
+                } else {
+                  await db.insert(dailyPrices).values({
+                    apartmentId: apt.id,
+                    date: dateStr,
+                    price: String(newPrice),
+                    isAutoPrice: true,
+                    ruleId: rule.id,
+                    source: "rule",
+                    updatedAt: new Date(),
+                  });
+                }
 
                 await db.insert(priceChangeHistory).values({
                   apartmentId: apt.id,

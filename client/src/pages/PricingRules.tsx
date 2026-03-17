@@ -46,6 +46,9 @@ const RULE_TYPES = [
   { value: "weekend", label: "Weekendowa" },
   { value: "day_of_week", label: "Dzień tygodnia" },
   { value: "last_minute", label: "Last minute" },
+  { value: "long_stay", label: "Długi pobyt" },
+  { value: "holiday", label: "Święta / dni wolne" },
+  { value: "occupancy", label: "Obłożenie" },
   { value: "early_booking", label: "Early booking" },
   { value: "custom", label: "Niestandardowa" },
 ];
@@ -394,8 +397,8 @@ export default function PricingRules() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Min. pobyt</Label>
-                <Input type="number" value={form.minStayRule} onChange={e => setForm(f => ({ ...f, minStayRule: e.target.value }))} placeholder="opcjonalnie" data-testid="input-rule-min-stay" />
+                <Label>{form.type === "occupancy" ? "Próg obłożenia (%)" : form.type === "last_minute" ? "Dni do przyjazdu" : form.type === "long_stay" ? "Min. długość pobytu" : "Min. pobyt"}</Label>
+                <Input type="number" value={form.minStayRule} onChange={e => setForm(f => ({ ...f, minStayRule: e.target.value }))} placeholder={form.type === "occupancy" ? "np. 80" : "opcjonalnie"} data-testid="input-rule-min-stay" />
               </div>
               <div>
                 <Label>Max. pobyt</Label>
