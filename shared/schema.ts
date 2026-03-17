@@ -28,6 +28,8 @@ export const apartments = pgTable("apartments", {
   leaseStartDate: date("lease_start_date"),
   leaseEndDate: date("lease_end_date"),
   cleaningFee: decimal("cleaning_fee", { precision: 10, scale: 2 }).default("0"),
+  minPrice: decimal("min_price", { precision: 10, scale: 2 }),
+  maxPrice: decimal("max_price", { precision: 10, scale: 2 }),
 });
 
 export const reservations = pgTable("reservations", {
@@ -1640,3 +1642,65 @@ export const gocardlessConnections = pgTable("gocardless_connections", {
 export const insertGocardlessConnectionSchema = createInsertSchema(gocardlessConnections).omit({ id: true, createdAt: true });
 export type GocardlessConnection = typeof gocardlessConnections.$inferSelect;
 export type InsertGocardlessConnection = z.infer<typeof insertGocardlessConnectionSchema>;
+
+export const dailyPrices = pgTable("daily_prices", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  date: date("date").notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").default("PLN"),
+  source: text("source").default("manual"),
+  minStay: integer("min_stay").default(1),
+  maxStay: integer("max_stay"),
+  isBlocked: boolean("is_blocked").default(false),
+  isAutoPrice: boolean("is_auto_price").default(false),
+  ruleId: integer("rule_id"),
+  createdBy: text("created_by"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const pricingRules = pgTable("pricing_rules", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  seasonType: text("season_type"),
+  dateFrom: date("date_from"),
+  dateTo: date("date_to"),
+  dayOfWeek: integer("day_of_week").array(),
+  modifier: decimal("modifier", { precision: 10, scale: 2 }).notNull(),
+  modifierType: text("modifier_type").default("percentage"),
+  priority: integer("priority").default(0),
+  active: boolean("active").default(true),
+  autoApply: boolean("auto_apply").default(false),
+  minStayRule: integer("min_stay_rule"),
+  maxStayRule: integer("max_stay_rule"),
+  apartmentIds: integer("apartment_ids").array(),
+  locationFilter: text("location_filter"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const priceChangeHistory = pgTable("price_change_history", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  date: date("date").notNull(),
+  oldPrice: decimal("old_price", { precision: 10, scale: 2 }),
+  newPrice: decimal("new_price", { precision: 10, scale: 2 }).notNull(),
+  changedBy: text("changed_by"),
+  reason: text("reason"),
+  source: text("source").default("manual"),
+  ruleId: integer("rule_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDailyPriceSchema = createInsertSchema(dailyPrices).omit({ id: true, updatedAt: true });
+export type DailyPrice = typeof dailyPrices.$inferSelect;
+export type InsertDailyPrice = z.infer<typeof insertDailyPriceSchema>;
+
+export const insertPricingRuleSchema = createInsertSchema(pricingRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type PricingRule = typeof pricingRules.$inferSelect;
+export type InsertPricingRule = z.infer<typeof insertPricingRuleSchema>;
+
+export const insertPriceChangeHistorySchema = createInsertSchema(priceChangeHistory).omit({ id: true, createdAt: true });
+export type PriceChangeHistory = typeof priceChangeHistory.$inferSelect;
+export type InsertPriceChangeHistory = z.infer<typeof insertPriceChangeHistorySchema>;

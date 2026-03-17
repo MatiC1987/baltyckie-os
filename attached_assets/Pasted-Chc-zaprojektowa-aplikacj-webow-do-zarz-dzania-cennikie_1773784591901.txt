@@ -1,0 +1,331 @@
+Chcę zaprojektować aplikację webową do zarządzania cennikiem apartamentów wakacyjnych w Ustce. To rozwiązanie ma wspierać moją firmę zarządzającą apartamentami nad Bałtykiem. Obecnie korzystam z Hotres, gdzie konfiguruję cenniki, a następnie są one dystrybuowane do innych portali przez channel manager.
+Cel projektu
+Chcę stworzyć aplikację, która:
+pozwoli mi tworzyć i zarządzać cennikiem dla każdego apartamentu,
+umożliwi dynamiczną edycję cen z pomocą AI,
+będzie wspierać decyzje cenowe na podstawie danych historycznych, popytu, pogody, kalendarza świąt i cen konkurencji,
+docelowo będzie mogła współpracować z Hotres lub innym systemem channel manager / PMS.
+Ważne:
+Na tym etapie nie pisz jeszcze kodu produkcyjnego.
+Najpierw przygotuj kompletny plan wdrożenia, architekturę systemu, listę funkcjonalności, propozycję stacku technologicznego, model danych, integracje i roadmapę realizacji MVP oraz kolejnych etapów rozwoju.
+1. Opis biznesowy
+Prowadzę firmę zarządzającą apartamentami bałtyckimi w Ustce.
+Każdy apartament ma własną specyfikę: lokalizację, standard, liczbę osób, sezonowość, minimalną długość pobytu, politykę cenową i różne poziomy popytu.
+Potrzebuję narzędzia, które pozwoli mi:
+zarządzać cenami manualnie,
+definiować reguły cenowe,
+analizować obłożenie i trendy,
+wykorzystywać AI do rekomendowania i automatycznej korekty cen,
+śledzić konkurencję,
+przygotowywać ceny do publikacji w systemie Hotres / channel manager.
+2. Główne funkcjonalności, które aplikacja ma uwzględniać
+A. Zarządzanie apartamentami
+Dla każdego apartamentu chcę mieć:
+nazwę,
+lokalizację,
+typ / standard,
+liczbę gości,
+metraż,
+udogodnienia,
+sezonowość,
+bazową cenę,
+minimalną długość pobytu,
+maksymalną długość pobytu,
+ograniczenia dostępności,
+status aktywności,
+przypisane źródła konkurencji.
+B. Kalendarz cen
+Potrzebuję widoku kalendarza z ceną dzienną dla każdego apartamentu:
+dzień po dniu,
+tygodniowo i miesięcznie,
+z możliwością ręcznej edycji,
+z kopiowaniem zakresów cen,
+z masową edycją dla wielu dni,
+z nakładaniem reguł sezonowych,
+z różnicowaniem weekend / środek tygodnia,
+z możliwością ustawiania cen minimalnych i maksymalnych.
+C. Reguły cenowe
+Chcę móc definiować reguły typu:
+sezon wysoki / niski / średni,
+weekendy droższe o X%,
+święta droższe o X%,
+last minute obniżka o X%,
+wzrost ceny przy wysokim obłożeniu,
+obniżka ceny przy niskim obłożeniu,
+reguły dla długich pobytów,
+reguły dla krótkich pobytów,
+ręczne blokady zmian cen w wybranych okresach.
+D. AI / dynamic pricing
+Chcę funkcję AI, która będzie:
+rekomendować cenę dla konkretnego dnia / zakresu dni,
+tłumaczyć, dlaczego proponuje taką cenę,
+brać pod uwagę historię obłożenia,
+tempo rezerwacji,
+liczbę wyszukiwań i zainteresowanie użytkowników,
+zachowania klientów na stronie firmowej,
+pogodę,
+kalendarz świąt i długich weekendów,
+lokalne wydarzenia,
+ceny oraz zmiany cen konkurencji,
+sezonowość i dzień tygodnia,
+wyprzedzenie do przyjazdu (booking window).
+AI ma działać w dwóch trybach:
+tryb rekomendacji – pokazuje proponowaną cenę i uzasadnienie,
+tryb automatyczny – może sam aktualizować ceny w granicach ustalonych przeze mnie limitów.
+E. Historia i analityka
+Chcę mieć dashboard z:
+obłożeniem historycznym,
+przychodem,
+ADR,
+RevPAR,
+średnią długością pobytu,
+pickupem rezerwacji,
+konwersją,
+liczbą zapytań / wyszukiwań,
+porównaniem cen do konkurencji,
+historią zmian cen,
+wpływem zmian cen na obłożenie.
+F. Konkurencja
+To bardzo istotne. Chcę, aby aplikacja przewidywała i analizowała ceny konkurencji:
+dla wskazanych obiektów konkurencyjnych,
+z możliwością ręcznego dodania listy konkurentów,
+z porównaniem cen dzień do dnia,
+z wykrywaniem zmian cen konkurencji,
+z alertami, gdy konkurent istotnie podnosi lub obniża ceny,
+z analizą pozycji mojego obiektu względem rynku.
+Jeśli scraping jest ryzykowny prawnie lub technicznie, zaproponuj bezpieczne alternatywy:
+integracje partnerskie,
+ręczny import,
+półautomatyczne zasilanie danych,
+zewnętrzne API,
+monitoring konkurencji z workflow zatwierdzanym przez operatora.
+G. Integracje
+Chcę, aby plan uwzględniał:
+możliwość integracji z Hotres,
+możliwość eksportu/importu cennika,
+ewentualną synchronizację przez API, CSV lub inny mechanizm,
+możliwość przyszłej integracji z channel managerem, stroną firmową, Google Analytics, Meta Ads, systemem rezerwacyjnym, CRM oraz źródłami pogodowymi i kalendarzem świąt.
+3. Dane wejściowe dla AI i dynamic pricing
+Uwzględnij w projekcie następujące źródła danych:
+Dane własne
+historia rezerwacji,
+historia obłożenia,
+historia cen,
+długość pobytu,
+lead time,
+anulacje,
+źródło rezerwacji,
+przychód i marża,
+statystyki strony internetowej,
+wyszukiwania terminów,
+kliknięcia ofert,
+porzucone rezerwacje,
+zapytania klientów.
+Dane zewnętrzne
+prognoza pogody,
+kalendarz świąt, długich weekendów i wakacji,
+wydarzenia lokalne w Ustce i regionie,
+ceny konkurencji,
+tempo zmian cen konkurencji,
+sezon turystyczny,
+ewentualnie dane makro dotyczące ruchu turystycznego.
+4. Oczekuję od Ciebie pełnego planu produktu
+Przygotuj odpowiedź w formie dokumentu planistycznego z następującą strukturą:
+1) Streszczenie produktu
+czym jest aplikacja,
+dla kogo jest,
+jaki problem rozwiązuje,
+jakie daje korzyści biznesowe.
+2) Zakres MVP
+Zaproponuj sensowne MVP, które da się wdrożyć szybko i przyniesie realną wartość.
+Oddziel:
+funkcje niezbędne w MVP,
+funkcje do etapu 2,
+funkcje do etapu 3.
+3) Proponowana architektura
+Zaproponuj architekturę dla Replit:
+frontend,
+backend,
+baza danych,
+autoryzacja,
+harmonogramy / joby,
+moduł AI,
+moduł analityczny,
+integracje z zewnętrznymi API,
+system logowania zmian i audytu.
+4) Proponowany stack technologiczny
+Zaproponuj najlepszy stack dla takiego projektu, z uzasadnieniem, np.:
+frontend,
+backend,
+ORM,
+baza danych,
+kolejki / cron,
+wykresy,
+autoryzacja,
+hosting / deploy,
+monitoring,
+AI / LLM,
+model predykcyjny do dynamic pricing.
+Uwzględnij, że projekt ma być możliwy do zbudowania etapami w Replit.
+5) Model danych
+Zaproponuj encje i relacje, np.:
+apartments,
+rate_plans,
+daily_prices,
+pricing_rules,
+bookings,
+occupancy_stats,
+demand_signals,
+competitor_properties,
+competitor_rates,
+weather_data,
+holidays,
+events,
+ai_recommendations,
+price_change_history,
+users,
+roles,
+audit_logs.
+Dla każdej encji opisz:
+cel,
+kluczowe pola,
+relacje,
+które pola są krytyczne w MVP.
+6) Logika dynamic pricing
+Opisz szczegółowo:
+jakie zmienne wpływają na cenę,
+jak liczyć rekomendowaną cenę,
+jak działa silnik reguł,
+jak połączyć reguły biznesowe z AI,
+jak ustawić limity bezpieczeństwa,
+jak unikać zbyt agresywnych zmian,
+jak wdrożyć explainability, czyli uzasadnienie decyzji AI.
+7) Integracje
+Dla każdej integracji opisz:
+cel,
+możliwy sposób realizacji,
+ryzyka,
+wariant MVP,
+wariant docelowy.
+Szczególnie przeanalizuj:
+Hotres,
+import/export CSV,
+analytics ze strony,
+pogoda,
+święta,
+wydarzenia lokalne,
+monitoring konkurencji.
+8) Role użytkowników
+Zaproponuj role i uprawnienia, np.:
+właściciel,
+manager,
+operator,
+analityk,
+tylko odczyt.
+9) Dashboard i raporty
+Zaproponuj:
+jakie KPI są najważniejsze,
+jak powinny wyglądać dashboardy,
+jakie raporty dzienne / tygodniowe / miesięczne mają sens,
+jakie alerty warto wdrożyć.
+10) Automatyzacje i alerty
+Zaproponuj alerty typu:
+spadek obłożenia w ważnym terminie,
+cena poniżej minimum,
+cena wyraźnie powyżej rynku,
+konkurent obniżył cenę,
+prognoza złej pogody,
+wzrost popytu,
+niski pickup,
+duża liczba porzuconych rezerwacji.
+11) Bezpieczeństwo i zgodność
+Uwzględnij:
+bezpieczeństwo danych,
+role i uprawnienia,
+wersjonowanie zmian cen,
+kopie zapasowe,
+RODO / prywatność danych,
+zgodność z zasadami pobierania danych konkurencji.
+12) Roadmapa wdrożenia
+Przygotuj roadmapę etapami:
+discovery,
+projekt techniczny,
+MVP,
+integracje,
+dynamic pricing v1,
+analityka rozszerzona,
+automatyzacje,
+wersja produkcyjna.
+Dla każdego etapu podaj:
+cel,
+zakres,
+zależności,
+ryzyka,
+rezultat.
+13) Ryzyka projektowe
+Opisz ryzyka:
+brak lub ograniczenia API Hotres,
+jakość danych wejściowych,
+niepełne dane o konkurencji,
+błędne rekomendacje AI,
+sezonowość,
+nadpisanie cen w złym okresie,
+zależność od zewnętrznych usług.
+14) Dodatkowe funkcjonalności
+Poza moimi pomysłami zaproponuj własne, wartościowe funkcje, które zwiększą przewagę biznesową produktu.
+Chcę, żebyś aktywnie rozbudował tę koncepcję.
+Przykładowo rozważ:
+symulator przychodu przy zmianach cen,
+scenariusze “co jeśli”,
+rekomendacje minimalnej długości pobytu,
+rekomendacje restrykcji pobytowych,
+alerty o okazjach rynkowych,
+automatyczne segmentowanie apartamentów,
+scoring jakości danych,
+wykrywanie anomalii,
+AI copilot do pracy managera,
+komentarze i workflow zatwierdzania zmian,
+porównanie wydajności kanałów sprzedaży,
+forecast obłożenia i przychodu,
+cenowe A/B testy,
+rekomendacje promocyjne,
+automatyczne przygotowanie sezonów,
+bulk actions dla wielu apartamentów,
+aplikacja mobilna / panel uproszczony,
+moduł notatek operacyjnych do apartamentów.
+15) Rekomendacja finalna
+Na końcu wskaż:
+jaka wersja MVP ma największy sens,
+co wdrażać najpierw,
+czego nie robić na starcie,
+jakie dane muszę zacząć zbierać od razu,
+jakie decyzje architektoniczne są kluczowe.
+5. Ograniczenia i preferencje
+Uwzględnij w planie, że:
+system ma być praktyczny biznesowo, a nie tylko technicznie efektowny,
+wolę etapowe wdrożenie niż wielki projekt od razu,
+chcę najpierw uzyskać realną wartość operacyjną,
+dynamic pricing ma być kontrolowalny i bezpieczny,
+decyzje AI muszą być zrozumiałe,
+musi istnieć opcja ręcznego nadpisania wszystkiego,
+integracje mogą być początkowo częściowo ręczne, jeśli przyspieszy to start,
+zależy mi na czytelnym panelu i łatwej obsłudze.
+6. Forma odpowiedzi
+Przygotuj odpowiedź bardzo konkretnie i praktycznie.
+Nie chcę ogólników.
+Chcę dostać:
+przemyślany plan produktu,
+architekturę,
+zakres MVP,
+model danych,
+logikę AI,
+integracje,
+roadmapę,
+listę rekomendowanych dodatkowych funkcji.
+Jeżeli zauważysz luki w koncepcji, sam je uzupełnij i zaproponuj lepsze rozwiązania.
+Na końcu dodaj:
+Proponowaną strukturę repozytorium projektu,
+Listę ekranów / widoków aplikacji,
+Listę endpointów lub modułów backendowych,
+Kolejność budowy projektu krok po kroku,
+Checklistę gotowości do rozpoczęcia implementacji.

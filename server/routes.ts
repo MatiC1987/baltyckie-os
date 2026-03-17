@@ -8,7 +8,8 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries } from "@shared/schema";
-import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray } from "drizzle-orm";
+import { dailyPrices, pricingRules, priceChangeHistory, insertDailyPriceSchema, insertPricingRuleSchema } from "@shared/schema";
+import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
 import multer from "multer";
@@ -5400,6 +5401,379 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       res.status(500).json({ message: e.message });
     }
   });
+
+  // ==================== PRICING MODULE ====================
+
+  app.get("/api/daily-prices", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, from, to, locationId } = req.query;
+      let query = db.select().from(dailyPrices);
+      const conditions: any[] = [];
+      if (apartmentId) conditions.push(eq(dailyPrices.apartmentId, Number(apartmentId)));
+      if (from) conditions.push(gte(dailyPrices.date, String(from)));
+      if (to) conditions.push(lte(dailyPrices.date, String(to)));
+      if (conditions.length > 0) query = query.where(and(...conditions)) as any;
+      const prices = await (query as any).orderBy(dailyPrices.date);
+
+      if (locationId) {
+        const apts = await db.select({ id: apartments.id }).from(apartments).where(eq(apartments.location, String(locationId)));
+        const aptIds = new Set(apts.map(a => a.id));
+        res.json(prices.filter((p: any) => aptIds.has(p.apartmentId)));
+      } else {
+        res.json(prices);
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/daily-prices", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, date, price, minStay, maxStay, isBlocked, source } = req.body;
+      if (!apartmentId || !date || price === undefined) {
+        return res.status(400).json({ message: "apartmentId, date, price required" });
+      }
+
+      const apt = await db.select().from(apartments).where(eq(apartments.id, apartmentId)).limit(1);
+      if (apt.length > 0) {
+        const minP = apt[0].minPrice ? Number(apt[0].minPrice) : null;
+        const maxP = apt[0].maxPrice ? Number(apt[0].maxPrice) : null;
+        if (minP && Number(price) < minP) return res.status(400).json({ message: `Cena poniżej minimum (${minP} PLN)` });
+        if (maxP && Number(price) > maxP) return res.status(400).json({ message: `Cena powyżej maksimum (${maxP} PLN)` });
+      }
+
+      const existing = await db.select().from(dailyPrices).where(and(eq(dailyPrices.apartmentId, apartmentId), eq(dailyPrices.date, date))).limit(1);
+      const oldPrice = existing.length > 0 ? existing[0].price : null;
+
+      const values: any = { apartmentId, date, price: String(price), source: source || "manual", updatedAt: new Date() };
+      if (minStay !== undefined) values.minStay = minStay;
+      if (maxStay !== undefined) values.maxStay = maxStay;
+      if (isBlocked !== undefined) values.isBlocked = isBlocked;
+
+      let result;
+      if (existing.length > 0) {
+        [result] = await db.update(dailyPrices).set(values).where(eq(dailyPrices.id, existing[0].id)).returning();
+      } else {
+        [result] = await db.insert(dailyPrices).values(values).returning();
+      }
+
+      await db.insert(priceChangeHistory).values({
+        apartmentId, date, oldPrice: oldPrice || "0", newPrice: String(price),
+        changedBy: (req as any).user?.email || "system", reason: req.body.reason || null,
+        source: source || "manual", ruleId: req.body.ruleId || null,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/daily-prices/bulk", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentIds, dateFrom, dateTo, price, modifierType, modifier, minStay, maxStay, isBlocked, source, reason } = req.body;
+      if (!apartmentIds?.length || !dateFrom || !dateTo) {
+        return res.status(400).json({ message: "apartmentIds, dateFrom, dateTo required" });
+      }
+      const daysDiff = Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1;
+      if (daysDiff > 366) return res.status(400).json({ message: "Maksymalny zakres to 366 dni" });
+      if (apartmentIds.length > 50) return res.status(400).json({ message: "Maksymalnie 50 apartamentów na raz" });
+
+      const start = new Date(dateFrom);
+      const end = new Date(dateTo);
+      let updated = 0;
+      const changedBy = (req as any).user?.email || "system";
+
+      for (const aptId of apartmentIds) {
+        const apt = await db.select().from(apartments).where(eq(apartments.id, aptId)).limit(1);
+        const minP = apt.length > 0 && apt[0].minPrice ? Number(apt[0].minPrice) : null;
+        const maxP = apt.length > 0 && apt[0].maxPrice ? Number(apt[0].maxPrice) : null;
+
+        const current = new Date(start);
+        while (current <= end) {
+          const dateStr = current.toISOString().split("T")[0];
+
+          let newPrice: number;
+          if (price !== undefined) {
+            newPrice = Number(price);
+          } else if (modifier !== undefined) {
+            const existing = await db.select().from(dailyPrices).where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr))).limit(1);
+            const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
+            if (modifierType === "percentage") {
+              newPrice = Math.round(basePrice * (1 + Number(modifier) / 100));
+            } else {
+              newPrice = basePrice + Number(modifier);
+            }
+          } else {
+            current.setDate(current.getDate() + 1);
+            continue;
+          }
+
+          if (minP && newPrice < minP) newPrice = minP;
+          if (maxP && newPrice > maxP) newPrice = maxP;
+
+          const existing = await db.select().from(dailyPrices).where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr))).limit(1);
+          const oldPrice = existing.length > 0 ? existing[0].price : null;
+
+          const values: any = { apartmentId: aptId, date: dateStr, price: String(newPrice), source: source || "manual", updatedAt: new Date() };
+          if (minStay !== undefined) values.minStay = minStay;
+          if (maxStay !== undefined) values.maxStay = maxStay;
+          if (isBlocked !== undefined) values.isBlocked = isBlocked;
+
+          if (existing.length > 0) {
+            await db.update(dailyPrices).set(values).where(eq(dailyPrices.id, existing[0].id));
+          } else {
+            await db.insert(dailyPrices).values(values);
+          }
+
+          await db.insert(priceChangeHistory).values({
+            apartmentId: aptId, date: dateStr, oldPrice: oldPrice || "0", newPrice: String(newPrice),
+            changedBy, reason: reason || "bulk update", source: source || "manual",
+          });
+
+          updated++;
+          current.setDate(current.getDate() + 1);
+        }
+      }
+
+      res.json({ updated });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/pricing-rules", isAuthenticated, async (req, res) => {
+    try {
+      const rules = await db.select().from(pricingRules).orderBy(desc(pricingRules.priority));
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/pricing-rules", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertPricingRuleSchema.parse(req.body);
+      const [rule] = await db.insert(pricingRules).values(parsed).returning();
+      res.json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/pricing-rules/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { name, type, seasonType, dateFrom, dateTo, dayOfWeek, modifier, modifierType, priority, active, autoApply, minStayRule, maxStayRule, apartmentIds: ruleAptIds, locationFilter } = req.body;
+      const updates: any = { updatedAt: new Date() };
+      if (name !== undefined) updates.name = name;
+      if (type !== undefined) updates.type = type;
+      if (seasonType !== undefined) updates.seasonType = seasonType;
+      if (dateFrom !== undefined) updates.dateFrom = dateFrom;
+      if (dateTo !== undefined) updates.dateTo = dateTo;
+      if (dayOfWeek !== undefined) updates.dayOfWeek = dayOfWeek;
+      if (modifier !== undefined) updates.modifier = String(modifier);
+      if (modifierType !== undefined) updates.modifierType = modifierType;
+      if (priority !== undefined) updates.priority = priority;
+      if (active !== undefined) updates.active = active;
+      if (autoApply !== undefined) updates.autoApply = autoApply;
+      if (minStayRule !== undefined) updates.minStayRule = minStayRule;
+      if (maxStayRule !== undefined) updates.maxStayRule = maxStayRule;
+      if (ruleAptIds !== undefined) updates.apartmentIds = ruleAptIds;
+      if (locationFilter !== undefined) updates.locationFilter = locationFilter;
+
+      const [updated] = await db.update(pricingRules).set(updates).where(eq(pricingRules.id, id)).returning();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/pricing-rules/:id", isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(pricingRules).where(eq(pricingRules.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/pricing-rules/preview", isAuthenticated, async (req, res) => {
+    try {
+      const { ruleId, dateFrom, dateTo } = req.body;
+      const rule = await db.select().from(pricingRules).where(eq(pricingRules.id, ruleId)).limit(1);
+      if (rule.length === 0) return res.status(404).json({ message: "Rule not found" });
+      const r = rule[0];
+
+      let targetApts: number[] = [];
+      if (r.apartmentIds && r.apartmentIds.length > 0) {
+        targetApts = r.apartmentIds;
+      } else if (r.locationFilter) {
+        const apts = await db.select({ id: apartments.id }).from(apartments).where(eq(apartments.location, r.locationFilter));
+        targetApts = apts.map(a => a.id);
+      } else {
+        const apts = await db.select({ id: apartments.id }).from(apartments).where(eq(apartments.active, true));
+        targetApts = apts.map(a => a.id);
+      }
+
+      const from = dateFrom || r.dateFrom;
+      const to = dateTo || r.dateTo;
+      if (!from || !to) return res.status(400).json({ message: "Dates required" });
+
+      const changes: { apartmentId: number; date: string; oldPrice: number; newPrice: number }[] = [];
+      const start = new Date(from);
+      const end = new Date(to);
+
+      for (const aptId of targetApts) {
+        const apt = await db.select().from(apartments).where(eq(apartments.id, aptId)).limit(1);
+        const minP = apt.length > 0 && apt[0].minPrice ? Number(apt[0].minPrice) : null;
+        const maxP = apt.length > 0 && apt[0].maxPrice ? Number(apt[0].maxPrice) : null;
+
+        const current = new Date(start);
+        while (current <= end) {
+          const dateStr = current.toISOString().split("T")[0];
+          const dow = current.getDay();
+
+          if (r.dayOfWeek && r.dayOfWeek.length > 0 && !r.dayOfWeek.includes(dow)) {
+            current.setDate(current.getDate() + 1);
+            continue;
+          }
+
+          const existing = await db.select().from(dailyPrices).where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr))).limit(1);
+          if (existing.length > 0 && existing[0].isBlocked) {
+            current.setDate(current.getDate() + 1);
+            continue;
+          }
+
+          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
+          let newPrice: number;
+          if (r.modifierType === "percentage") {
+            newPrice = Math.round(basePrice * (1 + Number(r.modifier) / 100));
+          } else {
+            newPrice = basePrice + Number(r.modifier);
+          }
+          if (minP && newPrice < minP) newPrice = minP;
+          if (maxP && newPrice > maxP) newPrice = maxP;
+
+          if (newPrice !== basePrice) {
+            changes.push({ apartmentId: aptId, date: dateStr, oldPrice: basePrice, newPrice });
+          }
+          current.setDate(current.getDate() + 1);
+        }
+      }
+
+      res.json({ changes, count: changes.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/pricing-rules/apply", isAuthenticated, async (req, res) => {
+    try {
+      const { ruleId, dateFrom, dateTo } = req.body;
+      if (!ruleId) return res.status(400).json({ message: "ruleId required" });
+
+      const rule = await db.select().from(pricingRules).where(eq(pricingRules.id, ruleId)).limit(1);
+      if (rule.length === 0) return res.status(404).json({ message: "Rule not found" });
+      const r = rule[0];
+
+      let targetApts: number[] = [];
+      if (r.apartmentIds && r.apartmentIds.length > 0) {
+        targetApts = r.apartmentIds;
+      } else if (r.locationFilter) {
+        const apts = await db.select({ id: apartments.id }).from(apartments).where(eq(apartments.location, r.locationFilter));
+        targetApts = apts.map(a => a.id);
+      } else {
+        const apts = await db.select({ id: apartments.id }).from(apartments).where(eq(apartments.active, true));
+        targetApts = apts.map(a => a.id);
+      }
+
+      const from = dateFrom || r.dateFrom;
+      const to = dateTo || r.dateTo;
+      if (!from || !to) return res.status(400).json({ message: "Dates required" });
+
+      const changedBy = (req as any).user?.email || "system";
+      let updated = 0;
+      const start = new Date(from);
+      const end = new Date(to);
+
+      for (const aptId of targetApts) {
+        const apt = await db.select().from(apartments).where(eq(apartments.id, aptId)).limit(1);
+        const minP = apt.length > 0 && apt[0].minPrice ? Number(apt[0].minPrice) : null;
+        const maxP = apt.length > 0 && apt[0].maxPrice ? Number(apt[0].maxPrice) : null;
+
+        const current = new Date(start);
+        while (current <= end) {
+          const dateStr = current.toISOString().split("T")[0];
+          const dow = current.getDay();
+
+          if (r.dayOfWeek && r.dayOfWeek.length > 0 && !r.dayOfWeek.includes(dow)) {
+            current.setDate(current.getDate() + 1);
+            continue;
+          }
+
+          const existing = await db.select().from(dailyPrices).where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr))).limit(1);
+          if (existing.length > 0 && existing[0].isBlocked) {
+            current.setDate(current.getDate() + 1);
+            continue;
+          }
+
+          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
+          let newPrice: number;
+          if (r.modifierType === "percentage") {
+            newPrice = Math.round(basePrice * (1 + Number(r.modifier) / 100));
+          } else {
+            newPrice = basePrice + Number(r.modifier);
+          }
+          if (minP && newPrice < minP) newPrice = minP;
+          if (maxP && newPrice > maxP) newPrice = maxP;
+
+          if (newPrice !== basePrice) {
+            const values: any = {
+              apartmentId: aptId, date: dateStr, price: String(newPrice),
+              source: "rule", isAutoPrice: r.autoApply, ruleId: r.id, updatedAt: new Date(),
+            };
+
+            if (existing.length > 0) {
+              await db.update(dailyPrices).set(values).where(eq(dailyPrices.id, existing[0].id));
+            } else {
+              await db.insert(dailyPrices).values(values);
+            }
+
+            await db.insert(priceChangeHistory).values({
+              apartmentId: aptId, date: dateStr, oldPrice: String(basePrice), newPrice: String(newPrice),
+              changedBy, reason: `Reguła: ${r.name}`, source: "rule", ruleId: r.id,
+            });
+            updated++;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+      }
+
+      res.json({ updated, ruleName: r.name });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/price-history", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, from, to } = req.query;
+      const conditions: any[] = [];
+      if (apartmentId) conditions.push(eq(priceChangeHistory.apartmentId, Number(apartmentId)));
+      if (from) conditions.push(gte(priceChangeHistory.date, String(from)));
+      if (to) conditions.push(lte(priceChangeHistory.date, String(to)));
+
+      let query = db.select().from(priceChangeHistory);
+      if (conditions.length > 0) query = query.where(and(...conditions)) as any;
+      const history = await (query as any).orderBy(desc(priceChangeHistory.createdAt)).limit(500);
+      res.json(history);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ==================== END PRICING MODULE ====================
 
   // HotRes CSV Import
   app.post("/api/hotres/import-csv", isAuthenticated, upload.single("file"), async (req, res) => {

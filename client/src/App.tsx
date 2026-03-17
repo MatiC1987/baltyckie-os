@@ -39,6 +39,8 @@ const Profitability = lazy(() => import("@/pages/Profitability"));
 const YearComparison = lazy(() => import("@/pages/YearComparison"));
 const ApartmentComparison = lazy(() => import("@/pages/ApartmentComparison"));
 const PriceSeasonality = lazy(() => import("@/pages/PriceSeasonality"));
+const PriceCalendar = lazy(() => import("@/pages/PriceCalendar"));
+const PricingRules = lazy(() => import("@/pages/PricingRules"));
 const SaldoFirmowe = lazy(() => import("@/pages/SaldoFirmowe"));
 const PrzychodyHub = lazy(() => import("@/pages/PrzychodyHub"));
 const V2Koszty = lazy(() => import("@/pages/V2Koszty"));
@@ -227,6 +229,8 @@ function AuthenticatedRouter() {
       <Route path="/import-bankowy" component={() => <AuthenticatedRoute component={BankStatementImport} />} />
       <Route path="/bank-connections" component={() => <AuthenticatedRoute component={BankConnections} />} />
       <Route path="/sprawy-sadowe" component={() => <AuthenticatedRoute component={SprawySadowe} />} />
+      <Route path="/price-calendar" component={() => <AuthenticatedRoute component={PriceCalendar} />} />
+      <Route path="/pricing-rules" component={() => <AuthenticatedRoute component={PricingRules} />} />
 
       <Route path="/locations" component={() => <NavRedirect to="/apartments" tab="lokalizacje" />} />
       <Route path="/przeglady" component={() => <NavRedirect to="/apartments" tab="przeglady" />} />
