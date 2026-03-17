@@ -5773,6 +5773,250 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  const fmtDate = (d: Date) => d.toISOString().split("T")[0];
+
+  app.get("/api/pricing-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const { from, to, apartmentId, locationId } = req.query;
+      const now = new Date();
+      const periodFrom = from ? String(from) : fmtDate(new Date(now.getFullYear(), now.getMonth() - 2, 1));
+      const periodTo = to ? String(to) : fmtDate(now);
+
+      const lastYearFrom = fmtDate(new Date(new Date(periodFrom).getFullYear() - 1, new Date(periodFrom).getMonth(), new Date(periodFrom).getDate()));
+      const lastYearTo = fmtDate(new Date(new Date(periodTo).getFullYear() - 1, new Date(periodTo).getMonth(), new Date(periodTo).getDate()));
+
+      let aptFilter: number[] = [];
+      if (apartmentId) {
+        aptFilter = [Number(apartmentId)];
+      } else if (locationId) {
+        const apts = await db.select({ id: apartments.id }).from(apartments).where(eq(apartments.location, String(locationId)));
+        aptFilter = apts.map(a => a.id);
+      } else {
+        const apts = await db.select({ id: apartments.id }).from(apartments).where(eq(apartments.active, true));
+        aptFilter = apts.map(a => a.id);
+      }
+
+      if (aptFilter.length === 0) return res.json({ kpi: {}, apartments: [], priceHistory: [] });
+
+      const currentReservations = await db.select().from(reservations).where(
+        and(gte(reservations.startDate, periodFrom), lte(reservations.startDate, periodTo), ne(reservations.status, "ANULOWANA"))
+      );
+
+      const lastYearReservations = await db.select().from(reservations).where(
+        and(gte(reservations.startDate, lastYearFrom), lte(reservations.startDate, lastYearTo), ne(reservations.status, "ANULOWANA"))
+      );
+
+      const currentFiltered = currentReservations.filter(r => r.apartmentId && aptFilter.includes(r.apartmentId));
+      const lastYearFiltered = lastYearReservations.filter(r => r.apartmentId && aptFilter.includes(r.apartmentId));
+
+      const totalDays = Math.ceil((new Date(periodTo).getTime() - new Date(periodFrom).getTime()) / 86400000) + 1;
+      const totalCapacity = totalDays * aptFilter.length;
+
+      const calcNights = (res: any[]) => res.reduce((sum, r) => {
+        const nights = Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / 86400000);
+        return sum + Math.max(nights, 1);
+      }, 0);
+
+      const calcRevenue = (res: any[]) => res.reduce((sum, r) => sum + Number(r.price || 0), 0);
+
+      const currentNights = calcNights(currentFiltered);
+      const lastYearNights = calcNights(lastYearFiltered);
+      const currentRevenue = calcRevenue(currentFiltered);
+      const lastYearRevenue = calcRevenue(lastYearFiltered);
+
+      const occupancy = totalCapacity > 0 ? (currentNights / totalCapacity * 100) : 0;
+      const lastYearOccupancy = totalCapacity > 0 ? (lastYearNights / totalCapacity * 100) : 0;
+      const adr = currentNights > 0 ? (currentRevenue / currentNights) : 0;
+      const lastYearAdr = lastYearNights > 0 ? (lastYearRevenue / lastYearNights) : 0;
+      const revpar = totalCapacity > 0 ? (currentRevenue / totalCapacity * aptFilter.length) : 0;
+      const avgStay = currentFiltered.length > 0 ? (currentNights / currentFiltered.length) : 0;
+
+      const recentBookings = currentReservations.filter(r => {
+        const addDate = new Date(r.addDate || r.createdAt || "");
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+        return addDate >= sevenDaysAgo;
+      });
+      const pickup7d = recentBookings.length;
+
+      const cancelledCount = await db.select({ cnt: count() }).from(reservations).where(
+        and(gte(reservations.startDate, periodFrom), lte(reservations.startDate, periodTo), eq(reservations.status, "ANULOWANA"))
+      );
+      const totalWithCancelled = currentFiltered.length + (cancelledCount[0]?.cnt || 0);
+      const conversionRate = totalWithCancelled > 0 ? ((currentFiltered.length / totalWithCancelled) * 100) : 100;
+
+      const priceChanges = await db.select().from(priceChangeHistory).where(
+        and(gte(priceChangeHistory.date, periodFrom), lte(priceChangeHistory.date, periodTo))
+      ).orderBy(asc(priceChangeHistory.date)).limit(1000);
+
+      const filteredChanges = priceChanges.filter(c => aptFilter.includes(c.apartmentId));
+
+      const allApts = await db.select().from(apartments).where(inArray(apartments.id, aptFilter));
+      const currentPrices = await db.select().from(dailyPrices).where(
+        and(eq(dailyPrices.date, fmtDate(now)), inArray(dailyPrices.apartmentId, aptFilter))
+      );
+      const priceMapNow = new Map(currentPrices.map(p => [p.apartmentId, Number(p.price)]));
+
+      const aptAnalytics = allApts.map(apt => {
+        const aptCurrent = currentFiltered.filter(r => r.apartmentId === apt.id);
+        const aptLastYear = lastYearFiltered.filter(r => r.apartmentId === apt.id);
+        const aptNights = calcNights(aptCurrent);
+        const aptLastNights = calcNights(aptLastYear);
+        const aptRevenue = calcRevenue(aptCurrent);
+        const aptLastRevenue = calcRevenue(aptLastYear);
+        const aptOcc = totalDays > 0 ? (aptNights / totalDays * 100) : 0;
+        const aptLastOcc = totalDays > 0 ? (aptLastNights / totalDays * 100) : 0;
+        const aptAdr = aptNights > 0 ? (aptRevenue / aptNights) : 0;
+        const aptLastAdr = aptLastNights > 0 ? (aptLastRevenue / aptLastNights) : 0;
+
+        return {
+          id: apt.id,
+          name: apt.name,
+          location: apt.location,
+          currentPrice: priceMapNow.get(apt.id) || null,
+          occupancy: Math.round(aptOcc * 10) / 10,
+          lastYearOccupancy: Math.round(aptLastOcc * 10) / 10,
+          adr: Math.round(aptAdr),
+          lastYearAdr: Math.round(aptLastAdr),
+          revenue: Math.round(aptRevenue),
+          lastYearRevenue: Math.round(aptLastRevenue),
+          reservations: aptCurrent.length,
+          lastYearReservations: aptLastYear.length,
+        };
+      });
+
+      res.json({
+        kpi: {
+          occupancy: Math.round(occupancy * 10) / 10,
+          lastYearOccupancy: Math.round(lastYearOccupancy * 10) / 10,
+          adr: Math.round(adr),
+          lastYearAdr: Math.round(lastYearAdr),
+          revpar: Math.round(revpar),
+          avgStay: Math.round(avgStay * 10) / 10,
+          pickup7d,
+          conversionRate: Math.round(conversionRate * 10) / 10,
+          totalRevenue: Math.round(currentRevenue),
+          lastYearRevenue: Math.round(lastYearRevenue),
+          totalReservations: currentFiltered.length,
+          lastYearReservations: lastYearFiltered.length,
+        },
+        apartments: aptAnalytics,
+        priceHistory: filteredChanges.map(c => ({
+          date: c.date,
+          apartmentId: c.apartmentId,
+          oldPrice: Number(c.oldPrice),
+          newPrice: Number(c.newPrice),
+          source: c.source,
+          reason: c.reason,
+        })),
+        period: { from: periodFrom, to: periodTo },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/pricing-analytics/alerts", isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+      const alerts: { type: string; severity: string; message: string; apartmentId?: number; apartmentName?: string; value?: number }[] = [];
+
+      const activeApts = await db.select().from(apartments).where(eq(apartments.active, true));
+      const today = fmtDate(now);
+      const nextMonth = fmtDate(new Date(now.getFullYear(), now.getMonth() + 1, now.getDate()));
+
+      const upcomingRes = await db.select().from(reservations).where(
+        and(gte(reservations.startDate, today), lte(reservations.startDate, nextMonth), ne(reservations.status, "ANULOWANA"))
+      );
+
+      for (const apt of activeApts) {
+        const aptRes = upcomingRes.filter(r => r.apartmentId === apt.id);
+        const daysInPeriod = 30;
+        const bookedNights = aptRes.reduce((sum, r) => {
+          const nights = Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / 86400000);
+          return sum + Math.max(nights, 1);
+        }, 0);
+        const occ = (bookedNights / daysInPeriod) * 100;
+
+        if (occ < 30) {
+          alerts.push({
+            type: "low_occupancy",
+            severity: occ < 15 ? "critical" : "warning",
+            message: `Niskie obłożenie (${Math.round(occ)}%) na najbliższy miesiąc`,
+            apartmentId: apt.id,
+            apartmentName: apt.name,
+            value: Math.round(occ),
+          });
+        }
+
+        const todayPrice = await db.select().from(dailyPrices).where(
+          and(eq(dailyPrices.apartmentId, apt.id), eq(dailyPrices.date, today))
+        ).limit(1);
+
+        if (todayPrice.length > 0 && apt.minPrice) {
+          if (Number(todayPrice[0].price) < Number(apt.minPrice)) {
+            alerts.push({
+              type: "below_minimum",
+              severity: "critical",
+              message: `Cena (${Number(todayPrice[0].price)} PLN) poniżej minimum (${Number(apt.minPrice)} PLN)`,
+              apartmentId: apt.id,
+              apartmentName: apt.name,
+              value: Number(todayPrice[0].price),
+            });
+          }
+        }
+      }
+
+      const recentCancellations = await db.select({ cnt: count() }).from(reservations).where(
+        and(
+          eq(reservations.status, "ANULOWANA"),
+          gte(reservations.startDate, today),
+          lte(reservations.startDate, nextMonth)
+        )
+      );
+      if ((recentCancellations[0]?.cnt || 0) > 5) {
+        alerts.push({
+          type: "high_cancellations",
+          severity: "warning",
+          message: `Wysoka liczba anulacji (${recentCancellations[0]?.cnt}) w najbliższym miesiącu`,
+          value: Number(recentCancellations[0]?.cnt || 0),
+        });
+      }
+
+      alerts.sort((a, b) => (a.severity === "critical" ? -1 : 1) - (b.severity === "critical" ? -1 : 1));
+
+      res.json(alerts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/pricing-analytics/export", isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const periodFrom = from ? String(from) : fmtDate(new Date(new Date().getFullYear(), new Date().getMonth() - 2, 1));
+      const periodTo = to ? String(to) : fmtDate(new Date());
+
+      const activeApts = await db.select().from(apartments).where(eq(apartments.active, true));
+      const allPrices = await db.select().from(dailyPrices).where(
+        and(gte(dailyPrices.date, periodFrom), lte(dailyPrices.date, periodTo))
+      ).orderBy(dailyPrices.date);
+
+      const aptMap = new Map(activeApts.map(a => [a.id, a.name]));
+
+      const csvRows = ["Apartament,Data,Cena,Źródło,Zablokowana,Min pobyt"];
+      for (const p of allPrices) {
+        const aptName = aptMap.get(p.apartmentId) || `Apt ${p.apartmentId}`;
+        csvRows.push(`"${aptName}",${p.date},${p.price},${p.source || "manual"},${p.isBlocked ? "Tak" : "Nie"},${p.minStay || 1}`);
+      }
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename=cennik-${periodFrom}-${periodTo}.csv`);
+      res.send("\uFEFF" + csvRows.join("\n"));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== END PRICING MODULE ====================
 
   // HotRes CSV Import
