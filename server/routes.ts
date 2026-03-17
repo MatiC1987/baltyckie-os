@@ -14,7 +14,7 @@ import { db } from "./db";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
-import { testConnection, fetchReservations } from "./hotres";
+import { testConnection, fetchReservations, fetchRoomTypes, fetchRates, fetchPrices, updatePrices, fetchAvailability, updateAvailability } from "./hotres";
 import * as gocardless from "./gocardless";
 import { execSync } from "child_process";
 import os from "os";
@@ -6318,6 +6318,404 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     } catch (e: any) {
       console.error("HotRes sync error:", e);
       res.status(500).json({ success: false, message: `Błąd synchronizacji: ${e.message}` });
+    }
+  });
+
+  app.get("/api/hotres/room-types", isAuthenticated, async (_req, res) => {
+    try {
+      const types = await fetchRoomTypes();
+      res.json(types);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/hotres/rate-plans", isAuthenticated, async (_req, res) => {
+    try {
+      const rates = await fetchRates();
+      res.json(rates);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/hotres/import-prices", isAuthenticated, async (req, res) => {
+    try {
+      const { from, till, apartmentIds } = req.body;
+      if (!from || !till) return res.status(400).json({ error: "Wymagane parametry: from, till" });
+
+      const allApartments = await storage.getApartments();
+      const targetApartments = apartmentIds?.length
+        ? allApartments.filter((a: any) => apartmentIds.includes(a.id) && a.hotresTypeId)
+        : allApartments.filter((a: any) => a.hotresTypeId);
+
+      if (targetApartments.length === 0) {
+        return res.json({ success: false, message: "Brak apartamentów z przypisanym hotresTypeId", imported: 0 });
+      }
+
+      let totalImported = 0;
+      const log: string[] = [];
+
+      for (const apt of targetApartments) {
+        try {
+          const priceData = await fetchPrices(from, till, apt.hotresTypeId!, apt.hotresRateId || undefined);
+          for (const typeBlock of priceData) {
+            if (!typeBlock.dates || !Array.isArray(typeBlock.dates)) continue;
+            for (const dayData of typeBlock.dates) {
+              const price = parseFloat(dayData.price || dayData.baseprice || "0");
+              if (price <= 0) continue;
+
+              const existing = await db.select().from(dailyPrices)
+                .where(and(eq(dailyPrices.apartmentId, apt.id), eq(dailyPrices.date, dayData.date)))
+                .limit(1);
+
+              const priceEntry: any = {
+                apartmentId: apt.id,
+                date: dayData.date,
+                price: String(price),
+                basePrice: dayData.baseprice ? String(dayData.baseprice) : null,
+                pricePerPerson1: dayData.pers1 ? String(dayData.pers1) : null,
+                pricePerPerson2: dayData.pers2 ? String(dayData.pers2) : null,
+                pricePerPerson3: dayData.pers3 ? String(dayData.pers3) : null,
+                pricePerPerson4: dayData.pers4 ? String(dayData.pers4) : null,
+                pricePerPerson5: dayData.pers5 ? String(dayData.pers5) : null,
+                pricePerPerson6: dayData.pers6 ? String(dayData.pers6) : null,
+                pricePerPerson7: dayData.pers7 ? String(dayData.pers7) : null,
+                pricePerPerson8: dayData.pers8 ? String(dayData.pers8) : null,
+                childPrice1: dayData.child1 ? String(dayData.child1) : null,
+                childPrice2: dayData.child2 ? String(dayData.child2) : null,
+                childPrice3: dayData.child3 ? String(dayData.child3) : null,
+                closedToArrival: dayData.cta === "1" || dayData.cta === 1,
+                closedToDeparture: dayData.ctd === "1" || dayData.ctd === 1,
+                minStay: dayData.min ? parseInt(dayData.min) : null,
+                maxStay: dayData.max ? parseInt(dayData.max) : null,
+                source: "hotres",
+                hotresTypeId: parseInt(typeBlock.type_id),
+                hotresRateId: typeBlock.rate_id ? parseInt(typeBlock.rate_id) : null,
+                updatedAt: new Date(),
+              };
+
+              if (existing.length > 0) {
+                const oldPrice = existing[0].price;
+                await db.update(dailyPrices).set(priceEntry).where(eq(dailyPrices.id, existing[0].id));
+                if (oldPrice !== String(price)) {
+                  await db.insert(priceChangeHistory).values({
+                    apartmentId: apt.id,
+                    date: dayData.date,
+                    oldPrice: oldPrice,
+                    newPrice: String(price),
+                    changedBy: "system",
+                    reason: "Import z HotRes",
+                    source: "hotres",
+                  });
+                }
+              } else {
+                await db.insert(dailyPrices).values(priceEntry);
+              }
+              totalImported++;
+            }
+          }
+          log.push(`${apt.name}: zaimportowano ceny`);
+        } catch (e: any) {
+          log.push(`${apt.name}: błąd - ${e.message}`);
+        }
+      }
+
+      const failedCount = log.filter(l => l.includes("błąd")).length;
+      res.json({
+        success: failedCount === 0,
+        partial: failedCount > 0 && totalImported > 0,
+        message: failedCount > 0
+          ? `Zaimportowano ${totalImported} cen z HotRes (${failedCount} apartamentów z błędami)`
+          : `Zaimportowano ${totalImported} cen z HotRes`,
+        imported: totalImported,
+        log,
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post("/api/hotres/export-prices", isAuthenticated, async (req, res) => {
+    try {
+      const { from, till, apartmentIds, mode = "delta" } = req.body;
+      if (!from || !till) return res.status(400).json({ error: "Wymagane parametry: from, till" });
+
+      const allApartments = await storage.getApartments();
+      const targetApartments = apartmentIds?.length
+        ? allApartments.filter((a: any) => apartmentIds.includes(a.id) && a.hotresTypeId && a.hotresRateId)
+        : allApartments.filter((a: any) => a.hotresTypeId && a.hotresRateId);
+
+      if (targetApartments.length === 0) {
+        return res.json({ success: false, message: "Brak apartamentów z hotresTypeId i hotresRateId", exported: 0 });
+      }
+
+      const payload: any[] = [];
+
+      for (const apt of targetApartments) {
+        const prices = await db.select().from(dailyPrices)
+          .where(and(
+            eq(dailyPrices.apartmentId, apt.id),
+            between(dailyPrices.date, from, till)
+          ));
+
+        if (prices.length === 0) continue;
+
+        const hotresPrices = prices.map(p => ({
+          from: p.date,
+          till: p.date,
+          baseprice: p.basePrice ? parseFloat(p.basePrice) : parseFloat(p.price),
+          pers1: p.pricePerPerson1 ? parseFloat(p.pricePerPerson1) : undefined,
+          pers2: p.pricePerPerson2 ? parseFloat(p.pricePerPerson2) : undefined,
+          pers3: p.pricePerPerson3 ? parseFloat(p.pricePerPerson3) : undefined,
+          pers4: p.pricePerPerson4 ? parseFloat(p.pricePerPerson4) : undefined,
+          pers5: p.pricePerPerson5 ? parseFloat(p.pricePerPerson5) : undefined,
+          pers6: p.pricePerPerson6 ? parseFloat(p.pricePerPerson6) : undefined,
+          pers7: p.pricePerPerson7 ? parseFloat(p.pricePerPerson7) : undefined,
+          pers8: p.pricePerPerson8 ? parseFloat(p.pricePerPerson8) : undefined,
+          child1: p.childPrice1 ? parseFloat(p.childPrice1) : undefined,
+          child2: p.childPrice2 ? parseFloat(p.childPrice2) : undefined,
+          child3: p.childPrice3 ? parseFloat(p.childPrice3) : undefined,
+          cta: p.closedToArrival ? 1 : 0,
+          ctd: p.closedToDeparture ? 1 : 0,
+          min: p.minStay || null,
+          max: p.maxStay || null,
+        }));
+
+        payload.push({
+          type_id: apt.hotresTypeId,
+          rate_id: apt.hotresRateId,
+          mode,
+          prices: hotresPrices,
+        });
+      }
+
+      if (payload.length === 0) {
+        return res.json({ success: true, message: "Brak cen do wyeksportowania", exported: 0 });
+      }
+
+      const result = await updatePrices(payload);
+
+      for (const apt of targetApartments) {
+        const prices = await db.select().from(dailyPrices)
+          .where(and(
+            eq(dailyPrices.apartmentId, apt.id),
+            between(dailyPrices.date, from, till)
+          ));
+        for (const p of prices) {
+          await db.insert(priceChangeHistory).values({
+            apartmentId: apt.id,
+            date: p.date,
+            oldPrice: p.price,
+            newPrice: p.price,
+            changedBy: "system",
+            reason: "Wyeksportowano do HotRes",
+            source: "hotres_export",
+          });
+        }
+      }
+
+      const totalPrices = payload.reduce((sum, p) => sum + p.prices.length, 0);
+      res.json({ success: true, message: `Wyeksportowano ${totalPrices} cen do HotRes`, exported: totalPrices, result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
+  app.post("/api/hotres/preview-prices", isAuthenticated, async (req, res) => {
+    try {
+      const { from, till, apartmentIds } = req.body;
+      if (!from || !till) return res.status(400).json({ error: "Wymagane parametry: from, till" });
+
+      const allApartments = await storage.getApartments();
+      const targetApartments = apartmentIds?.length
+        ? allApartments.filter((a: any) => apartmentIds.includes(a.id) && a.hotresTypeId)
+        : allApartments.filter((a: any) => a.hotresTypeId);
+
+      const preview: any[] = [];
+      const errors: string[] = [];
+
+      for (const apt of targetApartments) {
+        try {
+          const hotresPrices = await fetchPrices(from, till, apt.hotresTypeId!, apt.hotresRateId || undefined);
+          const localPrices = await db.select().from(dailyPrices)
+            .where(and(eq(dailyPrices.apartmentId, apt.id), between(dailyPrices.date, from, till)));
+          const localMap = new Map(localPrices.map(p => [p.date, p]));
+
+          for (const block of hotresPrices) {
+            if (!block.dates) continue;
+            for (const d of block.dates) {
+              const local = localMap.get(d.date);
+              const hotresPrice = parseFloat(d.price || d.baseprice || "0");
+              const localPrice = local ? parseFloat(local.price) : null;
+              if (hotresPrice !== localPrice) {
+                preview.push({
+                  apartmentId: apt.id,
+                  apartmentName: apt.name,
+                  date: d.date,
+                  hotresPrice,
+                  localPrice,
+                  diff: localPrice !== null ? hotresPrice - localPrice : null,
+                });
+              }
+            }
+          }
+        } catch (aptErr: any) {
+          errors.push(`${apt.name}: ${aptErr.message}`);
+        }
+      }
+
+      res.json({
+        success: errors.length === 0,
+        partial: errors.length > 0 && preview.length > 0,
+        preview,
+        count: preview.length,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/pricing-engine/run", isAuthenticated, async (req, res) => {
+    try {
+      const { dryRun = true, dateFrom, dateTo, pushToHotres = false } = req.body;
+      const now = new Date();
+      const from = dateFrom || fmtDate(now);
+      const to = dateTo || fmtDate(new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000));
+
+      const rules = await db.select().from(pricingRules)
+        .where(eq(pricingRules.active, true))
+        .orderBy(pricingRules.priority);
+
+      if (rules.length === 0) {
+        return res.json({ success: true, message: "Brak aktywnych reguł cenowych", changes: [], applied: 0 });
+      }
+
+      const allApartments = await storage.getApartments();
+      const changes: any[] = [];
+      const MAX_CHANGE_PERCENT = 50;
+
+      for (const rule of rules) {
+        const ruleFrom = rule.dateFrom && rule.dateFrom > from ? rule.dateFrom : from;
+        const ruleTo = rule.dateTo && rule.dateTo < to ? rule.dateTo : to;
+        if (ruleFrom > ruleTo) continue;
+
+        let targetApts = allApartments;
+        if (rule.apartmentIds && rule.apartmentIds.length > 0) {
+          targetApts = allApartments.filter((a: any) => rule.apartmentIds!.includes(a.id));
+        }
+        if (rule.locationFilter) {
+          targetApts = targetApts.filter((a: any) => a.location === rule.locationFilter);
+        }
+
+        for (const apt of targetApts) {
+          const existingPrices = await db.select().from(dailyPrices)
+            .where(and(
+              eq(dailyPrices.apartmentId, apt.id),
+              between(dailyPrices.date, ruleFrom, ruleTo)
+            ));
+          const priceMap = new Map(existingPrices.map(p => [p.date, p]));
+
+          let d = new Date(ruleFrom);
+          const endD = new Date(ruleTo);
+          while (d <= endD) {
+            const dateStr = fmtDate(d);
+            const dayOfWeek = d.getDay();
+
+            if (rule.dayOfWeek && rule.dayOfWeek.length > 0 && !rule.dayOfWeek.includes(dayOfWeek)) {
+              d.setDate(d.getDate() + 1);
+              continue;
+            }
+
+            const existing = priceMap.get(dateStr);
+            if (!existing) {
+              d.setDate(d.getDate() + 1);
+              continue;
+            }
+
+            const oldPrice = parseFloat(existing.price);
+            let newPrice: number;
+
+            if (rule.modifierType === "percentage") {
+              newPrice = oldPrice * (1 + parseFloat(rule.modifier) / 100);
+            } else {
+              newPrice = oldPrice + parseFloat(rule.modifier);
+            }
+
+            const minP = apt.minPrice ? parseFloat(apt.minPrice) : 0;
+            const maxP = apt.maxPrice ? parseFloat(apt.maxPrice) : Infinity;
+            newPrice = Math.max(minP, Math.min(maxP, newPrice));
+            newPrice = Math.round(newPrice * 100) / 100;
+
+            const changePercent = oldPrice > 0 ? Math.abs((newPrice - oldPrice) / oldPrice) * 100 : 0;
+            if (changePercent > MAX_CHANGE_PERCENT) {
+              changes.push({
+                apartmentId: apt.id,
+                apartmentName: apt.name,
+                date: dateStr,
+                oldPrice,
+                newPrice,
+                ruleName: rule.name,
+                skipped: true,
+                reason: `Zmiana ${changePercent.toFixed(1)}% > limit ${MAX_CHANGE_PERCENT}%`,
+              });
+              d.setDate(d.getDate() + 1);
+              continue;
+            }
+
+            if (newPrice !== oldPrice) {
+              changes.push({
+                apartmentId: apt.id,
+                apartmentName: apt.name,
+                date: dateStr,
+                oldPrice,
+                newPrice,
+                ruleName: rule.name,
+                skipped: false,
+              });
+
+              if (!dryRun) {
+                await db.update(dailyPrices).set({
+                  price: String(newPrice),
+                  isAutoPrice: true,
+                  ruleId: rule.id,
+                  source: "rule",
+                  updatedAt: new Date(),
+                }).where(eq(dailyPrices.id, existing.id));
+
+                await db.insert(priceChangeHistory).values({
+                  apartmentId: apt.id,
+                  date: dateStr,
+                  oldPrice: String(oldPrice),
+                  newPrice: String(newPrice),
+                  changedBy: "system",
+                  reason: `Reguła: ${rule.name}`,
+                  source: "rule",
+                  ruleId: rule.id,
+                });
+              }
+            }
+
+            d.setDate(d.getDate() + 1);
+          }
+        }
+      }
+
+      const applied = dryRun ? 0 : changes.filter(c => !c.skipped).length;
+
+      res.json({
+        success: true,
+        message: dryRun
+          ? `Podgląd: ${changes.length} zmian (${changes.filter(c => c.skipped).length} pominiętych)`
+          : `Zastosowano ${applied} zmian cenowych`,
+        dryRun,
+        changes,
+        applied,
+        skipped: changes.filter(c => c.skipped).length,
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
     }
   });
 

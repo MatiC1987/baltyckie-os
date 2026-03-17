@@ -13,8 +13,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type ViewMode = "week" | "month";
 
@@ -39,6 +40,8 @@ interface Apartment {
   active: boolean;
   minPrice: string | null;
   maxPrice: string | null;
+  hotresTypeId: number | null;
+  hotresRateId: number | null;
 }
 
 export default function PriceCalendar() {
@@ -54,6 +57,10 @@ export default function PriceCalendar() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [historyApartmentId, setHistoryApartmentId] = useState<number | null>(null);
+
+  const [hotresImportDialogOpen, setHotresImportDialogOpen] = useState(false);
+  const [hotresExportDialogOpen, setHotresExportDialogOpen] = useState(false);
+  const [hotresPreview, setHotresPreview] = useState<any[]>([]);
 
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkModifier, setBulkModifier] = useState("");
@@ -141,6 +148,86 @@ export default function PriceCalendar() {
     },
     onError: (err: any) => {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const hotresImportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/hotres/import-prices", {
+        from: dateRange.from,
+        till: dateRange.to,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      toast({ title: "Import z HotRes", description: data.message });
+      setHotresImportDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd importu HotRes", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const hotresExportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/hotres/export-prices", {
+        from: dateRange.from,
+        till: dateRange.to,
+        mode: "delta",
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Eksport do HotRes", description: data.message });
+      setHotresExportDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd eksportu HotRes", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const hotresPreviewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/hotres/preview-prices", {
+        from: dateRange.from,
+        till: dateRange.to,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setHotresPreview(data.preview || []);
+      setHotresImportDialogOpen(true);
+      if (data.errors?.length) {
+        toast({
+          title: "Częściowy podgląd",
+          description: `Błędy dla ${data.errors.length} apartamentów`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd podglądu", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const pricingEngineMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const res = await apiRequest("POST", "/api/pricing-engine/run", {
+        dryRun,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (!data.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      }
+      toast({ title: data.dryRun ? "Podgląd reguł" : "Reguły zastosowane", description: data.message });
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd silnika cenowego", description: err.message, variant: "destructive" });
     },
   });
 
@@ -266,6 +353,50 @@ export default function PriceCalendar() {
               Miesiąc
             </Button>
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => hotresPreviewMutation.mutate()}
+            disabled={hotresPreviewMutation.isPending}
+            data-testid="button-hotres-import"
+          >
+            {hotresPreviewMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+            Pobierz z HotRes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setHotresExportDialogOpen(true)}
+            data-testid="button-hotres-export"
+          >
+            <Upload className="h-4 w-4 mr-1" />
+            Wyślij do HotRes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => pricingEngineMutation.mutate(true)}
+            disabled={pricingEngineMutation.isPending}
+            data-testid="button-preview-rules"
+          >
+            {pricingEngineMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+            Podgląd reguł
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => {
+              if (confirm("Czy na pewno chcesz zastosować reguły cenowe? Ceny zostaną zmienione.")) {
+                pricingEngineMutation.mutate(false);
+              }
+            }}
+            disabled={pricingEngineMutation.isPending}
+            data-testid="button-apply-rules"
+          >
+            {pricingEngineMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ArrowUpDown className="h-4 w-4 mr-1" />}
+            Zastosuj reguły
+          </Button>
 
           {selectedCells.size > 0 && (
             <Button onClick={() => setBulkDialogOpen(true)} variant="outline" data-testid="button-bulk-edit">
@@ -521,6 +652,109 @@ export default function PriceCalendar() {
               </table>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={hotresImportDialogOpen} onOpenChange={setHotresImportDialogOpen}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-hotres-import">
+          <DialogHeader>
+            <DialogTitle>
+              <Download className="h-5 w-5 inline mr-2" />
+              Pobierz ceny z HotRes ({dateRange.from} — {dateRange.to})
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {hotresPreview.length > 0 ? (
+              <div className="max-h-[300px] overflow-y-auto">
+                <p className="text-sm text-muted-foreground mb-2">
+                  Znaleziono {hotresPreview.length} różnic między cenami lokalnymi a HotRes:
+                </p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="py-1 px-2">Apartament</th>
+                      <th className="py-1 px-2">Data</th>
+                      <th className="py-1 px-2">Lokalna</th>
+                      <th className="py-1 px-2">HotRes</th>
+                      <th className="py-1 px-2">Różnica</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hotresPreview.slice(0, 50).map((p: any, i: number) => (
+                      <tr key={i} className="border-b text-xs">
+                        <td className="py-1 px-2">{p.apartmentName}</td>
+                        <td className="py-1 px-2">{p.date}</td>
+                        <td className="py-1 px-2">{p.localPrice !== null ? `${p.localPrice} zł` : "—"}</td>
+                        <td className="py-1 px-2 font-medium">{p.hotresPrice} zł</td>
+                        <td className="py-1 px-2">
+                          {p.diff !== null ? (
+                            <span className={p.diff > 0 ? "text-green-600" : "text-red-600"}>
+                              {p.diff > 0 ? "+" : ""}{p.diff.toFixed(0)} zł
+                            </span>
+                          ) : "nowa"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {hotresPreview.length > 50 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    ...i {hotresPreview.length - 50} więcej zmian
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Brak różnic — ceny lokalne są zgodne z HotRes (lub brak apartamentów z hotresTypeId)
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHotresImportDialogOpen(false)} data-testid="button-hotres-import-cancel">
+              Anuluj
+            </Button>
+            <Button
+              onClick={() => hotresImportMutation.mutate()}
+              disabled={hotresImportMutation.isPending}
+              data-testid="button-hotres-import-confirm"
+            >
+              {hotresImportMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+              {hotresImportMutation.isPending ? "Importuję..." : "Importuj ceny"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={hotresExportDialogOpen} onOpenChange={setHotresExportDialogOpen}>
+        <DialogContent data-testid="dialog-hotres-export">
+          <DialogHeader>
+            <DialogTitle>
+              <Upload className="h-5 w-5 inline mr-2" />
+              Wyślij ceny do HotRes
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Wyśle lokalne ceny z okresu <strong>{dateRange.from}</strong> — <strong>{dateRange.to}</strong> do
+              systemu HotRes dla apartamentów z przypisanym hotresTypeId i hotresRateId.
+            </p>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
+              Uwaga: ta operacja nadpisze ceny w HotRes. Upewnij się, że lokalne ceny są poprawne.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHotresExportDialogOpen(false)} data-testid="button-hotres-export-cancel">
+              Anuluj
+            </Button>
+            <Button
+              onClick={() => hotresExportMutation.mutate()}
+              disabled={hotresExportMutation.isPending}
+              data-testid="button-hotres-export-confirm"
+            >
+              {hotresExportMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+              {hotresExportMutation.isPending ? "Wysyłam..." : "Wyślij do HotRes"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

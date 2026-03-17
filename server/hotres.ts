@@ -1,152 +1,217 @@
-// @ts-ignore
-import fetch from "node-fetch";
-
-const POSSIBLE_BASE_URLS = [
-  "https://panel.hotres.pl/api",
-  "https://api.hotres.pl",
-  "https://panel.hotres.pl/api/v1",
-  "https://api.hotres.pl/v1",
-];
-
-let discoveredBaseUrl: string | null = null;
+const BASE_URL = "https://panel.hotres.pl";
 
 interface HotResConfig {
-  apiKey: string;
   authCode: string;
-  baseUrl?: string;
+  apiKey: string;
 }
 
 function getConfig(): HotResConfig {
   const apiKey = process.env.HOTRES_API_KEY;
   const authCode = process.env.HOTRES_AUTH_CODE;
-  const baseUrl = process.env.HOTRES_API_URL;
-
   if (!apiKey || !authCode) {
     throw new Error("Brak konfiguracji HotRes: ustaw HOTRES_API_KEY i HOTRES_AUTH_CODE");
   }
-
-  return { apiKey, authCode, baseUrl };
+  return { apiKey, authCode };
 }
 
-async function makeRequest(url: string, config: HotResConfig, method: string = "GET", body?: any): Promise<{ status: number; data: any; headers: any }> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  };
-
-  const authVariants = [
-    { ...headers, "Authorization": `Bearer ${config.apiKey}`, "X-Auth-Code": config.authCode },
-    { ...headers, "X-API-Key": config.apiKey, "X-Auth-Code": config.authCode },
-    { ...headers, "Authorization": `Bearer ${config.authCode}`, "X-API-Key": config.apiKey },
-    { ...headers, "Api-Key": config.apiKey, "Auth-Code": config.authCode },
-    { ...headers, "apikey": config.apiKey, "authcode": config.authCode },
-  ];
-
-  for (const authHeaders of authVariants) {
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: authHeaders,
-        body: body ? JSON.stringify(body) : undefined,
-        timeout: 10000,
-      });
-
-      const contentType = res.headers.get("content-type") || "";
-      let data: any;
-      if (contentType.includes("json")) {
-        data = await res.json();
-      } else {
-        data = await res.text();
-      }
-
-      if (res.status !== 401 && res.status !== 403) {
-        return { status: res.status, data, headers: Object.fromEntries(res.headers.entries()) };
-      }
-    } catch (e: any) {
-      continue;
+function buildUrl(action: string, params?: Record<string, string>): string {
+  const config = getConfig();
+  const url = new URL(`${BASE_URL}/api_${action}`);
+  url.searchParams.set("auth", config.authCode);
+  url.searchParams.set("apikey", config.apiKey);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null) url.searchParams.set(k, v);
     }
   }
+  return url.toString();
+}
 
-  const lastRes = await fetch(url, {
-    method,
-    headers: authVariants[0],
-    timeout: 10000,
-  });
-  const contentType = lastRes.headers.get("content-type") || "";
-  let lastData: any;
-  if (contentType.includes("json")) {
-    lastData = await lastRes.json();
-  } else {
-    lastData = await lastRes.text();
+let requestCount = 0;
+let requestWindowStart = Date.now();
+
+function checkRateLimit() {
+  const now = Date.now();
+  if (now - requestWindowStart > 3600000) {
+    requestCount = 0;
+    requestWindowStart = now;
   }
-  return { status: lastRes.status, data: lastData, headers: Object.fromEntries(lastRes.headers.entries()) };
+  if (requestCount >= 115) {
+    throw new Error("Zbliżasz się do limitu 120 req/h HotRes API. Poczekaj przed kolejnym żądaniem.");
+  }
+  requestCount++;
+}
+
+async function hotresGet(action: string, params?: Record<string, string>): Promise<any> {
+  checkRateLimit();
+  const url = buildUrl(action, params);
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "Accept": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HotRes API error (${action}): ${res.status} - ${text.substring(0, 200)}`);
+  }
+  return res.json();
+}
+
+async function hotresPost(action: string, body: any): Promise<any> {
+  checkRateLimit();
+  const url = buildUrl(action);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HotRes API error (${action}): ${res.status} - ${text.substring(0, 200)}`);
+  }
+  return res.json();
+}
+
+let roomTypesCache: { data: any[]; fetchedAt: number } | null = null;
+let ratePlansCache: { data: any[]; fetchedAt: number } | null = null;
+const CACHE_TTL = 30 * 60 * 1000;
+
+export async function fetchRooms(): Promise<any[]> {
+  const data = await hotresGet("rooms");
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchRoomTypes(): Promise<any[]> {
+  if (roomTypesCache && Date.now() - roomTypesCache.fetchedAt < CACHE_TTL) {
+    return roomTypesCache.data;
+  }
+  const data = await hotresGet("roomtypes");
+  const result = Array.isArray(data) ? data : [];
+  roomTypesCache = { data: result, fetchedAt: Date.now() };
+  return result;
+}
+
+export async function fetchRates(): Promise<any[]> {
+  if (ratePlansCache && Date.now() - ratePlansCache.fetchedAt < CACHE_TTL) {
+    return ratePlansCache.data;
+  }
+  const data = await hotresGet("rates");
+  const result = Array.isArray(data) ? data : [];
+  ratePlansCache = { data: result, fetchedAt: Date.now() };
+  return result;
+}
+
+export async function fetchPrices(from: string, till: string, typeId?: number, rateId?: number): Promise<any[]> {
+  const params: Record<string, string> = { from, till };
+  if (typeId) params.type_id = String(typeId);
+  if (rateId) params.rate_id = String(rateId);
+  const data = await hotresGet("prices", params);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updatePrices(payload: Array<{
+  type_id: number;
+  rate_id: number;
+  mode: "delta" | "clear";
+  prices: Array<{
+    from: string;
+    till: string;
+    baseprice?: number;
+    pers1?: number;
+    pers2?: number;
+    pers3?: number;
+    pers4?: number;
+    pers5?: number;
+    pers6?: number;
+    pers7?: number;
+    pers8?: number;
+    child1?: number;
+    child2?: number;
+    child3?: number;
+    cta?: number;
+    ctd?: number;
+    min?: number | null;
+    max?: number | null;
+  }>;
+}>): Promise<any> {
+  return hotresPost("updateprices", payload);
+}
+
+export async function fetchAvailability(from: string, till: string, typeId?: number): Promise<any[]> {
+  const params: Record<string, string> = { from, till };
+  if (typeId) params.type_id = String(typeId);
+  const data = await hotresGet("availability", params);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updateAvailability(payload: Array<{
+  type_id: number;
+  date: string;
+  avb: number;
+}>): Promise<any> {
+  return hotresPost("updateavb", payload);
 }
 
 export async function testConnection(): Promise<{
   success: boolean;
-  baseUrl?: string;
   message: string;
   details?: any;
 }> {
-  const config = getConfig();
-
-  if (config.baseUrl) {
-    try {
-      const endpoints = ["/reservations", "/bookings", "/rezerwacje", "/rooms", "/pokoje", ""];
-      for (const endpoint of endpoints) {
-        const url = `${config.baseUrl}${endpoint}`;
-        const result = await makeRequest(url, config);
-        if (result.status >= 200 && result.status < 400) {
-          discoveredBaseUrl = config.baseUrl!;
-          return {
-            success: true,
-            baseUrl: config.baseUrl,
-            message: `Połączono z HotRes API: ${url} (status: ${result.status})`,
-            details: { endpoint, status: result.status, response: typeof result.data === 'string' ? result.data.substring(0, 500) : result.data },
-          };
-        }
-      }
-      return {
-        success: false,
-        baseUrl: config.baseUrl,
-        message: `Nie udało się połączyć z ${config.baseUrl}. Sprawdź klucze API.`,
-        details: { triedEndpoints: endpoints },
-      };
-    } catch (e: any) {
-      return { success: false, message: `Błąd połączenia: ${e.message}` };
-    }
+  try {
+    const roomTypes = await fetchRoomTypes();
+    return {
+      success: true,
+      message: `Połączono z HotRes API. Znaleziono ${roomTypes.length} typów pokoi.`,
+      details: { roomTypesCount: roomTypes.length },
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `Błąd połączenia z HotRes: ${e.message}`,
+    };
   }
+}
 
-  for (const baseUrl of POSSIBLE_BASE_URLS) {
-    try {
-      const endpoints = ["/reservations", "/bookings", "/rezerwacje", ""];
-      for (const endpoint of endpoints) {
-        const url = `${baseUrl}${endpoint}`;
-        try {
-          const result = await makeRequest(url, config);
-          if (result.status >= 200 && result.status < 400) {
-            discoveredBaseUrl = baseUrl;
-            return {
-              success: true,
-              baseUrl,
-              message: `Połączono z HotRes API: ${url} (status: ${result.status})`,
-              details: { endpoint, status: result.status, response: typeof result.data === 'string' ? result.data.substring(0, 500) : result.data },
-            };
-          }
-        } catch {
-          continue;
-        }
-      }
-    } catch {
-      continue;
-    }
+export async function fetchReservations(dateFrom?: string, dateTo?: string): Promise<{
+  success: boolean;
+  reservations: HotResReservation[];
+  message: string;
+  rawResponse?: any;
+}> {
+  try {
+    const params: Record<string, string> = {};
+    if (dateFrom) params.from = dateFrom;
+    if (dateTo) params.till = dateTo;
+    const data = await hotresGet("reservations", params);
+    const items = Array.isArray(data) ? data : [];
+    const reservations = items.map((item: any) => ({
+      reservationNumber: String(item.id || item.number || `HR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
+      apartmentName: String(item.roomscodes || item.room_name || item.apartment || ""),
+      addDate: normalizeDate(item.add_date || item.created_at || ""),
+      startDate: normalizeDate(item.arrival_date || item.check_in || item.from || ""),
+      endDate: normalizeDate(item.departure_date || item.check_out || item.to || ""),
+      guestName: String(
+        item.guest_name || item.name ||
+        [item.first_name, item.last_name].filter(Boolean).join(" ") || "Nieznany"
+      ),
+      price: String(item.amount || item.price || item.total || "0"),
+      prepayment: String(item.prepayment || item.deposit || "0"),
+      paidAmount: String(item.paid || item.paid_amount || "0"),
+      status: normalizeStatus(item.status || ""),
+      source: normalizeSource(item.source_portal || item.source || ""),
+    }));
+    return {
+      success: true,
+      reservations,
+      message: `Pobrano ${reservations.length} rezerwacji z HotRes`,
+      rawResponse: data,
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      reservations: [],
+      message: `Błąd pobierania rezerwacji: ${e.message}`,
+    };
   }
-
-  return {
-    success: false,
-    message: "Nie udało się automatycznie wykryć adresu API HotRes. Potrzebny jest adres URL API z panelu HotRes (Serwis > API).",
-    details: { triedUrls: POSSIBLE_BASE_URLS },
-  };
 }
 
 export interface HotResReservation {
@@ -163,87 +228,21 @@ export interface HotResReservation {
   source?: string;
 }
 
-function parseReservationsFromResponse(data: any): HotResReservation[] {
-  if (!data) return [];
-
-  let items: any[] = [];
-  if (Array.isArray(data)) {
-    items = data;
-  } else if (data.reservations && Array.isArray(data.reservations)) {
-    items = data.reservations;
-  } else if (data.bookings && Array.isArray(data.bookings)) {
-    items = data.bookings;
-  } else if (data.data && Array.isArray(data.data)) {
-    items = data.data;
-  } else if (data.results && Array.isArray(data.results)) {
-    items = data.results;
-  }
-
-  return items.map((item: any) => ({
-    reservationNumber: String(
-      item.reservationNumber || item.reservation_number || item.numer_rezerwacji ||
-      item.booking_number || item.number || item.id || item.nr || `HR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    ),
-    apartmentName: String(
-      item.apartmentName || item.apartment_name || item.room_name || item.nazwa_pokoju ||
-      item.room || item.pokoj || item.pokój || item.unit || item.apartment || item.roomscodes || ""
-    ),
-    addDate: normalizeDate(
-      item.addDate || item.add_date || item.created_at || item.data_dodania || ""
-    ),
-    startDate: normalizeDate(
-      item.startDate || item.start_date || item.check_in || item.checkin ||
-      item.arrival_date || item.data_przyjazdu || item.arrival || item.from || item.od || ""
-    ),
-    endDate: normalizeDate(
-      item.endDate || item.end_date || item.check_out || item.checkout ||
-      item.departure_date || item.data_wyjazdu || item.departure || item.to || item.do || ""
-    ),
-    guestName: String(
-      item.guestName || item.guest_name || item.guest || item.gosc || item.gość ||
-      item.name || item.imie_nazwisko || item.client || item.klient ||
-      [item.first_name, item.last_name].filter(Boolean).join(" ") || "Nieznany"
-    ),
-    price: String(
-      item.price || item.total || item.cena || item.kwota || item.amount ||
-      item.total_price || item.wartosc || item.wartość || "0"
-    ),
-    prepayment: String(
-      item.prepayment || item.deposit || item.zaliczka || item.przedplata ||
-      item.przedpłata || item.advance || "0"
-    ),
-    paidAmount: String(
-      item.paid || item.paidAmount || item.paid_amount || item.wplacona ||
-      item.wpłacona || item.zaplacono || item.zapłacono || "0"
-    ),
-    status: normalizeStatus(
-      item.status || item.stan || ""
-    ),
-  }));
-}
-
 function normalizeDate(val: any): string {
   if (!val) return "";
   const str = String(val);
-
   const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-
   const euMatch = str.match(/^(\d{2})[./-](\d{2})[./-](\d{4})/);
   if (euMatch) return `${euMatch[3]}-${euMatch[2]}-${euMatch[1]}`;
-
   if (!isNaN(Number(val))) {
     const excelDate = new Date((Number(val) - 25569) * 86400 * 1000);
-    if (!isNaN(excelDate.getTime())) {
-      return excelDate.toISOString().split('T')[0];
-    }
+    if (!isNaN(excelDate.getTime())) return excelDate.toISOString().split('T')[0];
   }
-
   try {
     const d = new Date(str);
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
   } catch {}
-
   return str;
 }
 
@@ -265,119 +264,6 @@ function normalizeStatus(val: any): string {
   if (s.includes("CONFIRM") || s.includes("ACCEPT") || s.includes("POTWIERDZ") || s.includes("PRZYJ") || s === "PRZYJETA" || s === "PRZYJĘTA") return "PRZYJETA";
   if (s === "NEW" || s.includes("PEND") || s.includes("OCZEK") || s.includes("OPLAC") || s.includes("OPŁAC") || s === "DO_OPLACENIA") return "DO_OPLACENIA";
   return s || "DO_OPLACENIA";
-}
-
-export async function fetchReservations(dateFrom?: string, dateTo?: string): Promise<{
-  success: boolean;
-  reservations: HotResReservation[];
-  message: string;
-  rawResponse?: any;
-}> {
-  const config = getConfig();
-  const baseUrl = config.baseUrl || discoveredBaseUrl || "https://panel.hotres.pl/api";
-
-  const reservationEndpoints = ["/reservations", "/bookings", "/rezerwacje"];
-  const dateParamVariants = dateFrom || dateTo ? [
-    { from: dateFrom, to: dateTo },
-    { date_from: dateFrom, date_to: dateTo },
-    { start: dateFrom, end: dateTo },
-    { checkin: dateFrom, checkout: dateTo },
-    { arrival: dateFrom, departure: dateTo },
-  ] : [{}];
-
-  const diagnostics: Array<{ url: string; status: number; dataPreview: string; parsed: number }> = [];
-
-  for (const endpoint of reservationEndpoints) {
-    for (const params of dateParamVariants) {
-      const filteredParams = Object.fromEntries(Object.entries(params).filter(([, v]) => v));
-      const queryString = Object.entries(filteredParams).map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join("&");
-      const url = queryString ? `${baseUrl}${endpoint}?${queryString}` : `${baseUrl}${endpoint}`;
-      try {
-        const result = await makeRequest(url, config);
-        const reservations = parseReservationsFromResponse(result.data);
-        const preview = typeof result.data === 'string' ? result.data.substring(0, 300) : JSON.stringify(result.data).substring(0, 300);
-        diagnostics.push({ url, status: result.status, dataPreview: preview, parsed: reservations.length });
-
-        if (result.status >= 200 && result.status < 300 && reservations.length > 0) {
-          return {
-            success: true,
-            reservations,
-            message: `Pobrano ${reservations.length} rezerwacji z HotRes`,
-            rawResponse: result.data,
-          };
-        }
-
-        if (result.status >= 200 && result.status < 300 && reservations.length === 0) {
-          const data = result.data;
-          if (data && typeof data === 'object' && !Array.isArray(data)) {
-            const allArrayKeys = Object.entries(data)
-              .filter(([, v]) => Array.isArray(v))
-              .map(([k, v]) => ({ key: k, count: (v as any[]).length }));
-            if (allArrayKeys.length > 0) {
-              for (const arrInfo of allArrayKeys) {
-                const items = (data as any)[arrInfo.key];
-                const mapped = items.map((item: any) => ({
-                  reservationNumber: String(
-                    item.reservationNumber || item.reservation_number || item.numer_rezerwacji ||
-                    item.booking_number || item.id || item.nr || item.numer || item.number ||
-                    `HR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-                  ),
-                  apartmentName: String(
-                    item.apartmentName || item.apartment_name || item.room_name || item.nazwa_pokoju ||
-                    item.room || item.pokoj || item.pokój || item.unit || item.apartment ||
-                    item.nazwa || item.obiekt || item.nazwa_obiektu || ""
-                  ),
-                  startDate: normalizeDate(
-                    item.startDate || item.start_date || item.check_in || item.checkin ||
-                    item.data_przyjazdu || item.arrival || item.from || item.od ||
-                    item.data_od || item.poczatek || item.start || ""
-                  ),
-                  endDate: normalizeDate(
-                    item.endDate || item.end_date || item.check_out || item.checkout ||
-                    item.data_wyjazdu || item.departure || item.to || item.do ||
-                    item.data_do || item.koniec || item.end || ""
-                  ),
-                  guestName: String(
-                    item.guestName || item.guest_name || item.guest || item.gosc || item.gość ||
-                    item.name || item.imie_nazwisko || item.client || item.klient ||
-                    item.nazwisko || item.imie || item.osoba || "Nieznany"
-                  ),
-                  price: String(
-                    item.price || item.total || item.cena || item.kwota || item.amount ||
-                    item.total_price || item.wartosc || item.wartość || item.netto || item.brutto || "0"
-                  ),
-                  prepayment: String(
-                    item.prepayment || item.deposit || item.zaliczka || item.przedplata ||
-                    item.przedpłata || item.advance || "0"
-                  ),
-                  status: normalizeStatus(item.status || item.stan || ""),
-                }));
-                const valid = mapped.filter((r: HotResReservation) => r.startDate && r.endDate);
-                if (valid.length > 0) {
-                  return {
-                    success: true,
-                    reservations: valid,
-                    message: `Pobrano ${valid.length} rezerwacji z HotRes (klucz: ${arrInfo.key})`,
-                    rawResponse: result.data,
-                  };
-                }
-              }
-            }
-          }
-        }
-      } catch {
-        continue;
-      }
-      if (diagnostics.length > 0 && !dateFrom && !dateTo) break;
-    }
-  }
-
-  return {
-    success: false,
-    reservations: [],
-    message: "Nie udało się pobrać rezerwacji z HotRes. Sprawdź klucze API i adres URL.",
-    rawResponse: { diagnostics },
-  };
 }
 
 function isHeaderRow(cells: string[]): boolean {
@@ -474,11 +360,6 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
     return results;
   }
 
-  // Headerless CSV - fixed column positions matching HotRes export format:
-  // 0:number 1:status 2:add_date 3:arrival 4:departure 5:amount 6:paid 7:currency
-  // 8:rate_title 9:last_name 10:first_name 11:email 12:phone 13:address 14:city
-  // 15:zip 16:roomscodes 17:source 18:source_portal 19:source_commission
-  // 20:referer_url 21:discount_code 22:rate_board 23:message 24:comments
   const COL = {
     NUMBER: 0,
     STATUS: 1,
