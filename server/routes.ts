@@ -8,7 +8,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries } from "@shared/schema";
-import { dailyPrices, pricingRules, priceChangeHistory, insertDailyPriceSchema, insertPricingRuleSchema } from "@shared/schema";
+import { dailyPrices, pricingRules, priceChangeHistory, insertDailyPriceSchema, insertPricingRuleSchema, pricingAlerts, aiRecommendations, aiPricingConfig, holidays, competitorProperties, competitorRates, insertCompetitorPropertySchema, insertCompetitorRateSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -6071,6 +6071,457 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // ==================== AI RECOMMENDATIONS ====================
+
+  app.get("/api/ai-recommendations", isAuthenticated, async (req, res) => {
+    try {
+      const { status, apartmentId } = req.query;
+      let conditions: any[] = [];
+      if (status && status !== "all") conditions.push(eq(aiRecommendations.status, String(status)));
+      if (apartmentId) conditions.push(eq(aiRecommendations.apartmentId, Number(apartmentId)));
+      const recs = await db.select().from(aiRecommendations)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(desc(aiRecommendations.createdAt))
+        .limit(500);
+      const allApts = await storage.getApartments();
+      const aptMap = new Map(allApts.map((a: any) => [a.id, a.name]));
+      res.json(recs.map(r => ({ ...r, apartmentName: aptMap.get(r.apartmentId) || `#${r.apartmentId}` })));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/ai-recommendations/generate", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentIds, dateFrom, dateTo } = req.body;
+      const now = new Date();
+      const from = dateFrom || fmtDate(now);
+      const to = dateTo || fmtDate(new Date(now.getTime() + 30 * 86400000));
+      const allApts = await storage.getApartments();
+      const targetApts = apartmentIds?.length > 0
+        ? allApts.filter((a: any) => apartmentIds.includes(a.id))
+        : allApts.filter((a: any) => a.active);
+
+      const allRes = await storage.getReservations();
+      const activeRes = allRes.filter((r: any) => r.status !== "ANULOWANA");
+      const holidayRows = await db.select().from(holidays);
+
+      const results: any[] = [];
+
+      for (const apt of targetApts.slice(0, 20)) {
+        const aptRes = activeRes.filter((r: any) => r.apartmentId === apt.id);
+        const currentPrices = await db.select().from(dailyPrices).where(
+          and(eq(dailyPrices.apartmentId, apt.id), between(dailyPrices.date, from, to))
+        );
+        const priceMap = new Map(currentPrices.map(p => [p.date, Number(p.price)]));
+
+        const totalNights = aptRes.reduce((s: number, r: any) => {
+          return s + Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / 86400000));
+        }, 0);
+        const avgPrice = aptRes.length > 0 ? aptRes.reduce((s: number, r: any) => s + Number(r.price || 0), 0) / aptRes.length : 0;
+        const occupancyDays = new Set<string>();
+        for (const r of aptRes) {
+          let d = new Date(r.startDate);
+          const end = new Date(r.endDate);
+          while (d < end) { occupancyDays.add(fmtDate(d)); d.setDate(d.getDate() + 1); }
+        }
+
+        const holidayDates = new Set(holidayRows.map(h => h.date));
+        const prompt = `Jesteś ekspertem od dynamic pricing apartamentów wakacyjnych w Ustce, Polska.
+Apartament: ${apt.name}, lokalizacja: ${apt.location || "Ustka"}
+Min cena: ${apt.minPrice || "brak"} PLN, Max cena: ${apt.maxPrice || "brak"} PLN
+Średnia cena historyczna: ${Math.round(avgPrice)} PLN
+Historyczne obłożenie: ${totalNights} noclegów z ${aptRes.length} rezerwacji
+Święta w okresie: ${holidayRows.filter(h => h.date >= from && h.date <= to).map(h => `${h.date}: ${h.name}`).join(", ") || "brak"}
+Dzisiejsza data: ${fmtDate(now)}
+Okres analizy: ${from} do ${to}
+
+Aktualne ceny na najbliższe dni:
+${Array.from({ length: Math.min(14, Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / 86400000)) }, (_, i) => {
+  const d = new Date(new Date(from).getTime() + i * 86400000);
+  const ds = fmtDate(d);
+  const price = priceMap.get(ds);
+  const isHoliday = holidayDates.has(ds);
+  const dow = ["Nd","Pn","Wt","Śr","Cz","Pt","So"][d.getDay()];
+  const isBooked = occupancyDays.has(ds);
+  return `${ds} (${dow})${isHoliday ? " ŚWIĘTO" : ""}: ${price ? price + " PLN" : "brak ceny"}${isBooked ? " [ZAJĘTY]" : ""}`;
+}).join("\n")}
+
+Odpowiedz w formacie JSON (tablica obiektów):
+[{"date":"YYYY-MM-DD","recommendedPrice":NUMBER,"confidence":0.0-1.0,"reasoning":"krótkie uzasadnienie po polsku"}]
+Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 10 dat). Uwzględnij sezonowość, dzień tygodnia, święta, obłożenie.`;
+
+        try {
+          const openai = new OpenAI();
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.3,
+            max_tokens: 2000,
+          });
+
+          const content = completion.choices[0]?.message?.content || "[]";
+          const jsonMatch = content.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            const recs = JSON.parse(jsonMatch[0]);
+            for (const rec of recs) {
+              if (!rec.date || !rec.recommendedPrice) continue;
+              const currentPrice = priceMap.get(rec.date) || Number(apt.minPrice) || 0;
+              if (currentPrice === 0) continue;
+              const [inserted] = await db.insert(aiRecommendations).values({
+                apartmentId: apt.id,
+                date: rec.date,
+                currentPrice: String(currentPrice),
+                recommendedPrice: String(Math.round(rec.recommendedPrice)),
+                confidence: String(rec.confidence || 0.5),
+                reasoning: rec.reasoning || "",
+                factors: JSON.stringify({ season: true, dayOfWeek: true, holidays: holidayDates.has(rec.date), occupancy: occupancyDays.has(rec.date) }),
+                status: "pending",
+              }).returning();
+              results.push({ ...inserted, apartmentName: apt.name });
+            }
+          }
+        } catch (aiErr: any) {
+          console.error(`[AI] Error for apt ${apt.id}:`, aiErr.message);
+        }
+      }
+
+      res.json({ success: true, count: results.length, recommendations: results });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/ai-recommendations/:id/accept", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const [rec] = await db.select().from(aiRecommendations).where(eq(aiRecommendations.id, id));
+      if (!rec) return res.status(404).json({ message: "Nie znaleziono rekomendacji" });
+
+      const existing = await db.select().from(dailyPrices).where(
+        and(eq(dailyPrices.apartmentId, rec.apartmentId), eq(dailyPrices.date, rec.date))
+      ).limit(1);
+
+      if (existing.length > 0) {
+        await db.update(dailyPrices).set({ price: rec.recommendedPrice, source: "ai", updatedAt: new Date() })
+          .where(eq(dailyPrices.id, existing[0].id));
+      } else {
+        await db.insert(dailyPrices).values({ apartmentId: rec.apartmentId, date: rec.date, price: rec.recommendedPrice, source: "ai" });
+      }
+
+      await db.insert(priceChangeHistory).values({
+        apartmentId: rec.apartmentId, date: rec.date, oldPrice: rec.currentPrice,
+        newPrice: rec.recommendedPrice, changedBy: "ai", reason: rec.reasoning || "Rekomendacja AI", source: "ai",
+      });
+
+      await db.update(aiRecommendations).set({ status: "accepted", appliedAt: new Date() }).where(eq(aiRecommendations.id, id));
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/ai-recommendations/:id/reject", isAuthenticated, async (req, res) => {
+    try {
+      await db.update(aiRecommendations).set({ status: "rejected" }).where(eq(aiRecommendations.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/ai-recommendations/bulk-accept", isAuthenticated, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!ids?.length) return res.status(400).json({ message: "Brak ID" });
+      let applied = 0;
+      for (const id of ids) {
+        const [rec] = await db.select().from(aiRecommendations).where(and(eq(aiRecommendations.id, id), eq(aiRecommendations.status, "pending")));
+        if (!rec) continue;
+        const existing = await db.select().from(dailyPrices).where(
+          and(eq(dailyPrices.apartmentId, rec.apartmentId), eq(dailyPrices.date, rec.date))
+        ).limit(1);
+        if (existing.length > 0) {
+          await db.update(dailyPrices).set({ price: rec.recommendedPrice, source: "ai", updatedAt: new Date() }).where(eq(dailyPrices.id, existing[0].id));
+        } else {
+          await db.insert(dailyPrices).values({ apartmentId: rec.apartmentId, date: rec.date, price: rec.recommendedPrice, source: "ai" });
+        }
+        await db.insert(priceChangeHistory).values({
+          apartmentId: rec.apartmentId, date: rec.date, oldPrice: rec.currentPrice,
+          newPrice: rec.recommendedPrice, changedBy: "ai", reason: rec.reasoning || "Rekomendacja AI", source: "ai",
+        });
+        await db.update(aiRecommendations).set({ status: "accepted", appliedAt: new Date() }).where(eq(aiRecommendations.id, id));
+        applied++;
+      }
+      res.json({ success: true, applied });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/ai-pricing-config", isAuthenticated, async (req, res) => {
+    try {
+      const configs = await db.select().from(aiPricingConfig);
+      res.json(configs);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.put("/api/ai-pricing-config/:apartmentId", isAuthenticated, async (req, res) => {
+    try {
+      const aptId = Number(req.params.apartmentId);
+      const { autoMode, maxChangePercent, minPrice, maxPrice, daysAhead } = req.body;
+      const existing = await db.select().from(aiPricingConfig).where(eq(aiPricingConfig.apartmentId, aptId));
+      if (existing.length > 0) {
+        await db.update(aiPricingConfig).set({
+          autoMode, maxChangePercent: String(maxChangePercent), minPrice: minPrice ? String(minPrice) : null,
+          maxPrice: maxPrice ? String(maxPrice) : null, daysAhead, updatedAt: new Date(),
+        }).where(eq(aiPricingConfig.apartmentId, aptId));
+      } else {
+        await db.insert(aiPricingConfig).values({
+          apartmentId: aptId, autoMode, maxChangePercent: String(maxChangePercent),
+          minPrice: minPrice ? String(minPrice) : null, maxPrice: maxPrice ? String(maxPrice) : null, daysAhead,
+        });
+      }
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/ai-pricing/what-if", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, newPrice, dateFrom, dateTo } = req.body;
+      if (!apartmentId || !newPrice) return res.status(400).json({ message: "Wymagane: apartmentId, newPrice" });
+      const now = new Date();
+      const from = dateFrom || fmtDate(now);
+      const to = dateTo || fmtDate(new Date(now.getTime() + 30 * 86400000));
+      const allRes = await storage.getReservations();
+      const aptRes = allRes.filter((r: any) => r.apartmentId === apartmentId && r.status !== "ANULOWANA");
+      const recentRes = aptRes.filter((r: any) => {
+        const sd = new Date(r.startDate);
+        return sd >= new Date(now.getTime() - 180 * 86400000);
+      });
+      const avgPrice = recentRes.length > 0 ? recentRes.reduce((s: number, r: any) => s + Number(r.price || 0), 0) / recentRes.length : 200;
+      const totalNights = recentRes.reduce((s: number, r: any) => s + Math.max(1, Math.ceil((new Date(r.endDate).getTime() - new Date(r.startDate).getTime()) / 86400000)), 0);
+      const avgOccupancy = totalNights / 180 * 100;
+      const priceChangePct = avgPrice > 0 ? ((newPrice - avgPrice) / avgPrice) * 100 : 0;
+      const elasticity = -0.8;
+      const occupancyChange = priceChangePct * elasticity;
+      const projectedOccupancy = Math.max(5, Math.min(100, avgOccupancy + occupancyChange));
+      const daysInPeriod = Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / 86400000);
+      const projectedNights = Math.round(daysInPeriod * projectedOccupancy / 100);
+      const projectedRevenue = projectedNights * newPrice;
+      const currentRevenue = Math.round(daysInPeriod * avgOccupancy / 100) * avgPrice;
+      res.json({
+        currentAvgPrice: Math.round(avgPrice),
+        newPrice,
+        priceChangePct: Math.round(priceChangePct * 10) / 10,
+        currentOccupancy: Math.round(avgOccupancy * 10) / 10,
+        projectedOccupancy: Math.round(projectedOccupancy * 10) / 10,
+        projectedNights,
+        projectedRevenue: Math.round(projectedRevenue),
+        currentRevenue: Math.round(currentRevenue),
+        revenueDiff: Math.round(projectedRevenue - currentRevenue),
+      });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== HOLIDAYS ====================
+
+  app.get("/api/holidays", isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      let conditions: any[] = [];
+      if (from) conditions.push(gte(holidays.date, String(from)));
+      if (to) conditions.push(lte(holidays.date, String(to)));
+      const rows = await db.select().from(holidays)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(holidays.date);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/holidays", isAuthenticated, async (req, res) => {
+    try {
+      const [row] = await db.insert(holidays).values(req.body).returning();
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/holidays/:id", isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(holidays).where(eq(holidays.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== COMPETITOR MONITORING ====================
+
+  app.get("/api/competitors", isAuthenticated, async (req, res) => {
+    try {
+      const rows = await db.select().from(competitorProperties).orderBy(competitorProperties.name);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/competitors", isAuthenticated, async (req, res) => {
+    try {
+      const [row] = await db.insert(competitorProperties).values(req.body).returning();
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.put("/api/competitors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const [row] = await db.update(competitorProperties).set(req.body).where(eq(competitorProperties.id, Number(req.params.id))).returning();
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/competitors/:id", isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(competitorRates).where(eq(competitorRates.competitorId, Number(req.params.id)));
+      await db.delete(competitorProperties).where(eq(competitorProperties.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/competitor-rates", isAuthenticated, async (req, res) => {
+    try {
+      const { competitorId, from, to } = req.query;
+      let conditions: any[] = [];
+      if (competitorId) conditions.push(eq(competitorRates.competitorId, Number(competitorId)));
+      if (from) conditions.push(gte(competitorRates.date, String(from)));
+      if (to) conditions.push(lte(competitorRates.date, String(to)));
+      const rows = await db.select().from(competitorRates)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(competitorRates.date);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/competitor-rates", isAuthenticated, async (req, res) => {
+    try {
+      const [row] = await db.insert(competitorRates).values(req.body).returning();
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/competitor-rates/import-csv", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const content = req.file.buffer.toString("utf-8");
+      const lines = content.split("\n").filter(l => l.trim());
+      if (lines.length < 2) return res.status(400).json({ message: "Plik pusty lub nieprawidłowy format" });
+
+      const competitorId = Number(req.body.competitorId);
+      if (!competitorId) return res.status(400).json({ message: "Wymagane: competitorId" });
+
+      let imported = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(/[,;\t]/).map(c => c.trim().replace(/"/g, ""));
+        if (cols.length < 2) continue;
+        const date = cols[0];
+        const price = parseFloat(cols[1]);
+        const roomType = cols[2] || null;
+        if (!date || isNaN(price)) continue;
+        await db.insert(competitorRates).values({ competitorId, date, price: String(price), roomType, source: "csv" });
+        imported++;
+      }
+      res.json({ success: true, imported });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/competitor-comparison", isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      const now = new Date();
+      const periodFrom = from ? String(from) : fmtDate(now);
+      const periodTo = to ? String(to) : fmtDate(new Date(now.getTime() + 30 * 86400000));
+
+      const myApts = await db.select().from(apartments).where(eq(apartments.active, true));
+      const myPrices = await db.select().from(dailyPrices).where(
+        and(gte(dailyPrices.date, periodFrom), lte(dailyPrices.date, periodTo))
+      );
+      const competitors = await db.select().from(competitorProperties).where(eq(competitorProperties.active, true));
+      const compRates = await db.select().from(competitorRates).where(
+        and(gte(competitorRates.date, periodFrom), lte(competitorRates.date, periodTo))
+      );
+
+      const myAvgByDate = new Map<string, number>();
+      const dateGroups = new Map<string, number[]>();
+      for (const p of myPrices) {
+        if (!dateGroups.has(p.date)) dateGroups.set(p.date, []);
+        dateGroups.get(p.date)!.push(Number(p.price));
+      }
+      for (const [date, prices] of dateGroups) {
+        myAvgByDate.set(date, Math.round(prices.reduce((a, b) => a + b, 0) / prices.length));
+      }
+
+      const compAvgByDate = new Map<string, number>();
+      const compGroups = new Map<string, number[]>();
+      for (const r of compRates) {
+        if (!compGroups.has(r.date)) compGroups.set(r.date, []);
+        compGroups.get(r.date)!.push(Number(r.price));
+      }
+      for (const [date, prices] of compGroups) {
+        compAvgByDate.set(date, Math.round(prices.reduce((a, b) => a + b, 0) / prices.length));
+      }
+
+      const allDates = [...new Set([...myAvgByDate.keys(), ...compAvgByDate.keys()])].sort();
+      const comparison = allDates.map(date => ({
+        date,
+        myPrice: myAvgByDate.get(date) || null,
+        competitorAvg: compAvgByDate.get(date) || null,
+        diff: myAvgByDate.has(date) && compAvgByDate.has(date)
+          ? Math.round(myAvgByDate.get(date)! - compAvgByDate.get(date)!)
+          : null,
+      }));
+
+      const myOverallAvg = myPrices.length > 0 ? Math.round(myPrices.reduce((s, p) => s + Number(p.price), 0) / myPrices.length) : 0;
+      const compOverallAvg = compRates.length > 0 ? Math.round(compRates.reduce((s, r) => s + Number(r.price), 0) / compRates.length) : 0;
+      const allPrices = [...myPrices.map(p => Number(p.price)), ...compRates.map(r => Number(r.price))].sort((a, b) => a - b);
+      const myRank = allPrices.length > 0 ? Math.round((allPrices.filter(p => p <= myOverallAvg).length / allPrices.length) * 100) : 50;
+
+      res.json({
+        comparison,
+        summary: {
+          myAvgPrice: myOverallAvg,
+          competitorAvgPrice: compOverallAvg,
+          priceDiff: myOverallAvg - compOverallAvg,
+          percentile: myRank,
+          competitorCount: competitors.length,
+        },
+        competitors: competitors.map(c => ({ id: c.id, name: c.name, category: c.category })),
+      });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/competitor-alerts", isAuthenticated, async (req, res) => {
+    try {
+      const threshold = Number(req.query.threshold || 10);
+      const competitors = await db.select().from(competitorProperties).where(eq(competitorProperties.active, true));
+      const alerts: any[] = [];
+
+      for (const comp of competitors) {
+        const rates = await db.select().from(competitorRates)
+          .where(eq(competitorRates.competitorId, comp.id))
+          .orderBy(desc(competitorRates.date))
+          .limit(60);
+        if (rates.length < 2) continue;
+
+        const recent = rates.slice(0, 30);
+        const older = rates.slice(30);
+        if (older.length === 0) continue;
+
+        const recentAvg = recent.reduce((s, r) => s + Number(r.price), 0) / recent.length;
+        const olderAvg = older.reduce((s, r) => s + Number(r.price), 0) / older.length;
+        const changePct = olderAvg > 0 ? ((recentAvg - olderAvg) / olderAvg) * 100 : 0;
+
+        if (Math.abs(changePct) > threshold) {
+          alerts.push({
+            competitorId: comp.id,
+            competitorName: comp.name,
+            type: changePct > 0 ? "price_increase" : "price_decrease",
+            changePct: Math.round(changePct * 10) / 10,
+            recentAvg: Math.round(recentAvg),
+            previousAvg: Math.round(olderAvg),
+          });
+        }
+      }
+
+      res.json(alerts);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
   // ==================== END PRICING MODULE ====================

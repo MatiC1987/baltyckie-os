@@ -1722,3 +1722,91 @@ export type InsertPricingRule = z.infer<typeof insertPricingRuleSchema>;
 export const insertPriceChangeHistorySchema = createInsertSchema(priceChangeHistory).omit({ id: true, createdAt: true });
 export type PriceChangeHistory = typeof priceChangeHistory.$inferSelect;
 export type InsertPriceChangeHistory = z.infer<typeof insertPriceChangeHistorySchema>;
+
+export const pricingAlerts = pgTable("pricing_alerts", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  severity: text("severity").default("warning"),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  date: date("date"),
+  value: decimal("value", { precision: 10, scale: 2 }),
+  threshold: decimal("threshold", { precision: 10, scale: 2 }),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPricingAlertSchema = createInsertSchema(pricingAlerts).omit({ id: true, createdAt: true });
+export type PricingAlert = typeof pricingAlerts.$inferSelect;
+
+export const aiRecommendations = pgTable("ai_recommendations", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  date: date("date").notNull(),
+  currentPrice: decimal("current_price", { precision: 10, scale: 2 }).notNull(),
+  recommendedPrice: decimal("recommended_price", { precision: 10, scale: 2 }).notNull(),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  reasoning: text("reasoning"),
+  factors: text("factors"),
+  status: text("status").default("pending"),
+  appliedAt: timestamp("applied_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiRecommendationSchema = createInsertSchema(aiRecommendations).omit({ id: true, createdAt: true });
+export type AiRecommendation = typeof aiRecommendations.$inferSelect;
+
+export const aiPricingConfig = pgTable("ai_pricing_config", {
+  id: serial("id").primaryKey(),
+  apartmentId: integer("apartment_id").references(() => apartments.id).notNull(),
+  autoMode: boolean("auto_mode").default(false),
+  maxChangePercent: decimal("max_change_percent", { precision: 5, scale: 2 }).default("10"),
+  minPrice: decimal("min_price", { precision: 10, scale: 2 }),
+  maxPrice: decimal("max_price", { precision: 10, scale: 2 }),
+  daysAhead: integer("days_ahead").default(90),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAiPricingConfigSchema = createInsertSchema(aiPricingConfig).omit({ id: true, updatedAt: true });
+export type AiPricingConfig = typeof aiPricingConfig.$inferSelect;
+
+export const holidays = pgTable("holidays", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  name: text("name").notNull(),
+  type: text("type").default("holiday"),
+  isRecurring: boolean("is_recurring").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertHolidaySchema = createInsertSchema(holidays).omit({ id: true, createdAt: true });
+export type Holiday = typeof holidays.$inferSelect;
+
+export const competitorProperties = pgTable("competitor_properties", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  url: text("url"),
+  location: text("location"),
+  category: text("category").default("standard"),
+  notes: text("notes"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCompetitorPropertySchema = createInsertSchema(competitorProperties).omit({ id: true, createdAt: true });
+export type CompetitorProperty = typeof competitorProperties.$inferSelect;
+
+export const competitorRates = pgTable("competitor_rates", {
+  id: serial("id").primaryKey(),
+  competitorId: integer("competitor_id").references(() => competitorProperties.id).notNull(),
+  date: date("date").notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  roomType: text("room_type"),
+  source: text("source").default("manual"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCompetitorRateSchema = createInsertSchema(competitorRates).omit({ id: true, createdAt: true });
+export type CompetitorRate = typeof competitorRates.$inferSelect;

@@ -42,6 +42,8 @@ const PriceSeasonality = lazy(() => import("@/pages/PriceSeasonality"));
 const PriceCalendar = lazy(() => import("@/pages/PriceCalendar"));
 const PricingRules = lazy(() => import("@/pages/PricingRules"));
 const PricingAnalytics = lazy(() => import("@/pages/PricingAnalytics"));
+const AiPricing = lazy(() => import("@/pages/AiPricing"));
+const CompetitorMonitoring = lazy(() => import("@/pages/CompetitorMonitoring"));
 const SaldoFirmowe = lazy(() => import("@/pages/SaldoFirmowe"));
 const PrzychodyHub = lazy(() => import("@/pages/PrzychodyHub"));
 const V2Koszty = lazy(() => import("@/pages/V2Koszty"));
@@ -233,6 +235,8 @@ function AuthenticatedRouter() {
       <Route path="/price-calendar" component={() => <AuthenticatedRoute component={PriceCalendar} />} />
       <Route path="/pricing-rules" component={() => <AuthenticatedRoute component={PricingRules} />} />
       <Route path="/pricing-analytics" component={() => <AuthenticatedRoute component={PricingAnalytics} />} />
+      <Route path="/ai-pricing" component={() => <AuthenticatedRoute component={AiPricing} />} />
+      <Route path="/competitors" component={() => <AuthenticatedRoute component={CompetitorMonitoring} />} />
 
       <Route path="/locations" component={() => <NavRedirect to="/apartments" tab="lokalizacje" />} />
       <Route path="/przeglady" component={() => <NavRedirect to="/apartments" tab="przeglady" />} />
