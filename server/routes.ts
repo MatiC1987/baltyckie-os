@@ -6779,11 +6779,12 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           const hotresApts = allApartments.filter((a: any) => changedAptIds.includes(a.id) && a.hotresTypeId);
           const hotresPayload: any[] = [];
           for (const apt of hotresApts) {
+            if (!(apt as any).hotresTypeId || !(apt as any).hotresRateId) continue;
             const aptChanges = changes.filter(c => c.apartmentId === apt.id && !c.skipped);
             if (aptChanges.length === 0) continue;
             hotresPayload.push({
               type_id: (apt as any).hotresTypeId,
-              rate_id: (apt as any).hotresRateId || 0,
+              rate_id: (apt as any).hotresRateId,
               mode: "delta",
               prices: aptChanges.map(c => ({
                 from: c.date,

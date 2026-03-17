@@ -126,9 +126,13 @@ async function runAutoApplyRules(): Promise<void> {
 
         if (changedPrices.length > 0 && (apt as any).hotresTypeId) {
           try {
+            if (!(apt as any).hotresRateId) {
+              console.log(`[SCHEDULER] Skipping HotRes push for apt ${apt.id}: missing hotresRateId`);
+              continue;
+            }
             await updatePrices([{
               type_id: (apt as any).hotresTypeId,
-              rate_id: (apt as any).hotresRateId || 0,
+              rate_id: (apt as any).hotresRateId,
               mode: "delta" as const,
               prices: changedPrices.map(p => ({
                 from: p.date,
