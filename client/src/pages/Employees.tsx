@@ -378,7 +378,7 @@ export default function Employees() {
       )}
 
       {employees && employees.length > 0 && (
-        <ResponsiveTable<Employee>
+        <ResponsiveTable
           data={employees}
           keyExtractor={(emp) => emp.id}
           onRowClick={openPreview}
