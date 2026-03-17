@@ -126,7 +126,16 @@ async function runAutoApplyRules(): Promise<void> {
 
         if (changedPrices.length > 0 && (apt as any).hotresTypeId) {
           try {
-            await updatePrices((apt as any).hotresTypeId, (apt as any).hotresRateId || 0, changedPrices);
+            await updatePrices([{
+              type_id: (apt as any).hotresTypeId,
+              rate_id: (apt as any).hotresRateId || 0,
+              mode: "delta" as const,
+              prices: changedPrices.map(p => ({
+                from: p.date,
+                till: p.date,
+                baseprice: parseFloat(p.price),
+              })),
+            }]);
           } catch (hotresErr: any) {
             log(`[SCHEDULER] Hotres push error for ${apt.name}: ${hotresErr.message}`, "pricing");
           }

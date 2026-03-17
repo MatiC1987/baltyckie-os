@@ -5598,6 +5598,36 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  function shouldApplyRuleForDate(r: any, d: Date, existing: any): boolean {
+    const dow = d.getDay();
+    if (r.dayOfWeek && r.dayOfWeek.length > 0 && !r.dayOfWeek.includes(dow)) return false;
+
+    const ruleType = r.type || "seasonal";
+    if (ruleType === "weekend" && dow !== 5 && dow !== 6) return false;
+    if (ruleType === "last_minute") {
+      const now = new Date();
+      const daysUntil = Math.floor((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysUntil > (r.minStayRule || 7)) return false;
+    }
+    if (ruleType === "long_stay") {
+      const minStay = existing?.minStay || 1;
+      if (minStay < (r.minStayRule || 7)) return false;
+    }
+    return true;
+  }
+
+  function applyModifier(basePrice: number, r: any, minP: number | null, maxP: number | null): number {
+    let newPrice: number;
+    if (r.modifierType === "percentage") {
+      newPrice = Math.round(basePrice * (1 + Number(r.modifier) / 100));
+    } else {
+      newPrice = basePrice + Number(r.modifier);
+    }
+    if (minP && newPrice < minP) newPrice = minP;
+    if (maxP && newPrice > maxP) newPrice = maxP;
+    return newPrice;
+  }
+
   app.post("/api/pricing-rules/preview", isAuthenticated, async (req, res) => {
     try {
       const { ruleId, dateFrom, dateTo } = req.body;
@@ -5632,12 +5662,6 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         const current = new Date(start);
         while (current <= end) {
           const dateStr = current.toISOString().split("T")[0];
-          const dow = current.getDay();
-
-          if (r.dayOfWeek && r.dayOfWeek.length > 0 && !r.dayOfWeek.includes(dow)) {
-            current.setDate(current.getDate() + 1);
-            continue;
-          }
 
           const existing = await db.select().from(dailyPrices).where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr))).limit(1);
           if (existing.length > 0 && existing[0].isBlocked) {
@@ -5645,15 +5669,13 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             continue;
           }
 
-          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
-          let newPrice: number;
-          if (r.modifierType === "percentage") {
-            newPrice = Math.round(basePrice * (1 + Number(r.modifier) / 100));
-          } else {
-            newPrice = basePrice + Number(r.modifier);
+          if (!shouldApplyRuleForDate(r, current, existing.length > 0 ? existing[0] : null)) {
+            current.setDate(current.getDate() + 1);
+            continue;
           }
-          if (minP && newPrice < minP) newPrice = minP;
-          if (maxP && newPrice > maxP) newPrice = maxP;
+
+          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
+          const newPrice = applyModifier(basePrice, r, minP, maxP);
 
           if (newPrice !== basePrice) {
             changes.push({ apartmentId: aptId, date: dateStr, oldPrice: basePrice, newPrice });
@@ -5705,12 +5727,6 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         const current = new Date(start);
         while (current <= end) {
           const dateStr = current.toISOString().split("T")[0];
-          const dow = current.getDay();
-
-          if (r.dayOfWeek && r.dayOfWeek.length > 0 && !r.dayOfWeek.includes(dow)) {
-            current.setDate(current.getDate() + 1);
-            continue;
-          }
 
           const existing = await db.select().from(dailyPrices).where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr))).limit(1);
           if (existing.length > 0 && existing[0].isBlocked) {
@@ -5718,15 +5734,13 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             continue;
           }
 
-          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
-          let newPrice: number;
-          if (r.modifierType === "percentage") {
-            newPrice = Math.round(basePrice * (1 + Number(r.modifier) / 100));
-          } else {
-            newPrice = basePrice + Number(r.modifier);
+          if (!shouldApplyRuleForDate(r, current, existing.length > 0 ? existing[0] : null)) {
+            current.setDate(current.getDate() + 1);
+            continue;
           }
-          if (minP && newPrice < minP) newPrice = minP;
-          if (maxP && newPrice > maxP) newPrice = maxP;
+
+          const basePrice = existing.length > 0 ? Number(existing[0].price) : 0;
+          const newPrice = applyModifier(basePrice, r, minP, maxP);
 
           if (newPrice !== basePrice) {
             const values: any = {
@@ -6741,14 +6755,23 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         try {
           const changedAptIds = [...new Set(changes.filter(c => !c.skipped).map(c => c.apartmentId))];
           const hotresApts = allApartments.filter((a: any) => changedAptIds.includes(a.id) && a.hotresTypeId);
+          const hotresPayload: any[] = [];
           for (const apt of hotresApts) {
             const aptChanges = changes.filter(c => c.apartmentId === apt.id && !c.skipped);
             if (aptChanges.length === 0) continue;
-            const priceUpdates = aptChanges.map(c => ({
-              date: c.date,
-              price: String(c.newPrice),
-            }));
-            await updatePrices(apt.hotresTypeId!, apt.hotresRateId || 0, priceUpdates);
+            hotresPayload.push({
+              type_id: (apt as any).hotresTypeId,
+              rate_id: (apt as any).hotresRateId || 0,
+              mode: "delta",
+              prices: aptChanges.map(c => ({
+                from: c.date,
+                till: c.date,
+                baseprice: c.newPrice,
+              })),
+            });
+          }
+          if (hotresPayload.length > 0) {
+            await updatePrices(hotresPayload);
           }
         } catch (hotresErr: any) {
           console.error("[PRICING-ENGINE] Hotres push error:", hotresErr.message);
