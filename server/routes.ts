@@ -5542,6 +5542,90 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.post("/api/daily-prices/copy", isAuthenticated, async (req, res) => {
+    try {
+      const { sourceApartmentId, targetApartmentIds, dateFrom, dateTo } = req.body;
+      if (!sourceApartmentId || !targetApartmentIds?.length || !dateFrom || !dateTo) {
+        return res.status(400).json({ message: "sourceApartmentId, targetApartmentIds, dateFrom, dateTo required" });
+      }
+      const daysDiff = Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1;
+      if (daysDiff > 366) return res.status(400).json({ message: "Maksymalny zakres to 366 dni" });
+
+      const sourcePrices = await db.select().from(dailyPrices)
+        .where(and(
+          eq(dailyPrices.apartmentId, sourceApartmentId),
+          gte(dailyPrices.date, dateFrom),
+          lte(dailyPrices.date, dateTo),
+        ));
+
+      const changedBy = (req as any).user?.email || "system";
+      let copied = 0;
+
+      for (const targetId of targetApartmentIds) {
+        if (targetId === sourceApartmentId) continue;
+        const apt = await db.select().from(apartments).where(eq(apartments.id, targetId)).limit(1);
+        const minP = apt.length > 0 && apt[0].minPrice ? Number(apt[0].minPrice) : null;
+        const maxP = apt.length > 0 && apt[0].maxPrice ? Number(apt[0].maxPrice) : null;
+
+        for (const sp of sourcePrices) {
+          let newPrice = Number(sp.price);
+          if (minP && newPrice < minP) newPrice = minP;
+          if (maxP && newPrice > maxP) newPrice = maxP;
+
+          const existing = await db.select().from(dailyPrices)
+            .where(and(eq(dailyPrices.apartmentId, targetId), eq(dailyPrices.date, sp.date)))
+            .limit(1);
+
+          const values: any = {
+            apartmentId: targetId, date: sp.date, price: String(newPrice),
+            source: "copy", minStay: sp.minStay, maxStay: sp.maxStay,
+            isBlocked: sp.isBlocked, updatedAt: new Date(),
+          };
+
+          const oldPrice = existing.length > 0 ? existing[0].price : null;
+
+          if (existing.length > 0) {
+            await db.update(dailyPrices).set(values).where(eq(dailyPrices.id, existing[0].id));
+          } else {
+            await db.insert(dailyPrices).values(values);
+          }
+
+          await db.insert(priceChangeHistory).values({
+            apartmentId: targetId, date: sp.date,
+            oldPrice: oldPrice || "0", newPrice: String(newPrice),
+            changedBy, reason: `Kopiowanie z apt #${sourceApartmentId}`,
+            source: "copy",
+          });
+          copied++;
+        }
+      }
+
+      res.json({ success: true, copied, message: `Skopiowano ${copied} cen` });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/daily-prices/yearly", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, year } = req.query;
+      if (!apartmentId) return res.status(400).json({ message: "apartmentId required" });
+      const y = parseInt(String(year || new Date().getFullYear()));
+      const from = `${y}-01-01`;
+      const to = `${y}-12-31`;
+      const prices = await db.select().from(dailyPrices)
+        .where(and(
+          eq(dailyPrices.apartmentId, parseInt(String(apartmentId))),
+          gte(dailyPrices.date, from),
+          lte(dailyPrices.date, to),
+        ))
+        .orderBy(dailyPrices.date);
+      res.json(prices);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/pricing-rules", isAuthenticated, async (req, res) => {
     try {
       const rules = await db.select().from(pricingRules).orderBy(desc(pricingRules.priority));
@@ -6828,6 +6912,41 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
     }
   });
 
+  app.get("/api/hotres/config", isAuthenticated, async (_req, res) => {
+    try {
+      const exportEnabled = await storage.getAppConfig("hotres_export_enabled");
+      const importFrequency = await storage.getAppConfig("hotres_import_frequency");
+      const lastAutoImport = await storage.getAppConfig("hotres_last_auto_import");
+      res.json({
+        exportEnabled: exportEnabled === "true",
+        importFrequency: importFrequency || "disabled",
+        lastAutoImport: lastAutoImport || null,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/hotres/config", isAuthenticated, async (req, res) => {
+    try {
+      const { exportEnabled, importFrequency } = req.body;
+      if (typeof exportEnabled === "boolean") {
+        await storage.setAppConfig("hotres_export_enabled", String(exportEnabled));
+      }
+      if (importFrequency && ["disabled", "4h", "daily", "weekly"].includes(importFrequency)) {
+        await storage.setAppConfig("hotres_import_frequency", importFrequency);
+      }
+      const updatedExport = await storage.getAppConfig("hotres_export_enabled");
+      const updatedImport = await storage.getAppConfig("hotres_import_frequency");
+      res.json({
+        exportEnabled: updatedExport === "true",
+        importFrequency: updatedImport || "disabled",
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/hotres/room-types", isAuthenticated, async (_req, res) => {
     try {
       const rooms = await fetchRooms();
@@ -6961,6 +7080,11 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
 
   app.post("/api/hotres/export-prices", isAuthenticated, async (req, res) => {
     try {
+      const exportFlag = await storage.getAppConfig("hotres_export_enabled");
+      if (exportFlag !== "true") {
+        return res.status(403).json({ success: false, message: "Eksport cen do HotRes jest wyłączony. Włącz w Ustawieniach → HotRes." });
+      }
+
       const { from, till, apartmentIds, mode = "delta" } = req.body;
       if (!from || !till) return res.status(400).json({ error: "Wymagane parametry: from, till" });
 
@@ -7241,30 +7365,35 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
       const applied = dryRun ? 0 : changes.filter(c => !c.skipped).length;
 
       if (!dryRun && pushToHotres && applied > 0) {
-        try {
-          const changedAptIds = [...new Set(changes.filter(c => !c.skipped).map(c => c.apartmentId))];
-          const hotresApts = allApartments.filter((a: any) => changedAptIds.includes(a.id) && a.hotresTypeId);
-          const hotresPayload: any[] = [];
-          for (const apt of hotresApts) {
-            if (!(apt as any).hotresTypeId || !(apt as any).hotresRateId) continue;
-            const aptChanges = changes.filter(c => c.apartmentId === apt.id && !c.skipped);
-            if (aptChanges.length === 0) continue;
-            hotresPayload.push({
-              type_id: (apt as any).hotresTypeId,
-              rate_id: (apt as any).hotresRateId,
-              mode: "delta",
-              prices: aptChanges.map(c => ({
-                from: c.date,
-                till: c.date,
-                baseprice: c.newPrice,
-              })),
-            });
+        const exportFlag = await storage.getAppConfig("hotres_export_enabled");
+        if (exportFlag !== "true") {
+          console.log("[PRICING-ENGINE] HotRes export disabled — prices applied locally only");
+        } else {
+          try {
+            const changedAptIds = [...new Set(changes.filter(c => !c.skipped).map(c => c.apartmentId))];
+            const hotresApts = allApartments.filter((a: any) => changedAptIds.includes(a.id) && a.hotresTypeId);
+            const hotresPayload: any[] = [];
+            for (const apt of hotresApts) {
+              if (!(apt as any).hotresTypeId || !(apt as any).hotresRateId) continue;
+              const aptChanges = changes.filter(c => c.apartmentId === apt.id && !c.skipped);
+              if (aptChanges.length === 0) continue;
+              hotresPayload.push({
+                type_id: (apt as any).hotresTypeId,
+                rate_id: (apt as any).hotresRateId,
+                mode: "delta",
+                prices: aptChanges.map(c => ({
+                  from: c.date,
+                  till: c.date,
+                  baseprice: c.newPrice,
+                })),
+              });
+            }
+            if (hotresPayload.length > 0) {
+              await updatePrices(hotresPayload);
+            }
+          } catch (hotresErr: any) {
+            console.error("[PRICING-ENGINE] Hotres push error:", hotresErr.message);
           }
-          if (hotresPayload.length > 0) {
-            await updatePrices(hotresPayload);
-          }
-        } catch (hotresErr: any) {
-          console.error("[PRICING-ENGINE] Hotres push error:", hotresErr.message);
         }
       }
 
@@ -7272,7 +7401,7 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
         success: true,
         message: dryRun
           ? `Podgląd: ${changes.length} zmian (${changes.filter(c => c.skipped).length} pominiętych)`
-          : `Zastosowano ${applied} zmian cenowych${pushToHotres ? " + wysłano do HotRes" : ""}`,
+          : `Zastosowano ${applied} zmian cenowych${pushToHotres ? ((await storage.getAppConfig("hotres_export_enabled")) === "true" ? " + wysłano do HotRes" : " (eksport HotRes wyłączony)") : ""}`,
         dryRun,
         changes,
         applied,

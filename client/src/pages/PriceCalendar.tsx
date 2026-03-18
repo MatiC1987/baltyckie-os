@@ -13,9 +13,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type ViewMode = "week" | "month";
 
@@ -62,6 +64,16 @@ export default function PriceCalendar() {
   const [hotresExportDialogOpen, setHotresExportDialogOpen] = useState(false);
   const [hotresPreview, setHotresPreview] = useState<any[]>([]);
 
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copySourceApt, setCopySourceApt] = useState<number | null>(null);
+  const [copyTargetApts, setCopyTargetApts] = useState<Set<number>>(new Set());
+  const [copyDateFrom, setCopyDateFrom] = useState("");
+  const [copyDateTo, setCopyDateTo] = useState("");
+
+  const [yearlyDialogOpen, setYearlyDialogOpen] = useState(false);
+  const [yearlyApartmentId, setYearlyApartmentId] = useState<number | null>(null);
+  const [yearlyYear, setYearlyYear] = useState(new Date().getFullYear());
+
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkModifier, setBulkModifier] = useState("");
   const [bulkModifierType, setBulkModifierType] = useState("percentage");
@@ -102,6 +114,38 @@ export default function PriceCalendar() {
       return res.json();
     },
     enabled: !!historyApartmentId,
+  });
+
+  const { data: hotresConfig } = useQuery<{ exportEnabled: boolean; importFrequency: string; lastAutoImport: string | null }>({
+    queryKey: ["/api/hotres/config"],
+  });
+
+  const { data: yearlyPrices = [] } = useQuery<DailyPrice[]>({
+    queryKey: ["/api/daily-prices/yearly", yearlyApartmentId, yearlyYear],
+    queryFn: async () => {
+      if (!yearlyApartmentId) return [];
+      const res = await fetch(`/api/daily-prices/yearly?apartmentId=${yearlyApartmentId}&year=${yearlyYear}`);
+      if (!res.ok) throw new Error("Failed to fetch yearly prices");
+      return res.json();
+    },
+    enabled: !!yearlyApartmentId && yearlyDialogOpen,
+  });
+
+  const copyPricesMutation = useMutation({
+    mutationFn: async (data: { sourceApartmentId: number; targetApartmentIds: number[]; dateFrom: string; dateTo: string }) => {
+      const res = await apiRequest("POST", "/api/daily-prices/copy", data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      toast({ title: "Ceny skopiowane", description: data.message });
+      setCopyDialogOpen(false);
+      setCopySourceApt(null);
+      setCopyTargetApts(new Set());
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd kopiowania", description: err.message, variant: "destructive" });
+    },
   });
 
   const locations = useMemo(() => {
@@ -309,12 +353,22 @@ export default function PriceCalendar() {
       case "rule": return "bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300";
       case "auto": return "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300";
       case "hotres": return "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300";
+      case "copy": return "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300";
       default: return "bg-muted";
     }
   };
 
   return (
     <div className="space-y-4" data-testid="price-calendar-page">
+      {hotresConfig && !hotresConfig.exportEnabled && (
+        <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20" data-testid="alert-export-disabled">
+          <ShieldOff className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-700 dark:text-amber-300">
+            Eksport cen do HotRes jest <span className="font-semibold">wyłączony</span>. Wszystkie zmiany cen pozostają tylko lokalnie. Włącz eksport w Ustawieniach.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <CalendarDays className="h-6 w-6 text-yellow-500" />
@@ -398,6 +452,20 @@ export default function PriceCalendar() {
             Zastosuj reguły
           </Button>
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setCopyDateFrom(dateRange.from);
+              setCopyDateTo(dateRange.to);
+              setCopyDialogOpen(true);
+            }}
+            data-testid="button-copy-prices"
+          >
+            <Copy className="h-4 w-4 mr-1" />
+            Kopiuj ceny
+          </Button>
+
           {selectedCells.size > 0 && (
             <Button onClick={() => setBulkDialogOpen(true)} variant="outline" data-testid="button-bulk-edit">
               <Pencil className="h-4 w-4 mr-1" />
@@ -427,6 +495,7 @@ export default function PriceCalendar() {
         <Badge variant="outline" className="bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300">Reguła</Badge>
         <Badge variant="outline" className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">Auto</Badge>
         <Badge variant="outline" className="bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300">Hotres</Badge>
+        <Badge variant="outline" className="bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300">Kopia</Badge>
         <Badge variant="outline" className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">Zablokowana</Badge>
       </div>
 
@@ -464,7 +533,20 @@ export default function PriceCalendar() {
                 {filteredApartments.map(apt => (
                   <tr key={apt.id} className="border-b hover:bg-muted/30">
                     <td className="sticky left-0 bg-card z-10 px-3 py-1 font-medium text-xs whitespace-nowrap">
-                      <div>{apt.name}</div>
+                      <div className="flex items-center gap-1">
+                        <span>{apt.name}</span>
+                        <button
+                          className="p-0.5 rounded hover:bg-muted"
+                          onClick={() => {
+                            setYearlyApartmentId(apt.id);
+                            setYearlyDialogOpen(true);
+                          }}
+                          title="Widok roczny"
+                          data-testid={`button-yearly-${apt.id}`}
+                        >
+                          <Eye className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                      </div>
                       {(apt.minPrice || apt.maxPrice) && (
                         <div className="text-[10px] text-muted-foreground">
                           {apt.minPrice && `min: ${apt.minPrice}`}
@@ -734,6 +816,14 @@ export default function PriceCalendar() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {hotresConfig && !hotresConfig.exportEnabled && (
+              <Alert className="border-red-500/50 bg-red-50 dark:bg-red-950/20">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-700 dark:text-red-300">
+                  Eksport do HotRes jest <span className="font-semibold">wyłączony</span>. Włącz go w Ustawieniach, aby móc wysyłać ceny.
+                </AlertDescription>
+              </Alert>
+            )}
             <p className="text-sm text-muted-foreground">
               Wyśle lokalne ceny z okresu <strong>{dateRange.from}</strong> — <strong>{dateRange.to}</strong> do
               systemu HotRes dla apartamentów z przypisanym hotresTypeId i hotresRateId.
@@ -748,13 +838,185 @@ export default function PriceCalendar() {
             </Button>
             <Button
               onClick={() => hotresExportMutation.mutate()}
-              disabled={hotresExportMutation.isPending}
+              disabled={hotresExportMutation.isPending || (hotresConfig && !hotresConfig.exportEnabled)}
               data-testid="button-hotres-export-confirm"
             >
               {hotresExportMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
               {hotresExportMutation.isPending ? "Wysyłam..." : "Wyślij do HotRes"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
+        <DialogContent className="max-w-lg" data-testid="dialog-copy-prices">
+          <DialogHeader>
+            <DialogTitle>
+              <Copy className="h-5 w-5 inline mr-2" />
+              Kopiuj ceny między apartamentami
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Apartament źródłowy</Label>
+              <Select value={copySourceApt ? String(copySourceApt) : ""} onValueChange={(v) => setCopySourceApt(Number(v))}>
+                <SelectTrigger data-testid="select-copy-source">
+                  <SelectValue placeholder="Wybierz źródło" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredApartments.map(a => (
+                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Apartamenty docelowe</Label>
+              <ScrollArea className="max-h-[160px] border rounded-md p-2">
+                {filteredApartments
+                  .filter(a => a.id !== copySourceApt)
+                  .map(a => (
+                    <label key={a.id} className="flex items-center gap-2 py-1 px-1 hover:bg-muted rounded text-sm cursor-pointer">
+                      <Checkbox
+                        checked={copyTargetApts.has(a.id)}
+                        onCheckedChange={(checked) => {
+                          setCopyTargetApts(prev => {
+                            const next = new Set(prev);
+                            if (checked) next.add(a.id); else next.delete(a.id);
+                            return next;
+                          });
+                        }}
+                        data-testid={`checkbox-copy-target-${a.id}`}
+                      />
+                      {a.name}
+                    </label>
+                  ))
+                }
+              </ScrollArea>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => {
+                  const all = new Set(filteredApartments.filter(a => a.id !== copySourceApt).map(a => a.id));
+                  setCopyTargetApts(all);
+                }} data-testid="button-copy-select-all">Zaznacz wszystko</Button>
+                <Button variant="ghost" size="sm" onClick={() => setCopyTargetApts(new Set())} data-testid="button-copy-deselect-all">Odznacz</Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Data od</Label>
+                <Input type="date" value={copyDateFrom} onChange={(e) => setCopyDateFrom(e.target.value)} data-testid="input-copy-date-from" />
+              </div>
+              <div className="space-y-1">
+                <Label>Data do</Label>
+                <Input type="date" value={copyDateTo} onChange={(e) => setCopyDateTo(e.target.value)} data-testid="input-copy-date-to" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCopyDialogOpen(false)} data-testid="button-copy-cancel">Anuluj</Button>
+            <Button
+              disabled={!copySourceApt || copyTargetApts.size === 0 || !copyDateFrom || !copyDateTo || copyPricesMutation.isPending}
+              onClick={() => {
+                if (confirm(`Skopiować ceny z wybranego apartamentu do ${copyTargetApts.size} apartamentów?`)) {
+                  copyPricesMutation.mutate({
+                    sourceApartmentId: copySourceApt!,
+                    targetApartmentIds: Array.from(copyTargetApts),
+                    dateFrom: copyDateFrom,
+                    dateTo: copyDateTo,
+                  });
+                }
+              }}
+              data-testid="button-copy-confirm"
+            >
+              {copyPricesMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Copy className="h-4 w-4 mr-1" />}
+              {copyPricesMutation.isPending ? "Kopiuję..." : `Kopiuj do ${copyTargetApts.size} apt.`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={yearlyDialogOpen} onOpenChange={(open) => { setYearlyDialogOpen(open); if (!open) setYearlyApartmentId(null); }}>
+        <DialogContent className="max-w-4xl max-h-[85vh]" data-testid="dialog-yearly-view">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Widok roczny — {apartments.find(a => a.id === yearlyApartmentId)?.name || ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mb-2">
+            <Button variant="ghost" size="sm" onClick={() => setYearlyYear(y => y - 1)} data-testid="button-yearly-prev">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="font-semibold text-lg" data-testid="text-yearly-year">{yearlyYear}</span>
+            <Button variant="ghost" size="sm" onClick={() => setYearlyYear(y => y + 1)} data-testid="button-yearly-next">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <ScrollArea className="max-h-[60vh]">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 12 }, (_, monthIdx) => {
+                const monthStart = new Date(yearlyYear, monthIdx, 1);
+                const monthEnd = new Date(yearlyYear, monthIdx + 1, 0);
+                const daysInMonth = monthEnd.getDate();
+                const monthPrices = yearlyPrices.filter(p => {
+                  const d = new Date(p.date);
+                  return d.getMonth() === monthIdx;
+                });
+                const pricesByDate = new Map(monthPrices.map(p => [p.date, p]));
+                const avgPrice = monthPrices.length > 0
+                  ? Math.round(monthPrices.reduce((s, p) => s + Number(p.price), 0) / monthPrices.length)
+                  : 0;
+                const coverage = Math.round((monthPrices.length / daysInMonth) * 100);
+
+                return (
+                  <Card key={monthIdx} className="overflow-hidden">
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-sm flex items-center justify-between">
+                        <span>{format(monthStart, "LLLL", { locale: pl })}</span>
+                        <div className="flex gap-2 text-xs font-normal text-muted-foreground">
+                          <span>Śr: {avgPrice} zł</span>
+                          <Badge variant="outline" className="text-[10px] h-4">{coverage}%</Badge>
+                        </div>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-2">
+                      <div className="grid grid-cols-7 gap-px text-[10px]">
+                        {["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"].map(d => (
+                          <div key={d} className="text-center text-muted-foreground font-medium py-0.5">{d}</div>
+                        ))}
+                        {Array.from({ length: (new Date(yearlyYear, monthIdx, 1).getDay() + 6) % 7 }, (_, i) => (
+                          <div key={`empty-${i}`} />
+                        ))}
+                        {Array.from({ length: daysInMonth }, (_, dayIdx) => {
+                          const dayNum = dayIdx + 1;
+                          const dateStr = `${yearlyYear}-${String(monthIdx + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+                          const pd = pricesByDate.get(dateStr);
+                          const dayOfWeek = new Date(yearlyYear, monthIdx, dayNum).getDay();
+                          const isWknd = dayOfWeek === 0 || dayOfWeek === 6;
+
+                          return (
+                            <div
+                              key={dayNum}
+                              className={cn(
+                                "text-center py-0.5 rounded-sm cursor-default",
+                                pd ? getSourceColor(pd.source, pd.isBlocked) : (isWknd ? "bg-muted/30" : ""),
+                              )}
+                              title={pd ? `${dateStr}: ${pd.price} zł (${pd.source})` : dateStr}
+                            >
+                              <div className="text-[9px] text-muted-foreground">{dayNum}</div>
+                              {pd && <div className="text-[9px] font-medium leading-tight">{Math.round(Number(pd.price))}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </div>
