@@ -28,7 +28,6 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **Document & Workflow Automation:** AI-powered PDF contract import (GPT-4o vision OCR), Word contract generation, invoice generation, cost invoice management, and automated PDF generation for accounting notes and handover protocols.
 *   **User & Employee Management:** Role-based user accounts, employee records with medical exam and training tracking, and contract management with PDF generation and expiry reminders. Includes an HR calendar.
 *   **RCP (Rejestrator Czasu Pracy - Time Tracking):** A GPS-based time tracking module with employee and admin panels, featuring a `GrafikEnhanced` component for shift scheduling and enhanced reports.
-*   **Cennik (Pricing Module):** Calendar-based daily price management per apartment with pricing rules, audit trails, and various pricing-related pages (Calendar, Rules, Analytics, AI Pricing, Competitor Monitoring). Includes HotRes integration, a holidays table, and **Price Templates** (Szablony cenowe) — reusable pricing configurations (price, modifier %, min/max stay, blocked status) with CRUD, 4 predefined presets, and a multi-step apply wizard (dates → apartments → preview → apply) accessible from the price calendar toolbar.
 *   **Reporting & Analytics:** Aggregated sublease settlements, revenue forecasting, cost analysis, occupancy rates, profitability, and cash flow forecasts with PDF export.
 *   **Notifications & Reminders:** Dashboard-integrated reminders for various events, an internal notification center, and push notification support.
 *   **Recepcja Panel:** An independent panel with JWT authentication for reception managers, offering a dashboard, read-only module access, payment toggling, cost invoice upload, meter reading submission, tenant data management, and full RCP admin. Includes an `Usterki` module.
@@ -48,7 +47,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **PostgreSQL (Neon):** Core relational database.
 *   **xlsx library:** For parsing Excel files.
 *   **date-fns:** Date formatting and manipulation with Polish locale.
-*   **HotRes:** Integration for importing reservation data, prices (with batching, retry, rate-limit tracking), and managing cleaning fees. Price import supports multiple API response formats (flat array, nested blocks, wrapper objects) with automatic normalization.
+*   **HotRes:** Integration for importing reservation data and managing cleaning fees.
 *   **jsPDF + jspdf-autotable:** For generating PDF reports and documents.
 *   **Leaflet + react-leaflet:** Interactive map functionalities for RCP module.
 *   **jsonwebtoken:** JWT-based authentication for Recepcja panel.

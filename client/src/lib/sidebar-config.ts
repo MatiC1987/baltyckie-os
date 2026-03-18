@@ -136,11 +136,6 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
   "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
   "sprawy-sadowe": { id: "sprawy-sadowe", href: "/sprawy-sadowe", label: "Sprawy sądowe", iconName: "Gavel" },
-  "price-calendar": { id: "price-calendar", href: "/price-calendar", label: "Kalendarz cen", iconName: "CalendarDays" },
-  "pricing-rules": { id: "pricing-rules", href: "/pricing-rules", label: "Reguły cenowe", iconName: "Tag" },
-  "pricing-analytics": { id: "pricing-analytics", href: "/pricing-analytics", label: "Analityka cenowa", iconName: "LineChart" },
-  "ai-pricing": { id: "ai-pricing", href: "/ai-pricing", label: "AI Cennik", iconName: "Sparkles" },
-  "competitors": { id: "competitors", href: "/competitors", label: "Konkurencja", iconName: "Users" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
@@ -149,7 +144,6 @@ export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "nieruchomosci", title: "NIERUCHOMOŚCI", itemIds: ["apartments", "owners"], color: "orange" },
   { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "sprawy-sadowe"], color: "emerald" },
   { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy"], color: "pink" },
-  { id: "cennik", title: "CENNIK", itemIds: ["price-calendar", "pricing-rules", "pricing-analytics", "ai-pricing", "competitors"], color: "yellow" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "source-comparison"], color: "blue" },
 ];
 

@@ -364,89 +364,6 @@ function PushNotificationsCard() {
   );
 }
 
-function HotResConfigCard() {
-  const { toast } = useToast();
-  const { data: config, isLoading } = useQuery<{ exportEnabled: boolean; importFrequency: string; lastAutoImport: string | null }>({
-    queryKey: ["/api/hotres/config"],
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (updates: { exportEnabled?: boolean; importFrequency?: string }) => {
-      const res = await apiRequest("PUT", "/api/hotres/config", updates);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/hotres/config"] });
-      toast({ title: "Zapisano konfigurację HotRes" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Błąd", description: err.message, variant: "destructive" });
-    },
-  });
-
-  if (isLoading) return null;
-
-  return (
-    <Card data-testid="card-hotres-config">
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-orange-500/10 p-2.5 shrink-0">
-            <ArrowUpDown className="h-5 w-5 text-orange-500" />
-          </div>
-          <div className="flex-1 min-w-0 space-y-3">
-            <div>
-              <p className="font-medium text-sm">Integracja HotRes</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Konfiguracja synchronizacji cen z systemem HotRes</p>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Eksport cen do HotRes</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {config?.exportEnabled ? "Aktywny — ceny wysyłane do HotRes" : "Wyłączony — zmiany tylko lokalne"}
-                </p>
-              </div>
-              <Switch
-                checked={config?.exportEnabled || false}
-                onCheckedChange={(checked) => updateMutation.mutate({ exportEnabled: checked })}
-                data-testid="switch-hotres-export"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Auto-import z HotRes</p>
-              <div className="flex gap-1 flex-wrap">
-                {[
-                  { value: "disabled", label: "Wyłączony" },
-                  { value: "4h", label: "Co 4h" },
-                  { value: "daily", label: "Codziennie" },
-                  { value: "weekly", label: "Co tydzień" },
-                ].map(opt => (
-                  <Button
-                    key={opt.value}
-                    variant={config?.importFrequency === opt.value ? "default" : "outline"}
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => updateMutation.mutate({ importFrequency: opt.value })}
-                    data-testid={`button-import-freq-${opt.value}`}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {config?.lastAutoImport && (
-              <p className="text-[11px] text-muted-foreground">
-                Ostatni auto-import: {new Date(config.lastAutoImport).toLocaleString("pl-PL")}
-              </p>
-            )}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function ConfigExportImport() {
   const { toast } = useToast();
@@ -930,7 +847,6 @@ export default function Ustawienia() {
         <h2 className="text-sm font-bold tracking-wide text-muted-foreground uppercase" data-testid="section-Konfiguracja">Konfiguracja</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <ConfigExportImport />
-          <HotResConfigCard />
         </div>
       </div>
 
