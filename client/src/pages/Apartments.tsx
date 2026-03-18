@@ -342,10 +342,15 @@ export default function Apartments() {
         <TabsList data-testid="tabs-apartments-main">
           <TabsTrigger value="apartments" data-testid="tab-apartments">Apartamenty</TabsTrigger>
           <TabsTrigger value="cleaning" data-testid="tab-cleaning">Sprzątanie</TabsTrigger>
+          <TabsTrigger value="hotres-mapping" data-testid="tab-hotres-mapping">HotRes Mapowanie</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cleaning">
           <CleaningFeeTab apartments={apartments || []} />
+        </TabsContent>
+
+        <TabsContent value="hotres-mapping">
+          <HotresMappingTab apartments={apartments || []} />
         </TabsContent>
 
         <TabsContent value="apartments">
@@ -591,6 +596,134 @@ export default function Apartments() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function HotresMappingTab({ apartments }: { apartments: Apartment[] }) {
+  const { data: hotresRoomTypes = [], isLoading: loadingTypes } = useQuery<any[]>({ queryKey: ["/api/hotres/room-types"] });
+  const { data: hotresRatePlans = [], isLoading: loadingPlans } = useQuery<any[]>({ queryKey: ["/api/hotres/rate-plans"] });
+  const updateApartment = useUpdateApartment();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [importing, setImporting] = useState(false);
+
+  const mapped = apartments.filter(a => a.hotresTypeId);
+  const unmapped = apartments.filter(a => !a.hotresTypeId);
+
+  const handleMapping = (aptId: number, field: "hotresTypeId" | "hotresRateId", value: string) => {
+    const numVal = value === "none" ? null : Number(value);
+    updateApartment.mutate({ id: aptId, [field]: numVal }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['/api/apartments'] });
+        toast({ title: "Zaktualizowano mapowanie" });
+      },
+    });
+  };
+
+  const handleImportPrices = async () => {
+    const mappedIds = mapped.map(a => a.id);
+    if (mappedIds.length === 0) {
+      toast({ title: "Brak zmapowanych apartamentów", variant: "destructive" });
+      return;
+    }
+    setImporting(true);
+    try {
+      const today = new Date();
+      const from = today.toISOString().split("T")[0];
+      const till = new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const res = await apiRequest("POST", "/api/hotres/import-prices", { from, till, apartmentIds: mappedIds });
+      const data = await res.json();
+      toast({ title: "Import zakończony", description: `Zaimportowano ceny dla ${data.results?.length || 0} apartamentów` });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+    } catch (e: any) {
+      toast({ title: "Błąd importu", description: e.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  if (loadingTypes || loadingPlans) {
+    return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-6 mt-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Mapowanie HotRes</h3>
+          <p className="text-sm text-muted-foreground">
+            Powiąż apartamenty z typami pokoi i planami cenowymi w HotRes, aby umożliwić import/eksport cen.
+          </p>
+        </div>
+        <div className="flex gap-2 items-center">
+          <Badge variant="outline" className="text-green-600">{mapped.length} zmapowanych</Badge>
+          <Badge variant="outline" className="text-orange-600">{unmapped.length} niezmapowanych</Badge>
+          <Button onClick={handleImportPrices} disabled={importing || mapped.length === 0} data-testid="button-import-hotres-prices">
+            {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            Importuj ceny ({mapped.length})
+          </Button>
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="p-3 text-left">Apartament</th>
+                <th className="p-3 text-left">Lokalizacja</th>
+                <th className="p-3 text-left">Nazwa HotRes</th>
+                <th className="p-3 text-left">Typ pokoju (HotRes)</th>
+                <th className="p-3 text-left">Plan cenowy (HotRes)</th>
+                <th className="p-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apartments.map(apt => (
+                <tr key={apt.id} className="border-b hover:bg-muted/30" data-testid={`row-mapping-${apt.id}`}>
+                  <td className="p-3 font-medium">{apt.name}</td>
+                  <td className="p-3 text-muted-foreground text-xs">{apt.location}</td>
+                  <td className="p-3 text-xs">{apt.hotresName || "—"}</td>
+                  <td className="p-3">
+                    <Select value={apt.hotresTypeId ? String(apt.hotresTypeId) : "none"} onValueChange={v => handleMapping(apt.id, "hotresTypeId", v)}>
+                      <SelectTrigger className="w-[220px] h-8 text-xs" data-testid={`select-type-${apt.id}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— Brak —</SelectItem>
+                        {hotresRoomTypes.map((rt: any) => (
+                          <SelectItem key={rt.id} value={String(rt.id)}>{rt.name} ({rt.roomCount})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="p-3">
+                    <Select value={apt.hotresRateId ? String(apt.hotresRateId) : "none"} onValueChange={v => handleMapping(apt.id, "hotresRateId", v)}>
+                      <SelectTrigger className="w-[180px] h-8 text-xs" data-testid={`select-rate-${apt.id}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— Brak —</SelectItem>
+                        {hotresRatePlans.map((rp: any) => (
+                          <SelectItem key={rp.id} value={String(rp.id)}>{rp.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="p-3 text-center">
+                    {apt.hotresTypeId ? (
+                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">Zmapowany</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-orange-600 text-xs">Brak mapowania</Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -1144,6 +1277,8 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
   const { data: ownersList } = useOwners();
   const { data: allContracts = [] } = useQuery<OwnerContract[]>({ queryKey: ["/api/owner-contracts"] });
   const { data: allApartments = [] } = useQuery<Apartment[]>({ queryKey: ['/api/apartments'] });
+  const { data: hotresRoomTypes = [] } = useQuery<any[]>({ queryKey: ["/api/hotres/room-types"] });
+  const { data: hotresRatePlans = [] } = useQuery<any[]>({ queryKey: ["/api/hotres/rate-plans"] });
   const updateApartment = useUpdateApartment();
   const deleteApartment = useDeleteApartment();
   const queryClient = useQueryClient();
@@ -1154,6 +1289,8 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
     defaultValues: {
       name: apartment.name,
       hotresName: apartment.hotresName || "",
+      hotresTypeId: apartment.hotresTypeId || null,
+      hotresRateId: apartment.hotresRateId || null,
       location: apartment.location || "",
       address: apartment.address || "",
       ownerId: apartment.ownerId || null,
@@ -1480,6 +1617,8 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
     const payload = {
       ...data,
       hotresName: data.hotresName?.trim() || null,
+      hotresTypeId: data.hotresTypeId || null,
+      hotresRateId: data.hotresRateId || null,
       leaseStartDate: data.leaseStartDate || null,
       leaseEndDate: data.leaseEndDate || null,
     };
@@ -1785,6 +1924,49 @@ function EditApartmentForm({ apartment, onSuccess }: { apartment: Apartment; onS
           <Label htmlFor="edit-hotresName">Nazwa w HotRes</Label>
           <Input id="edit-hotresName" {...form.register("hotresName")} placeholder="Nazwa apartamentu w systemie HotRes" data-testid="input-edit-apartment-hotres-name" />
           <p className="text-xs text-muted-foreground">Używana do automatycznego parowania rezerwacji importowanych z HotRes.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>Typ pokoju (HotRes)</Label>
+            <Controller
+              control={form.control}
+              name="hotresTypeId"
+              render={({ field }) => (
+                <Select onValueChange={v => field.onChange(v === "none" ? null : Number(v))} value={field.value ? String(field.value) : "none"}>
+                  <SelectTrigger data-testid="select-hotres-type-id">
+                    <SelectValue placeholder="Wybierz typ pokoju" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Brak —</SelectItem>
+                    {hotresRoomTypes.map((rt: any) => (
+                      <SelectItem key={rt.id} value={String(rt.id)}>{rt.name || rt.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Plan cenowy (HotRes)</Label>
+            <Controller
+              control={form.control}
+              name="hotresRateId"
+              render={({ field }) => (
+                <Select onValueChange={v => field.onChange(v === "none" ? null : Number(v))} value={field.value ? String(field.value) : "none"}>
+                  <SelectTrigger data-testid="select-hotres-rate-id">
+                    <SelectValue placeholder="Wybierz plan cenowy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Brak —</SelectItem>
+                    {hotresRatePlans.map((rp: any) => (
+                      <SelectItem key={rp.id} value={String(rp.id)}>{rp.name || rp.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+          <p className="col-span-2 text-xs text-muted-foreground">Powiąż z typem pokoju i planem cenowym w HotRes, aby umożliwić import/eksport cen.</p>
         </div>
         <div className="space-y-2">
           <Label>Lokalizacja</Label>

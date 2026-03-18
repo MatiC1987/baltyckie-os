@@ -14,7 +14,7 @@ import { db } from "./db";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
-import { testConnection, fetchReservations, fetchRoomTypes, fetchRates, fetchPrices, updatePrices, fetchAvailability, updateAvailability } from "./hotres";
+import { testConnection, fetchReservations, fetchRoomTypes, fetchRooms, fetchRates, fetchPrices, updatePrices, fetchAvailability, updateAvailability } from "./hotres";
 import * as gocardless from "./gocardless";
 import { execSync } from "child_process";
 import os from "os";
@@ -6830,8 +6830,17 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
 
   app.get("/api/hotres/room-types", isAuthenticated, async (_req, res) => {
     try {
-      const types = await fetchRoomTypes();
-      res.json(types);
+      const rooms = await fetchRooms();
+      const typeMap = new Map<string, { id: string; name: string; roomCount: number }>();
+      for (const r of rooms) {
+        const tid = r.type_id || r.typeId;
+        if (!tid) continue;
+        if (!typeMap.has(tid)) {
+          typeMap.set(tid, { id: tid, name: r.code || r.name || `Typ ${tid}`, roomCount: 0 });
+        }
+        typeMap.get(tid)!.roomCount++;
+      }
+      res.json(Array.from(typeMap.values()));
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -6840,7 +6849,14 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
   app.get("/api/hotres/rate-plans", isAuthenticated, async (_req, res) => {
     try {
       const rates = await fetchRates();
-      res.json(rates);
+      const mapped = rates.map((r: any) => ({
+        id: r.rate_id || r.id,
+        name: r.title || r.name || `Plan ${r.rate_id || r.id}`,
+        board: r.board,
+        minStay: r.minimum_stay,
+        maxStay: r.maximum_stay,
+      }));
+      res.json(mapped);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
