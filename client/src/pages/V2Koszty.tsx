@@ -11,6 +11,7 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { CostsExpensesContent } from "@/pages/CostsExpenses";
 import { CostsApartmentsContent } from "@/pages/CostsApartments";
+import CostAnalyticsTab from "@/components/costs/CostAnalyticsTab";
 
 const MONTHS_SHORT = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
 const MONTHS_PL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
@@ -161,6 +162,7 @@ export default function V2Koszty() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList data-testid="costs-tabs">
           <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="analityka" data-testid="tab-analytics">Analityka</TabsTrigger>
           <TabsTrigger value="apartamentowe" data-testid="tab-apt-costs">Apartamenty</TabsTrigger>
           <TabsTrigger value="operacyjne" data-testid="tab-op-costs">Operacyjne</TabsTrigger>
         </TabsList>
@@ -208,6 +210,10 @@ export default function V2Koszty() {
             </CardContent>
           </Card>
         </AnimatedTabContent>
+
+        <TabsContent value="analityka">
+          <CostAnalyticsTab year={year} />
+        </TabsContent>
 
         <TabsContent value="apartamentowe" forceMount className="data-[state=inactive]:hidden">
           <CostsApartmentsContent

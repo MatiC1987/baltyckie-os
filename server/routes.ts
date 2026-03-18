@@ -10652,6 +10652,257 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  // ==================== COST ANALYTICS ====================
+  app.get("/api/v2/cost-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+      const prevYear = year - 1;
+
+      const allApartments = await storage.getApartments();
+      const allLocations = await storage.getLocations();
+      const allExpenses = await storage.getExpenses();
+      const allReservations = await storage.getReservations();
+
+      const aptCostDataCurr = await db.select().from(aptCostData).where(eq(aptCostData.year, year));
+      const aptCostDataPrev = await db.select().from(aptCostData).where(eq(aptCostData.year, prevYear));
+      const opCostDataCurr = await db.select().from(opCostData).where(eq(opCostData.year, year));
+      const opCostDataPrev = await db.select().from(opCostData).where(eq(opCostData.year, prevYear));
+
+      const now = new Date();
+      const currentMonth = now.getFullYear() === year ? now.getMonth() : (year < now.getFullYear() ? 12 : 0);
+      const MONTH_NAMES = ["Sty","Lut","Mar","Kwi","Maj","Cze","Lip","Sie","Wrz","Paź","Lis","Gru"];
+
+      // === Aggregate apt costs (realized + forecast) ===
+      const sumAptCosts = (data: typeof aptCostDataCurr, field: "realized" | "prognoza") => {
+        const byCategory: Record<string, number> = {};
+        const byMonth: Record<number, number> = {};
+        const byEntry: Record<string, number> = {};
+        let total = 0;
+        for (const r of data) {
+          const val = Number(r[field] || 0);
+          if (val === 0) continue;
+          total += val;
+          byCategory[r.category] = (byCategory[r.category] || 0) + val;
+          byMonth[r.month] = (byMonth[r.month] || 0) + val;
+          byEntry[r.entryId] = (byEntry[r.entryId] || 0) + val;
+        }
+        return { total, byCategory, byMonth, byEntry };
+      };
+
+      const sumOpCosts = (data: typeof opCostDataCurr, field: "realized" | "prognoza") => {
+        const byCategory: Record<string, number> = {};
+        const byMonth: Record<number, number> = {};
+        let total = 0;
+        for (const r of data) {
+          const val = Number(r[field] || 0);
+          if (val === 0) continue;
+          total += val;
+          byCategory[r.catId] = (byCategory[r.catId] || 0) + val;
+          byMonth[r.month] = (byMonth[r.month] || 0) + val;
+        }
+        return { total, byCategory, byMonth };
+      };
+
+      const aptRealized = sumAptCosts(aptCostDataCurr, "realized");
+      const aptForecast = sumAptCosts(aptCostDataCurr, "prognoza");
+      const opRealized = sumOpCosts(opCostDataCurr, "realized");
+      const opForecast = sumOpCosts(opCostDataCurr, "prognoza");
+
+      const aptRealizedPrev = sumAptCosts(aptCostDataPrev, "realized");
+      const opRealizedPrev = sumOpCosts(opCostDataPrev, "realized");
+
+      const totalRealized = aptRealized.total + opRealized.total;
+      const totalForecast = aptForecast.total + opForecast.total;
+      const totalRealizedPrev = aptRealizedPrev.total + opRealizedPrev.total;
+
+      // === Expenses (legacy) for vendor analysis ===
+      const expensesCurrYear = allExpenses.filter(e => {
+        if (!e.date) return false;
+        return new Date(e.date).getFullYear() === year;
+      });
+      const expensesPrevYear = allExpenses.filter(e => {
+        if (!e.date) return false;
+        return new Date(e.date).getFullYear() === prevYear;
+      });
+
+      // Vendor analysis from expenses
+      const vendorMap: Record<string, { total: number; count: number; categories: Set<string> }> = {};
+      for (const e of expensesCurrYear) {
+        const v = e.vendor || "Brak dostawcy";
+        if (!vendorMap[v]) vendorMap[v] = { total: 0, count: 0, categories: new Set() };
+        vendorMap[v].total += Number(e.amount || 0);
+        vendorMap[v].count++;
+        if (e.category) vendorMap[v].categories.add(e.category);
+      }
+      const topVendors = Object.entries(vendorMap)
+        .map(([name, d]) => ({ name, total: Math.round(d.total * 100) / 100, count: d.count, categories: Array.from(d.categories) }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 15);
+
+      // === Monthly trends (current + previous year) ===
+      const monthlyTrends = [];
+      for (let m = 0; m < 12; m++) {
+        const aptR = aptRealized.byMonth[m] || 0;
+        const opR = opRealized.byMonth[m] || 0;
+        const aptF = aptForecast.byMonth[m] || 0;
+        const opF = opForecast.byMonth[m] || 0;
+        const prevAptR = aptRealizedPrev.byMonth[m] || 0;
+        const prevOpR = opRealizedPrev.byMonth[m] || 0;
+
+        monthlyTrends.push({
+          month: m,
+          monthName: MONTH_NAMES[m],
+          realized: Math.round((aptR + opR) * 100) / 100,
+          forecast: Math.round((aptF + opF) * 100) / 100,
+          aptRealized: Math.round(aptR * 100) / 100,
+          opRealized: Math.round(opR * 100) / 100,
+          prevYearRealized: Math.round((prevAptR + prevOpR) * 100) / 100,
+          deviation: aptF + opF > 0 ? Math.round(((aptR + opR) - (aptF + opF)) / (aptF + opF) * 10000) / 100 : 0,
+        });
+      }
+
+      // === Category breakdown (merge apt + op) ===
+      const allCategories: Record<string, { realized: number; forecast: number; prevRealized: number; type: string }> = {};
+      for (const [cat, val] of Object.entries(aptRealized.byCategory)) {
+        if (!allCategories[cat]) allCategories[cat] = { realized: 0, forecast: 0, prevRealized: 0, type: "apartment" };
+        allCategories[cat].realized += val;
+      }
+      for (const [cat, val] of Object.entries(aptForecast.byCategory)) {
+        if (!allCategories[cat]) allCategories[cat] = { realized: 0, forecast: 0, prevRealized: 0, type: "apartment" };
+        allCategories[cat].forecast += val;
+      }
+      for (const [cat, val] of Object.entries(aptRealizedPrev.byCategory)) {
+        if (!allCategories[cat]) allCategories[cat] = { realized: 0, forecast: 0, prevRealized: 0, type: "apartment" };
+        allCategories[cat].prevRealized += val;
+      }
+      for (const [cat, val] of Object.entries(opRealized.byCategory)) {
+        if (!allCategories[cat]) allCategories[cat] = { realized: 0, forecast: 0, prevRealized: 0, type: "operational" };
+        allCategories[cat].realized += val;
+      }
+      for (const [cat, val] of Object.entries(opForecast.byCategory)) {
+        if (!allCategories[cat]) allCategories[cat] = { realized: 0, forecast: 0, prevRealized: 0, type: "operational" };
+        allCategories[cat].forecast += val;
+      }
+      for (const [cat, val] of Object.entries(opRealizedPrev.byCategory)) {
+        if (!allCategories[cat]) allCategories[cat] = { realized: 0, forecast: 0, prevRealized: 0, type: "operational" };
+        allCategories[cat].prevRealized += val;
+      }
+      const categoryBreakdown = Object.entries(allCategories)
+        .map(([name, d]) => ({
+          name,
+          realized: Math.round(d.realized * 100) / 100,
+          forecast: Math.round(d.forecast * 100) / 100,
+          prevRealized: Math.round(d.prevRealized * 100) / 100,
+          type: d.type,
+          rrChange: d.prevRealized > 0 ? Math.round((d.realized - d.prevRealized) / d.prevRealized * 10000) / 100 : null,
+          budgetUsage: d.forecast > 0 ? Math.round(d.realized / d.forecast * 10000) / 100 : null,
+        }))
+        .filter(c => c.realized > 0 || c.forecast > 0)
+        .sort((a, b) => b.realized - a.realized);
+
+      // === Per-apartment profitability ===
+      const aptRevByApt: Record<number, number> = {};
+      for (const r of allReservations) {
+        if (!r.startDate || r.status === "ANULOWANA") continue;
+        const d = new Date(r.startDate);
+        if (d.getFullYear() !== year) continue;
+        const price = Number(r.price) || 0;
+        const aptIds = r.apartmentIds && r.apartmentIds.length > 0
+          ? r.apartmentIds : (r.apartmentId ? [r.apartmentId] : []);
+        for (const aptId of aptIds) {
+          if (!aptId) continue;
+          aptRevByApt[aptId] = (aptRevByApt[aptId] || 0) + (aptIds.length > 0 ? price / aptIds.length : price);
+        }
+      }
+
+      const apartmentProfitability = allApartments.map(apt => {
+        const entryId = `apt-${apt.id}`;
+        const costs = aptRealized.byEntry[entryId] || 0;
+        const revenue = aptRevByApt[apt.id] || 0;
+        const profit = revenue - costs;
+        const margin = revenue > 0 ? Math.round(profit / revenue * 10000) / 100 : 0;
+        return {
+          id: apt.id,
+          name: apt.name,
+          location: apt.location || "",
+          revenue: Math.round(revenue * 100) / 100,
+          costs: Math.round(costs * 100) / 100,
+          profit: Math.round(profit * 100) / 100,
+          margin,
+        };
+      }).filter(a => a.revenue > 0 || a.costs > 0)
+        .sort((a, b) => b.profit - a.profit);
+
+      // === Per-location margins ===
+      const locationMap: Record<string, { revenue: number; costs: number }> = {};
+      for (const apt of apartmentProfitability) {
+        const loc = apt.location || "Inne";
+        if (!locationMap[loc]) locationMap[loc] = { revenue: 0, costs: 0 };
+        locationMap[loc].revenue += apt.revenue;
+        locationMap[loc].costs += apt.costs;
+      }
+      const locationMargins = Object.entries(locationMap).map(([name, d]) => ({
+        name,
+        revenue: Math.round(d.revenue * 100) / 100,
+        costs: Math.round(d.costs * 100) / 100,
+        profit: Math.round((d.revenue - d.costs) * 100) / 100,
+        margin: d.revenue > 0 ? Math.round((d.revenue - d.costs) / d.revenue * 10000) / 100 : 0,
+      })).sort((a, b) => b.profit - a.profit);
+
+      // === Budget alerts ===
+      const budgetAlerts = categoryBreakdown
+        .filter(c => c.budgetUsage !== null && c.budgetUsage > 90)
+        .map(c => ({
+          category: c.name,
+          budgetUsage: c.budgetUsage!,
+          realized: c.realized,
+          forecast: c.forecast,
+          overspend: Math.round((c.realized - c.forecast) * 100) / 100,
+          severity: c.budgetUsage! > 110 ? "critical" : c.budgetUsage! > 100 ? "warning" : "info",
+        }))
+        .sort((a, b) => b.budgetUsage - a.budgetUsage);
+
+      // === KPI summary ===
+      const aptCount = allApartments.length;
+      const costPerApartment = aptCount > 0 ? Math.round(totalRealized / aptCount * 100) / 100 : 0;
+      const totalRevenue = Object.values(aptRevByApt).reduce((s, v) => s + v, 0);
+      const operatingMargin = totalRevenue > 0 ? Math.round((totalRevenue - totalRealized) / totalRevenue * 10000) / 100 : 0;
+
+      // Fixed vs variable from expenses
+      const fixedTotal = expensesCurrYear.filter(e => e.type === "FIXED").reduce((s, e) => s + Number(e.amount || 0), 0);
+      const variableTotal = expensesCurrYear.filter(e => e.type === "VARIABLE").reduce((s, e) => s + Number(e.amount || 0), 0);
+
+      res.json({
+        year,
+        currentMonth,
+        kpi: {
+          totalRealized: Math.round(totalRealized * 100) / 100,
+          totalForecast: Math.round(totalForecast * 100) / 100,
+          totalRealizedPrevYear: Math.round(totalRealizedPrev * 100) / 100,
+          rrChange: totalRealizedPrev > 0 ? Math.round((totalRealized - totalRealizedPrev) / totalRealizedPrev * 10000) / 100 : null,
+          budgetDeviation: totalForecast > 0 ? Math.round((totalRealized - totalForecast) / totalForecast * 10000) / 100 : 0,
+          costPerApartment,
+          aptCostsTotal: Math.round(aptRealized.total * 100) / 100,
+          opCostsTotal: Math.round(opRealized.total * 100) / 100,
+          fixedCosts: Math.round(fixedTotal * 100) / 100,
+          variableCosts: Math.round(variableTotal * 100) / 100,
+          totalRevenue: Math.round(totalRevenue * 100) / 100,
+          operatingMargin,
+          apartmentCount: aptCount,
+        },
+        monthlyTrends,
+        categoryBreakdown,
+        topVendors,
+        apartmentProfitability,
+        locationMargins,
+        budgetAlerts,
+      });
+    } catch (err: any) {
+      console.error("Cost analytics error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== APT COST DATA ====================
   app.get('/api/apt-cost-data', isAuthenticated, async (req, res) => {
     try {
