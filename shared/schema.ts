@@ -1810,3 +1810,18 @@ export const competitorRates = pgTable("competitor_rates", {
 
 export const insertCompetitorRateSchema = createInsertSchema(competitorRates).omit({ id: true, createdAt: true });
 export type CompetitorRate = typeof competitorRates.$inferSelect;
+
+export const priceTemplates = pgTable("price_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  config: jsonb("config").notNull(),
+  isPreset: boolean("is_preset").default(false),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPriceTemplateSchema = createInsertSchema(priceTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type PriceTemplate = typeof priceTemplates.$inferSelect;
+export type InsertPriceTemplate = z.infer<typeof insertPriceTemplateSchema>;

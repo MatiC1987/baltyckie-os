@@ -8,7 +8,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries } from "@shared/schema";
-import { dailyPrices, pricingRules, priceChangeHistory, insertDailyPriceSchema, insertPricingRuleSchema, pricingAlerts, aiRecommendations, aiPricingConfig, holidays, competitorProperties, competitorRates, insertCompetitorPropertySchema, insertCompetitorRateSchema } from "@shared/schema";
+import { dailyPrices, pricingRules, priceChangeHistory, insertDailyPriceSchema, insertPricingRuleSchema, pricingAlerts, aiRecommendations, aiPricingConfig, holidays, competitorProperties, competitorRates, insertCompetitorPropertySchema, insertCompetitorRateSchema, priceTemplates, insertPriceTemplateSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -14519,5 +14519,291 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  // ── Price Templates CRUD ──
+  app.get("/api/price-templates", isAuthenticated, async (_req, res) => {
+    try {
+      const templates = await db.select().from(priceTemplates).orderBy(desc(priceTemplates.createdAt));
+      res.json(templates);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Nieznany błąd";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/price-templates", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertPriceTemplateSchema.parse(req.body);
+      const user = (req as Express.Request & { user?: { email?: string } }).user;
+      const [template] = await db.insert(priceTemplates).values({
+        ...data,
+        createdBy: user?.email || "system",
+      }).returning();
+      res.json(template);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Nieznany błąd";
+      res.status(400).json({ message });
+    }
+  });
+
+  const priceTemplateUpdateSchema = z.object({
+    name: z.string().min(1),
+    description: z.string().nullable().optional(),
+    config: z.record(z.unknown()),
+  });
+
+  app.put("/api/price-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, description, config } = priceTemplateUpdateSchema.parse(req.body);
+      const [template] = await db.update(priceTemplates)
+        .set({ name, description, config, updatedAt: new Date() })
+        .where(eq(priceTemplates.id, id))
+        .returning();
+      if (!template) return res.status(404).json({ message: "Szablon nie znaleziony" });
+      res.json(template);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Nieznany błąd";
+      res.status(400).json({ message });
+    }
+  });
+
+  app.delete("/api/price-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await db.delete(priceTemplates).where(eq(priceTemplates.id, id));
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Nieznany błąd";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/price-templates/:id/apply", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { dateFrom, dateTo, apartmentIds, dryRun } = req.body;
+
+      if (!dateFrom || !dateTo || !apartmentIds?.length) {
+        return res.status(400).json({ message: "dateFrom, dateTo, apartmentIds required" });
+      }
+
+      const daysDiff = Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1;
+      if (daysDiff > 366) return res.status(400).json({ message: "Maksymalny zakres to 366 dni" });
+
+      const [template] = await db.select().from(priceTemplates).where(eq(priceTemplates.id, id));
+      if (!template) return res.status(404).json({ message: "Szablon nie znaleziony" });
+
+      interface TemplateDefaultConfig {
+        price?: number;
+        modifier?: number;
+        modifierType?: string;
+        minStay?: number;
+        maxStay?: number;
+        isBlocked?: boolean;
+      }
+      interface TemplateConfigShape {
+        defaultConfig?: TemplateDefaultConfig;
+        apartments?: Record<string, TemplateDefaultConfig>;
+        minStay?: number;
+        maxStay?: number;
+        isBlocked?: boolean;
+      }
+      interface ApplyChangeEntry {
+        apartmentId: number;
+        apartmentName: string;
+        date: string;
+        oldPrice: number | null;
+        newPrice: number | null;
+        minStay: number | null;
+        maxStay: number | null;
+        isBlocked: boolean;
+      }
+
+      const config = template.config as TemplateConfigShape;
+      const changedBy = (req as Express.Request & { user?: { email?: string } }).user?.email || "system";
+      const changes: ApplyChangeEntry[] = [];
+
+      const start = new Date(dateFrom);
+      const end = new Date(dateTo);
+
+      for (const aptId of apartmentIds) {
+        const [apt] = await db.select().from(apartments).where(eq(apartments.id, aptId)).limit(1);
+        const aptName = apt?.name || `#${aptId}`;
+        const minP = apt?.minPrice ? Number(apt.minPrice) : null;
+        const maxP = apt?.maxPrice ? Number(apt.maxPrice) : null;
+
+        const aptConfig: TemplateDefaultConfig = config.apartments?.[String(aptId)] || config.defaultConfig || {};
+        const templatePrice = aptConfig.price !== undefined ? Number(aptConfig.price) : null;
+        const templateModifier = aptConfig.modifier !== undefined ? Number(aptConfig.modifier) : null;
+        const templateModifierType = aptConfig.modifierType || "percentage";
+        const templateMinStay: number | undefined = config.minStay !== undefined ? config.minStay : aptConfig.minStay;
+        const templateMaxStay: number | undefined = config.maxStay !== undefined ? config.maxStay : aptConfig.maxStay;
+        const templateIsBlocked: boolean | undefined = config.isBlocked !== undefined ? config.isBlocked : aptConfig.isBlocked;
+
+        const current = new Date(start);
+        while (current <= end) {
+          const dateStr = current.toISOString().split("T")[0];
+
+          let newPrice: number | null = null;
+
+          if (templatePrice !== null) {
+            newPrice = templatePrice;
+          } else if (templateModifier !== null) {
+            const existingForModifier = await db.select().from(dailyPrices)
+              .where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr)))
+              .limit(1);
+            const basePrice = existingForModifier.length > 0 ? Number(existingForModifier[0].price) : 0;
+            if (templateModifierType === "percentage") {
+              newPrice = Math.round(basePrice * (1 + templateModifier / 100));
+            } else {
+              newPrice = basePrice + templateModifier;
+            }
+          }
+
+          if (newPrice !== null) {
+            if (minP && newPrice < minP) newPrice = minP;
+            if (maxP && newPrice > maxP) newPrice = maxP;
+          }
+
+          const existing = await db.select().from(dailyPrices)
+            .where(and(eq(dailyPrices.apartmentId, aptId), eq(dailyPrices.date, dateStr)))
+            .limit(1);
+          const oldPrice = existing.length > 0 ? Number(existing[0].price) : null;
+
+          changes.push({
+            apartmentId: aptId,
+            apartmentName: aptName,
+            date: dateStr,
+            oldPrice,
+            newPrice,
+            minStay: templateMinStay ?? null,
+            maxStay: templateMaxStay ?? null,
+            isBlocked: templateIsBlocked ?? false,
+          });
+
+          const hasChanges = newPrice !== null || templateMinStay !== undefined || templateMaxStay !== undefined || templateIsBlocked !== undefined;
+          if (!dryRun && hasChanges) {
+            const values: Partial<{
+              apartmentId: number;
+              date: string;
+              price: string;
+              source: string;
+              minStay: number;
+              maxStay: number;
+              isBlocked: boolean;
+              updatedAt: Date;
+            }> = {
+              apartmentId: aptId,
+              date: dateStr,
+              source: "template",
+              updatedAt: new Date(),
+            };
+            if (newPrice !== null) values.price = String(newPrice);
+            if (templateMinStay !== undefined) values.minStay = templateMinStay;
+            if (templateMaxStay !== undefined) values.maxStay = templateMaxStay;
+            if (templateIsBlocked !== undefined) values.isBlocked = templateIsBlocked;
+
+            if (existing.length > 0) {
+              if (!values.price) values.price = existing[0].price ?? undefined;
+              await db.update(dailyPrices).set(values).where(eq(dailyPrices.id, existing[0].id));
+            } else if (newPrice !== null) {
+              await db.insert(dailyPrices).values({ ...values, price: String(newPrice) });
+            }
+
+            if (newPrice !== null) {
+              await db.insert(priceChangeHistory).values({
+                apartmentId: aptId,
+                date: dateStr,
+                oldPrice: oldPrice !== null ? String(oldPrice) : "0",
+                newPrice: String(newPrice),
+                changedBy,
+                reason: `Szablon: ${template.name}`,
+                source: "template",
+              });
+            }
+          }
+
+          current.setDate(current.getDate() + 1);
+        }
+      }
+
+      const totalChanges = changes.filter(c =>
+        (c.newPrice !== null && c.newPrice !== c.oldPrice) ||
+        c.minStay !== null ||
+        c.maxStay !== null ||
+        c.isBlocked === true
+      ).length;
+
+      res.json({
+        dryRun: !!dryRun,
+        templateName: template.name,
+        changes: dryRun ? changes : undefined,
+        applied: !dryRun ? totalChanges : undefined,
+        message: dryRun
+          ? `Podgląd: ${totalChanges} zmian cen dla ${apartmentIds.length} apartamentów`
+          : `Zastosowano szablon "${template.name}": ${totalChanges} zmian`,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Nieznany błąd";
+      res.status(500).json({ message });
+    }
+  });
+
+  // Seed preset templates
+  seedPriceTemplates().catch(console.error);
+
   return httpServer;
+}
+
+async function seedPriceTemplates() {
+  const existing = await db.select().from(priceTemplates).where(eq(priceTemplates.isPreset, true));
+  if (existing.length > 0) return;
+
+  const presets = [
+    {
+      name: "Wakacje letnie",
+      description: "Wyższe ceny w sezonie letnim (VII-VIII). Mnożnik +30%, min. pobyt 3 noce.",
+      config: {
+        defaultConfig: { modifier: 30, modifierType: "percentage" },
+        minStay: 3,
+        isBlocked: false,
+      },
+      isPreset: true,
+    },
+    {
+      name: "Ferie zimowe",
+      description: "Ceny na okres ferii zimowych. Mnożnik +20%, min. pobyt 4 noce.",
+      config: {
+        defaultConfig: { modifier: 20, modifierType: "percentage" },
+        minStay: 4,
+        isBlocked: false,
+      },
+      isPreset: true,
+    },
+    {
+      name: "Długi weekend",
+      description: "Ceny na długie weekendy i święta. Mnożnik +25%, min. pobyt 2 noce.",
+      config: {
+        defaultConfig: { modifier: 25, modifierType: "percentage" },
+        minStay: 2,
+        isBlocked: false,
+      },
+      isPreset: true,
+    },
+    {
+      name: "Poza sezonem",
+      description: "Niższe ceny poza sezonem. Mnożnik -15%, min. pobyt 1 noc.",
+      config: {
+        defaultConfig: { modifier: -15, modifierType: "percentage" },
+        minStay: 1,
+        isBlocked: false,
+      },
+      isPreset: true,
+    },
+  ];
+
+  for (const preset of presets) {
+    await db.insert(priceTemplates).values(preset);
+  }
+  console.log("Price template presets seeded!");
 }

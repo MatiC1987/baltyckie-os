@@ -13,12 +13,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3, BookTemplate } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import PriceTemplatesDialog from "@/components/PriceTemplatesDialog";
 
 type ViewMode = "week" | "month";
 
@@ -76,6 +77,7 @@ export default function PriceCalendar() {
   const [yearlyYear, setYearlyYear] = useState(new Date().getFullYear());
 
   const [showCompetitorOverlay, setShowCompetitorOverlay] = useState(false);
+  const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
 
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkModifier, setBulkModifier] = useState("");
@@ -394,6 +396,7 @@ export default function PriceCalendar() {
       case "auto": return "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300";
       case "hotres": return "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300";
       case "copy": return "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300";
+      case "template": return "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300";
       default: return "bg-muted";
     }
   };
@@ -506,6 +509,16 @@ export default function PriceCalendar() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setTemplatesDialogOpen(true)}
+            data-testid="button-price-templates"
+          >
+            <BookTemplate className="h-4 w-4 mr-1" />
+            Szablony cenowe
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => {
               setCopyDateFrom(dateRange.from);
               setCopyDateTo(dateRange.to);
@@ -547,6 +560,7 @@ export default function PriceCalendar() {
         <Badge variant="outline" className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">Auto</Badge>
         <Badge variant="outline" className="bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300">Hotres</Badge>
         <Badge variant="outline" className="bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300">Kopia</Badge>
+        <Badge variant="outline" className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300">Szablon</Badge>
         <Badge variant="outline" className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">Zablokowana</Badge>
       </div>
 
@@ -1134,6 +1148,14 @@ export default function PriceCalendar() {
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      <PriceTemplatesDialog
+        open={templatesDialogOpen}
+        onOpenChange={setTemplatesDialogOpen}
+        apartments={apartments}
+        dateFrom={dateRange.from}
+        dateTo={dateRange.to}
+      />
     </div>
     </TooltipProvider>
   );
