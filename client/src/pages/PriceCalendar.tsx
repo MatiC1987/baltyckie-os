@@ -13,13 +13,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3, BookTemplate, ChevronDown, ChevronUp } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3, BookTemplate, ChevronDown, ChevronUp, Plus, Trash2, PartyPopper, Star, CheckCircle, XCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import PriceTemplatesDialog from "@/components/PriceTemplatesDialog";
+import { Progress } from "@/components/ui/progress";
 
 interface GapApartment {
   apartmentId: number;
@@ -68,6 +69,32 @@ interface Apartment {
   hotresRateId: number | null;
 }
 
+interface Holiday {
+  id: number;
+  date: string;
+  name: string;
+  type: string;
+  isRecurring: boolean;
+}
+
+interface LocalEvent {
+  id: number;
+  name: string;
+  dateFrom: string;
+  dateTo: string;
+  impact: string;
+  color: string;
+  notes: string | null;
+}
+
+interface ImportLogEntry {
+  apartment: string;
+  apartmentId: number;
+  status: "ok" | "error";
+  daysImported: number;
+  message: string;
+}
+
 export default function PriceCalendar() {
   const { toast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>("month");
@@ -85,6 +112,8 @@ export default function PriceCalendar() {
   const [hotresImportDialogOpen, setHotresImportDialogOpen] = useState(false);
   const [hotresExportDialogOpen, setHotresExportDialogOpen] = useState(false);
   const [hotresPreview, setHotresPreview] = useState<any[]>([]);
+  const [importLog, setImportLog] = useState<ImportLogEntry[]>([]);
+  const [importRateLimit, setImportRateLimit] = useState<{ used: number; remaining: number } | null>(null);
 
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copySourceApt, setCopySourceApt] = useState<number | null>(null);
@@ -109,6 +138,13 @@ export default function PriceCalendar() {
   const [bulkMinStay, setBulkMinStay] = useState("");
   const [bulkIsBlocked, setBulkIsBlocked] = useState(false);
 
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [newEventName, setNewEventName] = useState("");
+  const [newEventDateFrom, setNewEventDateFrom] = useState("");
+  const [newEventDateTo, setNewEventDateTo] = useState("");
+  const [newEventImpact, setNewEventImpact] = useState("medium");
+  const [newEventColor, setNewEventColor] = useState("#3b82f6");
+
   const dateRange = useMemo(() => {
     if (viewMode === "week") {
       const start = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -130,6 +166,24 @@ export default function PriceCalendar() {
     queryFn: async () => {
       const res = await fetch(`/api/daily-prices?from=${dateRange.from}&to=${dateRange.to}`);
       if (!res.ok) throw new Error("Failed to fetch prices");
+      return res.json();
+    },
+  });
+
+  const { data: holidaysData = [] } = useQuery<Holiday[]>({
+    queryKey: ["/api/holidays", dateRange.from, dateRange.to],
+    queryFn: async () => {
+      const res = await fetch(`/api/holidays?from=${dateRange.from}&to=${dateRange.to}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: localEventsData = [] } = useQuery<LocalEvent[]>({
+    queryKey: ["/api/local-events", dateRange.from, dateRange.to],
+    queryFn: async () => {
+      const res = await fetch(`/api/local-events?from=${dateRange.from}&to=${dateRange.to}`);
+      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -224,6 +278,33 @@ export default function PriceCalendar() {
     setPendingScrollTarget({ aptId: apartmentId, date: firstGapDate });
   }, [viewMode]);
 
+  const holidayMap = useMemo(() => {
+    const map = new Map<string, Holiday[]>();
+    holidaysData.forEach(h => {
+      const existing = map.get(h.date) || [];
+      existing.push(h);
+      map.set(h.date, existing);
+    });
+    return map;
+  }, [holidaysData]);
+
+  const eventMap = useMemo(() => {
+    const map = new Map<string, LocalEvent[]>();
+    localEventsData.forEach(ev => {
+      const [sy, sm, sd] = ev.dateFrom.split("-").map(Number);
+      const [ey, em, ed] = ev.dateTo.split("-").map(Number);
+      const start = new Date(sy, sm - 1, sd);
+      const end = new Date(ey, em - 1, ed);
+      for (let d = new Date(start); d <= end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const existing = map.get(dateStr) || [];
+        existing.push(ev);
+        map.set(dateStr, existing);
+      }
+    });
+    return map;
+  }, [localEventsData]);
+
   const copyPricesMutation = useMutation({
     mutationFn: async (data: { sourceApartmentId: number; targetApartmentIds: number[]; dateFrom: string; dateTo: string }) => {
       const res = await apiRequest("POST", "/api/daily-prices/copy", data);
@@ -300,10 +381,11 @@ export default function PriceCalendar() {
   });
 
   const hotresImportMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (apartmentIds: number[] | void) => {
       const res = await apiRequest("POST", "/api/hotres/import-prices", {
         from: dateRange.from,
         till: dateRange.to,
+        apartmentIds: apartmentIds || undefined,
       });
       return res.json();
     },
@@ -311,8 +393,9 @@ export default function PriceCalendar() {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/gaps"] });
+      setImportLog(data.log || []);
+      setImportRateLimit(data.rateLimit || null);
       toast({ title: "Import z HotRes", description: data.message });
-      setHotresImportDialogOpen(false);
     },
     onError: (err: any) => {
       toast({ title: "Błąd importu HotRes", description: err.message, variant: "destructive" });
@@ -347,6 +430,8 @@ export default function PriceCalendar() {
     },
     onSuccess: (data: any) => {
       setHotresPreview(data.preview || []);
+      setImportLog([]);
+      setImportRateLimit(null);
       setHotresImportDialogOpen(true);
       if (data.errors?.length) {
         toast({
@@ -380,6 +465,36 @@ export default function PriceCalendar() {
     },
     onError: (err: any) => {
       toast({ title: "Błąd silnika cenowego", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createEventMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/local-events", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/local-events"] });
+      toast({ title: "Wydarzenie dodane" });
+      setEventDialogOpen(false);
+      setNewEventName("");
+      setNewEventDateFrom("");
+      setNewEventDateTo("");
+      setNewEventImpact("medium");
+      setNewEventColor("#3b82f6");
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/local-events/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/local-events"] });
+      toast({ title: "Wydarzenie usunięte" });
     },
   });
 
@@ -465,6 +580,12 @@ export default function PriceCalendar() {
       case "template": return "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300";
       default: return "bg-muted";
     }
+  };
+
+  const getDayMarkers = (dateStr: string) => {
+    const dayHolidays = holidayMap.get(dateStr) || [];
+    const dayEvents = eventMap.get(dateStr) || [];
+    return { holidays: dayHolidays, events: dayEvents };
   };
 
   return (
@@ -668,6 +789,20 @@ export default function PriceCalendar() {
             Kopiuj ceny
           </Button>
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setNewEventDateFrom(dateRange.from);
+              setNewEventDateTo(dateRange.from);
+              setEventDialogOpen(true);
+            }}
+            data-testid="button-add-event"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Wydarzenie
+          </Button>
+
           {selectedCells.size > 0 && (
             <Button onClick={() => setBulkDialogOpen(true)} variant="outline" data-testid="button-bulk-edit">
               <Pencil className="h-4 w-4 mr-1" />
@@ -692,7 +827,7 @@ export default function PriceCalendar() {
         </Button>
       </div>
 
-      <div className="flex gap-2 text-xs flex-wrap">
+      <div className="flex gap-2 text-xs flex-wrap items-center">
         <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">Ręczna</Badge>
         <Badge variant="outline" className="bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300">Reguła</Badge>
         <Badge variant="outline" className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">Auto</Badge>
@@ -703,7 +838,28 @@ export default function PriceCalendar() {
         <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 border-red-300 dark:border-red-700">
           <AlertTriangle className="h-3 w-3 mr-1" />Brak ceny
         </Badge>
+        <span className="ml-2 text-muted-foreground">|</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Święto</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />Wydarzenie</span>
       </div>
+
+      {(localEventsData.length > 0) && (
+        <div className="flex gap-2 flex-wrap">
+          {localEventsData.map(ev => (
+            <Badge key={ev.id} variant="outline" className="text-xs gap-1" style={{ borderColor: ev.color, color: ev.color }}>
+              <Star className="h-3 w-3" />
+              {ev.name} ({ev.dateFrom} — {ev.dateTo})
+              <button
+                onClick={() => deleteEventMutation.mutate(ev.id)}
+                className="ml-1 hover:text-red-500"
+                data-testid={`button-delete-event-${ev.id}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
@@ -716,15 +872,48 @@ export default function PriceCalendar() {
                   <th className="sticky left-0 bg-card z-10 px-3 py-2 text-left font-medium min-w-[140px]">Apartament</th>
                   {dateRange.days.map(day => {
                     const dayStr = format(day, "yyyy-MM-dd");
+                    const markers = getDayMarkers(dayStr);
+                    const hasHoliday = markers.holidays.length > 0;
+                    const hasEvent = markers.events.length > 0;
                     return (
                       <th
                         key={dayStr}
                         className={cn(
-                          "px-1 py-2 text-center font-medium min-w-[60px]",
+                          "px-1 py-2 text-center font-medium min-w-[60px] relative",
                           isToday(day) && "bg-yellow-100 dark:bg-yellow-900/30",
-                          isWeekend(day) && "bg-muted/50"
+                          isWeekend(day) && "bg-muted/50",
+                          hasHoliday && "bg-red-50/50 dark:bg-red-900/10"
                         )}
                       >
+                        <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                          {hasHoliday && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block cursor-help" data-testid={`marker-holiday-${dayStr}`} />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {markers.holidays.map(h => h.name).join(", ")}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          {hasEvent && markers.events.map((ev, idx) => (
+                            <Tooltip key={ev.id}>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full inline-block cursor-help"
+                                  style={{ backgroundColor: ev.color }}
+                                  data-testid={`marker-event-${dayStr}-${ev.id}`}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div>
+                                  <span className="font-medium">{ev.name}</span>
+                                  <span className="text-xs ml-1">({ev.impact})</span>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          ))}
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           {format(day, "EEE", { locale: pl })}
                         </div>
@@ -1034,52 +1223,130 @@ export default function PriceCalendar() {
               Pobierz ceny z HotRes ({dateRange.from} — {dateRange.to})
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            {hotresPreview.length > 0 ? (
-              <div className="max-h-[300px] overflow-y-auto">
-                <p className="text-sm text-muted-foreground mb-2">
-                  Znaleziono {hotresPreview.length} różnic między cenami lokalnymi a HotRes:
-                </p>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left">
-                      <th className="py-1 px-2">Apartament</th>
-                      <th className="py-1 px-2">Data</th>
-                      <th className="py-1 px-2">Lokalna</th>
-                      <th className="py-1 px-2">HotRes</th>
-                      <th className="py-1 px-2">Różnica</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hotresPreview.slice(0, 50).map((p: any, i: number) => (
-                      <tr key={i} className="border-b text-xs">
-                        <td className="py-1 px-2">{p.apartmentName}</td>
-                        <td className="py-1 px-2">{p.date}</td>
-                        <td className="py-1 px-2">{p.localPrice !== null ? `${p.localPrice} zł` : "—"}</td>
-                        <td className="py-1 px-2 font-medium">{p.hotresPrice} zł</td>
-                        <td className="py-1 px-2">
-                          {p.diff !== null ? (
-                            <span className={p.diff > 0 ? "text-green-600" : "text-red-600"}>
-                              {p.diff > 0 ? "+" : ""}{p.diff.toFixed(0)} zł
-                            </span>
-                          ) : "nowa"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {hotresPreview.length > 50 && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    ...i {hotresPreview.length - 50} więcej zmian
+          <Tabs defaultValue={importLog.length > 0 ? "log" : "preview"}>
+            <TabsList className="w-full">
+              <TabsTrigger value="preview" className="flex-1">Podgląd różnic</TabsTrigger>
+              <TabsTrigger value="log" className="flex-1">
+                Logi importu
+                {importLog.length > 0 && (
+                  <Badge variant="outline" className="ml-1 text-[10px]">{importLog.length}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="preview">
+              <div className="space-y-4">
+                {hotresPreview.length > 0 ? (
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Znaleziono {hotresPreview.length} różnic między cenami lokalnymi a HotRes:
+                    </p>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left">
+                          <th className="py-1 px-2">Apartament</th>
+                          <th className="py-1 px-2">Data</th>
+                          <th className="py-1 px-2">Lokalna</th>
+                          <th className="py-1 px-2">HotRes</th>
+                          <th className="py-1 px-2">Różnica</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {hotresPreview.slice(0, 50).map((p: any, i: number) => (
+                          <tr key={i} className="border-b text-xs">
+                            <td className="py-1 px-2">{p.apartmentName}</td>
+                            <td className="py-1 px-2">{p.date}</td>
+                            <td className="py-1 px-2">{p.localPrice !== null ? `${p.localPrice} zł` : "—"}</td>
+                            <td className="py-1 px-2 font-medium">{p.hotresPrice} zł</td>
+                            <td className="py-1 px-2">
+                              {p.diff !== null ? (
+                                <span className={p.diff > 0 ? "text-green-600" : "text-red-600"}>
+                                  {p.diff > 0 ? "+" : ""}{p.diff.toFixed(0)} zł
+                                </span>
+                              ) : "nowa"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {hotresPreview.length > 50 && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        ...i {hotresPreview.length - 50} więcej zmian
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Brak różnic — ceny lokalne są zgodne z HotRes (lub brak apartamentów z hotresTypeId)
                   </p>
                 )}
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                Brak różnic — ceny lokalne są zgodne z HotRes (lub brak apartamentów z hotresTypeId)
-              </p>
-            )}
-          </div>
+            </TabsContent>
+            <TabsContent value="log">
+              <div className="space-y-3">
+                {hotresImportMutation.isPending && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Importowanie...</span>
+                    </div>
+                    <Progress value={0} className="h-2" />
+                  </div>
+                )}
+
+                {importRateLimit && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded p-2" data-testid="text-rate-limit-info">
+                    <span>Wykorzystano: {importRateLimit.used}/110 zapytań</span>
+                    <span>|</span>
+                    <span>Pozostało: {importRateLimit.remaining}</span>
+                  </div>
+                )}
+
+                {importLog.length > 0 ? (
+                  <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                    {importLog.map((entry, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "flex items-center justify-between text-xs p-2 rounded border",
+                          entry.status === "ok" ? "border-green-200 bg-green-50 dark:bg-green-900/10 dark:border-green-800" : "border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800"
+                        )}
+                        data-testid={`import-log-${entry.apartmentId}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {entry.status === "ok" ? (
+                            <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-red-600" />
+                          )}
+                          <span className="font-medium">{entry.apartment}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">{entry.message}</span>
+                          {entry.status === "error" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 px-2 text-[10px]"
+                              onClick={() => hotresImportMutation.mutate([entry.apartmentId])}
+                              disabled={hotresImportMutation.isPending}
+                              data-testid={`button-retry-${entry.apartmentId}`}
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Ponów
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Kliknij "Importuj ceny" aby zobaczyć logi
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
           <DialogFooter>
             <Button variant="outline" onClick={() => setHotresImportDialogOpen(false)} data-testid="button-hotres-import-cancel">
               Anuluj
@@ -1221,6 +1488,83 @@ export default function PriceCalendar() {
             >
               {copyPricesMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Copy className="h-4 w-4 mr-1" />}
               {copyPricesMutation.isPending ? "Kopiuję..." : `Kopiuj do ${copyTargetApts.size} apt.`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
+        <DialogContent data-testid="dialog-add-event">
+          <DialogHeader>
+            <DialogTitle>
+              <Star className="h-5 w-5 inline mr-2" />
+              Dodaj wydarzenie lokalne
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nazwa wydarzenia</Label>
+              <Input
+                value={newEventName}
+                onChange={e => setNewEventName(e.target.value)}
+                placeholder="np. Festiwal Ustka, Koncert"
+                data-testid="input-event-name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Data od</Label>
+                <Input type="date" value={newEventDateFrom} onChange={e => setNewEventDateFrom(e.target.value)} data-testid="input-event-date-from" />
+              </div>
+              <div>
+                <Label>Data do</Label>
+                <Input type="date" value={newEventDateTo} onChange={e => setNewEventDateTo(e.target.value)} data-testid="input-event-date-to" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Wpływ na ceny</Label>
+                <Select value={newEventImpact} onValueChange={setNewEventImpact}>
+                  <SelectTrigger data-testid="select-event-impact">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="high">Wysoki</SelectItem>
+                    <SelectItem value="medium">Średni</SelectItem>
+                    <SelectItem value="low">Niski</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Kolor</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="color"
+                    value={newEventColor}
+                    onChange={e => setNewEventColor(e.target.value)}
+                    className="w-10 h-9 p-1 cursor-pointer"
+                    data-testid="input-event-color"
+                  />
+                  <span className="text-xs text-muted-foreground">{newEventColor}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEventDialogOpen(false)} data-testid="button-event-cancel">Anuluj</Button>
+            <Button
+              disabled={!newEventName || !newEventDateFrom || !newEventDateTo || createEventMutation.isPending}
+              onClick={() => createEventMutation.mutate({
+                name: newEventName,
+                dateFrom: newEventDateFrom,
+                dateTo: newEventDateTo,
+                impact: newEventImpact,
+                color: newEventColor,
+              })}
+              data-testid="button-event-save"
+            >
+              {createEventMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+              Dodaj
             </Button>
           </DialogFooter>
         </DialogContent>

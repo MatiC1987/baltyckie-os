@@ -48,7 +48,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **PostgreSQL (Neon):** Core relational database.
 *   **xlsx library:** For parsing Excel files.
 *   **date-fns:** Date formatting and manipulation with Polish locale.
-*   **HotRes:** Integration for importing reservation data and managing cleaning fees.
+*   **HotRes:** Integration for importing reservation data, prices (with batching, retry, rate-limit tracking), and managing cleaning fees. Price import supports multiple API response formats (flat array, nested blocks, wrapper objects) with automatic normalization.
 *   **jsPDF + jspdf-autotable:** For generating PDF reports and documents.
 *   **Leaflet + react-leaflet:** Interactive map functionalities for RCP module.
 *   **jsonwebtoken:** JWT-based authentication for Recepcja panel.

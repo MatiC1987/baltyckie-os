@@ -36,10 +36,66 @@ function checkRateLimit() {
     requestCount = 0;
     requestWindowStart = now;
   }
-  if (requestCount >= 115) {
+  if (requestCount >= 110) {
     throw new Error("Zbliżasz się do limitu 120 req/h HotRes API. Poczekaj przed kolejnym żądaniem.");
   }
   requestCount++;
+}
+
+export function getRateLimitInfo() {
+  const now = Date.now();
+  if (now - requestWindowStart > 3600000) {
+    return { used: 0, remaining: 110, resetInMs: 3600000 };
+  }
+  return {
+    used: requestCount,
+    remaining: Math.max(0, 110 - requestCount),
+    resetInMs: 3600000 - (now - requestWindowStart),
+  };
+}
+
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isTransientError(e: any): boolean {
+  const msg = e.message || "";
+  if (msg.includes("429") || msg.includes("Too Many") || msg.includes("rate limit")) return true;
+  if (msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("504")) return true;
+  if (msg.includes("ECONNRESET") || msg.includes("ETIMEDOUT") || msg.includes("ENOTFOUND") || msg.includes("fetch failed")) return true;
+  return false;
+}
+
+function isLocalRateLimitError(e: any): boolean {
+  return (e.message || "").includes("Zbliżasz się do limitu");
+}
+
+async function hotresGetWithRetry(action: string, params?: Record<string, string>, maxRetries = 2): Promise<any> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await hotresGet(action, params);
+    } catch (e: any) {
+      lastError = e;
+      if (isLocalRateLimitError(e)) {
+        throw e;
+      }
+      if (!isTransientError(e)) {
+        throw e;
+      }
+      if (attempt < maxRetries) {
+        const isRateLimit = e.message?.includes("429") || e.message?.includes("Too Many");
+        const backoffMs = isRateLimit
+          ? Math.min(5000 * Math.pow(2, attempt), 60000)
+          : Math.min(1000 * Math.pow(2, attempt), 10000);
+        console.log(`[HotRes] Transient error for ${action}: ${e.message}, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await sleep(backoffMs);
+        continue;
+      }
+      throw lastError;
+    }
+  }
+  throw lastError;
 }
 
 async function hotresGet(action: string, params?: Record<string, string>): Promise<any> {
@@ -100,12 +156,113 @@ export async function fetchRates(): Promise<any[]> {
   return result;
 }
 
+function normalizePriceDate(val: any): string {
+  if (!val) return "";
+  const str = String(val);
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const euMatch = str.match(/^(\d{2})[./-](\d{2})[./-](\d{4})/);
+  if (euMatch) return `${euMatch[3]}-${euMatch[2]}-${euMatch[1]}`;
+  return str;
+}
+
+function normalizePriceResponse(data: any, typeId?: number, rateId?: number): any[] {
+  if (!data) return [];
+
+  if (Array.isArray(data)) {
+    const firstItem = data[0];
+    if (firstItem && firstItem.dates && Array.isArray(firstItem.dates)) {
+      return data.map((block: any) => ({
+        ...block,
+        dates: (block.dates || []).map((d: any) => ({
+          ...d,
+          date: normalizePriceDate(d.date),
+        })),
+      }));
+    }
+
+    if (firstItem && (firstItem.date || firstItem.price || firstItem.baseprice)) {
+      return [{
+        type_id: typeId ? String(typeId) : undefined,
+        rate_id: rateId ? String(rateId) : undefined,
+        dates: data.map((d: any) => ({
+          ...d,
+          date: normalizePriceDate(d.date),
+        })),
+      }];
+    }
+
+    return [];
+  }
+
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    if (data.dates && Array.isArray(data.dates)) {
+      return [{
+        type_id: data.type_id || (typeId ? String(typeId) : undefined),
+        rate_id: data.rate_id || (rateId ? String(rateId) : undefined),
+        dates: data.dates.map((d: any) => ({
+          ...d,
+          date: normalizePriceDate(d.date),
+        })),
+      }];
+    }
+
+    if (data.prices) {
+      return normalizePriceResponse(data.prices, typeId, rateId);
+    }
+
+    if (data.data) {
+      return normalizePriceResponse(data.data, typeId, rateId);
+    }
+  }
+
+  console.warn(`[HotRes] Unknown price response format:`, JSON.stringify(data).substring(0, 500));
+  return [];
+}
+
 export async function fetchPrices(from: string, till: string, typeId?: number, rateId?: number): Promise<any[]> {
   const params: Record<string, string> = { from, till };
   if (typeId) params.type_id = String(typeId);
   if (rateId) params.rate_id = String(rateId);
-  const data = await hotresGet("prices", params);
-  return Array.isArray(data) ? data : [];
+  try {
+    const data = await hotresGetWithRetry("prices", params);
+    const normalized = normalizePriceResponse(data, typeId, rateId);
+    if (normalized.length === 0 && data) {
+      console.warn(`[HotRes] fetchPrices returned empty after normalization. Raw response type: ${typeof data}, isArray: ${Array.isArray(data)}, sample:`, JSON.stringify(data).substring(0, 300));
+    }
+    return normalized;
+  } catch (e: any) {
+    console.error(`[HotRes] fetchPrices failed for typeId=${typeId}, rateId=${rateId}, from=${from}, till=${till}: ${e.message}`);
+    throw e;
+  }
+}
+
+export async function fetchPricesBatched(
+  apartments: Array<{ id: number; name: string; hotresTypeId: number; hotresRateId?: number | null }>,
+  from: string,
+  till: string,
+  onProgress?: (current: number, total: number, aptName: string, status: "ok" | "error", message: string) => void
+): Promise<Map<number, { prices: any[]; error?: string }>> {
+  const results = new Map<number, { prices: any[]; error?: string }>();
+  const DELAY_BETWEEN_REQUESTS_MS = 3200;
+
+  for (let i = 0; i < apartments.length; i++) {
+    const apt = apartments[i];
+    try {
+      const prices = await fetchPrices(from, till, apt.hotresTypeId, apt.hotresRateId || undefined);
+      results.set(apt.id, { prices });
+      onProgress?.(i + 1, apartments.length, apt.name, "ok", `Pobrano ${prices.reduce((s, b) => s + (b.dates?.length || 0), 0)} dni`);
+    } catch (e: any) {
+      results.set(apt.id, { prices: [], error: e.message });
+      onProgress?.(i + 1, apartments.length, apt.name, "error", e.message);
+    }
+
+    if (i < apartments.length - 1) {
+      await sleep(DELAY_BETWEEN_REQUESTS_MS);
+    }
+  }
+
+  return results;
 }
 
 export async function updatePrices(payload: Array<{

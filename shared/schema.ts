@@ -1825,3 +1825,18 @@ export const priceTemplates = pgTable("price_templates", {
 export const insertPriceTemplateSchema = createInsertSchema(priceTemplates).omit({ id: true, createdAt: true, updatedAt: true });
 export type PriceTemplate = typeof priceTemplates.$inferSelect;
 export type InsertPriceTemplate = z.infer<typeof insertPriceTemplateSchema>;
+
+export const localEvents = pgTable("local_events", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  dateFrom: date("date_from").notNull(),
+  dateTo: date("date_to").notNull(),
+  impact: text("impact").default("medium"),
+  color: text("color").default("#3b82f6"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLocalEventSchema = createInsertSchema(localEvents).omit({ id: true, createdAt: true });
+export type LocalEvent = typeof localEvents.$inferSelect;
+export type InsertLocalEvent = z.infer<typeof insertLocalEventSchema>;

@@ -8,13 +8,13 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries } from "@shared/schema";
-import { dailyPrices, pricingRules, priceChangeHistory, insertDailyPriceSchema, insertPricingRuleSchema, pricingAlerts, aiRecommendations, aiPricingConfig, holidays, competitorProperties, competitorRates, insertCompetitorPropertySchema, insertCompetitorRateSchema, priceTemplates, insertPriceTemplateSchema } from "@shared/schema";
+import { dailyPrices, pricingRules, priceChangeHistory, insertDailyPriceSchema, insertPricingRuleSchema, pricingAlerts, aiRecommendations, aiPricingConfig, holidays, competitorProperties, competitorRates, insertCompetitorPropertySchema, insertCompetitorRateSchema, priceTemplates, insertPriceTemplateSchema, localEvents, insertLocalEventSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
-import { testConnection, fetchReservations, fetchRoomTypes, fetchRooms, fetchRates, fetchPrices, updatePrices, fetchAvailability, updateAvailability } from "./hotres";
+import { testConnection, fetchReservations, fetchRoomTypes, fetchRooms, fetchRates, fetchPrices, fetchPricesBatched, getRateLimitInfo, updatePrices, fetchAvailability, updateAvailability } from "./hotres";
 import * as gocardless from "./gocardless";
 import { execSync } from "child_process";
 import os from "os";
@@ -6585,6 +6585,45 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // ==================== LOCAL EVENTS ====================
+
+  app.get("/api/local-events", isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      let conditions: any[] = [];
+      if (from) conditions.push(gte(localEvents.dateTo, String(from)));
+      if (to) conditions.push(lte(localEvents.dateFrom, String(to)));
+      const rows = await db.select().from(localEvents)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(localEvents.dateFrom);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/local-events", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertLocalEventSchema.parse(req.body);
+      const [row] = await db.insert(localEvents).values(parsed).returning();
+      res.json(row);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.put("/api/local-events/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const [row] = await db.update(localEvents).set(req.body).where(eq(localEvents.id, id)).returning();
+      if (!row) return res.status(404).json({ message: "Nie znaleziono wydarzenia" });
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/local-events/:id", isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(localEvents).where(eq(localEvents.id, Number(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // ==================== COMPETITOR MONITORING ====================
 
   app.get("/api/competitors", isAuthenticated, async (req, res) => {
@@ -7137,6 +7176,14 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
     }
   });
 
+  app.get("/api/hotres/rate-limit", isAuthenticated, async (_req, res) => {
+    try {
+      res.json(getRateLimitInfo());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/api/hotres/import-prices", isAuthenticated, async (req, res) => {
     try {
       const { from, till, apartmentIds } = req.body;
@@ -7148,16 +7195,31 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
         : allApartments.filter((a: any) => a.hotresTypeId);
 
       if (targetApartments.length === 0) {
-        return res.json({ success: false, message: "Brak apartamentów z przypisanym hotresTypeId", imported: 0 });
+        return res.json({ success: false, message: "Brak apartamentów z przypisanym hotresTypeId", imported: 0, log: [], rateLimit: getRateLimitInfo() });
       }
 
       let totalImported = 0;
-      const log: string[] = [];
+      const log: Array<{ apartment: string; apartmentId: number; status: "ok" | "error"; daysImported: number; message: string }> = [];
+
+      const batchApts = targetApartments.map((a: any) => ({
+        id: a.id, name: a.name, hotresTypeId: a.hotresTypeId!, hotresRateId: a.hotresRateId,
+      }));
+
+      const batchResults = await fetchPricesBatched(batchApts, from, till);
 
       for (const apt of targetApartments) {
+        const result = batchResults.get(apt.id);
+        if (!result || result.error) {
+          log.push({
+            apartment: apt.name, apartmentId: apt.id, status: "error", daysImported: 0,
+            message: result?.error || "Brak odpowiedzi",
+          });
+          continue;
+        }
+
+        let aptImported = 0;
         try {
-          const priceData = await fetchPrices(from, till, apt.hotresTypeId!, apt.hotresRateId || undefined);
-          for (const typeBlock of priceData) {
+          for (const typeBlock of result.prices) {
             if (!typeBlock.dates || !Array.isArray(typeBlock.dates)) continue;
             for (const dayData of typeBlock.dates) {
               const price = parseFloat(dayData.price || dayData.baseprice || "0");
@@ -7210,27 +7272,36 @@ Podaj rekomendacje tylko dla dat bez rezerwacji i z ceną do optymalizacji (max 
               } else {
                 await db.insert(dailyPrices).values(priceEntry);
               }
+              aptImported++;
               totalImported++;
             }
           }
-          log.push(`${apt.name}: zaimportowano ceny`);
+          log.push({
+            apartment: apt.name, apartmentId: apt.id, status: "ok", daysImported: aptImported,
+            message: `Zaimportowano ${aptImported} dni`,
+          });
         } catch (e: any) {
-          log.push(`${apt.name}: błąd - ${e.message}`);
+          log.push({
+            apartment: apt.name, apartmentId: apt.id, status: "error", daysImported: aptImported,
+            message: e.message,
+          });
         }
       }
 
-      const failedCount = log.filter(l => l.includes("błąd")).length;
+      const failedCount = log.filter(l => l.status === "error").length;
+      const successCount = log.filter(l => l.status === "ok").length;
       res.json({
         success: failedCount === 0,
         partial: failedCount > 0 && totalImported > 0,
         message: failedCount > 0
-          ? `Zaimportowano ${totalImported} cen z HotRes (${failedCount} apartamentów z błędami)`
-          : `Zaimportowano ${totalImported} cen z HotRes`,
+          ? `Zaimportowano ${totalImported} cen z HotRes (${successCount}/${targetApartments.length} apartamentów OK, ${failedCount} z błędami)`
+          : `Zaimportowano ${totalImported} cen z HotRes (${successCount} apartamentów)`,
         imported: totalImported,
         log,
+        rateLimit: getRateLimitInfo(),
       });
     } catch (e: any) {
-      res.status(500).json({ success: false, message: e.message });
+      res.status(500).json({ success: false, message: e.message, rateLimit: getRateLimitInfo() });
     }
   });
 
