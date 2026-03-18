@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -74,6 +75,8 @@ export default function PriceCalendar() {
   const [yearlyApartmentId, setYearlyApartmentId] = useState<number | null>(null);
   const [yearlyYear, setYearlyYear] = useState(new Date().getFullYear());
 
+  const [showCompetitorOverlay, setShowCompetitorOverlay] = useState(false);
+
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkModifier, setBulkModifier] = useState("");
   const [bulkModifierType, setBulkModifierType] = useState("percentage");
@@ -131,6 +134,38 @@ export default function PriceCalendar() {
     enabled: !!yearlyApartmentId && yearlyDialogOpen,
   });
 
+  interface MarketPosition {
+    apartmentId: number;
+    date: string;
+    myPrice: number;
+    competitorAvg: number;
+    diffPct: number;
+    position: "cheaper" | "inline" | "expensive";
+  }
+
+  interface MarketPositionData {
+    positions: MarketPosition[];
+    summary: { cheaper: number; inline: number; expensive: number; avgDiffPct: number };
+  }
+
+  const { data: marketPositionData } = useQuery<MarketPositionData>({
+    queryKey: ["/api/pricing-analytics/market-position", dateRange.from, dateRange.to, locationFilter],
+    queryFn: async () => {
+      const res = await fetch(`/api/pricing-analytics/market-position?from=${dateRange.from}&to=${dateRange.to}&location=${locationFilter}`);
+      if (!res.ok) throw new Error("Failed to fetch market position");
+      return res.json();
+    },
+    enabled: showCompetitorOverlay,
+  });
+
+  const marketPositionMap = useMemo(() => {
+    const map = new Map<string, MarketPosition>();
+    if (marketPositionData?.positions) {
+      marketPositionData.positions.forEach(p => map.set(`${p.apartmentId}-${p.date}`, p));
+    }
+    return map;
+  }, [marketPositionData]);
+
   const copyPricesMutation = useMutation({
     mutationFn: async (data: { sourceApartmentId: number; targetApartmentIds: number[]; dateFrom: string; dateTo: string }) => {
       const res = await apiRequest("POST", "/api/daily-prices/copy", data);
@@ -138,6 +173,7 @@ export default function PriceCalendar() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
       toast({ title: "Ceny skopiowane", description: data.message });
       setCopyDialogOpen(false);
       setCopySourceApt(null);
@@ -172,6 +208,7 @@ export default function PriceCalendar() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
       toast({ title: "Cena zaktualizowana" });
     },
     onError: (err: any) => {
@@ -186,6 +223,7 @@ export default function PriceCalendar() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
       toast({ title: "Ceny zaktualizowane", description: `Zaktualizowano ${data.updated || 0} dni` });
       setBulkDialogOpen(false);
       setSelectedCells(new Set());
@@ -205,6 +243,7 @@ export default function PriceCalendar() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
       toast({ title: "Import z HotRes", description: data.message });
       setHotresImportDialogOpen(false);
     },
@@ -267,6 +306,7 @@ export default function PriceCalendar() {
     onSuccess: (data: any) => {
       if (!data.dryRun) {
         queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
       }
       toast({ title: data.dryRun ? "Podgląd reguł" : "Reguły zastosowane", description: data.message });
     },
@@ -359,6 +399,7 @@ export default function PriceCalendar() {
   };
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="space-y-4" data-testid="price-calendar-page">
       {hotresConfig && !hotresConfig.exportEnabled && (
         <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20" data-testid="alert-export-disabled">
@@ -450,6 +491,16 @@ export default function PriceCalendar() {
           >
             {pricingEngineMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ArrowUpDown className="h-4 w-4 mr-1" />}
             Zastosuj reguły
+          </Button>
+
+          <Button
+            variant={showCompetitorOverlay ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowCompetitorOverlay(prev => !prev)}
+            data-testid="button-toggle-competitor-overlay"
+          >
+            <BarChart3 className="h-4 w-4 mr-1" />
+            {showCompetitorOverlay ? "Ukryj rynek" : "Porównaj z rynkiem"}
           </Button>
 
           <Button
@@ -593,12 +644,39 @@ export default function PriceCalendar() {
                           ) : priceData ? (
                             <div
                               className={cn(
-                                "rounded px-0.5 py-0.5 text-xs font-medium",
+                                "rounded px-0.5 py-0.5 text-xs font-medium relative",
                                 getSourceColor(priceData.source || "manual", priceData.isBlocked || false)
                               )}
                               data-testid={`text-price-${apt.id}-${dayStr}`}
                             >
-                              {Number(priceData.price).toFixed(0)}
+                              <span>{Number(priceData.price).toFixed(0)}</span>
+                              {showCompetitorOverlay && (() => {
+                                const mp = marketPositionMap.get(`${apt.id}-${dayStr}`);
+                                if (!mp) return null;
+                                return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center ml-0.5 cursor-help",
+                                            mp.position === "cheaper" && "text-green-600",
+                                            mp.position === "inline" && "text-yellow-600",
+                                            mp.position === "expensive" && "text-red-600"
+                                          )}
+                                          data-testid={`indicator-market-${apt.id}-${dayStr}`}
+                                        >
+                                          {mp.position === "cheaper" && <TrendingDown className="h-3 w-3" />}
+                                          {mp.position === "inline" && <Minus className="h-3 w-3" />}
+                                          {mp.position === "expensive" && <TrendingUp className="h-3 w-3" />}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="text-xs">
+                                        <div>Śr. konkurencji: <strong>{mp.competitorAvg} zł</strong></div>
+                                        <div>Różnica: <strong className={mp.diffPct > 0 ? "text-red-600" : mp.diffPct < 0 ? "text-green-600" : ""}>{mp.diffPct > 0 ? "+" : ""}{mp.diffPct}%</strong></div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                );
+                              })()}
                             </div>
                           ) : (
                             <div className="text-xs text-muted-foreground/40">—</div>
@@ -631,6 +709,43 @@ export default function PriceCalendar() {
           )}
         </CardContent>
       </Card>
+
+      {showCompetitorOverlay && marketPositionData?.summary && (
+        <Card data-testid="card-market-summary">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center gap-6 flex-wrap text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                Pozycja rynkowa:
+              </div>
+              <div className="flex items-center gap-1.5">
+                <TrendingDown className="h-4 w-4 text-green-600" />
+                <span className="text-green-700 dark:text-green-400 font-medium" data-testid="text-summary-cheaper">{marketPositionData.summary.cheaper}</span>
+                <span className="text-muted-foreground">dni tańsi</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Minus className="h-4 w-4 text-yellow-600" />
+                <span className="text-yellow-700 dark:text-yellow-400 font-medium" data-testid="text-summary-inline">{marketPositionData.summary.inline}</span>
+                <span className="text-muted-foreground">dni w normie</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4 text-red-600" />
+                <span className="text-red-700 dark:text-red-400 font-medium" data-testid="text-summary-expensive">{marketPositionData.summary.expensive}</span>
+                <span className="text-muted-foreground">dni drożsi</span>
+              </div>
+              <div className="flex items-center gap-1.5 border-l pl-4">
+                <span className="text-muted-foreground">Śr. różnica:</span>
+                <span className={cn(
+                  "font-medium",
+                  marketPositionData.summary.avgDiffPct > 0 ? "text-red-600" : marketPositionData.summary.avgDiffPct < 0 ? "text-green-600" : ""
+                )} data-testid="text-summary-avg-diff">
+                  {marketPositionData.summary.avgDiffPct > 0 ? "+" : ""}{marketPositionData.summary.avgDiffPct}%
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
         <DialogContent data-testid="dialog-bulk-edit">
@@ -1020,5 +1135,6 @@ export default function PriceCalendar() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }

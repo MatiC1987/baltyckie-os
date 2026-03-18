@@ -6055,6 +6055,100 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.get("/api/pricing-analytics/market-position", isAuthenticated, async (req, res) => {
+    try {
+      const { from, to, location } = req.query;
+      if (!from || !to) return res.status(400).json({ message: "Wymagane parametry: from, to" });
+      const periodFrom = String(from);
+      const periodTo = String(to);
+
+      const aptConditions: any[] = [eq(apartments.active, true)];
+      if (location && String(location) !== "all") {
+        aptConditions.push(eq(apartments.location, String(location)));
+      }
+      const myApts = await db.select().from(apartments).where(and(...aptConditions));
+      const myAptIds = myApts.map(a => a.id);
+
+      if (myAptIds.length === 0) {
+        return res.json({ positions: [], summary: { cheaper: 0, inline: 0, expensive: 0, avgDiffPct: 0 } });
+      }
+
+      const myPrices = await db.select().from(dailyPrices).where(
+        and(
+          inArray(dailyPrices.apartmentId, myAptIds),
+          gte(dailyPrices.date, periodFrom),
+          lte(dailyPrices.date, periodTo)
+        )
+      );
+
+      let compRatesQuery;
+      if (location && String(location) !== "all") {
+        const locationStr = String(location);
+        const matchingComps = await db.select({ id: competitorProperties.id }).from(competitorProperties)
+          .where(and(eq(competitorProperties.active, true), eq(competitorProperties.location, locationStr)));
+        const compIds = matchingComps.map(c => c.id);
+        compRatesQuery = compIds.length > 0
+          ? await db.select().from(competitorRates).where(
+              and(
+                inArray(competitorRates.competitorId, compIds),
+                gte(competitorRates.date, periodFrom),
+                lte(competitorRates.date, periodTo)
+              )
+            )
+          : [];
+      } else {
+        compRatesQuery = await db.select().from(competitorRates).where(
+          and(gte(competitorRates.date, periodFrom), lte(competitorRates.date, periodTo))
+        );
+      }
+      const compRates = compRatesQuery;
+
+      const compAvgByDate = new Map<string, number>();
+      const compGroups = new Map<string, number[]>();
+      for (const r of compRates) {
+        if (!compGroups.has(r.date)) compGroups.set(r.date, []);
+        compGroups.get(r.date)!.push(Number(r.price));
+      }
+      for (const [date, prices] of compGroups) {
+        compAvgByDate.set(date, Math.round(prices.reduce((a, b) => a + b, 0) / prices.length));
+      }
+
+      const THRESHOLD_PCT = 5;
+      const positions: any[] = [];
+      let cheaper = 0, inline = 0, expensive = 0;
+      const diffs: number[] = [];
+
+      for (const p of myPrices) {
+        const compAvg = compAvgByDate.get(p.date);
+        if (compAvg === undefined) continue;
+        const myPrice = Number(p.price);
+        const diffPct = compAvg > 0 ? Math.round(((myPrice - compAvg) / compAvg) * 100) : 0;
+        let position: string;
+        if (diffPct < -THRESHOLD_PCT) { position = "cheaper"; cheaper++; }
+        else if (diffPct > THRESHOLD_PCT) { position = "expensive"; expensive++; }
+        else { position = "inline"; inline++; }
+        diffs.push(diffPct);
+        positions.push({
+          apartmentId: p.apartmentId,
+          date: p.date,
+          myPrice,
+          competitorAvg: compAvg,
+          diffPct,
+          position,
+        });
+      }
+
+      const avgDiffPct = diffs.length > 0 ? Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length) : 0;
+
+      res.json({
+        positions,
+        summary: { cheaper, inline, expensive, avgDiffPct },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/pricing-analytics/alerts", isAuthenticated, async (req, res) => {
     try {
       const now = new Date();
