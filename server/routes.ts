@@ -5626,6 +5626,68 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.get("/api/daily-prices/gaps", isAuthenticated, async (req, res) => {
+    try {
+      const days = Math.min(Math.max(parseInt(String(req.query.days || "90")), 1), 365);
+      const today = new Date();
+      const formatLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const todayStr = formatLocalDate(today);
+      const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days - 1);
+      const endStr = formatLocalDate(endDate);
+
+      const activeApts = await db.select().from(apartments).where(eq(apartments.active, true)).orderBy(apartments.name);
+      const allPrices = await db.select({
+        apartmentId: dailyPrices.apartmentId,
+        date: dailyPrices.date,
+      }).from(dailyPrices).where(
+        and(
+          gte(dailyPrices.date, todayStr),
+          lte(dailyPrices.date, endStr),
+        )
+      );
+
+      const priceSet = new Set(allPrices.map(p => `${p.apartmentId}-${p.date}`));
+
+      const allDates: string[] = [];
+      const cur = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      while (cur <= endDate) {
+        allDates.push(formatLocalDate(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      const result = activeApts.map(apt => {
+        const gapDays = allDates.filter(d => !priceSet.has(`${apt.id}-${d}`));
+        const totalDays = allDates.length;
+        const totalGaps = gapDays.length;
+        const coveragePercent = totalDays > 0 ? Math.round(((totalDays - totalGaps) / totalDays) * 100) : 0;
+        return {
+          apartmentId: apt.id,
+          apartmentName: apt.name,
+          location: apt.location,
+          totalDays,
+          totalGaps,
+          coveragePercent,
+          gapDays,
+          firstGapDate: gapDays.length > 0 ? gapDays[0] : null,
+        };
+      }).filter(r => r.totalGaps > 0);
+
+      const totalApartmentsWithGaps = result.length;
+      const totalGapsAll = result.reduce((s, r) => s + r.totalGaps, 0);
+
+      res.json({
+        days,
+        dateFrom: todayStr,
+        dateTo: endStr,
+        totalApartmentsWithGaps,
+        totalGapsAll,
+        apartments: result,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/pricing-rules", isAuthenticated, async (req, res) => {
     try {
       const rules = await db.select().from(pricingRules).orderBy(desc(pricingRules.priority));

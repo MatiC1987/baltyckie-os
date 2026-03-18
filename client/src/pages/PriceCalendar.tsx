@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isToday, isWeekend, isSameMonth } from "date-fns";
@@ -13,13 +13,33 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3, BookTemplate } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3, BookTemplate, ChevronDown, ChevronUp } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import PriceTemplatesDialog from "@/components/PriceTemplatesDialog";
+
+interface GapApartment {
+  apartmentId: number;
+  apartmentName: string;
+  location: string;
+  totalDays: number;
+  totalGaps: number;
+  coveragePercent: number;
+  gapDays: string[];
+  firstGapDate: string | null;
+}
+
+interface GapData {
+  days: number;
+  dateFrom: string;
+  dateTo: string;
+  totalApartmentsWithGaps: number;
+  totalGapsAll: number;
+  apartments: GapApartment[];
+}
 
 type ViewMode = "week" | "month";
 
@@ -78,6 +98,10 @@ export default function PriceCalendar() {
 
   const [showCompetitorOverlay, setShowCompetitorOverlay] = useState(false);
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
+
+  const [gapAlertDays, setGapAlertDays] = useState<string>("90");
+  const [gapAlertExpanded, setGapAlertExpanded] = useState(false);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<{ aptId: number; date: string } | null>(null);
 
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkModifier, setBulkModifier] = useState("");
@@ -168,6 +192,38 @@ export default function PriceCalendar() {
     return map;
   }, [marketPositionData]);
 
+  const { data: gapData, isLoading: gapsLoading } = useQuery<GapData>({
+    queryKey: ["/api/daily-prices/gaps", gapAlertDays],
+    queryFn: async () => {
+      const res = await fetch(`/api/daily-prices/gaps?days=${gapAlertDays}`);
+      if (!res.ok) throw new Error("Failed to fetch gaps");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (!pendingScrollTarget || pricesLoading) return;
+    const selector = `[data-testid="cell-price-${pendingScrollTarget.aptId}-${pendingScrollTarget.date}"]`;
+    const el = document.querySelector(selector);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setPendingScrollTarget(null);
+    }
+  }, [pendingScrollTarget, pricesLoading]);
+
+  const navigateToGap = useCallback((apartmentId: number, firstGapDate: string | null) => {
+    if (!firstGapDate) return;
+    const gapDate = new Date(firstGapDate + "T12:00:00");
+    if (viewMode === "month") {
+      setCurrentDate(new Date(gapDate.getFullYear(), gapDate.getMonth(), 1));
+    } else {
+      setCurrentDate(gapDate);
+    }
+    setLocationFilter("all");
+    setGapAlertExpanded(false);
+    setPendingScrollTarget({ aptId: apartmentId, date: firstGapDate });
+  }, [viewMode]);
+
   const copyPricesMutation = useMutation({
     mutationFn: async (data: { sourceApartmentId: number; targetApartmentIds: number[]; dateFrom: string; dateTo: string }) => {
       const res = await apiRequest("POST", "/api/daily-prices/copy", data);
@@ -176,6 +232,7 @@ export default function PriceCalendar() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/gaps"] });
       toast({ title: "Ceny skopiowane", description: data.message });
       setCopyDialogOpen(false);
       setCopySourceApt(null);
@@ -204,6 +261,11 @@ export default function PriceCalendar() {
     return map;
   }, [prices]);
 
+  const todayDateStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
   const updatePriceMutation = useMutation({
     mutationFn: async (data: { apartmentId: number; date: string; price: number; reason?: string }) => {
       return apiRequest("PUT", "/api/daily-prices", data);
@@ -211,6 +273,7 @@ export default function PriceCalendar() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/gaps"] });
       toast({ title: "Cena zaktualizowana" });
     },
     onError: (err: any) => {
@@ -226,6 +289,7 @@ export default function PriceCalendar() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/gaps"] });
       toast({ title: "Ceny zaktualizowane", description: `Zaktualizowano ${data.updated || 0} dni` });
       setBulkDialogOpen(false);
       setSelectedCells(new Set());
@@ -246,6 +310,7 @@ export default function PriceCalendar() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/gaps"] });
       toast({ title: "Import z HotRes", description: data.message });
       setHotresImportDialogOpen(false);
     },
@@ -309,6 +374,7 @@ export default function PriceCalendar() {
       if (!data.dryRun) {
         queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
         queryClient.invalidateQueries({ queryKey: ["/api/pricing-analytics/market-position"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/gaps"] });
       }
       toast({ title: data.dryRun ? "Podgląd reguł" : "Reguły zastosowane", description: data.message });
     },
@@ -411,6 +477,78 @@ export default function PriceCalendar() {
             Eksport cen do HotRes jest <span className="font-semibold">wyłączony</span>. Wszystkie zmiany cen pozostają tylko lokalnie. Włącz eksport w Ustawieniach.
           </AlertDescription>
         </Alert>
+      )}
+
+      {gapsLoading && (
+        <div className="h-12 rounded-lg border border-muted animate-pulse bg-muted/30" />
+      )}
+
+      {!gapsLoading && gapData && gapData.totalApartmentsWithGaps > 0 && (
+        <Card className="border-red-300 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20" data-testid="panel-gap-alerts">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <button
+                className="flex items-center gap-2 text-left flex-1"
+                onClick={() => setGapAlertExpanded(!gapAlertExpanded)}
+                data-testid="button-toggle-gap-alerts"
+              >
+                <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-red-700 dark:text-red-300" data-testid="text-gap-summary">
+                    {gapData.totalApartmentsWithGaps} {gapData.totalApartmentsWithGaps === 1 ? "apartament ma" : gapData.totalApartmentsWithGaps < 5 ? "apartamenty mają" : "apartamentów ma"} luki cenowe
+                  </span>
+                  <Badge variant="outline" className="text-red-600 border-red-300 dark:border-red-700 text-xs" data-testid="badge-gap-count">
+                    {gapData.totalGapsAll} dni bez cen
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    (następne {gapData.days} dni)
+                  </span>
+                </div>
+                {gapAlertExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+              </button>
+              <Select value={gapAlertDays} onValueChange={setGapAlertDays}>
+                <SelectTrigger className="w-[100px] h-8 text-xs ml-2" data-testid="select-gap-days">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 dni</SelectItem>
+                  <SelectItem value="60">60 dni</SelectItem>
+                  <SelectItem value="90">90 dni</SelectItem>
+                  <SelectItem value="180">180 dni</SelectItem>
+                  <SelectItem value="365">365 dni</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {gapAlertExpanded && (
+              <div className="mt-3 space-y-1 max-h-[250px] overflow-y-auto" data-testid="list-gap-details">
+                {gapData.apartments.map(apt => (
+                  <button
+                    key={apt.apartmentId}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm text-left"
+                    onClick={() => navigateToGap(apt.apartmentId, apt.firstGapDate)}
+                    data-testid={`button-gap-apt-${apt.apartmentId}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+                      <span className="font-medium">{apt.apartmentName}</span>
+                      {apt.location && (
+                        <span className="text-xs text-muted-foreground">({apt.location})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive" className="text-xs h-5" data-testid={`badge-gaps-${apt.apartmentId}`}>
+                        {apt.totalGaps} luk
+                      </Badge>
+                      <Badge variant="outline" className="text-xs h-5" data-testid={`badge-coverage-${apt.apartmentId}`}>
+                        {apt.coveragePercent}% pokrycie
+                      </Badge>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -562,6 +700,9 @@ export default function PriceCalendar() {
         <Badge variant="outline" className="bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300">Kopia</Badge>
         <Badge variant="outline" className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300">Szablon</Badge>
         <Badge variant="outline" className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">Zablokowana</Badge>
+        <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 border-red-300 dark:border-red-700">
+          <AlertTriangle className="h-3 w-3 mr-1" />Brak ceny
+        </Badge>
       </div>
 
       <Card>
@@ -692,6 +833,25 @@ export default function PriceCalendar() {
                                 );
                               })()}
                             </div>
+                          ) : !priceData && dayStr >= todayDateStr ? (
+                            <TooltipProvider delayDuration={200}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div
+                                    className="rounded px-0.5 py-0.5 text-xs bg-red-100 dark:bg-red-900/40 text-red-500 dark:text-red-400 flex items-center justify-center gap-0.5"
+                                    style={{
+                                      backgroundImage: "repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(239,68,68,0.15) 3px, rgba(239,68,68,0.15) 5px)",
+                                    }}
+                                    data-testid={`gap-indicator-${apt.id}-${dayStr}`}
+                                  >
+                                    <AlertTriangle className="h-3 w-3" />
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  Brak ceny — ustaw cenę dla tego dnia
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           ) : (
                             <div className="text-xs text-muted-foreground/40">—</div>
                           )}
