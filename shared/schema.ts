@@ -1708,6 +1708,7 @@ export const priceChangeHistory = pgTable("price_change_history", {
   reason: text("reason"),
   source: text("source").default("manual"),
   ruleId: integer("rule_id"),
+  batchId: text("batch_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

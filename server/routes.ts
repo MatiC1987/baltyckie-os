@@ -5483,6 +5483,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const end = new Date(dateTo);
       let updated = 0;
       const changedBy = (req as any).user?.email || "system";
+      const batchId = `bulk_${Date.now()}_${changedBy}`;
 
       for (const aptId of apartmentIds) {
         const apt = await db.select().from(apartments).where(eq(apartments.id, aptId)).limit(1);
@@ -5528,7 +5529,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
           await db.insert(priceChangeHistory).values({
             apartmentId: aptId, date: dateStr, oldPrice: oldPrice || "0", newPrice: String(newPrice),
-            changedBy, reason: reason || "bulk update", source: source || "manual",
+            changedBy, reason: reason || "bulk update", source: source || "manual", batchId,
           });
 
           updated++;
@@ -5970,6 +5971,266 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       if (conditions.length > 0) query = query.where(and(...conditions)) as any;
       const history = await (query as any).orderBy(desc(priceChangeHistory.createdAt)).limit(500);
       res.json(history);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/daily-prices/undo", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, date } = req.body;
+      if (!apartmentId || !date) {
+        return res.status(400).json({ message: "apartmentId and date required" });
+      }
+
+      const lastChange = await db.select().from(priceChangeHistory)
+        .where(and(eq(priceChangeHistory.apartmentId, apartmentId), eq(priceChangeHistory.date, date)))
+        .orderBy(desc(priceChangeHistory.createdAt)).limit(1);
+
+      if (lastChange.length === 0) {
+        return res.status(404).json({ message: "Brak historii zmian dla tej komórki" });
+      }
+
+      const change = lastChange[0];
+      const oldPrice = change.oldPrice;
+      const changedBy = (req as any).user?.email || "system";
+
+      if (!oldPrice || oldPrice === "0") {
+        await db.delete(dailyPrices).where(
+          and(eq(dailyPrices.apartmentId, apartmentId), eq(dailyPrices.date, date))
+        );
+      } else {
+        const existing = await db.select().from(dailyPrices)
+          .where(and(eq(dailyPrices.apartmentId, apartmentId), eq(dailyPrices.date, date))).limit(1);
+        if (existing.length > 0) {
+          await db.update(dailyPrices).set({ price: oldPrice, source: "manual", updatedAt: new Date() })
+            .where(eq(dailyPrices.id, existing[0].id));
+        } else {
+          await db.insert(dailyPrices).values({ apartmentId, date, price: oldPrice, source: "manual", updatedAt: new Date() });
+        }
+      }
+
+      await db.insert(priceChangeHistory).values({
+        apartmentId, date, oldPrice: change.newPrice, newPrice: oldPrice || "0",
+        changedBy, reason: "undo", source: "manual",
+      });
+
+      res.json({ success: true, restoredPrice: oldPrice });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/daily-prices/undo-batch", isAuthenticated, async (req, res) => {
+    try {
+      const { batchId } = req.body;
+
+      let targetBatchId: string;
+      if (batchId) {
+        targetBatchId = batchId;
+      } else {
+        const undoneIds = await db.select({ batchId: priceChangeHistory.batchId })
+          .from(priceChangeHistory)
+          .where(eq(priceChangeHistory.reason, "undo-batch"));
+        const undoneSet = new Set(undoneIds.map(r => r.batchId).filter(Boolean));
+
+        const candidates = await db.select({ batchId: priceChangeHistory.batchId })
+          .from(priceChangeHistory)
+          .where(sql`${priceChangeHistory.batchId} IS NOT NULL AND ${priceChangeHistory.reason} != 'undo-batch' AND ${priceChangeHistory.reason} != 'undo'`)
+          .orderBy(desc(priceChangeHistory.createdAt)).limit(50);
+
+        const found = candidates.find(c => c.batchId && !undoneSet.has(c.batchId));
+        if (!found || !found.batchId) {
+          return res.status(404).json({ message: "Brak edycji zbiorczych do cofnięcia" });
+        }
+        targetBatchId = found.batchId;
+      }
+
+      const changes = await db.select().from(priceChangeHistory)
+        .where(and(eq(priceChangeHistory.batchId, targetBatchId), ne(priceChangeHistory.reason, "undo-batch")));
+
+      if (changes.length === 0) {
+        return res.status(404).json({ message: "Brak zmian do cofnięcia" });
+      }
+
+      const changedBy = (req as any).user?.email || "system";
+      const undoBatchId = `undo_${targetBatchId}`;
+      let reverted = 0;
+
+      for (const change of changes) {
+        const oldPrice = change.oldPrice;
+        if (!oldPrice || oldPrice === "0") {
+          await db.delete(dailyPrices).where(
+            and(eq(dailyPrices.apartmentId, change.apartmentId), eq(dailyPrices.date, change.date))
+          );
+        } else {
+          const existing = await db.select().from(dailyPrices)
+            .where(and(eq(dailyPrices.apartmentId, change.apartmentId), eq(dailyPrices.date, change.date))).limit(1);
+          if (existing.length > 0) {
+            await db.update(dailyPrices).set({ price: oldPrice, source: "manual", updatedAt: new Date() })
+              .where(eq(dailyPrices.id, existing[0].id));
+          } else {
+            await db.insert(dailyPrices).values({
+              apartmentId: change.apartmentId, date: change.date,
+              price: oldPrice, source: "manual", updatedAt: new Date(),
+            });
+          }
+        }
+
+        await db.insert(priceChangeHistory).values({
+          apartmentId: change.apartmentId, date: change.date,
+          oldPrice: change.newPrice, newPrice: oldPrice || "0",
+          changedBy, reason: "undo-batch", source: "manual", batchId: undoBatchId,
+        });
+        reverted++;
+      }
+
+      res.json({ success: true, reverted });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/daily-prices/last-batch", isAuthenticated, async (req, res) => {
+    try {
+      const undoneIds = await db.select({ batchId: priceChangeHistory.batchId })
+        .from(priceChangeHistory)
+        .where(eq(priceChangeHistory.reason, "undo-batch"));
+      const undoneSet = new Set(undoneIds.map(r => r.batchId?.replace("undo_", "")).filter(Boolean));
+
+      const candidates = await db.select({
+        batchId: priceChangeHistory.batchId,
+        reason: priceChangeHistory.reason,
+        changedBy: priceChangeHistory.changedBy,
+        createdAt: priceChangeHistory.createdAt,
+      })
+        .from(priceChangeHistory)
+        .where(sql`${priceChangeHistory.batchId} IS NOT NULL AND ${priceChangeHistory.reason} != 'undo-batch' AND ${priceChangeHistory.reason} != 'undo'`)
+        .orderBy(desc(priceChangeHistory.createdAt)).limit(50);
+
+      const found = candidates.find(c => c.batchId && !undoneSet.has(c.batchId));
+
+      if (!found || !found.batchId) {
+        return res.json({ batchId: null, count: 0 });
+      }
+
+      const batchCount = await db.select({ count: count() })
+        .from(priceChangeHistory)
+        .where(and(eq(priceChangeHistory.batchId, found.batchId), ne(priceChangeHistory.reason, "undo-batch")));
+
+      res.json({
+        batchId: found.batchId,
+        count: batchCount[0]?.count || 0,
+        reason: found.reason,
+        changedBy: found.changedBy,
+        createdAt: found.createdAt,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/pricing-rules/conflicts", isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      if (!from || !to) {
+        return res.status(400).json({ message: "from and to required" });
+      }
+
+      const activeRules = await db.select().from(pricingRules).where(eq(pricingRules.active, true));
+      const allApts = await db.select().from(apartments).where(eq(apartments.active, true));
+
+      const fromDate = new Date(String(from));
+      const toDate = new Date(String(to));
+      const conflicts: Record<string, { date: string; rules: any[] }> = {};
+
+      const current = new Date(fromDate);
+      while (current <= toDate) {
+        const dateStr = current.toISOString().split("T")[0];
+        const dayOfWeek = current.getDay();
+
+        const ruleAptSets: { rule: any; aptIds: Set<number> }[] = [];
+        for (const rule of activeRules) {
+          if (rule.dateFrom && dateStr < rule.dateFrom) continue;
+          if (rule.dateTo && dateStr > rule.dateTo) continue;
+          if (rule.dayOfWeek && rule.dayOfWeek.length > 0 && !rule.dayOfWeek.includes(dayOfWeek)) continue;
+
+          const affectedApts = allApts.filter(apt => {
+            if (rule.locationFilter && apt.location !== rule.locationFilter) return false;
+            if (rule.apartmentIds && rule.apartmentIds.length > 0 && !rule.apartmentIds.includes(apt.id)) return false;
+            return true;
+          });
+
+          if (affectedApts.length > 0) {
+            ruleAptSets.push({
+              rule: {
+                id: rule.id,
+                name: rule.name,
+                type: rule.type,
+                modifier: rule.modifier,
+                modifierType: rule.modifierType,
+                priority: rule.priority,
+                affectedApartments: affectedApts.length,
+              },
+              aptIds: new Set(affectedApts.map(a => a.id)),
+            });
+          }
+        }
+
+        if (ruleAptSets.length > 1) {
+          const overlapping: any[] = [];
+          for (let i = 0; i < ruleAptSets.length; i++) {
+            for (let j = i + 1; j < ruleAptSets.length; j++) {
+              const hasOverlap = [...ruleAptSets[i].aptIds].some(id => ruleAptSets[j].aptIds.has(id));
+              if (hasOverlap) {
+                if (!overlapping.includes(ruleAptSets[i].rule)) overlapping.push(ruleAptSets[i].rule);
+                if (!overlapping.includes(ruleAptSets[j].rule)) overlapping.push(ruleAptSets[j].rule);
+              }
+            }
+          }
+
+          if (overlapping.length > 1) {
+            conflicts[dateStr] = {
+              date: dateStr,
+              rules: overlapping.sort((a, b) => (b.priority || 0) - (a.priority || 0)),
+            };
+          }
+        }
+
+        current.setDate(current.getDate() + 1);
+      }
+
+      res.json({
+        conflicts: Object.values(conflicts),
+        totalConflictDays: Object.keys(conflicts).length,
+        totalRules: activeRules.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/price-history/recent", isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, from, to } = req.query;
+      const conditions: any[] = [sql`${priceChangeHistory.reason} NOT IN ('undo', 'undo-batch')`];
+      if (apartmentId) conditions.push(eq(priceChangeHistory.apartmentId, Number(apartmentId)));
+      if (from) conditions.push(gte(priceChangeHistory.date, String(from)));
+      if (to) conditions.push(lte(priceChangeHistory.date, String(to)));
+
+      const recent = await db.select().from(priceChangeHistory)
+        .where(and(...conditions))
+        .orderBy(desc(priceChangeHistory.createdAt)).limit(500);
+
+      const latestByCell = new Map<string, any>();
+      for (const r of recent) {
+        const key = `${r.apartmentId}-${r.date}`;
+        if (!latestByCell.has(key)) {
+          latestByCell.set(key, r);
+        }
+      }
+
+      res.json(Array.from(latestByCell.values()));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

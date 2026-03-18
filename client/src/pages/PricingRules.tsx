@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths, isWeekend } from "date-fns";
+import { pl } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,8 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Tag, Plus, Pencil, Trash2, Play, Eye, Power, ArrowUpDown } from "lucide-react";
+import { Tag, Plus, Pencil, Trash2, Play, Eye, Power, ArrowUpDown, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PricingRule {
@@ -82,6 +86,8 @@ export default function PricingRules() {
   const [previewRuleId, setPreviewRuleId] = useState<number | null>(null);
   const [previewDateFrom, setPreviewDateFrom] = useState("");
   const [previewDateTo, setPreviewDateTo] = useState("");
+  const [activeTab, setActiveTab] = useState("rules");
+  const [conflictDate, setConflictDate] = useState(new Date());
 
   const { data: rules = [], isLoading } = useQuery<PricingRule[]>({
     queryKey: ["/api/pricing-rules"],
@@ -89,6 +95,26 @@ export default function PricingRules() {
 
   const { data: apartments = [] } = useQuery<Apartment[]>({
     queryKey: ["/api/apartments"],
+  });
+
+  const conflictRange = useMemo(() => {
+    const from = startOfMonth(conflictDate);
+    const to = endOfMonth(addMonths(conflictDate, 2));
+    return { from: format(from, "yyyy-MM-dd"), to: format(to, "yyyy-MM-dd") };
+  }, [conflictDate]);
+
+  const { data: conflictsData, isLoading: conflictsLoading } = useQuery<{
+    conflicts: { date: string; rules: { id: number; name: string; type: string; modifier: string; modifierType: string; priority: number; affectedApartments: number }[] }[];
+    totalConflictDays: number;
+    totalRules: number;
+  }>({
+    queryKey: ["/api/pricing-rules/conflicts", conflictRange.from, conflictRange.to],
+    queryFn: async () => {
+      const res = await fetch(`/api/pricing-rules/conflicts?from=${conflictRange.from}&to=${conflictRange.to}`);
+      if (!res.ok) throw new Error("Failed to fetch conflicts");
+      return res.json();
+    },
+    enabled: activeTab === "conflicts",
   });
 
   const { data: previewData, isFetching: previewLoading } = useQuery<{ changes: any[]; count: number }>({
@@ -230,6 +256,19 @@ export default function PricingRules() {
 
   const locations = [...new Set(apartments.filter(a => a.active).map(a => a.location).filter(Boolean))].sort();
 
+  const conflictMap = useMemo(() => {
+    const map = new Map<string, { date: string; rules: any[] }>();
+    if (conflictsData?.conflicts) {
+      conflictsData.conflicts.forEach(c => map.set(c.date, c));
+    }
+    return map;
+  }, [conflictsData]);
+
+  const conflictMonths = useMemo(() => {
+    const start = startOfMonth(conflictDate);
+    return [start, addMonths(start, 1), addMonths(start, 2)];
+  }, [conflictDate]);
+
   return (
     <div className="space-y-4" data-testid="pricing-rules-page">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -243,6 +282,19 @@ export default function PricingRules() {
         </Button>
       </div>
 
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="rules" data-testid="tab-rules">Reguły</TabsTrigger>
+          <TabsTrigger value="conflicts" data-testid="tab-conflicts">
+            <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+            Mapa konfliktów
+            {conflictsData && conflictsData.totalConflictDays > 0 && (
+              <Badge variant="destructive" className="ml-1.5 h-5 text-[10px]">{conflictsData.totalConflictDays}</Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="rules">
       {isLoading ? (
         <div className="text-center text-muted-foreground py-8">Ładowanie...</div>
       ) : rules.length === 0 ? (
@@ -308,6 +360,125 @@ export default function PricingRules() {
           ))}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="conflicts">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" onClick={() => setConflictDate(d => addMonths(d, -3))} data-testid="button-conflict-prev">
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <span className="font-semibold" data-testid="text-conflict-range">
+                  {format(conflictMonths[0], "LLLL yyyy", { locale: pl })} — {format(conflictMonths[2], "LLLL yyyy", { locale: pl })}
+                </span>
+                <Button variant="ghost" size="icon" onClick={() => setConflictDate(d => addMonths(d, 3))} data-testid="button-conflict-next">
+                  <ChevronRight className="h-5 w-5" />
+                </Button>
+              </div>
+              {conflictsData && (
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <span>Aktywnych reguł: <strong>{conflictsData.totalRules}</strong></span>
+                  <span>Dni z konfliktami: <Badge variant={conflictsData.totalConflictDays > 0 ? "destructive" : "secondary"}>{conflictsData.totalConflictDays}</Badge></span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 text-xs flex-wrap">
+              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-200 dark:bg-green-900/40 border border-green-400" /> 0-1 reguła</div>
+              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-amber-200 dark:bg-amber-900/40 border border-amber-400" /> 2 reguły</div>
+              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-orange-200 dark:bg-orange-900/40 border border-orange-400" /> 3 reguły</div>
+              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-200 dark:bg-red-900/40 border border-red-400" /> 4+ reguły</div>
+            </div>
+
+            {conflictsLoading ? (
+              <div className="text-center text-muted-foreground py-8">Ładowanie mapy konfliktów...</div>
+            ) : (
+              <TooltipProvider delayDuration={200}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {conflictMonths.map((monthStart, mIdx) => {
+                    const monthEnd = endOfMonth(monthStart);
+                    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+                    const firstDayOfWeek = (monthStart.getDay() + 6) % 7;
+
+                    return (
+                      <Card key={mIdx} data-testid={`card-conflict-month-${mIdx}`}>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-sm text-center">
+                            {format(monthStart, "LLLL yyyy", { locale: pl })}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-2">
+                          <div className="grid grid-cols-7 gap-px text-[10px]">
+                            {["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"].map(d => (
+                              <div key={d} className="text-center text-muted-foreground font-medium py-0.5">{d}</div>
+                            ))}
+                            {Array.from({ length: firstDayOfWeek }).map((_, i) => (
+                              <div key={`empty-${i}`} />
+                            ))}
+                            {days.map(day => {
+                              const dateStr = format(day, "yyyy-MM-dd");
+                              const conflict = conflictMap.get(dateStr);
+                              const ruleCount = conflict?.rules.length || 0;
+
+                              let bgColor = "";
+                              if (ruleCount >= 4) bgColor = "bg-red-200 dark:bg-red-900/40 border-red-400";
+                              else if (ruleCount === 3) bgColor = "bg-orange-200 dark:bg-orange-900/40 border-orange-400";
+                              else if (ruleCount === 2) bgColor = "bg-amber-200 dark:bg-amber-900/40 border-amber-400";
+
+                              const cell = (
+                                <div
+                                  className={cn(
+                                    "text-center py-1 rounded text-xs border",
+                                    bgColor || "bg-background border-transparent",
+                                    isWeekend(day) && !bgColor && "bg-muted/40",
+                                    ruleCount >= 2 && "cursor-pointer font-semibold"
+                                  )}
+                                  data-testid={`cell-conflict-${dateStr}`}
+                                >
+                                  {day.getDate()}
+                                </div>
+                              );
+
+                              if (conflict && conflict.rules.length >= 2) {
+                                const winner = conflict.rules[0];
+                                return (
+                                  <Tooltip key={dateStr}>
+                                    <TooltipTrigger asChild>{cell}</TooltipTrigger>
+                                    <TooltipContent className="max-w-xs p-3" side="top" data-testid={`tooltip-conflict-${dateStr}`}>
+                                      <div className="space-y-1.5">
+                                        <p className="font-semibold text-xs">{format(day, "d MMMM yyyy (EEEE)", { locale: pl })}</p>
+                                        <p className="text-[10px] text-muted-foreground">{conflict.rules.length} nakładających się reguł:</p>
+                                        {conflict.rules.map((r, ri) => (
+                                          <div key={r.id} className={cn("text-xs flex items-center gap-1.5 p-1 rounded", ri === 0 && "bg-primary/10 font-medium")}>
+                                            <Badge variant="outline" className="text-[10px] h-4 shrink-0">P:{r.priority}</Badge>
+                                            <span className="truncate">{r.name}</span>
+                                            <span className="text-muted-foreground shrink-0">
+                                              {r.modifierType === "percentage"
+                                                ? `${Number(r.modifier) > 0 ? "+" : ""}${r.modifier}%`
+                                                : `${Number(r.modifier) > 0 ? "+" : ""}${r.modifier} PLN`}
+                                            </span>
+                                            {ri === 0 && <Badge variant="default" className="text-[9px] h-3.5 shrink-0">wygrywa</Badge>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                );
+                              }
+                              return <div key={dateStr}>{cell}</div>;
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </TooltipProvider>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-rule-form">

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3, BookTemplate, ChevronDown, ChevronUp, Plus, Trash2, PartyPopper, Star, CheckCircle, XCircle } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Save, X, Filter, Download, Upload, History, RefreshCw, Loader2, ArrowUpDown, Copy, Eye, AlertTriangle, ShieldOff, TrendingDown, TrendingUp, Minus, BarChart3, BookTemplate, ChevronDown, ChevronUp, Plus, Trash2, PartyPopper, Star, CheckCircle, XCircle, Undo2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -446,6 +446,57 @@ export default function PriceCalendar() {
     },
   });
 
+  const { data: recentChanges = [] } = useQuery<any[]>({
+    queryKey: ["/api/price-history/recent", dateRange.from, dateRange.to],
+    queryFn: async () => {
+      const res = await fetch(`/api/price-history/recent?from=${dateRange.from}&to=${dateRange.to}`);
+      if (!res.ok) throw new Error("Failed to fetch recent changes");
+      return res.json();
+    },
+  });
+
+  const { data: lastBatchInfo } = useQuery<{ batchId: string | null; count: number; reason: string; changedBy: string; createdAt: string }>({
+    queryKey: ["/api/daily-prices/last-batch"],
+  });
+
+  const recentChangeMap = useMemo(() => {
+    const map = new Map<string, any>();
+    recentChanges.forEach(c => map.set(`${c.apartmentId}-${c.date}`, c));
+    return map;
+  }, [recentChanges]);
+
+  const undoMutation = useMutation({
+    mutationFn: async (data: { apartmentId: number; date: string }) => {
+      const res = await apiRequest("POST", "/api/daily-prices/undo", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/price-history/recent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/last-batch"] });
+      toast({ title: "Cofnięto zmianę" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd cofania", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const undoBatchMutation = useMutation({
+    mutationFn: async (data: { batchId?: string }) => {
+      const res = await apiRequest("POST", "/api/daily-prices/undo-batch", data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/price-history/recent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-prices/last-batch"] });
+      toast({ title: "Cofnięto edycję zbiorczą", description: `Przywrócono ${data.reverted} cen` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd cofania", description: err.message, variant: "destructive" });
+    },
+  });
+
   const pricingEngineMutation = useMutation({
     mutationFn: async (dryRun: boolean) => {
       const res = await apiRequest("POST", "/api/pricing-engine/run", {
@@ -803,6 +854,23 @@ export default function PriceCalendar() {
             Wydarzenie
           </Button>
 
+          {lastBatchInfo?.batchId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (confirm(`Cofnąć ostatnią edycję zbiorczą (${lastBatchInfo.count} zmian)?`)) {
+                  undoBatchMutation.mutate({ batchId: lastBatchInfo.batchId });
+                }
+              }}
+              disabled={undoBatchMutation.isPending}
+              data-testid="button-undo-batch"
+            >
+              {undoBatchMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Undo2 className="h-4 w-4 mr-1" />}
+              Cofnij edycję ({lastBatchInfo.count})
+            </Button>
+          )}
+
           {selectedCells.size > 0 && (
             <Button onClick={() => setBulkDialogOpen(true)} variant="outline" data-testid="button-bulk-edit">
               <Pencil className="h-4 w-4 mr-1" />
@@ -955,12 +1023,13 @@ export default function PriceCalendar() {
                       const priceData = priceMap.get(`${apt.id}-${dayStr}`);
                       const isEditing = editingCell?.aptId === apt.id && editingCell?.date === dayStr;
                       const isSelected = selectedCells.has(`${apt.id}-${dayStr}`);
+                      const recentChange = recentChangeMap.get(`${apt.id}-${dayStr}`);
 
                       return (
                         <td
                           key={dayStr}
                           className={cn(
-                            "px-0.5 py-0.5 text-center cursor-pointer border-r border-border/30",
+                            "px-0.5 py-0.5 text-center cursor-pointer border-r border-border/30 relative group/cell",
                             isToday(day) && "bg-yellow-50/50 dark:bg-yellow-900/10",
                             isWeekend(day) && "bg-muted/30",
                             isSelected && "ring-2 ring-primary ring-inset"
@@ -1021,6 +1090,19 @@ export default function PriceCalendar() {
                                     </Tooltip>
                                 );
                               })()}
+                              {recentChange && (
+                                <button
+                                  className="absolute -top-1 -right-1 hidden group-hover/cell:flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white hover:bg-amber-600 z-20"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    undoMutation.mutate({ apartmentId: apt.id, date: dayStr });
+                                  }}
+                                  title={`Cofnij: ${Number(recentChange.oldPrice).toFixed(0)} → ${Number(recentChange.newPrice).toFixed(0)}`}
+                                  data-testid={`button-undo-${apt.id}-${dayStr}`}
+                                >
+                                  <Undo2 className="h-2.5 w-2.5" />
+                                </button>
+                              )}
                             </div>
                           ) : !priceData && dayStr >= todayDateStr ? (
                             <TooltipProvider delayDuration={200}>
