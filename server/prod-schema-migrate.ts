@@ -1,6 +1,5 @@
 import { pool } from "./db";
-import * as fs from "fs";
-import * as path from "path";
+import saldoSyncData from "./saldo-sync-data.json";
 
 const SCHEMA_MIGRATIONS = [
   {
@@ -15,15 +14,14 @@ const SCHEMA_MIGRATIONS = [
 ];
 
 async function syncSaldoData() {
-  const dataPath = path.join(__dirname, "saldo-sync-data.json");
-  if (!fs.existsSync(dataPath)) {
-    console.log("[saldo-sync] No sync data file found, skipping");
+  const devData = saldoSyncData as any;
+  if (!devData?.saldo_entries?.length) {
+    console.log("[saldo-sync] No sync data available, skipping");
     return;
   }
 
   const { rows: existing } = await pool.query("SELECT COUNT(*)::int as cnt FROM saldo_entries");
-  const devData = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
-  const devCount = devData.saldo_entries?.length || 0;
+  const devCount = devData.saldo_entries.length;
 
   if (existing[0].cnt >= devCount) {
     console.log(`[saldo-sync] Production has ${existing[0].cnt} entries (dev has ${devCount}), skipping`);
