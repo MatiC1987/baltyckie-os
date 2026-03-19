@@ -115,11 +115,12 @@ export function registerRecepcjaRoutes(app: Express) {
 
   app.post('/api/recepcja/saldo', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const data = { ...req.body, personName: RECEPCJA_PERSON, createdBy: req.recepcjaUser.name };
+      const parsed = insertSaldoEntrySchema.parse(req.body);
+      const data = { ...parsed, personName: RECEPCJA_PERSON, createdBy: req.recepcjaUser.name };
       const entry = await storage.createSaldoEntry(data);
       await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'saldo_entry', entry.id.toString(), data);
       res.json(entry);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
   });
 
   app.put('/api/recepcja/saldo/:id', isRecepcjaAuth as any, async (req: any, res) => {
@@ -127,11 +128,11 @@ export function registerRecepcjaRoutes(app: Express) {
       const id = Number(req.params.id);
       const [existing] = await db.select().from(saldoEntries).where(eq(saldoEntries.id, id));
       if (!existing || existing.personName !== RECEPCJA_PERSON) return res.status(403).json({ message: 'Brak dostępu' });
-      const { createdBy: _cb, ...updateData } = req.body;
-      const entry = await storage.updateSaldoEntry(id, updateData);
-      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_entry', id.toString(), updateData);
+      const parsed = insertSaldoEntrySchema.partial().parse(req.body);
+      const entry = await storage.updateSaldoEntry(id, parsed);
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_entry', id.toString(), parsed);
       res.json(entry);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
   });
 
   app.delete('/api/recepcja/saldo/:id', isRecepcjaAuth as any, async (req: any, res) => {
