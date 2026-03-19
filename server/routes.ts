@@ -3704,7 +3704,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     try {
       const parsed = insertSaldoEntrySchema.parse(req.body);
       const user = req.user;
-      const createdBy = user?.username || user?.firstName || "Nieznany";
+      const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+      const createdBy = fullName || user?.username || "Nieznany";
       const entry = await storage.createSaldoEntry({ ...parsed, createdBy });
       res.status(201).json(entry);
     } catch (err: any) {
@@ -3820,7 +3821,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           cardAmount: cardAmt !== null ? cardAmt.toFixed(2) : null,
           notes: row[12]?.toString().trim() || null,
           personName: req.query?.personName as string || null,
-          createdBy: req.user?.username || req.user?.firstName || "Import",
+          createdBy: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(" ") || req.user?.username || "Import",
         });
       }
 

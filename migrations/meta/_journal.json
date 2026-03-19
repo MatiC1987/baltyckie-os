@@ -8,6 +8,13 @@
       "when": 1773917909171,
       "tag": "0000_same_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773917910000,
+      "tag": "0001_add_saldo_created_by",
+      "breakpoints": true
     }
   ]
 }
