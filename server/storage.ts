@@ -197,8 +197,9 @@ export interface IStorage {
   // Saldo
   getSaldoEntries(filters?: { startDate?: string; endDate?: string; personName?: string }): Promise<SaldoEntry[]>;
   getSaldoCategories(personName?: string): Promise<string[]>;
-  createSaldoCategory(name: string, personName?: string): Promise<void>;
-  updateSaldoCategory(oldName: string, newName: string, personName?: string): Promise<void>;
+  getSaldoCategoriesWithType(personName?: string): Promise<{ name: string; type: string }[]>;
+  createSaldoCategory(name: string, personName?: string, type?: string): Promise<void>;
+  updateSaldoCategory(oldName: string, newName: string, personName?: string, type?: string): Promise<void>;
   deleteSaldoCategory(name: string, personName?: string): Promise<void>;
   createSaldoEntry(entry: InsertSaldoEntryWithCreatedBy): Promise<SaldoEntry>;
   createSaldoEntriesBulk(entries: InsertSaldoEntryWithCreatedBy[]): Promise<SaldoEntry[]>;
@@ -1019,11 +1020,22 @@ export class DatabaseStorage implements IStorage {
     return [...all].sort((a, b) => a.localeCompare(b, "pl"));
   }
 
-  async createSaldoCategory(name: string, personName?: string): Promise<void> {
-    await db.insert(saldoCategories).values({ name, personName: personName || null });
+  async getSaldoCategoriesWithType(personName?: string): Promise<{ name: string; type: string }[]> {
+    const conditions: any[] = [];
+    if (personName) {
+      conditions.push(eq(saldoCategories.personName, personName));
+    }
+    const rows = conditions.length > 0
+      ? await db.select({ name: saldoCategories.name, type: saldoCategories.type }).from(saldoCategories).where(and(...conditions))
+      : await db.select({ name: saldoCategories.name, type: saldoCategories.type }).from(saldoCategories);
+    return rows.map(r => ({ name: r.name, type: r.type || 'KOSZT' }));
   }
 
-  async updateSaldoCategory(oldName: string, newName: string, personName?: string): Promise<void> {
+  async createSaldoCategory(name: string, personName?: string, type?: string): Promise<void> {
+    await db.insert(saldoCategories).values({ name, personName: personName || null, type: type || 'KOSZT' });
+  }
+
+  async updateSaldoCategory(oldName: string, newName: string, personName?: string, type?: string): Promise<void> {
     const entryConditions: any[] = [eq(saldoEntries.category, oldName)];
     if (personName) entryConditions.push(eq(saldoEntries.personName, personName));
     await db.update(saldoEntries).set({ category: newName }).where(and(...entryConditions));
@@ -1032,7 +1044,9 @@ export class DatabaseStorage implements IStorage {
     if (personName) catConditions.push(eq(saldoCategories.personName, personName));
     const existing = await db.select().from(saldoCategories).where(and(...catConditions));
     if (existing.length > 0) {
-      await db.update(saldoCategories).set({ name: newName }).where(and(...catConditions));
+      const updateData: any = { name: newName };
+      if (type === 'PRZYCHOD' || type === 'KOSZT') updateData.type = type;
+      await db.update(saldoCategories).set(updateData).where(and(...catConditions));
     }
   }
 

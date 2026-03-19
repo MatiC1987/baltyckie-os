@@ -18,6 +18,13 @@ function formatNum(v: string | null | undefined): string {
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatDate(d: string) {
+  if (!d) return "";
+  const parts = d.split("-");
+  if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  return d;
+}
+
 type SortField = "date" | "operationName" | "category" | "cashAmount" | "cardAmount";
 type SortDir = "asc" | "desc";
 
@@ -26,6 +33,7 @@ export default function RecepcjaSaldo() {
   const [showAdd, setShowAdd] = useState(false);
   const [editEntry, setEditEntry] = useState<any>(null);
   const [newCatName, setNewCatName] = useState("");
+  const [newCatType, setNewCatType] = useState<"PRZYCHOD" | "KOSZT">("KOSZT");
   const [editingCat, setEditingCat] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
@@ -55,7 +63,14 @@ export default function RecepcjaSaldo() {
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/saldo/categories"); return r.json(); },
   });
 
-  const categories = useMemo(() => categoriesRaw.map((c: any) => typeof c === "string" ? c : c.name), [categoriesRaw]);
+  const categoriesWithType = useMemo(() => categoriesRaw.map((c: any) => ({
+    name: typeof c === "string" ? c : c.name,
+    type: typeof c === "string" ? "KOSZT" : (c.type || "KOSZT"),
+  })), [categoriesRaw]);
+
+  const incomeCategories = useMemo(() => categoriesWithType.filter(c => c.type === 'PRZYCHOD').map(c => c.name), [categoriesWithType]);
+  const costCategories = useMemo(() => categoriesWithType.filter(c => c.type === 'KOSZT').map(c => c.name), [categoriesWithType]);
+  const categories = useMemo(() => categoriesWithType.map(c => c.name), [categoriesWithType]);
 
   const usedCategories = useMemo(() => {
     const cats = new Set<string>();
@@ -63,8 +78,30 @@ export default function RecepcjaSaldo() {
     return [...cats].sort();
   }, [entries]);
 
-  const currentBalance = (Number(initialBalance?.initialBalance || 0) +
-    entries.reduce((sum: number, e: any) => sum + Number(e.cashAmount || 0), 0)).toFixed(2);
+  const ib = Number(initialBalance?.initialBalance || 0);
+
+  const runningSaldoMap = useMemo(() => {
+    const map = new Map<number, number>();
+    const chronological = [...entries].sort((a: any, b: any) => {
+      const dateCmp = (a.date || "").localeCompare(b.date || "");
+      return dateCmp !== 0 ? dateCmp : a.id - b.id;
+    });
+    let running = ib;
+    for (const e of chronological) {
+      if (e.cashAmount) running += parseFloat(e.cashAmount);
+      map.set(e.id, running);
+    }
+    return map;
+  }, [entries, ib]);
+
+  const currentBalance = useMemo(() => {
+    if (entries.length === 0) return ib;
+    const chronological = [...entries].sort((a: any, b: any) => {
+      const dateCmp = (a.date || "").localeCompare(b.date || "");
+      return dateCmp !== 0 ? dateCmp : a.id - b.id;
+    });
+    return runningSaldoMap.get(chronological[chronological.length - 1].id) || ib;
+  }, [entries, runningSaldoMap, ib]);
 
   const filteredAndSorted = useMemo(() => {
     let result = [...entries];
@@ -174,8 +211,8 @@ export default function RecepcjaSaldo() {
   });
 
   const createCategoryMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const r = await recepcjaFetch("POST", "/api/recepcja/saldo/categories", { name });
+    mutationFn: async ({ name, type }: { name: string; type: string }) => {
+      const r = await recepcjaFetch("POST", "/api/recepcja/saldo/categories", { name, type });
       if (!r.ok) throw new Error((await r.json()).message);
       return r.json();
     },
@@ -236,7 +273,7 @@ export default function RecepcjaSaldo() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Wallet className="h-6 w-6 text-primary" />
@@ -276,8 +313,8 @@ export default function RecepcjaSaldo() {
             </Card>
             <Card className="p-4">
               <div className="text-sm text-muted-foreground">Saldo bieżące</div>
-              <div className={`text-xl font-bold ${Number(currentBalance) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatNum(currentBalance)} PLN
+              <div className={`text-xl font-bold ${currentBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatNum(currentBalance.toFixed(2))} PLN
               </div>
             </Card>
           </div>
@@ -362,64 +399,89 @@ export default function RecepcjaSaldo() {
                   Wyświetlono {filteredAndSorted.length} z {entries.length} wpisów
                 </div>
               )}
-              <Card className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="p-2 text-left cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("date")} data-testid="th-sort-date">
+              <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
+                <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1400px" }}>
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-muted/80 dark:bg-muted/50">
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 w-[90px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("date")} data-testid="th-sort-date">
                         <div className="flex items-center">Data<SortIcon field="date" /></div>
                       </th>
-                      <th className="p-2 text-left cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("operationName")} data-testid="th-sort-operation">
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[200px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("operationName")} data-testid="th-sort-operation">
                         <div className="flex items-center">Operacja<SortIcon field="operationName" /></div>
                       </th>
-                      <th className="p-2 text-left cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("category")} data-testid="th-sort-category">
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[80px] text-left" data-testid="th-resnum">Nr rez.</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[180px] text-left" data-testid="th-guestname">Imię i nazwisko</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[130px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("category")} data-testid="th-sort-category">
                         <div className="flex items-center">Kategoria<SortIcon field="category" /></div>
                       </th>
-                      <th className="p-2 text-right cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("cashAmount")} data-testid="th-sort-cash">
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[90px] text-left" data-testid="th-payment">Płatność</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[100px] text-right cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("cashAmount")} data-testid="th-sort-cash">
                         <div className="flex items-center justify-end">Gotówka<SortIcon field="cashAmount" /></div>
                       </th>
-                      <th className="p-2 text-right cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("cardAmount")} data-testid="th-sort-card">
+                      <th className="border-b border-border border-r-2 px-2 py-2 font-bold select-none w-[100px] text-right cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("cardAmount")} data-testid="th-sort-card">
                         <div className="flex items-center justify-end">Karta<SortIcon field="cardAmount" /></div>
                       </th>
-                      <th className="p-2 text-left">Wprowadził</th>
-                      <th className="p-2 text-center w-20">Akcje</th>
+                      <th className="border-b border-border border-r-2 px-2 py-2 font-bold select-none w-[100px] text-right" data-testid="th-saldo">Saldo</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[50px] text-center" data-testid="th-kf">KF</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[50px] text-center" data-testid="th-fv">FV</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[80px] text-left" data-testid="th-auth">Kod aut.</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none text-left" data-testid="th-notes">Uwagi</th>
+                      <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[100px] text-left" data-testid="th-createdby">Wprowadził</th>
+                      <th className="border-b border-border px-2 py-2 text-center font-bold w-[65px]">Akcje</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAndSorted.map((e: any) => (
-                      <tr key={e.id} className="border-b hover:bg-muted/30" data-testid={`row-saldo-${e.id}`}>
-                        <td className="p-2 whitespace-nowrap">{e.date}</td>
-                        <td className="p-2">{e.operationName}</td>
-                        <td className="p-2">
-                          <span className={`${e.category || e.type ? '' : 'text-muted-foreground'}`}>
-                            {e.category || e.type || '-'}
-                          </span>
-                        </td>
-                        <td className={`p-2 text-right ${Number(e.cashAmount) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatNum(e.cashAmount)}
-                        </td>
-                        <td className="p-2 text-right text-muted-foreground">{formatNum(e.cardAmount)}</td>
-                        <td className="p-2 text-muted-foreground text-xs">{e.createdBy || '-'}</td>
-                        <td className="p-2 text-center">
-                          <div className="flex gap-1 justify-center">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditEntry(e)} data-testid={`button-edit-saldo-${e.id}`}>
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(e.id)} data-testid={`button-delete-saldo-${e.id}`}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredAndSorted.map((e: any, idx: number) => {
+                      const cashVal = e.cashAmount ? parseFloat(e.cashAmount) : null;
+                      const saldoVal = runningSaldoMap.get(e.id);
+                      return (
+                        <tr key={e.id}
+                          className={`group hover:bg-accent/30 ${e.operationName === "SALDO POCZĄTKOWE" ? "bg-blue-50 dark:bg-blue-950/30 font-semibold" : e.entryKind === "KOSZT" || (cashVal !== null && cashVal < 0) ? "bg-red-50 dark:bg-red-950/20" : idx % 2 === 0 ? "" : "bg-muted/20 dark:bg-muted/10"}`}
+                          data-testid={`row-saldo-${e.id}`}
+                        >
+                          <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums">{formatDate(e.date)}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold">{e.operationName}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5">{e.reservationNumber || ""}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5 truncate">{e.guestName || ""}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5 truncate">
+                            <span className={e.category || e.type ? '' : 'text-muted-foreground'}>
+                              {e.category || e.type || '-'}
+                            </span>
+                          </td>
+                          <td className="border-b border-r border-border px-2 py-1.5">{e.paymentMethod || ""}</td>
+                          <td className={`border-b border-r border-border px-2 py-1.5 text-right tabular-nums ${cashVal !== null ? (cashVal >= 0 ? 'text-green-600' : 'text-red-600') : ''}`}>
+                            {formatNum(e.cashAmount)}
+                          </td>
+                          <td className="border-b border-r-2 border-border px-2 py-1.5 text-right tabular-nums text-muted-foreground">{formatNum(e.cardAmount)}</td>
+                          <td className={`border-b border-r-2 border-border px-2 py-1.5 text-right tabular-nums font-semibold ${saldoVal !== undefined ? (saldoVal >= 0 ? 'text-green-600' : 'text-red-600') : ''}`}>
+                            {saldoVal !== undefined ? formatNum(saldoVal.toFixed(2)) : ""}
+                          </td>
+                          <td className="border-b border-r border-border px-2 py-1.5 text-center">{e.kasaFiskalna || ""}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5 text-center">{e.faktura || ""}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5">{e.authCode || ""}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5 truncate max-w-[200px]">{e.notes || ""}</td>
+                          <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground text-xs">{e.createdBy || '-'}</td>
+                          <td className="border-b border-border px-2 py-1.5 text-center">
+                            <div className="flex gap-1 justify-center">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditEntry(e)} data-testid={`button-edit-saldo-${e.id}`}>
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(e.id)} data-testid={`button-delete-saldo-${e.id}`}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {filteredAndSorted.length === 0 && (
-                      <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">
+                      <tr><td colSpan={15} className="p-8 text-center text-muted-foreground">
                         {hasActiveFilters ? "Brak wpisów spełniających kryteria" : "Brak wpisów"}
                       </td></tr>
                     )}
                   </tbody>
                 </table>
-              </Card>
+              </div>
             </>
           )}
         </>
@@ -434,13 +496,29 @@ export default function RecepcjaSaldo() {
                   placeholder="Nazwa nowej kategorii"
                   value={newCatName}
                   onChange={e => setNewCatName(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && newCatName.trim()) createCategoryMutation.mutate(newCatName.trim()); }}
+                  onKeyDown={e => { if (e.key === "Enter" && newCatName.trim()) createCategoryMutation.mutate({ name: newCatName.trim(), type: newCatType }); }}
                   className="max-w-xs"
                   data-testid="input-new-category"
                 />
+                <div className="flex items-center border border-border rounded-md overflow-visible">
+                  <button
+                    className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${newCatType === "PRZYCHOD" ? "bg-green-600 text-white" : "hover:bg-muted"}`}
+                    onClick={() => setNewCatType("PRZYCHOD")}
+                    data-testid="toggle-cat-type-przychod"
+                  >
+                    Przychód
+                  </button>
+                  <button
+                    className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${newCatType === "KOSZT" ? "bg-red-600 text-white" : "hover:bg-muted"}`}
+                    onClick={() => setNewCatType("KOSZT")}
+                    data-testid="toggle-cat-type-koszt"
+                  >
+                    Koszt
+                  </button>
+                </div>
                 <Button
                   size="sm"
-                  onClick={() => { if (newCatName.trim()) createCategoryMutation.mutate(newCatName.trim()); }}
+                  onClick={() => { if (newCatName.trim()) createCategoryMutation.mutate({ name: newCatName.trim(), type: newCatType }); }}
                   disabled={!newCatName.trim() || createCategoryMutation.isPending}
                   data-testid="button-add-category"
                 >
@@ -466,69 +544,65 @@ export default function RecepcjaSaldo() {
                   </Button>
                 )}
               </div>
-              {categories.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">Brak kategorii. Dodaj nową kategorię powyżej.</p>
-              ) : (
-                <div className="space-y-0">
-                  <div className="flex items-center gap-2 py-1.5 px-2 border-b border-border bg-muted/30">
-                    <input
-                      type="checkbox"
-                      checked={selectedCats.size === categories.length && categories.length > 0}
-                      onChange={e => {
-                        if (e.target.checked) setSelectedCats(new Set(categories));
-                        else setSelectedCats(new Set());
-                      }}
-                      className="h-4 w-4 rounded border-border"
-                      data-testid="checkbox-select-all-cats"
-                    />
-                    <span className="text-xs text-muted-foreground font-medium">Zaznacz wszystkie ({categories.length})</span>
-                  </div>
-                  {categories.map((cat: string) => (
-                    <div key={cat} className={`flex items-center gap-2 py-1.5 px-2 border-b border-border last:border-b-0 ${selectedCats.has(cat) ? "bg-accent/20" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={selectedCats.has(cat)}
-                        onChange={e => {
-                          const next = new Set(selectedCats);
-                          if (e.target.checked) next.add(cat);
-                          else next.delete(cat);
-                          setSelectedCats(next);
-                        }}
-                        className="h-4 w-4 rounded border-border"
-                        data-testid={`checkbox-cat-${cat}`}
-                      />
-                      {editingCat === cat ? (
-                        <>
-                          <Input
-                            className="flex-1"
-                            value={editingCatName}
-                            onChange={e => setEditingCatName(e.target.value)}
-                            autoFocus
-                            onKeyDown={e => { if (e.key === "Enter" && editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }}
-                            data-testid={`input-rename-cat-${cat}`}
-                          />
-                          <Button size="sm" variant="outline" onClick={() => { if (editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }} disabled={!editingCatName.trim() || renameCategoryMutation.isPending} data-testid={`button-save-cat-${cat}`}>
-                            <Check className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setEditingCat(null)} data-testid={`button-cancel-cat-${cat}`}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="flex-1 text-sm font-medium" data-testid={`text-cat-${cat}`}>{cat}</span>
-                          <Button size="sm" variant="ghost" onClick={() => { setEditingCat(cat); setEditingCatName(cat); }} data-testid={`button-edit-cat-${cat}`}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"?`)) deleteCategoryMutation.mutate(cat); }} data-testid={`button-delete-cat-${cat}`}>
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </>
-                      )}
+              {[{ label: "Kategorie przychodów", type: "PRZYCHOD" as const, color: "text-green-600" }, { label: "Kategorie kosztów", type: "KOSZT" as const, color: "text-red-600" }].map(section => {
+                const sectionCats = categoriesWithType.filter(c => c.type === section.type).map(c => c.name);
+                return (
+                  <div key={section.type} className="space-y-0">
+                    <div className="flex items-center gap-2 py-2 px-2 bg-muted/30 border-b border-border">
+                      <span className={`text-xs font-bold uppercase tracking-wider ${section.color}`}>{section.label}</span>
+                      <span className="text-xs text-muted-foreground">({sectionCats.length})</span>
                     </div>
-                  ))}
-                </div>
-              )}
+                    {sectionCats.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-3 px-2 border-b border-border">Brak kategorii tego typu.</p>
+                    ) : (
+                      sectionCats.map(cat => (
+                        <div key={cat} className={`flex items-center gap-2 py-1.5 px-2 border-b border-border last:border-b-0 ${selectedCats.has(cat) ? "bg-accent/20" : ""}`}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCats.has(cat)}
+                            onChange={e => {
+                              const next = new Set(selectedCats);
+                              if (e.target.checked) next.add(cat);
+                              else next.delete(cat);
+                              setSelectedCats(next);
+                            }}
+                            className="h-4 w-4 rounded border-border"
+                            data-testid={`checkbox-cat-${cat}`}
+                          />
+                          {editingCat === cat ? (
+                            <>
+                              <Input
+                                className="flex-1"
+                                value={editingCatName}
+                                onChange={e => setEditingCatName(e.target.value)}
+                                autoFocus
+                                onKeyDown={e => { if (e.key === "Enter" && editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }}
+                                data-testid={`input-rename-cat-${cat}`}
+                              />
+                              <Button size="sm" variant="outline" onClick={() => { if (editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }} disabled={!editingCatName.trim() || renameCategoryMutation.isPending} data-testid={`button-save-cat-${cat}`}>
+                                <Check className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingCat(null)} data-testid={`button-cancel-cat-${cat}`}>
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex-1 text-sm font-medium" data-testid={`text-cat-${cat}`}>{cat}</span>
+                              <Button size="sm" variant="ghost" onClick={() => { setEditingCat(cat); setEditingCatName(cat); }} data-testid={`button-edit-cat-${cat}`}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"?`)) deleteCategoryMutation.mutate(cat); }} data-testid={`button-delete-cat-${cat}`}>
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -539,14 +613,15 @@ export default function RecepcjaSaldo() {
         onClose={() => { setShowAdd(false); setEditEntry(null); }}
         onSubmit={(data: any) => editEntry ? updateMutation.mutate({ id: editEntry.id, ...data }) : createMutation.mutate(data)}
         entry={editEntry}
-        categories={categories}
+        incomeCategories={incomeCategories}
+        costCategories={costCategories}
         isPending={createMutation.isPending || updateMutation.isPending}
       />
     </div>
   );
 }
 
-function SaldoEntryDialog({ open, onClose, onSubmit, entry, categories, isPending }: any) {
+function SaldoEntryDialog({ open, onClose, onSubmit, entry, incomeCategories, costCategories, isPending }: any) {
   const [form, setForm] = useState({
     date: "",
     operationName: "",
@@ -587,6 +662,23 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, categories, isPendin
 
   const u = (field: string, value: string) => setForm(p => ({ ...p, [field]: value }));
 
+  const handleReservationLookup = (val: string) => {
+    u("reservationNumber", val);
+    if (val.trim().length >= 2) {
+      recepcjaFetch("GET", `/api/recepcja/reservations/by-number/${encodeURIComponent(val.trim())}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) {
+            setForm(p => ({
+              ...p,
+              guestName: data.guestName || p.guestName,
+              operationName: data.apartmentNames?.length ? (p.operationName || data.apartmentNames.join(", ")) : p.operationName,
+            }));
+          }
+        }).catch(() => {});
+    }
+  };
+
   const handleSubmit = () => {
     const cashVal = form.cashAmount ? (form.entryKind === "KOSZT" ? (-Math.abs(Number(form.cashAmount))).toFixed(2) : parseFloat(form.cashAmount).toFixed(2)) : null;
     const cardVal = form.cardAmount ? (form.entryKind === "KOSZT" ? (-Math.abs(Number(form.cardAmount))).toFixed(2) : parseFloat(form.cardAmount).toFixed(2)) : null;
@@ -596,7 +688,7 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, categories, isPendin
       entryKind: form.entryKind || null,
       cashAmount: cashVal,
       cardAmount: cardVal,
-      category: form.entryKind === "KOSZT" ? (form.category || null) : null,
+      category: form.category || null,
       guestName: form.guestName || null,
       reservationNumber: form.reservationNumber || null,
       type: form.type || null,
@@ -607,6 +699,8 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, categories, isPendin
       notes: form.notes || null,
     });
   };
+
+  const currentCategories = form.entryKind === "KOSZT" ? costCategories : incomeCategories;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
@@ -643,45 +737,27 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, categories, isPendin
               <Label>Nazwa operacji</Label>
               <Input value={form.operationName} onChange={e => u("operationName", e.target.value)} placeholder={form.entryKind === "PRZYCHOD" ? "np. GRAND BALTIC 203" : "np. Zakup środków czystości"} data-testid="input-saldo-operation" />
             </div>
-            {form.entryKind === "KOSZT" && (
-              <div className="col-span-2 space-y-1">
-                <Label>Kategoria kosztu</Label>
-                <Select value={form.category || "none"} onValueChange={v => u("category", v === "none" ? "" : v)}>
-                  <SelectTrigger data-testid="select-saldo-cost-category">
-                    <SelectValue placeholder="Wybierz kategorię" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— brak —</SelectItem>
-                    {categories.map((c: string) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label>Imię i nazwisko</Label>
-              <Input value={form.guestName} onChange={e => u("guestName", e.target.value)} data-testid="input-saldo-guest" />
-            </div>
-            {form.entryKind === "PRZYCHOD" && (
-              <div className="space-y-1">
-                <Label>Nr rezerwacji</Label>
-                <Input value={form.reservationNumber} onChange={e => u("reservationNumber", e.target.value)} data-testid="input-saldo-resnum" />
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label>Rodzaj</Label>
-              <Select value={form.type || "none"} onValueChange={v => u("type", v === "none" ? "" : v)}>
-                <SelectTrigger data-testid="select-saldo-type">
-                  <SelectValue placeholder="Wybierz rodzaj" />
+            <div className="col-span-2 space-y-1">
+              <Label>{form.entryKind === "KOSZT" ? "Kategoria kosztu" : "Kategoria przychodu"}</Label>
+              <Select value={form.category || "none"} onValueChange={v => u("category", v === "none" ? "" : v)}>
+                <SelectTrigger data-testid="select-saldo-cost-category">
+                  <SelectValue placeholder="Wybierz kategorię" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— brak —</SelectItem>
-                  {categories.map((c: string) => (
+                  {currentCategories.map((c: string) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Nr rezerwacji</Label>
+              <Input value={form.reservationNumber} onChange={e => handleReservationLookup(e.target.value)} data-testid="input-saldo-resnum" />
+            </div>
+            <div className="space-y-1">
+              <Label>Imię i nazwisko</Label>
+              <Input value={form.guestName} onChange={e => u("guestName", e.target.value)} data-testid="input-saldo-guest" />
             </div>
             <div className="space-y-1">
               <Label>Sposób płatności</Label>

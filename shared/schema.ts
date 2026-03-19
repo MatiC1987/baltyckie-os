@@ -429,6 +429,7 @@ export const saldoCategories = pgTable("saldo_categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   personName: text("person_name"),
+  type: text("type").default("KOSZT"),
 });
 
 export const insertSaldoCategorySchema = createInsertSchema(saldoCategories).omit({ id: true });

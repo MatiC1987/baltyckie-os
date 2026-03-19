@@ -3725,25 +3725,33 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
   app.get('/api/saldo/categories', isAuthenticated, async (req, res) => {
     const personName = req.query.personName as string | undefined;
-    const categories = await storage.getSaldoCategories(personName);
-    res.json(categories);
+    const withType = req.query.withType === 'true';
+    if (withType) {
+      const categories = await storage.getSaldoCategoriesWithType(personName);
+      res.json(categories);
+    } else {
+      const categories = await storage.getSaldoCategories(personName);
+      res.json(categories);
+    }
   });
 
   app.post('/api/saldo/categories', isAuthenticated, async (req, res) => {
-    const { name, personName } = req.body;
+    const { name, personName, type } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ message: "Podaj nazwę kategorii" });
     }
-    await storage.createSaldoCategory(name.trim(), personName);
+    const validType = type === 'PRZYCHOD' ? 'PRZYCHOD' : 'KOSZT';
+    await storage.createSaldoCategory(name.trim(), personName, validType);
     res.json({ success: true });
   });
 
   app.put('/api/saldo/categories/:name', isAuthenticated, async (req, res) => {
-    const { newName, personName } = req.body;
+    const { newName, personName, type } = req.body;
     if (!newName || typeof newName !== 'string') {
       return res.status(400).json({ message: "Podaj nową nazwę kategorii" });
     }
-    await storage.updateSaldoCategory(req.params.name, newName.trim(), personName);
+    const validType = type === 'PRZYCHOD' ? 'PRZYCHOD' : type === 'KOSZT' ? 'KOSZT' : undefined;
+    await storage.updateSaldoCategory(req.params.name, newName.trim(), personName, validType);
     res.json({ success: true });
   });
 
@@ -3767,6 +3775,33 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
   app.delete('/api/saldo/:id', isAuthenticated, async (req, res) => {
     await storage.deleteSaldoEntry(Number(req.params.id));
     res.status(204).send();
+  });
+
+  app.get('/api/reservations/by-number/:number', isAuthenticated, async (req, res) => {
+    try {
+      const reservation = await storage.getReservationByNumber(req.params.number);
+      if (!reservation) return res.status(404).json({ message: "Nie znaleziono rezerwacji" });
+      let apartmentNames: string[] = [];
+      if (reservation.apartmentId) {
+        const apt = await storage.getApartment(reservation.apartmentId);
+        if (apt) apartmentNames.push(apt.name);
+      }
+      if (reservation.apartmentIds && reservation.apartmentIds.length > 0) {
+        for (const aid of reservation.apartmentIds) {
+          if (aid && aid !== reservation.apartmentId) {
+            const apt = await storage.getApartment(aid);
+            if (apt) apartmentNames.push(apt.name);
+          }
+        }
+      }
+      res.json({
+        guestName: reservation.guestName,
+        apartmentNames,
+        reservationNumber: reservation.reservationNumber,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.post('/api/saldo/import-xlsx', isAuthenticated, upload.single('file'), async (req: any, res) => {

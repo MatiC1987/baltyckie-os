@@ -165,27 +165,29 @@ export function registerRecepcjaRoutes(app: Express) {
   app.get('/api/recepcja/saldo/categories', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const cats = await db.select().from(saldoCategories).where(eq(saldoCategories.personName, RECEPCJA_PERSON));
-      res.json(cats);
+      res.json(cats.map(c => ({ ...c, type: c.type || 'KOSZT' })));
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
   app.post('/api/recepcja/saldo/categories', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const { name: rawName } = req.body;
+      const { name: rawName, type } = req.body;
       if (!rawName || typeof rawName !== 'string' || !rawName.trim()) return res.status(400).json({ message: "Podaj nazwę kategorii" });
       const name = rawName.trim();
-      const [cat] = await db.insert(saldoCategories).values({ personName: RECEPCJA_PERSON, name }).returning();
-      await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'saldo_category', cat.id.toString(), { name });
+      const validType = type === 'PRZYCHOD' ? 'PRZYCHOD' : 'KOSZT';
+      const [cat] = await db.insert(saldoCategories).values({ personName: RECEPCJA_PERSON, name, type: validType }).returning();
+      await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'saldo_category', cat.id.toString(), { name, type });
       res.json(cat);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
   app.put('/api/recepcja/saldo/categories/:name', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const { newName } = req.body;
+      const { newName, type } = req.body;
       if (!newName || typeof newName !== 'string') return res.status(400).json({ message: "Podaj nową nazwę kategorii" });
-      await storage.updateSaldoCategory(req.params.name, newName.trim(), RECEPCJA_PERSON);
-      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_category', req.params.name, { newName: newName.trim() });
+      const validType = type === 'PRZYCHOD' ? 'PRZYCHOD' : type === 'KOSZT' ? 'KOSZT' : undefined;
+      await storage.updateSaldoCategory(req.params.name, newName.trim(), RECEPCJA_PERSON, validType);
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_category', req.params.name, { newName: newName.trim(), type: validType });
       res.json({ success: true });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
@@ -208,6 +210,33 @@ export function registerRecepcjaRoutes(app: Express) {
       await logRecepcjaAction(req.recepcjaUser.id, 'DELETE', 'saldo_categories_bulk', names.join(','), { names });
       res.json({ success: true, deleted: names.length });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get('/api/recepcja/reservations/by-number/:number', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const reservation = await storage.getReservationByNumber(req.params.number);
+      if (!reservation) return res.status(404).json({ message: "Nie znaleziono rezerwacji" });
+      let apartmentNames: string[] = [];
+      if (reservation.apartmentId) {
+        const apt = await storage.getApartment(reservation.apartmentId);
+        if (apt) apartmentNames.push(apt.name);
+      }
+      if (reservation.apartmentIds && reservation.apartmentIds.length > 0) {
+        for (const aid of reservation.apartmentIds) {
+          if (aid && aid !== reservation.apartmentId) {
+            const apt = await storage.getApartment(aid);
+            if (apt) apartmentNames.push(apt.name);
+          }
+        }
+      }
+      res.json({
+        guestName: reservation.guestName,
+        apartmentNames,
+        reservationNumber: reservation.reservationNumber,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // ==================== PODNAJEM UMOWY (read-only) ====================

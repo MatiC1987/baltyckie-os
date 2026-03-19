@@ -15,6 +15,13 @@
       "when": 1773917910000,
       "tag": "0001_add_saldo_created_by",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773919200000,
+      "tag": "0002_add_saldo_categories_type",
+      "breakpoints": true
     }
   ]
 }

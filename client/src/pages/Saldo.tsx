@@ -254,11 +254,24 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     },
   });
 
+  const { data: categoriesWithType = [] } = useQuery<{ name: string; type: string }[]>({
+    queryKey: ["/api/saldo/categories-typed", { personName }],
+    queryFn: async () => {
+      const res = await fetch(`/api/saldo/categories?personName=${encodeURIComponent(personName)}&withType=true`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch categories");
+      return res.json();
+    },
+  });
+
+  const incomeCategories = useMemo(() => categoriesWithType.filter(c => c.type === 'PRZYCHOD').map(c => c.name), [categoriesWithType]);
+  const costCategories = useMemo(() => categoriesWithType.filter(c => c.type === 'KOSZT').map(c => c.name), [categoriesWithType]);
+
   const renameCategoryMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
       apiRequest("PUT", `/api/saldo/categories/${encodeURIComponent(oldName)}`, { newName, personName }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories-typed", { personName }] });
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Zmieniono nazwę kategorii" });
       setEditingCat(null);
@@ -269,6 +282,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     mutationFn: (name: string) => apiRequest("DELETE", `/api/saldo/categories/${encodeURIComponent(name)}?personName=${encodeURIComponent(personName)}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories-typed", { personName }] });
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Usunięto kategorię" });
     },
@@ -278,6 +292,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     mutationFn: (names: string[]) => apiRequest("POST", "/api/saldo/categories/bulk-delete", { names, personName }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories-typed", { personName }] });
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       setSelectedCats(new Set());
       toast({ title: "Usunięto wybrane kategorie" });
@@ -285,10 +300,12 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
   });
 
   const [newCatName, setNewCatName] = useState("");
+  const [newCatType, setNewCatType] = useState<"PRZYCHOD" | "KOSZT">("KOSZT");
   const createCategoryMutation = useMutation({
-    mutationFn: (name: string) => apiRequest("POST", "/api/saldo/categories", { name, personName }),
+    mutationFn: ({ name, type }: { name: string; type: string }) => apiRequest("POST", "/api/saldo/categories", { name, personName, type }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo/categories-typed", { personName }] });
       toast({ title: "Dodano kategorię" });
       setNewCatName("");
     },
@@ -359,7 +376,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       authCode: editForm.authCode || null,
       notes: editForm.notes || null,
       entryKind: editForm.entryKind || null,
-      category: editForm.entryKind === "KOSZT" ? (editForm.category || null) : null,
+      category: editForm.category || null,
     };
     updateMutation.mutate({ id: editEntry.id, data });
   };
@@ -505,7 +522,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       notes: newEntry.notes || null,
       saldo: null,
       entryKind: newEntry.entryKind || null,
-      category: newEntry.entryKind === "KOSZT" ? (newEntry.category || null) : null,
+      category: newEntry.category || null,
     };
     createMutation.mutate(data);
   };
@@ -623,19 +640,34 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
         <Card>
           <CardContent className="p-4">
             <div className="space-y-3">
-
               <div className="flex items-center gap-2 flex-wrap">
                 <Input
                   placeholder="Nazwa nowej kategorii"
                   value={newCatName}
                   onChange={e => setNewCatName(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && newCatName.trim()) createCategoryMutation.mutate(newCatName.trim()); }}
+                  onKeyDown={e => { if (e.key === "Enter" && newCatName.trim()) createCategoryMutation.mutate({ name: newCatName.trim(), type: newCatType }); }}
                   className="max-w-xs"
                   data-testid="input-new-category"
                 />
+                <div className="flex items-center border border-border rounded-md overflow-visible">
+                  <button
+                    className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${newCatType === "PRZYCHOD" ? "bg-green-600 text-white" : "hover:bg-muted"}`}
+                    onClick={() => setNewCatType("PRZYCHOD")}
+                    data-testid="toggle-cat-type-przychod"
+                  >
+                    Przychód
+                  </button>
+                  <button
+                    className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${newCatType === "KOSZT" ? "bg-red-600 text-white" : "hover:bg-muted"}`}
+                    onClick={() => setNewCatType("KOSZT")}
+                    data-testid="toggle-cat-type-koszt"
+                  >
+                    Koszt
+                  </button>
+                </div>
                 <Button
                   size="sm"
-                  onClick={() => { if (newCatName.trim()) createCategoryMutation.mutate(newCatName.trim()); }}
+                  onClick={() => { if (newCatName.trim()) createCategoryMutation.mutate({ name: newCatName.trim(), type: newCatType }); }}
                   disabled={!newCatName.trim() || createCategoryMutation.isPending}
                   data-testid="button-add-category"
                 >
@@ -661,69 +693,65 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                   </Button>
                 )}
               </div>
-              {categories.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">Brak kategorii. Dodaj wpis z kategorią, aby pojawiła się tutaj.</p>
-              ) : (
-                <div className="space-y-0">
-                  <div className="flex items-center gap-2 py-1.5 px-2 border-b border-border bg-muted/30">
-                    <input
-                      type="checkbox"
-                      checked={selectedCats.size === categories.length && categories.length > 0}
-                      onChange={e => {
-                        if (e.target.checked) setSelectedCats(new Set(categories));
-                        else setSelectedCats(new Set());
-                      }}
-                      className="h-4 w-4 rounded border-border"
-                      data-testid="checkbox-select-all-cats"
-                    />
-                    <span className="text-xs text-muted-foreground font-medium">Zaznacz wszystkie ({categories.length})</span>
-                  </div>
-                  {categories.map(cat => (
-                    <div key={cat} className={`flex items-center gap-2 py-1.5 px-2 border-b border-border last:border-b-0 ${selectedCats.has(cat) ? "bg-accent/20" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={selectedCats.has(cat)}
-                        onChange={e => {
-                          const next = new Set(selectedCats);
-                          if (e.target.checked) next.add(cat);
-                          else next.delete(cat);
-                          setSelectedCats(next);
-                        }}
-                        className="h-4 w-4 rounded border-border"
-                        data-testid={`checkbox-cat-${cat}`}
-                      />
-                      {editingCat === cat ? (
-                        <>
-                          <Input
-                            className="flex-1"
-                            value={editingCatName}
-                            onChange={e => setEditingCatName(e.target.value)}
-                            autoFocus
-                            onKeyDown={e => { if (e.key === "Enter" && editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }}
-                            data-testid={`input-rename-cat-${cat}`}
-                          />
-                          <Button size="sm" variant="outline" onClick={() => { if (editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }} disabled={!editingCatName.trim() || renameCategoryMutation.isPending} data-testid={`button-save-cat-${cat}`}>
-                            <Check className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setEditingCat(null)} data-testid={`button-cancel-cat-${cat}`}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="flex-1 text-sm font-medium" data-testid={`text-cat-${cat}`}>{cat}</span>
-                          <Button size="sm" variant="ghost" onClick={() => { setEditingCat(cat); setEditingCatName(cat); }} data-testid={`button-edit-cat-${cat}`}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"? Kategoria zostanie usunięta ze wszystkich wpisów.`)) deleteCategoryMutation.mutate(cat); }} data-testid={`button-delete-cat-${cat}`}>
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </>
-                      )}
+              {[{ label: "Kategorie przychodów", type: "PRZYCHOD" as const, color: "text-green-600" }, { label: "Kategorie kosztów", type: "KOSZT" as const, color: "text-red-600" }].map(section => {
+                const sectionCats = categoriesWithType.filter(c => c.type === section.type).map(c => c.name);
+                return (
+                  <div key={section.type} className="space-y-0">
+                    <div className={`flex items-center gap-2 py-2 px-2 bg-muted/30 border-b border-border`}>
+                      <span className={`text-xs font-bold uppercase tracking-wider ${section.color}`}>{section.label}</span>
+                      <span className="text-xs text-muted-foreground">({sectionCats.length})</span>
                     </div>
-                  ))}
-                </div>
-              )}
+                    {sectionCats.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-3 px-2 border-b border-border">Brak kategorii tego typu.</p>
+                    ) : (
+                      sectionCats.map(cat => (
+                        <div key={cat} className={`flex items-center gap-2 py-1.5 px-2 border-b border-border last:border-b-0 ${selectedCats.has(cat) ? "bg-accent/20" : ""}`}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCats.has(cat)}
+                            onChange={e => {
+                              const next = new Set(selectedCats);
+                              if (e.target.checked) next.add(cat);
+                              else next.delete(cat);
+                              setSelectedCats(next);
+                            }}
+                            className="h-4 w-4 rounded border-border"
+                            data-testid={`checkbox-cat-${cat}`}
+                          />
+                          {editingCat === cat ? (
+                            <>
+                              <Input
+                                className="flex-1"
+                                value={editingCatName}
+                                onChange={e => setEditingCatName(e.target.value)}
+                                autoFocus
+                                onKeyDown={e => { if (e.key === "Enter" && editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }}
+                                data-testid={`input-rename-cat-${cat}`}
+                              />
+                              <Button size="sm" variant="outline" onClick={() => { if (editingCatName.trim()) renameCategoryMutation.mutate({ oldName: cat, newName: editingCatName.trim() }); }} disabled={!editingCatName.trim() || renameCategoryMutation.isPending} data-testid={`button-save-cat-${cat}`}>
+                                <Check className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingCat(null)} data-testid={`button-cancel-cat-${cat}`}>
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex-1 text-sm font-medium" data-testid={`text-cat-${cat}`}>{cat}</span>
+                              <Button size="sm" variant="ghost" onClick={() => { setEditingCat(cat); setEditingCatName(cat); }} data-testid={`button-edit-cat-${cat}`}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"? Kategoria zostanie usunięta ze wszystkich wpisów.`)) deleteCategoryMutation.mutate(cat); }} data-testid={`button-delete-cat-${cat}`}>
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -1024,35 +1052,43 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                 <Label>Nazwa operacji</Label>
                 <Input value={newEntry.operationName} onChange={e => setNewEntry(p => ({ ...p, operationName: e.target.value }))} placeholder={newEntry.entryKind === "PRZYCHOD" ? "np. GRAND BALTIC 203" : "np. Zakup środków czystości"} data-testid="input-new-saldo-op" />
               </div>
-              {newEntry.entryKind === "KOSZT" && (
-                <div className="col-span-2 space-y-1">
-                  <Label>Kategoria kosztu</Label>
-                  <Select value={newEntry.category || "none"} onValueChange={v => setNewEntry(p => ({ ...p, category: v === "none" ? "" : v }))}>
-                    <SelectTrigger data-testid="select-new-saldo-category">
-                      <SelectValue placeholder="Wybierz kategorię" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">— brak —</SelectItem>
-                      {categories.map(c => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="col-span-2 space-y-1">
+                <Label>{newEntry.entryKind === "KOSZT" ? "Kategoria kosztu" : "Kategoria przychodu"}</Label>
+                <Select value={newEntry.category || "none"} onValueChange={v => setNewEntry(p => ({ ...p, category: v === "none" ? "" : v }))}>
+                  <SelectTrigger data-testid="select-new-saldo-category">
+                    <SelectValue placeholder="Wybierz kategorię" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— brak —</SelectItem>
+                    {(newEntry.entryKind === "KOSZT" ? costCategories : incomeCategories).map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Nr rezerwacji</Label>
+                <Input value={newEntry.reservationNumber} onChange={e => {
+                  const val = e.target.value;
+                  setNewEntry(p => ({ ...p, reservationNumber: val }));
+                  if (val.trim().length >= 2) {
+                    fetch(`/api/reservations/by-number/${encodeURIComponent(val.trim())}`, { credentials: "include" })
+                      .then(r => r.ok ? r.json() : null)
+                      .then(data => {
+                        if (data) {
+                          setNewEntry(p => ({
+                            ...p,
+                            guestName: data.guestName || p.guestName,
+                            operationName: data.apartmentNames?.length ? (p.operationName || data.apartmentNames.join(", ")) : p.operationName,
+                          }));
+                        }
+                      }).catch(() => {});
+                  }
+                }} data-testid="input-new-saldo-resnum" />
+              </div>
               <div className="space-y-1">
                 <Label>Imię i nazwisko</Label>
                 <Input value={newEntry.guestName} onChange={e => setNewEntry(p => ({ ...p, guestName: e.target.value }))} data-testid="input-new-saldo-guest" />
-              </div>
-              {newEntry.entryKind === "PRZYCHOD" && (
-                <div className="space-y-1">
-                  <Label>Nr rezerwacji</Label>
-                  <Input value={newEntry.reservationNumber} onChange={e => setNewEntry(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-new-saldo-resnum" />
-                </div>
-              )}
-              <div className="space-y-1">
-                <Label>Kategoria</Label>
-                <Input value={newEntry.type} onChange={e => setNewEntry(p => ({ ...p, type: e.target.value }))} placeholder={newEntry.entryKind === "PRZYCHOD" ? "np. PRZYJAZD" : "np. WYDATEK"} data-testid="input-new-saldo-type" />
               </div>
               <div className="space-y-1">
                 <Label>Sposób płatności</Label>
@@ -1242,35 +1278,45 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                 <Label>Nazwa operacji</Label>
                 <Input value={editForm.operationName} onChange={e => setEditForm(p => ({ ...p, operationName: e.target.value }))} data-testid="input-edit-saldo-op" />
               </div>
-              {editForm.entryKind === "KOSZT" && (
-                <div className="col-span-2 space-y-1">
-                  <Label>Kategoria kosztu</Label>
-                  <Select value={editForm.category || "none"} onValueChange={v => setEditForm(p => ({ ...p, category: v === "none" ? "" : v }))}>
-                    <SelectTrigger data-testid="select-edit-saldo-category">
-                      <SelectValue placeholder="Wybierz kategorię" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">— brak —</SelectItem>
-                      {categories.map(c => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="col-span-2 space-y-1">
+                <Label>{editForm.entryKind === "KOSZT" ? "Kategoria kosztu" : "Kategoria przychodu"}</Label>
+                <Select value={editForm.category || "none"} onValueChange={v => setEditForm(p => ({ ...p, category: v === "none" ? "" : v }))}>
+                  <SelectTrigger data-testid="select-edit-saldo-category">
+                    <SelectValue placeholder="Wybierz kategorię" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— brak —</SelectItem>
+                    {(editForm.entryKind === "KOSZT" ? costCategories : incomeCategories).map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Nr rezerwacji</Label>
+                <Input value={editForm.reservationNumber} onChange={e => {
+                  const val = e.target.value;
+                  setEditForm(p => ({ ...p, reservationNumber: val }));
+                  if (val.trim().length >= 2) {
+                    fetch(`/api/reservations/by-number/${encodeURIComponent(val.trim())}`, { credentials: "include" })
+                      .then(r => r.ok ? r.json() : null)
+                      .then(data => {
+                        if (data) {
+                          setEditForm(p => ({
+                            ...p,
+                            guestName: data.guestName || p.guestName,
+                            operationName: (Array.isArray(data.apartmentNames) && data.apartmentNames.length > 0)
+                              ? (p.operationName || data.apartmentNames.join(", "))
+                              : p.operationName,
+                          }));
+                        }
+                      }).catch(() => {});
+                  }
+                }} data-testid="input-edit-saldo-resnum" />
+              </div>
               <div className="space-y-1">
                 <Label>Imię i nazwisko</Label>
                 <Input value={editForm.guestName} onChange={e => setEditForm(p => ({ ...p, guestName: e.target.value }))} data-testid="input-edit-saldo-guest" />
-              </div>
-              {editForm.entryKind === "PRZYCHOD" && (
-                <div className="space-y-1">
-                  <Label>Nr rezerwacji</Label>
-                  <Input value={editForm.reservationNumber} onChange={e => setEditForm(p => ({ ...p, reservationNumber: e.target.value }))} data-testid="input-edit-saldo-resnum" />
-                </div>
-              )}
-              <div className="space-y-1">
-                <Label>Kategoria</Label>
-                <Input value={editForm.type} onChange={e => setEditForm(p => ({ ...p, type: e.target.value }))} data-testid="input-edit-saldo-type" />
               </div>
               <div className="space-y-1">
                 <Label>Sposób płatności</Label>

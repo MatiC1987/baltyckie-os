@@ -575,10 +575,10 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
       )}
 
       <main className="flex-1 overflow-y-auto pb-20 lg:pb-4">
-        <div className="flex items-center justify-end gap-2 px-4 pt-3 max-w-7xl mx-auto">
+        <div className={cn("flex items-center justify-end gap-2 px-4 pt-3", location !== "/recepcja/saldo" && "max-w-7xl mx-auto")}>
           <RecepcjaNotificationBell />
         </div>
-        <div className="p-4 pt-2 max-w-7xl mx-auto">
+        <div className={cn("p-4 pt-2", location !== "/recepcja/saldo" && "max-w-7xl mx-auto")}>
           {children}
         </div>
         <RecepcjaFAB />
