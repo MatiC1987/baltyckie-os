@@ -409,7 +409,11 @@ function EmployeeDashboard({
   const { toast } = useToast();
 
   useEffect(() => {
-    if (navigator.geolocation && gpsStatus === "idle") {
+    if (!navigator.geolocation) {
+      setGpsStatus("error");
+      return;
+    }
+    if (gpsStatus === "idle") {
       let cancelled = false;
       setGpsStatus("loading");
       navigator.geolocation.getCurrentPosition(

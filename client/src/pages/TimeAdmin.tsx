@@ -790,7 +790,7 @@ function LokalizacjeGPSTab() {
                             value={[editRadius]}
                             onValueChange={([v]) => setEditRadius(v)}
                             min={50}
-                            max={500}
+                            max={2000}
                             step={10}
                             className="w-24"
                             data-testid="slider-radius"
