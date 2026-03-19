@@ -2702,6 +2702,33 @@ export async function registerRoutes(
     }
   });
 
+  app.put('/api/locations/:id/gps', isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, gpsRadius } = req.body;
+      if (latitude === undefined || latitude === null || latitude === '' ||
+          longitude === undefined || longitude === null || longitude === '') {
+        return res.status(400).json({ message: "Szerokość i długość geograficzna są wymagane" });
+      }
+      const lat = Number(latitude);
+      const lng = Number(longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({ message: "Nieprawidłowe współrzędne GPS" });
+      }
+      const radius = Number(gpsRadius);
+      const validRadius = Number.isFinite(radius) ? radius : 200;
+      if (validRadius < 10 || validRadius > 5000) {
+        return res.status(400).json({ message: "Promień musi być między 10 a 5000 metrów" });
+      }
+      const loc = await storage.updateLocationGps(Number(req.params.id), lat.toString(), lng.toString(), validRadius);
+      if (!loc) {
+        return res.status(404).json({ message: "Lokalizacja nie została znaleziona" });
+      }
+      res.json(loc);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd aktualizacji GPS" });
+    }
+  });
+
   app.delete('/api/locations/:id', isAuthenticated, async (req, res) => {
     await storage.deleteLocation(Number(req.params.id));
     res.status(204).send();

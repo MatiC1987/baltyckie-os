@@ -409,6 +409,28 @@ function EmployeeDashboard({
   const { toast } = useToast();
 
   useEffect(() => {
+    if (navigator.geolocation && gpsStatus === "idle") {
+      let cancelled = false;
+      setGpsStatus("loading");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!cancelled) {
+            setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            setGpsStatus("success");
+          }
+        },
+        () => {
+          if (!cancelled) {
+            setGpsStatus("error");
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+      return () => { cancelled = true; };
+    }
+  }, []);
+
+  useEffect(() => {
     const isActive = activeEntry && (activeEntry.status === "AKTYWNA" || activeEntry.status === "WARUNKOWA" || activeEntry.status === "PRZERWA");
 
     if (isActive && navigator.geolocation) {
