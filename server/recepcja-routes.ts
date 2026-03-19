@@ -115,7 +115,7 @@ export function registerRecepcjaRoutes(app: Express) {
 
   app.post('/api/recepcja/saldo', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const data = { ...req.body, personName: RECEPCJA_PERSON };
+      const data = { ...req.body, personName: RECEPCJA_PERSON, createdBy: req.recepcjaUser.name };
       const entry = await storage.createSaldoEntry(data);
       await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'saldo_entry', entry.id.toString(), data);
       res.json(entry);
@@ -127,8 +127,9 @@ export function registerRecepcjaRoutes(app: Express) {
       const id = Number(req.params.id);
       const [existing] = await db.select().from(saldoEntries).where(eq(saldoEntries.id, id));
       if (!existing || existing.personName !== RECEPCJA_PERSON) return res.status(403).json({ message: 'Brak dostępu' });
-      const entry = await storage.updateSaldoEntry(id, req.body);
-      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_entry', id.toString(), req.body);
+      const { createdBy, ...updateData } = req.body;
+      const entry = await storage.updateSaldoEntry(id, updateData);
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_entry', id.toString(), updateData);
       res.json(entry);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });

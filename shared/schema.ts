@@ -409,9 +409,10 @@ export const saldoEntries = pgTable("saldo_entries", {
   entryKind: text("entry_kind"),
   category: text("category"),
   personName: text("person_name"),
+  createdBy: text("created_by"),
 });
 
-export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true });
+export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true, createdBy: true });
 export type SaldoEntry = typeof saldoEntries.$inferSelect;
 export type InsertSaldoEntry = z.infer<typeof insertSaldoEntrySchema>;
 

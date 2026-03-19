@@ -97,6 +97,7 @@ async function main() {
       entryKind,
       category: isCost ? normalizedType : null,
       personName: PERSON_NAME,
+      createdBy: PERSON_NAME,
     });
   }
 

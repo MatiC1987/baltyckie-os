@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -160,6 +160,11 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
   const [dateTo, setDateTo] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [entryKindFilter, setEntryKindFilter] = useState<"ALL" | "PRZYCHOD" | "KOSZT">("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortField, setSortField] = useState<"date" | "operationName" | "category" | "cashAmount" | "cardAmount">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -173,6 +178,10 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     setDateTo("");
     setPaymentFilter("all");
     setTypeFilter("all");
+    setEntryKindFilter("ALL");
+    setCategoryFilter("all");
+    setSortField("date");
+    setSortDir("desc");
     setPage(0);
     setPreviewEntry(null);
     setEditEntry(null);
@@ -367,12 +376,47 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     return [...s].sort();
   }, [entries]);
 
+  const usedCategories = useMemo(() => {
+    const cats = new Set<string>();
+    entries.forEach(e => { if (e.category) cats.add(e.category); if (e.type) cats.add(e.type); });
+    return [...cats].sort();
+  }, [entries]);
+
+  const hasActiveFilters = searchQuery || dateFrom || dateTo || paymentFilter !== "all" || typeFilter !== "all" || entryKindFilter !== "ALL" || categoryFilter !== "all";
+
+  const clearAllFilters = () => {
+    setSearchQuery("");
+    setDateFrom("");
+    setDateTo("");
+    setPaymentFilter("all");
+    setTypeFilter("all");
+    setEntryKindFilter("ALL");
+    setCategoryFilter("all");
+    setPage(0);
+  };
+
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir(field === "date" ? "desc" : "asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: typeof sortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1 text-primary" /> : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
+  };
+
   const filtered = useMemo(() => {
     let result = [...entries];
     if (dateFrom) result = result.filter(e => e.date >= dateFrom);
     if (dateTo) result = result.filter(e => e.date <= dateTo);
     if (paymentFilter !== "all") result = result.filter(e => e.paymentMethod === paymentFilter);
     if (typeFilter !== "all") result = result.filter(e => e.type === typeFilter);
+    if (entryKindFilter !== "ALL") result = result.filter(e => e.entryKind === entryKindFilter);
+    if (categoryFilter !== "all") result = result.filter(e => (e.category || e.type) === categoryFilter);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(e =>
@@ -382,9 +426,19 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
         (e.notes?.toLowerCase().includes(q))
       );
     }
-    result.reverse();
+    result.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "date": cmp = (a.date || "").localeCompare(b.date || ""); break;
+        case "operationName": cmp = (a.operationName || "").localeCompare(b.operationName || ""); break;
+        case "category": cmp = (a.category || a.type || "").localeCompare(b.category || b.type || ""); break;
+        case "cashAmount": cmp = (Number(a.cashAmount || 0)) - (Number(b.cashAmount || 0)); break;
+        case "cardAmount": cmp = (Number(a.cardAmount || 0)) - (Number(b.cardAmount || 0)); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
     return result;
-  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, searchQuery]);
+  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, entryKindFilter, categoryFilter, searchQuery, sortField, sortDir]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -696,92 +750,142 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
         </CardContent>
       </Card>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            className="pl-8 w-[250px]"
-            placeholder="Szukaj..."
-            value={searchQuery}
-            onChange={e => { setSearchQuery(e.target.value); setPage(0); }}
-            data-testid="input-saldo-search"
-          />
-        </div>
-        <Input
-          type="date"
-          className="w-[150px]"
-          value={dateFrom}
-          onChange={e => { setDateFrom(e.target.value); setPage(0); }}
-          placeholder="Od daty"
-          data-testid="input-saldo-date-from"
-        />
-        <Input
-          type="date"
-          className="w-[150px]"
-          value={dateTo}
-          onChange={e => { setDateTo(e.target.value); setPage(0); }}
-          placeholder="Do daty"
-          data-testid="input-saldo-date-to"
-        />
-        <Select value={paymentFilter} onValueChange={v => { setPaymentFilter(v); setPage(0); }}>
-          <SelectTrigger className="w-[160px]" data-testid="select-saldo-payment">
-            <SelectValue placeholder="Płatność" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Wszystkie płatności</SelectItem>
-            {paymentMethods.map(m => (
-              <SelectItem key={m} value={m}>{m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(0); }}>
-          <SelectTrigger className="w-[180px]" data-testid="select-saldo-type">
-            <SelectValue placeholder="Kategoria" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Wszystkie kategorie</SelectItem>
-            {types.map(t => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {(searchQuery || dateFrom || dateTo || paymentFilter !== "all" || typeFilter !== "all") && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearchQuery(""); setDateFrom(""); setDateTo(""); setPaymentFilter("all"); setTypeFilter("all"); setPage(0); }} data-testid="button-clear-saldo-filters">
-            Wyczyść filtry
+      <Card className="p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Szukaj po nazwie, gościu, nr rezerwacji..."
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setPage(0); }}
+              data-testid="input-saldo-search"
+            />
+          </div>
+          <Button
+            variant={showFilters ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            data-testid="button-toggle-filters"
+          >
+            <Filter className="h-4 w-4 mr-1" />
+            Filtry
+            {hasActiveFilters && <span className="ml-1 h-2 w-2 rounded-full bg-primary inline-block" />}
+            {showFilters ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
           </Button>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearAllFilters} data-testid="button-clear-saldo-filters">
+              <X className="h-3.5 w-3.5 mr-1" /> Wyczyść
+            </Button>
+          )}
+        </div>
+
+        {showFilters && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-3 pt-3 border-t">
+            <div className="space-y-1">
+              <Label className="text-xs">Data od</Label>
+              <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0); }} data-testid="input-saldo-date-from" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Data do</Label>
+              <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0); }} data-testid="input-saldo-date-to" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Typ wpisu</Label>
+              <Select value={entryKindFilter} onValueChange={(v: any) => { setEntryKindFilter(v); setPage(0); }}>
+                <SelectTrigger data-testid="select-saldo-entry-kind">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Wszystkie</SelectItem>
+                  <SelectItem value="PRZYCHOD">Przychody</SelectItem>
+                  <SelectItem value="KOSZT">Koszty</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Kategoria</Label>
+              <Select value={categoryFilter} onValueChange={v => { setCategoryFilter(v); setPage(0); }}>
+                <SelectTrigger data-testid="select-saldo-category-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Wszystkie</SelectItem>
+                  {usedCategories.map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Płatność</Label>
+              <Select value={paymentFilter} onValueChange={v => { setPaymentFilter(v); setPage(0); }}>
+                <SelectTrigger data-testid="select-saldo-payment">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Wszystkie</SelectItem>
+                  {paymentMethods.map(m => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Rodzaj</Label>
+              <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(0); }}>
+                <SelectTrigger data-testid="select-saldo-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Wszystkie</SelectItem>
+                  {types.map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         )}
-      </div>
+      </Card>
 
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">Ładowanie danych...</div>
       ) : (
+        <>
+        {hasActiveFilters && (
+          <div className="text-sm text-muted-foreground" data-testid="text-filter-count">
+            Wyświetlono {filtered.length} z {entries.length} wpisów
+          </div>
+        )}
         <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
-          <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1100px" }}>
+          <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1200px" }}>
             <thead className="sticky top-0 z-20">
               <tr className="bg-muted/80 dark:bg-muted/50">
-                {([
-                  { key: "date", label: "Data", cls: "sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-r w-[90px] text-left" },
-                  { key: "operationName", label: "Nazwa operacji", cls: "border-r w-[200px] text-left" },
-                  { key: "reservationNumber", label: "Nr rez.", cls: "border-r w-[80px] text-left" },
-                  { key: "guestName", label: "Imię i nazwisko", cls: "border-r w-[180px] text-left" },
-                  { key: "type", label: "Kategoria", cls: "border-r w-[130px] text-left" },
-                  { key: "paymentMethod", label: "Płatność", cls: "border-r w-[90px] text-left" },
-                  { key: "kasaFiskalna", label: "KF", cls: "border-r w-[50px] text-center" },
-                  { key: "faktura", label: "FV", cls: "border-r w-[50px] text-center" },
-                  { key: "cashAmount", label: "Suma (got.)", cls: "border-r-2 w-[100px] text-right" },
-                  { key: "saldo", label: "Saldo", cls: "border-r-2 w-[100px] text-right" },
-                  { key: "authCode", label: "Kod aut.", cls: "border-r w-[80px] text-left" },
-                  { key: "cardAmount", label: "Kwota kartą", cls: "border-r w-[100px] text-right" },
-                  { key: "notes", label: "Uwagi", cls: "border-r text-left" },
-                ] as const).map(col => (
-                  <th
-                    key={col.key}
-                    className={`border-b border-border px-2 py-2 font-bold select-none ${col.cls}`}
-                    data-testid={`header-saldo-${col.key}`}
-                  >
-                    {col.label}
-                  </th>
-                ))}
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 w-[90px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("date")} data-testid="header-saldo-date">
+                  <div className="flex items-center">Data<SortIcon field="date" /></div>
+                </th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[200px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("operationName")} data-testid="header-saldo-operationName">
+                  <div className="flex items-center">Nazwa operacji<SortIcon field="operationName" /></div>
+                </th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[80px] text-left" data-testid="header-saldo-reservationNumber">Nr rez.</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[180px] text-left" data-testid="header-saldo-guestName">Imię i nazwisko</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[130px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("category")} data-testid="header-saldo-type">
+                  <div className="flex items-center">Kategoria<SortIcon field="category" /></div>
+                </th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[90px] text-left" data-testid="header-saldo-paymentMethod">Płatność</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[50px] text-center" data-testid="header-saldo-kasaFiskalna">KF</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[50px] text-center" data-testid="header-saldo-faktura">FV</th>
+                <th className="border-b border-border border-r-2 px-2 py-2 font-bold select-none w-[100px] text-right cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("cashAmount")} data-testid="header-saldo-cashAmount">
+                  <div className="flex items-center justify-end">Suma (got.)<SortIcon field="cashAmount" /></div>
+                </th>
+                <th className="border-b border-border border-r-2 px-2 py-2 font-bold select-none w-[100px] text-right" data-testid="header-saldo-saldo">Saldo</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[80px] text-left" data-testid="header-saldo-authCode">Kod aut.</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[100px] text-right cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("cardAmount")} data-testid="header-saldo-cardAmount">
+                  <div className="flex items-center justify-end">Kwota kartą<SortIcon field="cardAmount" /></div>
+                </th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none text-left" data-testid="header-saldo-notes">Uwagi</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[100px] text-left" data-testid="header-saldo-createdBy">Wprowadził</th>
                 <th className="border-b border-border px-2 py-2 text-center font-bold w-[65px]"></th>
               </tr>
             </thead>
@@ -799,7 +903,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                     <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-resnum-${entry.id}`}>{entry.reservationNumber || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-guest-${entry.id}`}>{entry.guestName || ""}</td>
-                    <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-type-${entry.id}`}>{entry.type || ""}</td>
+                    <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-type-${entry.id}`}>{entry.category || entry.type || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-payment-${entry.id}`}>{entry.paymentMethod || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-center" data-testid={`cell-kf-${entry.id}`}>{entry.kasaFiskalna || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-center" data-testid={`cell-fv-${entry.id}`}>{entry.faktura || ""}</td>
@@ -808,6 +912,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                     <td className="border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-auth-${entry.id}`}>{entry.authCode || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-right tabular-nums" data-testid={`cell-card-${entry.id}`}>{formatNum(entry.cardAmount)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground truncate" data-testid={`cell-notes-${entry.id}`}>{entry.notes || ""}</td>
+                    <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground text-[10px]" data-testid={`cell-createdby-${entry.id}`}>{entry.createdBy || "-"}</td>
                     <td className="border-b border-border px-1 py-1.5 text-center">
                       <div className="flex items-center gap-0.5 justify-center">
                         <button
@@ -844,6 +949,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {totalPages > 1 && (
@@ -1076,6 +1182,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                 highlight: cardVal !== null && cardVal > 0 ? "text-blue-600 dark:text-blue-400" : "",
               },
               { label: "Uwagi", value: previewEntry.notes || "" },
+              { label: "Wprowadził", value: previewEntry.createdBy || "" },
             ];
             return (
               <div className="space-y-1 py-2" data-testid="preview-saldo-content">

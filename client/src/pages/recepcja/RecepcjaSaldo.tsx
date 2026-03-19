@@ -381,6 +381,7 @@ export default function RecepcjaSaldo() {
                       <th className="p-2 text-right cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("cardAmount")} data-testid="th-sort-card">
                         <div className="flex items-center justify-end">Karta<SortIcon field="cardAmount" /></div>
                       </th>
+                      <th className="p-2 text-left">Wprowadził</th>
                       <th className="p-2 text-center w-20">Akcje</th>
                     </tr>
                   </thead>
@@ -398,6 +399,7 @@ export default function RecepcjaSaldo() {
                           {formatNum(e.cashAmount)}
                         </td>
                         <td className="p-2 text-right text-muted-foreground">{formatNum(e.cardAmount)}</td>
+                        <td className="p-2 text-muted-foreground text-xs">{e.createdBy || '-'}</td>
                         <td className="p-2 text-center">
                           <div className="flex gap-1 justify-center">
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditEntry(e)} data-testid={`button-edit-saldo-${e.id}`}>
@@ -411,7 +413,7 @@ export default function RecepcjaSaldo() {
                       </tr>
                     ))}
                     {filteredAndSorted.length === 0 && (
-                      <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">
+                      <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">
                         {hasActiveFilters ? "Brak wpisów spełniających kryteria" : "Brak wpisów"}
                       </td></tr>
                     )}

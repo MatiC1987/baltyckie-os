@@ -39,7 +39,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **Bank Import:** Duplicate detection, categorization rules, balance impact preview, multi-bank CSV support, and GoCardless integration for automatic transaction fetching.
 *   **Ustawienia:** Includes NIP/REGON validation, config export/import, notification configuration, and settings change history.
 *   **Landing Page:** Animated background, quick panel access, and system online indicator.
-*   **Salda:** Person overview cards with trend charts and color-coded balances.
+*   **Salda:** Person overview cards with trend charts and color-coded balances. Sortable column headers (date, operation, category, cash, card) with sort direction icons. Collapsible filter panel with search, date range, entry kind (PRZYCHOD/KOSZT), category, payment method, and type filters. "Wyświetlono X z Y" counter when filters are active. Non-editable "Wprowadził" (createdBy) column shows who created each entry — set automatically from logged-in user on POST, never overwritten on PUT. Both main Saldo and Recepcja Saldo views share the same UX pattern.
 *   **Saldo Import:** One-time import script (`scripts/import-saldo-2026.ts`) parsed Excel data for Małgorzata Latasiewicz: 428 entries from Jan 1 2026, initial balance 28,950.70 PLN, 15 predefined categories. Category typos auto-corrected (WYPŁAZA→WYPŁATA, PRZYKAZD→PRZYJAZD, zalkupy→ZAKUPY). Import runs in a single DB transaction. To re-run: `npx tsx scripts/import-saldo-2026.ts`.
 
 ## External Dependencies

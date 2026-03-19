@@ -3700,10 +3700,12 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     res.json(entries);
   });
 
-  app.post('/api/saldo', isAuthenticated, async (req, res) => {
+  app.post('/api/saldo', isAuthenticated, async (req: any, res) => {
     try {
       const parsed = insertSaldoEntrySchema.parse(req.body);
-      const entry = await storage.createSaldoEntry(parsed);
+      const user = req.user;
+      const createdBy = user?.username || user?.firstName || "Nieznany";
+      const entry = await storage.createSaldoEntry({ ...parsed, createdBy } as any);
       res.status(201).json(entry);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
@@ -3713,7 +3715,8 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
   app.put('/api/saldo/:id', isAuthenticated, async (req, res) => {
     try {
       const parsed = insertSaldoEntrySchema.partial().parse(req.body);
-      const updated = await storage.updateSaldoEntry(Number(req.params.id), parsed);
+      const { createdBy, ...updateData } = parsed as any;
+      const updated = await storage.updateSaldoEntry(Number(req.params.id), updateData);
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
@@ -3766,7 +3769,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     res.status(204).send();
   });
 
-  app.post('/api/saldo/import-xlsx', isAuthenticated, upload.single('file'), async (req, res) => {
+  app.post('/api/saldo/import-xlsx', isAuthenticated, upload.single('file'), async (req: any, res) => {
     if (!req.file) {
       return res.status(400).json({ message: "Nie wybrano pliku" });
     }
@@ -3818,6 +3821,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           cardAmount: cardAmt !== null ? cardAmt.toFixed(2) : null,
           notes: row[12]?.toString().trim() || null,
           personName: req.query?.personName as string || null,
+          createdBy: req.user?.username || req.user?.firstName || "Import",
         });
       }
 
