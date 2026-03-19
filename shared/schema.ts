@@ -415,6 +415,7 @@ export const saldoEntries = pgTable("saldo_entries", {
 export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true, createdBy: true });
 export type SaldoEntry = typeof saldoEntries.$inferSelect;
 export type InsertSaldoEntry = z.infer<typeof insertSaldoEntrySchema>;
+export type InsertSaldoEntryWithCreatedBy = InsertSaldoEntry & { createdBy?: string | null };
 
 export const saldoInitialBalances = pgTable("saldo_initial_balances", {
   id: serial("id").primaryKey(),

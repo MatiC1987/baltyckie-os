@@ -127,7 +127,7 @@ export function registerRecepcjaRoutes(app: Express) {
       const id = Number(req.params.id);
       const [existing] = await db.select().from(saldoEntries).where(eq(saldoEntries.id, id));
       if (!existing || existing.personName !== RECEPCJA_PERSON) return res.status(403).json({ message: 'Brak dostępu' });
-      const { createdBy, ...updateData } = req.body;
+      const { createdBy: _cb, ...updateData } = req.body;
       const entry = await storage.updateSaldoEntry(id, updateData);
       await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'saldo_entry', id.toString(), updateData);
       res.json(entry);

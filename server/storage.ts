@@ -17,7 +17,7 @@ import {
   locations, Location, InsertLocation,
   serviceContractCategories, ServiceContractCategory, InsertServiceContractCategory,
   serviceContracts, ServiceContract, InsertServiceContract,
-  saldoEntries, SaldoEntry, InsertSaldoEntry,
+  saldoEntries, SaldoEntry, InsertSaldoEntry, InsertSaldoEntryWithCreatedBy,
   saldoInitialBalances,
   saldoCategories,
   subleases, Sublease, InsertSublease,
@@ -200,8 +200,8 @@ export interface IStorage {
   createSaldoCategory(name: string, personName?: string): Promise<void>;
   updateSaldoCategory(oldName: string, newName: string, personName?: string): Promise<void>;
   deleteSaldoCategory(name: string, personName?: string): Promise<void>;
-  createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry>;
-  createSaldoEntriesBulk(entries: InsertSaldoEntry[]): Promise<SaldoEntry[]>;
+  createSaldoEntry(entry: InsertSaldoEntryWithCreatedBy): Promise<SaldoEntry>;
+  createSaldoEntriesBulk(entries: InsertSaldoEntryWithCreatedBy[]): Promise<SaldoEntry[]>;
   updateSaldoEntry(id: number, entry: Partial<InsertSaldoEntry>): Promise<SaldoEntry>;
   deleteSaldoEntry(id: number): Promise<void>;
   deleteAllSaldoEntries(): Promise<void>;
@@ -1046,7 +1046,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(saldoCategories).where(and(...catConditions));
   }
 
-  async createSaldoEntry(entry: InsertSaldoEntry): Promise<SaldoEntry> {
+  async createSaldoEntry(entry: InsertSaldoEntryWithCreatedBy): Promise<SaldoEntry> {
     const lastRows = await db.select({ saldo: saldoEntries.saldo }).from(saldoEntries).orderBy(desc(saldoEntries.id)).limit(1);
     const lastSaldo = lastRows.length > 0 && lastRows[0].saldo ? parseFloat(lastRows[0].saldo) : 0;
     const cashAmt = entry.cashAmount ? parseFloat(entry.cashAmount) : 0;
@@ -1055,7 +1055,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async createSaldoEntriesBulk(entries: InsertSaldoEntry[]): Promise<SaldoEntry[]> {
+  async createSaldoEntriesBulk(entries: InsertSaldoEntryWithCreatedBy[]): Promise<SaldoEntry[]> {
     if (entries.length === 0) return [];
     const batchSize = 500;
     const results: SaldoEntry[] = [];

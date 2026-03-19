@@ -3705,7 +3705,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const parsed = insertSaldoEntrySchema.parse(req.body);
       const user = req.user;
       const createdBy = user?.username || user?.firstName || "Nieznany";
-      const entry = await storage.createSaldoEntry({ ...parsed, createdBy } as any);
+      const entry = await storage.createSaldoEntry({ ...parsed, createdBy });
       res.status(201).json(entry);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
@@ -3715,8 +3715,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
   app.put('/api/saldo/:id', isAuthenticated, async (req, res) => {
     try {
       const parsed = insertSaldoEntrySchema.partial().parse(req.body);
-      const { createdBy, ...updateData } = parsed as any;
-      const updated = await storage.updateSaldoEntry(Number(req.params.id), updateData);
+      const updated = await storage.updateSaldoEntry(Number(req.params.id), parsed);
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Nieprawidłowe dane" });
