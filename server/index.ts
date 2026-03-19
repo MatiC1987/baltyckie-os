@@ -5,6 +5,7 @@ import { registerRecepcjaRoutes, seedRecepcjaUser } from "./recepcja-routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runProdDataMigration } from "./prod-data-migrate";
+import { runProdSchemaMigration } from "./prod-schema-migrate";
 
 const app = express();
 const httpServer = createServer(app);
@@ -104,6 +105,11 @@ app.use((req, res, next) => {
     async () => {
       log(`serving on port ${port}`);
       if (process.env.NODE_ENV === "production") {
+        try {
+          await runProdSchemaMigration();
+        } catch (e) {
+          console.error("[schema-migrate] Migration error (non-fatal):", e);
+        }
         try {
           await runProdDataMigration();
         } catch (e) {
