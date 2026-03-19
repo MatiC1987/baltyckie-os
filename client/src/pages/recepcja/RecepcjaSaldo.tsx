@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Wallet, Plus, Trash2, Edit, Loader2, Tag, Pencil, Check, X } from "lucide-react";
+import { Wallet, Plus, Trash2, Edit, Loader2, Tag, Pencil, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Search, Filter, ChevronDown, ChevronUp } from "lucide-react";
 
 function formatNum(v: string | null | undefined): string {
   if (v === null || v === undefined || v === "") return "";
@@ -17,6 +17,9 @@ function formatNum(v: string | null | undefined): string {
   if (isNaN(n)) return "";
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+type SortField = "date" | "operationName" | "category" | "cashAmount" | "cardAmount";
+type SortDir = "asc" | "desc";
 
 export default function RecepcjaSaldo() {
   const [activeTab, setActiveTab] = useState<"wpisy" | "kategorie">("wpisy");
@@ -27,6 +30,15 @@ export default function RecepcjaSaldo() {
   const [editingCatName, setEditingCatName] = useState("");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterEntryKind, setFilterEntryKind] = useState<"ALL" | "PRZYCHOD" | "KOSZT">("ALL");
+  const [filterCategory, setFilterCategory] = useState<string>("ALL");
+  const [showFilters, setShowFilters] = useState(false);
 
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ["/api/recepcja/saldo"],
@@ -45,8 +57,83 @@ export default function RecepcjaSaldo() {
 
   const categories = useMemo(() => categoriesRaw.map((c: any) => typeof c === "string" ? c : c.name), [categoriesRaw]);
 
+  const usedCategories = useMemo(() => {
+    const cats = new Set<string>();
+    entries.forEach((e: any) => { if (e.category) cats.add(e.category); if (e.type) cats.add(e.type); });
+    return [...cats].sort();
+  }, [entries]);
+
   const currentBalance = (Number(initialBalance?.initialBalance || 0) +
     entries.reduce((sum: number, e: any) => sum + Number(e.cashAmount || 0), 0)).toFixed(2);
+
+  const filteredAndSorted = useMemo(() => {
+    let result = [...entries];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((e: any) =>
+        (e.operationName || "").toLowerCase().includes(q) ||
+        (e.guestName || "").toLowerCase().includes(q) ||
+        (e.reservationNumber || "").toLowerCase().includes(q) ||
+        (e.notes || "").toLowerCase().includes(q)
+      );
+    }
+
+    if (filterDateFrom) {
+      result = result.filter((e: any) => e.date >= filterDateFrom);
+    }
+    if (filterDateTo) {
+      result = result.filter((e: any) => e.date <= filterDateTo);
+    }
+
+    if (filterEntryKind !== "ALL") {
+      result = result.filter((e: any) => e.entryKind === filterEntryKind);
+    }
+
+    if (filterCategory !== "ALL") {
+      result = result.filter((e: any) => (e.category || e.type) === filterCategory);
+    }
+
+    result.sort((a: any, b: any) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "date":
+          cmp = (a.date || "").localeCompare(b.date || "");
+          break;
+        case "operationName":
+          cmp = (a.operationName || "").localeCompare(b.operationName || "");
+          break;
+        case "category":
+          cmp = (a.category || a.type || "").localeCompare(b.category || b.type || "");
+          break;
+        case "cashAmount":
+          cmp = (Number(a.cashAmount || 0)) - (Number(b.cashAmount || 0));
+          break;
+        case "cardAmount":
+          cmp = (Number(a.cardAmount || 0)) - (Number(b.cardAmount || 0));
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return result;
+  }, [entries, searchQuery, filterDateFrom, filterDateTo, filterEntryKind, filterCategory, sortField, sortDir]);
+
+  const hasActiveFilters = searchQuery || filterDateFrom || filterDateTo || filterEntryKind !== "ALL" || filterCategory !== "ALL";
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir(field === "date" ? "desc" : "asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1 text-primary" /> : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -140,6 +227,14 @@ export default function RecepcjaSaldo() {
     },
   });
 
+  const clearFilters = () => {
+    setSearchQuery("");
+    setFilterDateFrom("");
+    setFilterDateTo("");
+    setFilterEntryKind("ALL");
+    setFilterCategory("ALL");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -187,49 +282,143 @@ export default function RecepcjaSaldo() {
             </Card>
           </div>
 
+          <Card className="p-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Szukaj po nazwie, gościu, nr rezerwacji..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-saldo-search"
+                />
+              </div>
+              <Button
+                variant={showFilters ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                data-testid="button-toggle-filters"
+              >
+                <Filter className="h-4 w-4 mr-1" />
+                Filtry
+                {hasActiveFilters && <span className="ml-1 h-2 w-2 rounded-full bg-primary inline-block" />}
+                {showFilters ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
+              </Button>
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+                  <X className="h-3.5 w-3.5 mr-1" /> Wyczyść
+                </Button>
+              )}
+            </div>
+
+            {showFilters && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t">
+                <div className="space-y-1">
+                  <Label className="text-xs">Data od</Label>
+                  <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} data-testid="input-filter-date-from" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Data do</Label>
+                  <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} data-testid="input-filter-date-to" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Typ wpisu</Label>
+                  <Select value={filterEntryKind} onValueChange={(v: any) => setFilterEntryKind(v)}>
+                    <SelectTrigger data-testid="select-filter-entry-kind">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Wszystkie</SelectItem>
+                      <SelectItem value="PRZYCHOD">Przychody</SelectItem>
+                      <SelectItem value="KOSZT">Koszty</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Kategoria</Label>
+                  <Select value={filterCategory} onValueChange={setFilterCategory}>
+                    <SelectTrigger data-testid="select-filter-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Wszystkie</SelectItem>
+                      {usedCategories.map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </Card>
+
           {isLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : (
-            <Card className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-2 text-left">Data</th>
-                    <th className="p-2 text-left">Operacja</th>
-                    <th className="p-2 text-left">Kategoria</th>
-                    <th className="p-2 text-right">Gotówka</th>
-                    <th className="p-2 text-right">Karta</th>
-                    <th className="p-2 text-center w-20">Akcje</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((e: any) => (
-                    <tr key={e.id} className="border-b hover:bg-muted/30" data-testid={`row-saldo-${e.id}`}>
-                      <td className="p-2 whitespace-nowrap">{e.date}</td>
-                      <td className="p-2">{e.operationName}</td>
-                      <td className="p-2">{e.category || '-'}</td>
-                      <td className={`p-2 text-right ${Number(e.cashAmount) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatNum(e.cashAmount)}
-                      </td>
-                      <td className="p-2 text-right text-muted-foreground">{formatNum(e.cardAmount)}</td>
-                      <td className="p-2 text-center">
-                        <div className="flex gap-1 justify-center">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditEntry(e)} data-testid={`button-edit-saldo-${e.id}`}>
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(e.id)} data-testid={`button-delete-saldo-${e.id}`}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </td>
+            <>
+              {hasActiveFilters && (
+                <div className="text-sm text-muted-foreground">
+                  Wyświetlono {filteredAndSorted.length} z {entries.length} wpisów
+                </div>
+              )}
+              <Card className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="p-2 text-left cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("date")} data-testid="th-sort-date">
+                        <div className="flex items-center">Data<SortIcon field="date" /></div>
+                      </th>
+                      <th className="p-2 text-left cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("operationName")} data-testid="th-sort-operation">
+                        <div className="flex items-center">Operacja<SortIcon field="operationName" /></div>
+                      </th>
+                      <th className="p-2 text-left cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("category")} data-testid="th-sort-category">
+                        <div className="flex items-center">Kategoria<SortIcon field="category" /></div>
+                      </th>
+                      <th className="p-2 text-right cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("cashAmount")} data-testid="th-sort-cash">
+                        <div className="flex items-center justify-end">Gotówka<SortIcon field="cashAmount" /></div>
+                      </th>
+                      <th className="p-2 text-right cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("cardAmount")} data-testid="th-sort-card">
+                        <div className="flex items-center justify-end">Karta<SortIcon field="cardAmount" /></div>
+                      </th>
+                      <th className="p-2 text-center w-20">Akcje</th>
                     </tr>
-                  ))}
-                  {entries.length === 0 && (
-                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Brak wpisów</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </Card>
+                  </thead>
+                  <tbody>
+                    {filteredAndSorted.map((e: any) => (
+                      <tr key={e.id} className="border-b hover:bg-muted/30" data-testid={`row-saldo-${e.id}`}>
+                        <td className="p-2 whitespace-nowrap">{e.date}</td>
+                        <td className="p-2">{e.operationName}</td>
+                        <td className="p-2">
+                          <span className={`${e.category || e.type ? '' : 'text-muted-foreground'}`}>
+                            {e.category || e.type || '-'}
+                          </span>
+                        </td>
+                        <td className={`p-2 text-right ${Number(e.cashAmount) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatNum(e.cashAmount)}
+                        </td>
+                        <td className="p-2 text-right text-muted-foreground">{formatNum(e.cardAmount)}</td>
+                        <td className="p-2 text-center">
+                          <div className="flex gap-1 justify-center">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditEntry(e)} data-testid={`button-edit-saldo-${e.id}`}>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(e.id)} data-testid={`button-delete-saldo-${e.id}`}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredAndSorted.length === 0 && (
+                      <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">
+                        {hasActiveFilters ? "Brak wpisów spełniających kryteria" : "Brak wpisów"}
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </Card>
+            </>
           )}
         </>
       )}
@@ -479,8 +668,18 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, categories, isPendin
               </div>
             )}
             <div className="space-y-1">
-              <Label>Kategoria</Label>
-              <Input value={form.type} onChange={e => u("type", e.target.value)} placeholder={form.entryKind === "PRZYCHOD" ? "np. PRZYJAZD" : "np. WYDATEK"} data-testid="input-saldo-type" />
+              <Label>Rodzaj</Label>
+              <Select value={form.type || "none"} onValueChange={v => u("type", v === "none" ? "" : v)}>
+                <SelectTrigger data-testid="select-saldo-type">
+                  <SelectValue placeholder="Wybierz rodzaj" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— brak —</SelectItem>
+                  {categories.map((c: string) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>Sposób płatności</Label>
