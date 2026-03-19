@@ -40,6 +40,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **Ustawienia:** Includes NIP/REGON validation, config export/import, notification configuration, and settings change history.
 *   **Landing Page:** Animated background, quick panel access, and system online indicator.
 *   **Salda:** Person overview cards with trend charts and color-coded balances.
+*   **Saldo Import:** One-time import script (`scripts/import-saldo-2026.ts`) parsed Excel data for Małgorzata Latasiewicz: 428 entries from Jan 1 2026, initial balance 28,950.70 PLN, 15 predefined categories. Category typos auto-corrected (WYPŁAZA→WYPŁATA, PRZYKAZD→PRZYJAZD, zalkupy→ZAKUPY). Import runs in a single DB transaction. To re-run: `npx tsx scripts/import-saldo-2026.ts`.
 
 ## External Dependencies
 *   **@simplewebauthn/server + @simplewebauthn/browser:** WebAuthn biometric authentication.
