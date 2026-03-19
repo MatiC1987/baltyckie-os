@@ -670,10 +670,10 @@ function LokalizacjeGPSTab() {
       toast({ title: "Lokalizacja GPS zaktualizowana" });
       setEditingId(null);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Błąd zapisu GPS",
-        description: error?.message || "Nie udało się zapisać lokalizacji GPS",
+        description: error.message || "Nie udało się zapisać lokalizacji GPS",
         variant: "destructive",
       });
     },
