@@ -1,16 +1,28 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { recepcjaFetch } from "./RecepcjaApp";
 import { queryClient } from "@/lib/queryClient";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Slider } from "@/components/ui/slider";
 import GrafikEnhanced from "@/components/GrafikEnhanced";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp } from "lucide-react";
+import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp, Pencil } from "lucide-react";
+import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+});
 
 type RCPTab = "dashboard" | "obecnosci" | "grafik" | "urlopy" | "raporty" | "lokalizacje" | "piny";
 
@@ -547,33 +559,211 @@ function RCPRaporty() {
   );
 }
 
+function RcpMapClickHandler({ onClick }: { onClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+function RcpMapFlyTo({ center }: { center: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo(center, 14);
+  }, [center[0], center[1]]);
+  return null;
+}
+
 function RCPLokalizacje() {
-  const { data: locations = [] } = useQuery({
+  const { data: locations = [], isLoading } = useQuery({
     queryKey: ["/api/recepcja/rcp/locations"],
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/locations"); return r.json(); },
   });
+  const { toast } = useToast();
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editLat, setEditLat] = useState("");
+  const [editLng, setEditLng] = useState("");
+  const [editRadius, setEditRadius] = useState(200);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([54.44, 17.03]);
+
+  const updateGpsMut = useMutation({
+    mutationFn: async ({ id, latitude, longitude, gpsRadius }: { id: number; latitude: string; longitude: string; gpsRadius: number }) => {
+      const r = await recepcjaFetch("PUT", `/api/recepcja/rcp/locations/${id}/gps`, { latitude, longitude, gpsRadius });
+      if (!r.ok) {
+        const data = await r.json();
+        throw new Error(data.message || "Błąd zapisu GPS");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/rcp/locations"] });
+      toast({ title: "Lokalizacja GPS zaktualizowana" });
+      setEditingId(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Błąd zapisu GPS",
+        description: error.message || "Nie udało się zapisać lokalizacji GPS",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const locsWithGps = useMemo(() => {
+    return locations.filter((l: any) => l.latitude && l.longitude);
+  }, [locations]);
+
+  useEffect(() => {
+    if (locsWithGps.length > 0) {
+      setMapCenter([Number(locsWithGps[0].latitude), Number(locsWithGps[0].longitude)]);
+    }
+  }, [locsWithGps.length]);
+
+  const handleMapClick = (lat: number, lng: number) => {
+    if (editingId !== null) {
+      setEditLat(lat.toFixed(7));
+      setEditLng(lng.toFixed(7));
+    }
+  };
+
+  const startEdit = (loc: any) => {
+    setEditingId(loc.id);
+    setEditLat(loc.latitude || "");
+    setEditLng(loc.longitude || "");
+    setEditRadius(loc.gpsRadius || 200);
+    if (loc.latitude && loc.longitude) {
+      setMapCenter([Number(loc.latitude), Number(loc.longitude)]);
+    }
+  };
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
+  }
 
   return (
-    <Card className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead><tr className="border-b bg-muted/50">
-          <th className="p-2 text-left">Nazwa</th>
-          <th className="p-2 text-left">Szerokość</th>
-          <th className="p-2 text-left">Długość</th>
-          <th className="p-2 text-right">Promień (m)</th>
-        </tr></thead>
-        <tbody>
-          {locations.map((l: any) => (
-            <tr key={l.id} className="border-b">
-              <td className="p-2 font-medium">{l.name}</td>
-              <td className="p-2">{l.latitude || '-'}</td>
-              <td className="p-2">{l.longitude || '-'}</td>
-              <td className="p-2 text-right">{l.gpsRadius || 200}</td>
-            </tr>
+    <div className="space-y-4">
+      <div className="rounded-md overflow-hidden border" style={{ height: 400 }}>
+        <MapContainer center={mapCenter} zoom={13} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <RcpMapFlyTo center={mapCenter} />
+          <RcpMapClickHandler onClick={handleMapClick} />
+          {locsWithGps.map((loc: any) => (
+            <Marker key={loc.id} position={[Number(loc.latitude), Number(loc.longitude)]}>
+            </Marker>
           ))}
-        </tbody>
-      </table>
-    </Card>
+          {locsWithGps.map((loc: any) => (
+            <Circle
+              key={`circle-${loc.id}`}
+              center={[Number(loc.latitude), Number(loc.longitude)]}
+              radius={loc.gpsRadius || 200}
+              pathOptions={{ color: "#3b82f6", fillOpacity: 0.15 }}
+            />
+          ))}
+          {editingId !== null && editLat && editLng && (
+            <>
+              <Marker position={[Number(editLat), Number(editLng)]} />
+              <Circle
+                center={[Number(editLat), Number(editLng)]}
+                radius={editRadius}
+                pathOptions={{ color: "#ef4444", fillOpacity: 0.2 }}
+              />
+            </>
+          )}
+        </MapContainer>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nazwa</TableHead>
+                <TableHead>Adres</TableHead>
+                <TableHead>Szerokość</TableHead>
+                <TableHead>Długość</TableHead>
+                <TableHead>Promień (m)</TableHead>
+                <TableHead>Akcje</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {locations.map((loc: any) => (
+                <TableRow key={loc.id} data-testid={`row-recepcja-location-${loc.id}`}>
+                  <TableCell className="font-medium text-sm">{loc.name}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{loc.address || "—"}</TableCell>
+                  {editingId === loc.id ? (
+                    <>
+                      <TableCell>
+                        <Input
+                          value={editLat}
+                          onChange={(e) => setEditLat(e.target.value)}
+                          className="w-28"
+                          placeholder="54.4400000"
+                          data-testid="input-recepcja-edit-lat"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={editLng}
+                          onChange={(e) => setEditLng(e.target.value)}
+                          className="w-28"
+                          placeholder="17.0300000"
+                          data-testid="input-recepcja-edit-lng"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Slider
+                            value={[editRadius]}
+                            onValueChange={([v]) => setEditRadius(v)}
+                            min={50}
+                            max={2000}
+                            step={10}
+                            className="w-24"
+                            data-testid="slider-recepcja-radius"
+                          />
+                          <span className="text-sm w-12 text-right">{editRadius}m</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => updateGpsMut.mutate({ id: loc.id, latitude: editLat, longitude: editLng, gpsRadius: editRadius })}
+                            disabled={updateGpsMut.isPending || !editLat || !editLng}
+                            data-testid={`button-recepcja-save-gps-${loc.id}`}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="outline" onClick={() => setEditingId(null)} data-testid={`button-recepcja-cancel-gps-${loc.id}`}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell className="text-sm">{loc.latitude || "—"}</TableCell>
+                      <TableCell className="text-sm">{loc.longitude || "—"}</TableCell>
+                      <TableCell className="text-sm">{loc.gpsRadius || 200}m</TableCell>
+                      <TableCell>
+                        <Button size="icon" variant="outline" onClick={() => startEdit(loc)} data-testid={`button-recepcja-edit-gps-${loc.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

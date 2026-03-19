@@ -731,6 +731,32 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.put('/api/recepcja/rcp/locations/:id/gps', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { latitude, longitude, gpsRadius } = req.body;
+      if (latitude === undefined || latitude === null || latitude === '' ||
+          longitude === undefined || longitude === null || longitude === '') {
+        return res.status(400).json({ message: "Szerokość i długość geograficzna są wymagane" });
+      }
+      const lat = Number(latitude);
+      const lng = Number(longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({ message: "Nieprawidłowe współrzędne GPS" });
+      }
+      const radius = Number(gpsRadius);
+      const validRadius = Number.isFinite(radius) ? radius : 200;
+      if (validRadius < 10 || validRadius > 5000) {
+        return res.status(400).json({ message: "Promień musi być między 10 a 5000 metrów" });
+      }
+      const loc = await storage.updateLocationGps(Number(req.params.id), lat.toString(), lng.toString(), validRadius);
+      if (!loc) {
+        return res.status(404).json({ message: "Lokalizacja nie została znaleziona" });
+      }
+      await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE_GPS', 'location', req.params.id, { latitude, longitude, gpsRadius: validRadius });
+      res.json(loc);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get('/api/recepcja/rcp/employees-pins', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const emps = await storage.getEmployees();
