@@ -21,6 +21,82 @@ import OpenAI from "openai";
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const contractUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
+const MAX_PDF_DIRECT_SIZE = 15 * 1024 * 1024;
+
+interface PdfConversionResult {
+  images: Array<{ mimeType: string; data: string }>;
+  pdfBuffer: Buffer | null;
+  tmpFiles: string[];
+}
+
+function convertPdfToImages(
+  pdfBuffer: Buffer,
+  tmpDir: string,
+  options: { maxPages?: number; label?: string } = {}
+): PdfConversionResult {
+  const maxPages = options.maxPages || 10;
+  const label = options.label || 'pdf';
+  const result: PdfConversionResult = { images: [], pdfBuffer: null, tmpFiles: [] };
+
+  const pdfPath = path.join(tmpDir, `${label}_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+  fs.writeFileSync(pdfPath, pdfBuffer);
+  result.tmpFiles.push(pdfPath);
+
+  const prefix = path.join(tmpDir, `${label}_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+
+  let convertedOk = false;
+
+  try {
+    execSync(`pdftoppm -jpeg -r 72 -l ${maxPages} "${pdfPath}" "${prefix}"`, { timeout: 120000 });
+    const pageFiles = fs.readdirSync(tmpDir)
+      .filter((f: string) => f.startsWith(path.basename(prefix)) && (f.endsWith('.jpg') || f.endsWith('.png')))
+      .sort();
+    if (pageFiles.length > 0) {
+      convertedOk = true;
+      for (const pageFile of pageFiles) {
+        const pagePath = path.join(tmpDir, pageFile);
+        result.tmpFiles.push(pagePath);
+        const imgBuf = fs.readFileSync(pagePath);
+        result.images.push({ mimeType: 'image/jpeg', data: imgBuf.toString('base64') });
+      }
+    }
+  } catch (e: any) {
+    console.log(`pdftoppm (72 DPI) failed for ${label}: ${e.message}`);
+  }
+
+  if (!convertedOk) {
+    try {
+      const convertPrefix = path.join(tmpDir, `${label}_convert_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+      execSync(`convert -density 72 "${pdfPath}[0-${maxPages - 1}]" -quality 80 "${convertPrefix}-%d.jpg"`, { timeout: 120000 });
+      const convertFiles = fs.readdirSync(tmpDir)
+        .filter((f: string) => f.startsWith(path.basename(convertPrefix)) && f.endsWith('.jpg'))
+        .sort();
+      if (convertFiles.length > 0) {
+        convertedOk = true;
+        for (const cf of convertFiles) {
+          const cfPath = path.join(tmpDir, cf);
+          result.tmpFiles.push(cfPath);
+          const imgBuf = fs.readFileSync(cfPath);
+          result.images.push({ mimeType: 'image/jpeg', data: imgBuf.toString('base64') });
+        }
+      }
+    } catch (e2: any) {
+      console.log(`ImageMagick convert failed for ${label}: ${e2.message}`);
+    }
+  }
+
+  if (!convertedOk) {
+    if (pdfBuffer.length <= MAX_PDF_DIRECT_SIZE) {
+      console.log(`Sending ${label} PDF directly to AI (${(pdfBuffer.length / 1024 / 1024).toFixed(1)}MB)`);
+      result.pdfBuffer = pdfBuffer;
+    } else {
+      console.log(`PDF ${label} too large for direct send (${(pdfBuffer.length / 1024 / 1024).toFixed(1)}MB > ${(MAX_PDF_DIRECT_SIZE / 1024 / 1024).toFixed(0)}MB limit), and conversion failed`);
+    }
+  }
+
+  return result;
+}
+
 function generateRecurrenceDates(startDate: string, endDate: string, recurrenceType: string): string[] {
   const VALID_TYPES = ["MIESIECZNIE", "KWARTALNIE", "ROCZNIE"];
   if (!VALID_TYPES.includes(recurrenceType)) return [];
@@ -3540,23 +3616,15 @@ export async function registerRoutes(
       const pdfPath = path.join(tmpDir, `invoice_${Date.now()}.pdf`);
       fs.writeFileSync(pdfPath, req.file.buffer);
 
-      let base64Images: string[] = [];
-      try {
-        const outputPrefix = path.join(tmpDir, `invoice_page_${Date.now()}`);
-        execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${outputPrefix}"`, { timeout: 120000 });
-        const pngFiles = fs.readdirSync(tmpDir)
-          .filter(f => f.startsWith(path.basename(outputPrefix)) && f.endsWith('.png'))
-          .sort();
-        for (const pngFile of pngFiles) {
-          const pngPath = path.join(tmpDir, pngFile);
-          const buf = fs.readFileSync(pngPath);
-          base64Images.push(buf.toString('base64'));
-          fs.unlinkSync(pngPath);
-        }
-      } catch (e) {
-        console.error('pdftoppm error:', e);
+      let base64Images: Array<{data: string; mimeType: string}> = [];
+      const conv = convertPdfToImages(req.file.buffer, tmpDir, { maxPages: 10, label: 'invoice' });
+      for (const img of conv.images) {
+        base64Images.push({ data: img.data, mimeType: img.mimeType });
       }
-      fs.unlinkSync(pdfPath);
+      for (const f of conv.tmpFiles) {
+        try { fs.unlinkSync(f); } catch {}
+      }
+      try { fs.unlinkSync(pdfPath); } catch {}
 
       if (base64Images.length === 0) {
         return res.status(400).json({ message: "Nie udało się przetworzyć PDF" });
@@ -3590,7 +3658,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       for (const img of base64Images) {
         content.push({
           type: "image_url",
-          image_url: { url: `data:image/png;base64,${img}`, detail: "high" }
+          image_url: { url: `data:${img.mimeType};base64,${img.data}`, detail: "high" }
         });
       }
 
@@ -4800,31 +4868,19 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
       const [fileBuffer] = await storageFile.download();
 
-      let base64Images: string[] = [];
+      let base64Images: Array<{data: string; mimeType: string}> = [];
 
       if (invoice.mimeType.startsWith("image/")) {
-        base64Images.push(fileBuffer.toString("base64"));
+        base64Images.push({ data: fileBuffer.toString("base64"), mimeType: invoice.mimeType });
       } else if (invoice.mimeType === "application/pdf") {
         const tmpDir = os.tmpdir();
-        const pdfPath = path.join(tmpDir, `ocr_${Date.now()}.pdf`);
-        fs.writeFileSync(pdfPath, fileBuffer);
-        try {
-          const outputPrefix = path.join(tmpDir, `ocr_page_${Date.now()}`);
-          execSync(`pdftoppm -png -r 150 -l 2 "${pdfPath}" "${outputPrefix}"`, { timeout: 120000 });
-          const pageFiles = fs.readdirSync(tmpDir)
-            .filter(f => f.startsWith(path.basename(outputPrefix)))
-            .sort()
-            .slice(0, 2);
-          for (const pf of pageFiles) {
-            const fullPath = path.join(tmpDir, pf);
-            const imgBuf = fs.readFileSync(fullPath);
-            base64Images.push(imgBuf.toString("base64"));
-            fs.unlinkSync(fullPath);
-          }
-        } catch (e) {
-          console.error('pdftoppm OCR error:', e);
+        const conv = convertPdfToImages(fileBuffer, tmpDir, { maxPages: 2, label: 'ocr' });
+        for (const img of conv.images) {
+          base64Images.push({ data: img.data, mimeType: img.mimeType });
         }
-        fs.unlinkSync(pdfPath);
+        for (const f of conv.tmpFiles) {
+          try { fs.unlinkSync(f); } catch {}
+        }
       }
 
       if (base64Images.length === 0) {
@@ -4853,7 +4909,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       for (const img of base64Images) {
         content.push({
           type: "image_url",
-          image_url: { url: `data:image/png;base64,${img}`, detail: "high" }
+          image_url: { url: `data:${img.mimeType};base64,${img.data}`, detail: "high" }
         });
       }
 
@@ -6751,35 +6807,14 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
       for (const file of files) {
         if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
-          let convertedOk = false;
-          try {
-            const pdfPath = path.join(tmpDir, `sublease_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
-            fs.writeFileSync(pdfPath, file.buffer);
-            tmpFiles.push(pdfPath);
-
-            const prefix = path.join(tmpDir, `sublease_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-            execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 60000 });
-
-            const pageFiles = fs.readdirSync(tmpDir)
-              .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
-              .sort();
-
-            if (pageFiles.length > 0) {
-              convertedOk = true;
-              for (const pageFile of pageFiles) {
-                const pagePath = path.join(tmpDir, pageFile);
-                tmpFiles.push(pagePath);
-                const imgBuffer = fs.readFileSync(pagePath);
-                imageAttachments.push({ type: 'image', mimeType: 'image/png', data: imgBuffer.toString('base64') });
-              }
-            }
-          } catch (e: any) {
-            console.log(`pdftoppm failed for sublease PDF, sending PDF directly to AI: ${e.message}`);
+          const conv = convertPdfToImages(file.buffer, tmpDir, { maxPages: 10, label: 'sublease' });
+          tmpFiles.push(...conv.tmpFiles);
+          for (const img of conv.images) {
+            imageAttachments.push({ type: 'image', mimeType: img.mimeType, data: img.data });
           }
-
-          if (!convertedOk) {
+          if (conv.images.length === 0 && conv.pdfBuffer) {
             hasPdfDirect = true;
-            pdfBuffers.push(file.buffer);
+            pdfBuffers.push(conv.pdfBuffer);
           }
         } else {
           imageAttachments.push({ type: 'image', mimeType: file.mimetype || 'image/png', data: file.buffer.toString('base64') });
@@ -6944,36 +6979,12 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           let bulkPdfBuffer: Buffer | null = null;
 
           if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
-            let convertedOk = false;
-            try {
-              const pdfPath = path.join(tmpDir, `sublease_bulk_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
-              fs.writeFileSync(pdfPath, file.buffer);
-              tmpFiles.push(pdfPath);
-              allTmpFiles.push(pdfPath);
-
-              const prefix = path.join(tmpDir, `sublease_bulk_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-              execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 60000 });
-
-              const pageFiles = fs.readdirSync(tmpDir)
-                .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
-                .sort();
-
-              if (pageFiles.length > 0) {
-                convertedOk = true;
-                for (const pageFile of pageFiles) {
-                  const pagePath = path.join(tmpDir, pageFile);
-                  tmpFiles.push(pagePath);
-                  allTmpFiles.push(pagePath);
-                  const imgBuffer = fs.readFileSync(pagePath);
-                  bulkImageAttachments.push({ mimeType: 'image/png', data: imgBuffer.toString('base64') });
-                }
-              }
-            } catch (e: any) {
-              console.log(`pdftoppm failed for bulk sublease PDF, sending PDF directly to AI: ${e.message}`);
-            }
-
-            if (!convertedOk) {
-              bulkPdfBuffer = file.buffer;
+            const conv = convertPdfToImages(file.buffer, tmpDir, { maxPages: 10, label: 'sublease_bulk' });
+            tmpFiles.push(...conv.tmpFiles);
+            allTmpFiles.push(...conv.tmpFiles);
+            bulkImageAttachments.push(...conv.images);
+            if (conv.images.length === 0 && conv.pdfBuffer) {
+              bulkPdfBuffer = conv.pdfBuffer;
             }
           } else {
             bulkImageAttachments.push({ mimeType: file.mimetype || 'image/png', data: file.buffer.toString('base64') });
@@ -7060,34 +7071,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
 
       for (const file of files) {
         if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
-          let convertedOk = false;
-          try {
-            const pdfPath = path.join(tmpDir, `owner_contract_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
-            fs.writeFileSync(pdfPath, file.buffer);
-            tmpFiles.push(pdfPath);
-
-            const prefix = path.join(tmpDir, `owner_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-            execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 60000 });
-
-            const pageFiles = fs.readdirSync(tmpDir)
-              .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
-              .sort();
-
-            if (pageFiles.length > 0) {
-              convertedOk = true;
-              for (const pageFile of pageFiles) {
-                const pagePath = path.join(tmpDir, pageFile);
-                tmpFiles.push(pagePath);
-                const imgBuffer = fs.readFileSync(pagePath);
-                ownerImageAttachments.push({ mimeType: 'image/png', data: imgBuffer.toString('base64') });
-              }
-            }
-          } catch (e: any) {
-            console.log(`pdftoppm failed for owner contract PDF, sending PDF directly to AI: ${e.message}`);
+          const conv = convertPdfToImages(file.buffer, tmpDir, { maxPages: 10, label: 'owner_contract' });
+          tmpFiles.push(...conv.tmpFiles);
+          for (const img of conv.images) {
+            ownerImageAttachments.push(img);
           }
-
-          if (!convertedOk) {
-            ownerPdfBuffers.push(file.buffer);
+          if (conv.images.length === 0 && conv.pdfBuffer) {
+            ownerPdfBuffers.push(conv.pdfBuffer);
           }
         } else {
           ownerImageAttachments.push({ mimeType: file.mimetype || 'image/png', data: file.buffer.toString('base64') });
