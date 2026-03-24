@@ -3543,7 +3543,7 @@ export async function registerRoutes(
       let base64Images: string[] = [];
       try {
         const outputPrefix = path.join(tmpDir, `invoice_page_${Date.now()}`);
-        execSync(`pdftoppm -png -r 300 "${pdfPath}" "${outputPrefix}"`, { timeout: 30000 });
+        execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${outputPrefix}"`, { timeout: 120000 });
         const pngFiles = fs.readdirSync(tmpDir)
           .filter(f => f.startsWith(path.basename(outputPrefix)) && f.endsWith('.png'))
           .sort();
@@ -4810,7 +4810,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         fs.writeFileSync(pdfPath, fileBuffer);
         try {
           const outputPrefix = path.join(tmpDir, `ocr_page_${Date.now()}`);
-          execSync(`pdftoppm -png -r 200 -l 2 "${pdfPath}" "${outputPrefix}"`, { timeout: 30000 });
+          execSync(`pdftoppm -png -r 150 -l 2 "${pdfPath}" "${outputPrefix}"`, { timeout: 120000 });
           const pageFiles = fs.readdirSync(tmpDir)
             .filter(f => f.startsWith(path.basename(outputPrefix)))
             .sort()
@@ -6754,7 +6754,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           tmpFiles.push(pdfPath);
 
           const prefix = path.join(tmpDir, `sublease_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-          execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+          execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 120000 });
 
           const pageFiles = fs.readdirSync(tmpDir)
             .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
@@ -6929,7 +6929,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
             allTmpFiles.push(pdfPath);
 
             const prefix = path.join(tmpDir, `sublease_bulk_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-            execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+            execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 120000 });
 
             const pageFiles = fs.readdirSync(tmpDir)
               .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
@@ -7028,7 +7028,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           } catch {
             return res.status(500).json({ message: "Brak narzędzia pdftoppm na serwerze. Obsługiwane są pliki graficzne (JPG, PNG, WEBP). Skonwertuj PDF na obrazy przed uploadem." });
           }
-          execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+          execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 120000 });
 
           const pageFiles = fs.readdirSync(tmpDir)
             .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
