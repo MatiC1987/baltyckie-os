@@ -1310,6 +1310,21 @@ export default function Subleases() {
   const [pdfExtracted, setPdfExtracted] = useState<Record<string, any> | null>(null);
   const [pdfImportFiles, setPdfImportFiles] = useState<File[]>([]);
   const [pdfImportForm, setPdfImportForm] = useState<Record<string, any>>({});
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkImportStep, setBulkImportStep] = useState<"upload" | "loading" | "review" | "saving">("upload");
+  const [bulkImportProgress, setBulkImportProgress] = useState({ current: 0, total: 0 });
+  const [bulkImportResults, setBulkImportResults] = useState<Array<{
+    fileName: string;
+    extracted: Record<string, any> | null;
+    pages: number;
+    error?: string;
+    form: Record<string, any>;
+    paymentSchedule: Array<{ date: string; amount: string; description: string; apartmentId: number | null }>;
+    selected: boolean;
+    saved: boolean;
+  }>>([]);
+  const [bulkImportFiles, setBulkImportFiles] = useState<File[]>([]);
+  const [bulkExpandedIdx, setBulkExpandedIdx] = useState<number | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateForm, setGenerateForm] = useState<Record<string, any>>({ tenantType: "osoba_fizyczna", startDate: "", endDate: "" });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
@@ -1545,6 +1560,191 @@ export default function Subleases() {
         setPdfImportFiles([]);
       },
     });
+  };
+
+  const handleBulkUpload = async (fileList: FileList) => {
+    const filesArr = Array.from(fileList);
+    setBulkImportFiles(filesArr);
+    setBulkImportStep("loading");
+    setBulkImportProgress({ current: 0, total: filesArr.length });
+    try {
+      const formData = new FormData();
+      for (const file of filesArr) {
+        formData.append("files", file);
+      }
+      const res = await fetch("/api/parse-sublease-pdfs-bulk", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Błąd parsowania");
+      }
+      const { results } = await res.json();
+
+      const mapped = results.map((r: any, idx: number) => {
+        if (!r.extracted) {
+          return {
+            fileName: r.fileName,
+            extracted: null,
+            pages: r.pages,
+            error: r.error || "Błąd przetwarzania",
+            form: {},
+            paymentSchedule: [],
+            selected: false,
+            saved: false,
+          };
+        }
+
+        const ext = r.extracted;
+        const matchedApartment = apartments.find((a) => {
+          const addr = (ext.apartmentAddress || "").toLowerCase();
+          return addr.includes(a.name?.toLowerCase() || "___") ||
+                 addr.includes(a.address?.toLowerCase() || "___");
+        });
+
+        const mainEmail = ext.email || "";
+        return {
+          fileName: r.fileName,
+          extracted: ext,
+          pages: r.pages,
+          form: {
+            tenantType: ext.tenantType || "osoba_fizyczna",
+            firstName: ext.firstName || "",
+            lastName: ext.lastName || "",
+            companyName: ext.companyName || "",
+            nip: ext.nip || "",
+            peselOrPassport: ext.peselOrPassport || "",
+            idNumber: ext.idNumber || "",
+            street: ext.street || "",
+            postalCode: ext.postalCode || "",
+            city: ext.city || "",
+            phone: ext.phone || "",
+            email: mainEmail,
+            invoiceEmail: ext.invoiceEmail || mainEmail,
+            vatRate: ext.vatRate || "23%",
+            apartmentId: matchedApartment?.id || null,
+            apartmentIds: matchedApartment ? [matchedApartment.id] : [],
+            startDate: ext.startDate || "",
+            endDate: ext.endDate || "",
+            rentAmount: ext.rentAmount?.toString() || "",
+            additionalFees: ext.additionalFees?.toString() || "",
+            paymentDay: ext.paymentDay?.toString() || "",
+            mediaByMeters: ext.mediaByMeters || false,
+            hasDeposit: ext.hasDeposit || false,
+            depositAmount: ext.depositAmount?.toString() || "",
+            _apartmentAddress: ext.apartmentAddress || "",
+          },
+          paymentSchedule: (ext.paymentSchedule || []).map((p: any) => ({
+            date: p.date || "",
+            amount: p.amount?.toString() || "",
+            description: p.description || "",
+            apartmentId: null as number | null,
+          })),
+          selected: true,
+          saved: false,
+        };
+      });
+
+      setBulkImportResults(mapped);
+      setBulkImportStep("review");
+    } catch (err: any) {
+      toast({ title: "Błąd importu", description: err.message, variant: "destructive" });
+      setBulkImportStep("upload");
+    }
+  };
+
+  const handleBulkSaveAll = async () => {
+    const toSave = bulkImportResults.filter(r => r.selected && !r.saved && r.extracted);
+    if (toSave.length === 0) {
+      toast({ title: "Brak umów do zapisania", variant: "destructive" });
+      return;
+    }
+
+    setBulkImportStep("saving");
+    let savedCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < bulkImportResults.length; i++) {
+      const item = bulkImportResults[i];
+      if (!item.selected || item.saved || !item.extracted) continue;
+
+      try {
+        const { _apartmentAddress, ...rest } = item.form;
+        const data = { ...rest };
+        if (data.additionalFees === "" || data.additionalFees === null || data.additionalFees === undefined) data.additionalFees = "0";
+        if (data.depositAmount === "" || data.depositAmount === null || data.depositAmount === undefined) data.depositAmount = null;
+        if (data.rentAmount === "" || data.rentAmount === null || data.rentAmount === undefined) data.rentAmount = "0";
+        if (data.invoiceEmail === undefined) data.invoiceEmail = "";
+
+        const response = await apiRequest('POST', '/api/subleases', data);
+        const result = await response.json();
+        const subleaseId = result?.id;
+
+        if (subleaseId && item.paymentSchedule.length > 0) {
+          const paymentPromises = item.paymentSchedule
+            .filter(p => p.date)
+            .map(payment =>
+              apiRequest('POST', `/api/subleases/${subleaseId}/payments`, {
+                title: payment.description || "Czynsz",
+                category: payment.description?.toLowerCase().includes("kaucja") ? "kaucja" : "czynsz",
+                amount: payment.amount || "0",
+                dueDate: payment.date,
+                status: "do_oplacenia",
+                ...(payment.apartmentId ? { apartmentId: payment.apartmentId } : {}),
+              })
+            );
+          await Promise.all(paymentPromises);
+        }
+
+        if (subleaseId && bulkImportFiles[i]) {
+          try {
+            const file = bulkImportFiles[i];
+            const fileName = file.name;
+            const fileType = file.type || "application/octet-stream";
+            const urlRes = await fetch("/api/uploads/request-url", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: fileName, size: file.size, contentType: fileType }),
+            });
+            if (urlRes.ok) {
+              const { uploadURL, objectPath } = await urlRes.json();
+              const uploadRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": fileType } });
+              if (uploadRes.ok) {
+                await fetch(`/api/subleases/${subleaseId}/attachments`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ fileName, objectPath, fileType, category: "UMOWA" }),
+                });
+              }
+            }
+          } catch {}
+        }
+
+        setBulkImportResults(prev => prev.map((r, idx) => idx === i ? { ...r, saved: true } : r));
+        savedCount++;
+      } catch (err: any) {
+        setBulkImportResults(prev => prev.map((r, idx) => idx === i ? { ...r, error: err.message || "Błąd zapisu" } : r));
+        errorCount++;
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
+
+    if (errorCount === 0) {
+      toast({ title: `Zaimportowano ${savedCount} umów` });
+      setBulkImportOpen(false);
+      setBulkImportStep("upload");
+      setBulkImportResults([]);
+      setBulkImportFiles([]);
+      setBulkExpandedIdx(null);
+    } else {
+      toast({ title: `Zapisano ${savedCount}, błędy: ${errorCount}`, variant: "destructive" });
+      setBulkImportStep("review");
+    }
   };
 
   const openAdd = () => {
@@ -1844,6 +2044,9 @@ export default function Subleases() {
           </Button>
           <Button variant="outline" onClick={() => { setPdfImportOpen(true); setPdfImportStep("upload"); }} data-testid="button-import-pdf">
             <FileUp className="h-4 w-4 mr-1" /> Import z PDF
+          </Button>
+          <Button variant="outline" onClick={() => { setBulkImportOpen(true); setBulkImportStep("upload"); setBulkImportResults([]); setBulkImportFiles([]); setBulkExpandedIdx(null); }} data-testid="button-bulk-import">
+            <Zap className="h-4 w-4 mr-1" /> Import AI (masowy)
           </Button>
           <Button variant="outline" onClick={() => setGenerateOpen(true)} data-testid="button-generate-contract">
             <FilePlus2 className="h-4 w-4 mr-1" /> Generuj umowę
@@ -2559,6 +2762,265 @@ export default function Subleases() {
                   {!createMut.isPending && <Check className="h-4 w-4 mr-1" />}
                   Zapisz umowe
                 </LoadingButton>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkImportOpen} onOpenChange={(v) => { if (!v && bulkImportStep !== "loading" && bulkImportStep !== "saving") { setBulkImportOpen(false); setBulkImportStep("upload"); setBulkImportResults([]); setBulkImportFiles([]); setBulkExpandedIdx(null); } }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Masowy import umów z AI</DialogTitle>
+            <DialogDescription>Wgraj wiele plików PDF z umowami podnajmu — AI rozpozna dane z każdego pliku osobno.</DialogDescription>
+          </DialogHeader>
+
+          {bulkImportStep === "upload" && (
+            <div className="flex flex-col items-center justify-center py-8 gap-4">
+              <div className="border-2 border-dashed rounded-md p-8 w-full flex flex-col items-center gap-3 text-muted-foreground">
+                <FileUp className="h-10 w-10" />
+                <p className="text-sm font-medium">Wybierz pliki PDF z umowami podnajmu</p>
+                <p className="text-xs">Każdy plik = osobna umowa. AI rozpozna dane z każdego pliku osobno.</p>
+                <p className="text-xs">Dozwolone formaty: PDF, JPG, PNG (max 20 plików)</p>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"
+                  multiple
+                  className="hidden"
+                  id="bulk-upload-input"
+                  data-testid="input-bulk-upload"
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) handleBulkUpload(files);
+                    e.target.value = "";
+                  }}
+                />
+                <Button variant="outline" onClick={() => document.getElementById("bulk-upload-input")?.click()} data-testid="button-select-bulk-files">
+                  <Upload className="h-4 w-4 mr-1" /> Wybierz pliki
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {bulkImportStep === "loading" && (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Przetwarzam {bulkImportFiles.length} plików...</p>
+              <p className="text-xs text-muted-foreground">AI analizuje każdy plik osobno. To może potrwać kilka minut.</p>
+            </div>
+          )}
+
+          {bulkImportStep === "saving" && (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Zapisuję umowy...</p>
+              <p className="text-xs text-muted-foreground">
+                Zapisano: {bulkImportResults.filter(r => r.saved).length} / {bulkImportResults.filter(r => r.selected && r.extracted).length}
+              </p>
+            </div>
+          )}
+
+          {bulkImportStep === "review" && (
+            <>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-sm text-muted-foreground">
+                  Rozpoznano {bulkImportResults.filter(r => r.extracted).length} z {bulkImportResults.length} plików.
+                  Sprawdź dane i wybierz które umowy zapisać.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBulkImportResults(prev => prev.map(r => ({ ...r, selected: r.extracted ? !prev.every(x => !x.extracted || x.selected) : false })))}
+                    data-testid="button-bulk-toggle-all"
+                  >
+                    {bulkImportResults.every(r => !r.extracted || r.selected) ? "Odznacz wszystkie" : "Zaznacz wszystkie"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border rounded-md overflow-hidden">
+                <div className="grid grid-cols-[36px_1fr_120px_120px_100px_80px_60px] gap-1 p-2 bg-muted/50 text-xs font-medium text-muted-foreground">
+                  <span></span>
+                  <span>Najemca / Plik</span>
+                  <span>Data od</span>
+                  <span>Data do</span>
+                  <span>Czynsz</span>
+                  <span>Status</span>
+                  <span></span>
+                </div>
+                <div className="max-h-[400px] overflow-y-auto">
+                  {bulkImportResults.map((item, idx) => (
+                    <div key={idx} data-testid={`row-bulk-import-${idx}`}>
+                      <div
+                        className={`grid grid-cols-[36px_1fr_120px_120px_100px_80px_60px] gap-1 p-2 border-t items-center cursor-pointer hover:bg-muted/30 ${item.saved ? "bg-green-50 dark:bg-green-950/20" : ""}`}
+                        onClick={() => setBulkExpandedIdx(bulkExpandedIdx === idx ? null : idx)}
+                      >
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={item.selected}
+                            disabled={!item.extracted || item.saved}
+                            onChange={() => setBulkImportResults(prev => prev.map((r, i) => i === idx ? { ...r, selected: !r.selected } : r))}
+                            className="h-4 w-4"
+                            data-testid={`checkbox-bulk-select-${idx}`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {item.extracted
+                              ? (item.form.tenantType === "firma"
+                                ? item.form.companyName || item.fileName
+                                : `${item.form.firstName} ${item.form.lastName}`.trim() || item.fileName)
+                              : item.fileName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{item.fileName}</p>
+                        </div>
+                        <span className="text-xs">{item.form.startDate || "-"}</span>
+                        <span className="text-xs">{item.form.endDate || "-"}</span>
+                        <span className="text-xs">{item.form.rentAmount ? `${item.form.rentAmount} zł` : "-"}</span>
+                        <div>
+                          {item.saved ? (
+                            <Badge variant="outline" className="text-green-600 border-green-300 text-xs"><Check className="h-3 w-3 mr-1" />Zapisano</Badge>
+                          ) : item.error ? (
+                            <Badge variant="destructive" className="text-xs"><AlertTriangle className="h-3 w-3 mr-1" />Błąd</Badge>
+                          ) : item.extracted ? (
+                            <Badge variant="outline" className="text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />OK</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">-</Badge>
+                          )}
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" data-testid={`button-bulk-expand-${idx}`}>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${bulkExpandedIdx === idx ? "rotate-180" : ""}`} />
+                        </Button>
+                      </div>
+
+                      {bulkExpandedIdx === idx && item.extracted && (
+                        <div className="border-t bg-muted/10 p-4 space-y-3">
+                          {item.form._apartmentAddress && (
+                            <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md">
+                              Adres z dokumentu: <span className="font-medium">{item.form._apartmentAddress}</span>
+                            </div>
+                          )}
+                          {item.error && (
+                            <div className="text-xs text-red-600 bg-red-50 dark:bg-red-950/20 p-2 rounded-md">
+                              Błąd: {item.error}
+                            </div>
+                          )}
+                          <SubleaseFormFields
+                            form={item.form}
+                            setForm={(updater: any) => {
+                              setBulkImportResults(prev => prev.map((r, i) => {
+                                if (i !== idx) return r;
+                                const newForm = typeof updater === "function" ? updater(r.form) : updater;
+                                return { ...r, form: newForm };
+                              }));
+                            }}
+                            apartments={apartments}
+                          />
+                          {item.paymentSchedule.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                                <Label className="text-sm font-medium">Harmonogram opłat ({item.paymentSchedule.length})</Label>
+                              </div>
+                              <div className="border rounded-md overflow-hidden">
+                                <div className="grid grid-cols-[120px_100px_1fr_36px] gap-1 p-2 bg-muted/50 text-xs font-medium text-muted-foreground">
+                                  <span>Data</span>
+                                  <span>Kwota</span>
+                                  <span>Opis</span>
+                                  <span></span>
+                                </div>
+                                <div className="max-h-[200px] overflow-y-auto">
+                                  {item.paymentSchedule.map((row, pidx) => (
+                                    <div key={pidx} className="grid grid-cols-[120px_100px_1fr_36px] gap-1 p-1 border-t items-center">
+                                      <Input
+                                        type="date"
+                                        value={row.date}
+                                        onChange={(e) => {
+                                          setBulkImportResults(prev => prev.map((r, i) => {
+                                            if (i !== idx) return r;
+                                            const updated = [...r.paymentSchedule];
+                                            updated[pidx] = { ...updated[pidx], date: e.target.value };
+                                            return { ...r, paymentSchedule: updated };
+                                          }));
+                                        }}
+                                        className="h-7 text-xs"
+                                        data-testid={`input-bulk-sched-date-${idx}-${pidx}`}
+                                      />
+                                      <Input
+                                        type="number"
+                                        value={row.amount}
+                                        onChange={(e) => {
+                                          setBulkImportResults(prev => prev.map((r, i) => {
+                                            if (i !== idx) return r;
+                                            const updated = [...r.paymentSchedule];
+                                            updated[pidx] = { ...updated[pidx], amount: e.target.value };
+                                            return { ...r, paymentSchedule: updated };
+                                          }));
+                                        }}
+                                        className="h-7 text-xs"
+                                        placeholder="0.00"
+                                        data-testid={`input-bulk-sched-amount-${idx}-${pidx}`}
+                                      />
+                                      <Input
+                                        value={row.description}
+                                        onChange={(e) => {
+                                          setBulkImportResults(prev => prev.map((r, i) => {
+                                            if (i !== idx) return r;
+                                            const updated = [...r.paymentSchedule];
+                                            updated[pidx] = { ...updated[pidx], description: e.target.value };
+                                            return { ...r, paymentSchedule: updated };
+                                          }));
+                                        }}
+                                        className="h-7 text-xs"
+                                        data-testid={`input-bulk-sched-desc-${idx}-${pidx}`}
+                                      />
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => {
+                                          setBulkImportResults(prev => prev.map((r, i) => {
+                                            if (i !== idx) return r;
+                                            return { ...r, paymentSchedule: r.paymentSchedule.filter((_, pi) => pi !== pidx) };
+                                          }));
+                                        }}
+                                        data-testid={`button-bulk-remove-sched-${idx}-${pidx}`}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {bulkExpandedIdx === idx && item.error && !item.extracted && (
+                        <div className="border-t bg-red-50 dark:bg-red-950/20 p-4">
+                          <p className="text-sm text-red-600">{item.error}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 mt-4">
+                <Button variant="outline" onClick={() => { setBulkImportOpen(false); setBulkImportStep("upload"); setBulkImportResults([]); setBulkImportFiles([]); setBulkExpandedIdx(null); }} data-testid="button-bulk-cancel">
+                  Anuluj
+                </Button>
+                <Button
+                  onClick={handleBulkSaveAll}
+                  disabled={bulkImportResults.filter(r => r.selected && !r.saved && r.extracted).length === 0}
+                  data-testid="button-bulk-save-all"
+                >
+                  <Check className="h-4 w-4 mr-1" />
+                  Zapisz wybrane ({bulkImportResults.filter(r => r.selected && !r.saved && r.extracted).length})
+                </Button>
               </DialogFooter>
             </>
           )}

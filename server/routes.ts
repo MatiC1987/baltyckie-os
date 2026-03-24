@@ -6855,6 +6855,145 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
     }
   });
 
+  app.post('/api/parse-sublease-pdfs-bulk', isAuthenticated, contractUpload.array('files', 20), async (req, res) => {
+    const allTmpFiles: string[] = [];
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "Brak plików" });
+      }
+
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+      for (const file of files) {
+        const ext = file.originalname.toLowerCase();
+        const isAllowed = allowedTypes.includes(file.mimetype) ||
+          ext.endsWith('.pdf') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') ||
+          ext.endsWith('.png') || ext.endsWith('.webp') || ext.endsWith('.heic');
+        if (!isAllowed) {
+          return res.status(400).json({ message: `Nieobsługiwany format pliku: ${file.originalname}. Dozwolone: PDF, JPG, PNG, WEBP` });
+        }
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const promptText = `Przeanalizuj te zdjecia/strony umowy podnajmu/najmu mieszkania. Wyciagnij nastepujace dane w formacie JSON.
+Jesli dane nie wystepuja w dokumencie, wpisz null.
+{
+  "tenantType": "osoba_fizyczna" lub "firma",
+  "firstName": "imie najemcy",
+  "lastName": "nazwisko najemcy",
+  "companyName": "nazwa firmy (jesli firma)",
+  "nip": "NIP firmy",
+  "peselOrPassport": "PESEL lub numer paszportu osoby fizycznej",
+  "street": "ulica i numer najemcy",
+  "postalCode": "kod pocztowy najemcy",
+  "city": "miasto najemcy",
+  "phone": "telefon",
+  "email": "email",
+  "apartmentAddress": "pelny adres wynajmowanej nieruchomosci (ulica, numer, kod pocztowy, miasto)",
+  "startDate": "YYYY-MM-DD data rozpoczecia",
+  "endDate": "YYYY-MM-DD data zakonczenia",
+  "rentAmount": kwota czynszu miesiecznego BRUTTO (z VAT) jako liczba. Jesli na umowie widnieje kwota netto + VAT (np. 15000 + 8% VAT = 16200), ZAWSZE podaj kwote brutto lacznie z podatkiem (czyli 16200),
+  "additionalFees": dodatkowe oplaty BRUTTO (z VAT) jako liczba lub null,
+  "mediaByMeters": true jesli media wg licznikow, false jesli ryczalt,
+  "hasDeposit": true jesli jest kaucja,
+  "depositAmount": kwota kaucji jako liczba lub null,
+  "vatRate": "stawka VAT np. 23%",
+  "paymentSchedule": [
+    {
+      "date": "YYYY-MM-DD termin platnosci",
+      "amount": kwota jako liczba,
+      "description": "opis platnosci np. Czynsz za styczeń 2025"
+    }
+  ]
+}
+WAZNE: Wszystkie kwoty w paymentSchedule musza byc BRUTTO (z VAT). Jesli kwota na umowie jest podana jako netto + VAT, oblicz kwote brutto i uzyj jej.
+Pole "paymentSchedule" - jesli w umowie jest harmonogram oplat, tabela rat, lub lista platnosci z datami i kwotami, wyciagnij je wszystkie. Jesli nie ma harmonogramu, ale sa podane czynsz miesieczny i daty umowy, wygeneruj harmonogram miesiecznych platnosci od startDate do endDate z kwota rentAmount (brutto!) i tytulami "Czynsz za [miesiac] [rok]". Daty platnosci ustaw na 10. dzien kazdego miesiaca. Jesli jest kaucja, dodaj ja jako pierwsza platnosc z opisem "Kaucja".
+Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
+
+      const results: Array<{ fileName: string; extracted: any; pages: number; error?: string }> = [];
+
+      for (const file of files) {
+        const tmpFiles: string[] = [];
+        try {
+          const tmpDir = os.tmpdir();
+          const pageImages: string[] = [];
+
+          if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+            const pdfPath = path.join(tmpDir, `sublease_bulk_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+            fs.writeFileSync(pdfPath, file.buffer);
+            tmpFiles.push(pdfPath);
+            allTmpFiles.push(pdfPath);
+
+            const prefix = path.join(tmpDir, `sublease_bulk_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            execSync(`pdftoppm -png -r 200 "${pdfPath}" "${prefix}"`, { timeout: 30000 });
+
+            const pageFiles = fs.readdirSync(tmpDir)
+              .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+              .sort();
+
+            for (const pageFile of pageFiles) {
+              const pagePath = path.join(tmpDir, pageFile);
+              tmpFiles.push(pagePath);
+              allTmpFiles.push(pagePath);
+              const imgBuffer = fs.readFileSync(pagePath);
+              pageImages.push(imgBuffer.toString('base64'));
+            }
+          } else {
+            pageImages.push(file.buffer.toString('base64'));
+          }
+
+          if (pageImages.length === 0) {
+            results.push({ fileName: file.originalname, extracted: null, pages: 0, error: "Nie udało się odczytać pliku" });
+            continue;
+          }
+
+          const maxPages = Math.min(pageImages.length, 8);
+          const content: any[] = [{ type: 'text', text: promptText }];
+          for (let i = 0; i < maxPages; i++) {
+            content.push({
+              type: 'image_url',
+              image_url: { url: `data:image/png;base64,${pageImages[i]}` }
+            });
+          }
+
+          const response = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content }],
+            max_tokens: 4000,
+          });
+
+          const rawText = response.choices[0]?.message?.content || '';
+          const jsonMatch = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+          let extracted;
+          try {
+            extracted = JSON.parse(jsonMatch);
+          } catch {
+            results.push({ fileName: file.originalname, extracted: null, pages: pageImages.length, error: "Nie udało się sparsować odpowiedzi AI" });
+            continue;
+          }
+
+          results.push({ fileName: file.originalname, extracted, pages: pageImages.length });
+        } catch (err: any) {
+          results.push({ fileName: file.originalname, extracted: null, pages: 0, error: err.message || "Błąd przetwarzania" });
+        }
+      }
+
+      res.json({ results });
+    } catch (err: any) {
+      console.error("Bulk contract parse error:", err);
+      res.status(500).json({ message: "Błąd parsowania: " + (err.message || "Nieznany błąd") });
+    } finally {
+      for (const f of allTmpFiles) {
+        try { fs.unlinkSync(f); } catch {}
+      }
+    }
+  });
+
   app.post('/api/parse-owner-contract-pdf', isAuthenticated, contractUpload.array('files', 20), async (req, res) => {
     const tmpFiles: string[] = [];
     try {
