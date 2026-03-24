@@ -6745,33 +6745,48 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       }
 
       const tmpDir = os.tmpdir();
-      const pageImages: string[] = [];
+      const imageAttachments: Array<{type: string; mimeType: string; data: string}> = [];
+      let hasPdfDirect = false;
+      const pdfBuffers: Buffer[] = [];
 
       for (const file of files) {
         if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
-          const pdfPath = path.join(tmpDir, `sublease_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
-          fs.writeFileSync(pdfPath, file.buffer);
-          tmpFiles.push(pdfPath);
+          let convertedOk = false;
+          try {
+            const pdfPath = path.join(tmpDir, `sublease_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+            fs.writeFileSync(pdfPath, file.buffer);
+            tmpFiles.push(pdfPath);
 
-          const prefix = path.join(tmpDir, `sublease_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-          execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 120000 });
+            const prefix = path.join(tmpDir, `sublease_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 60000 });
 
-          const pageFiles = fs.readdirSync(tmpDir)
-            .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
-            .sort();
+            const pageFiles = fs.readdirSync(tmpDir)
+              .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+              .sort();
 
-          for (const pageFile of pageFiles) {
-            const pagePath = path.join(tmpDir, pageFile);
-            tmpFiles.push(pagePath);
-            const imgBuffer = fs.readFileSync(pagePath);
-            pageImages.push(imgBuffer.toString('base64'));
+            if (pageFiles.length > 0) {
+              convertedOk = true;
+              for (const pageFile of pageFiles) {
+                const pagePath = path.join(tmpDir, pageFile);
+                tmpFiles.push(pagePath);
+                const imgBuffer = fs.readFileSync(pagePath);
+                imageAttachments.push({ type: 'image', mimeType: 'image/png', data: imgBuffer.toString('base64') });
+              }
+            }
+          } catch (e: any) {
+            console.log(`pdftoppm failed for sublease PDF, sending PDF directly to AI: ${e.message}`);
+          }
+
+          if (!convertedOk) {
+            hasPdfDirect = true;
+            pdfBuffers.push(file.buffer);
           }
         } else {
-          pageImages.push(file.buffer.toString('base64'));
+          imageAttachments.push({ type: 'image', mimeType: file.mimetype || 'image/png', data: file.buffer.toString('base64') });
         }
       }
 
-      if (pageImages.length === 0) {
+      if (imageAttachments.length === 0 && pdfBuffers.length === 0) {
         return res.status(400).json({ message: "Nie udało się odczytać plików" });
       }
 
@@ -6780,11 +6795,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
-      const maxPages = Math.min(pageImages.length, 8);
-      const content: any[] = [
-        {
-          type: 'text',
-          text: `Przeanalizuj te zdjecia/strony umowy podnajmu/najmu mieszkania. Wyciagnij nastepujace dane w formacie JSON.
+      const promptText = `Przeanalizuj te zdjecia/strony umowy podnajmu/najmu mieszkania. Wyciagnij nastepujace dane w formacie JSON.
 Jesli dane nie wystepuja w dokumencie, wpisz null.
 {
   "tenantType": "osoba_fizyczna" lub "firma",
@@ -6817,14 +6828,22 @@ Jesli dane nie wystepuja w dokumencie, wpisz null.
 }
 WAZNE: Wszystkie kwoty w paymentSchedule musza byc BRUTTO (z VAT). Jesli kwota na umowie jest podana jako netto + VAT, oblicz kwote brutto i uzyj jej.
 Pole "paymentSchedule" - jesli w umowie jest harmonogram oplat, tabela rat, lub lista platnosci z datami i kwotami, wyciagnij je wszystkie. Jesli nie ma harmonogramu, ale sa podane czynsz miesieczny i daty umowy, wygeneruj harmonogram miesiecznych platnosci od startDate do endDate z kwota rentAmount (brutto!) i tytulami "Czynsz za [miesiac] [rok]". Daty platnosci ustaw na 10. dzien kazdego miesiaca. Jesli jest kaucja, dodaj ja jako pierwsza platnosc z opisem "Kaucja".
-Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
-        }
-      ];
+Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
 
-      for (let i = 0; i < maxPages; i++) {
+      const content: any[] = [{ type: 'text', text: promptText }];
+
+      for (const pdfBuf of pdfBuffers) {
+        content.push({
+          type: 'file',
+          file: { filename: 'contract.pdf', file_data: `data:application/pdf;base64,${pdfBuf.toString('base64')}` }
+        });
+      }
+
+      const maxImages = Math.min(imageAttachments.length, 8);
+      for (let i = 0; i < maxImages; i++) {
         content.push({
           type: 'image_url',
-          image_url: { url: `data:image/png;base64,${pageImages[i]}` }
+          image_url: { url: `data:${imageAttachments[i].mimeType};base64,${imageAttachments[i].data}` }
         });
       }
 
@@ -6920,43 +6939,65 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         const tmpFiles: string[] = [];
         try {
           const tmpDir = os.tmpdir();
-          const pageImages: string[] = [];
+
+          const bulkImageAttachments: Array<{mimeType: string; data: string}> = [];
+          let bulkPdfBuffer: Buffer | null = null;
 
           if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
-            const pdfPath = path.join(tmpDir, `sublease_bulk_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
-            fs.writeFileSync(pdfPath, file.buffer);
-            tmpFiles.push(pdfPath);
-            allTmpFiles.push(pdfPath);
+            let convertedOk = false;
+            try {
+              const pdfPath = path.join(tmpDir, `sublease_bulk_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+              fs.writeFileSync(pdfPath, file.buffer);
+              tmpFiles.push(pdfPath);
+              allTmpFiles.push(pdfPath);
 
-            const prefix = path.join(tmpDir, `sublease_bulk_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-            execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 120000 });
+              const prefix = path.join(tmpDir, `sublease_bulk_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+              execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 60000 });
 
-            const pageFiles = fs.readdirSync(tmpDir)
-              .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
-              .sort();
+              const pageFiles = fs.readdirSync(tmpDir)
+                .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+                .sort();
 
-            for (const pageFile of pageFiles) {
-              const pagePath = path.join(tmpDir, pageFile);
-              tmpFiles.push(pagePath);
-              allTmpFiles.push(pagePath);
-              const imgBuffer = fs.readFileSync(pagePath);
-              pageImages.push(imgBuffer.toString('base64'));
+              if (pageFiles.length > 0) {
+                convertedOk = true;
+                for (const pageFile of pageFiles) {
+                  const pagePath = path.join(tmpDir, pageFile);
+                  tmpFiles.push(pagePath);
+                  allTmpFiles.push(pagePath);
+                  const imgBuffer = fs.readFileSync(pagePath);
+                  bulkImageAttachments.push({ mimeType: 'image/png', data: imgBuffer.toString('base64') });
+                }
+              }
+            } catch (e: any) {
+              console.log(`pdftoppm failed for bulk sublease PDF, sending PDF directly to AI: ${e.message}`);
+            }
+
+            if (!convertedOk) {
+              bulkPdfBuffer = file.buffer;
             }
           } else {
-            pageImages.push(file.buffer.toString('base64'));
+            bulkImageAttachments.push({ mimeType: file.mimetype || 'image/png', data: file.buffer.toString('base64') });
           }
 
-          if (pageImages.length === 0) {
+          if (bulkImageAttachments.length === 0 && !bulkPdfBuffer) {
             results.push({ fileName: file.originalname, extracted: null, pages: 0, error: "Nie udało się odczytać pliku" });
             continue;
           }
 
-          const maxPages = Math.min(pageImages.length, 8);
           const content: any[] = [{ type: 'text', text: promptText }];
+
+          if (bulkPdfBuffer) {
+            content.push({
+              type: 'file',
+              file: { filename: file.originalname, file_data: `data:application/pdf;base64,${bulkPdfBuffer.toString('base64')}` }
+            });
+          }
+
+          const maxPages = Math.min(bulkImageAttachments.length, 8);
           for (let i = 0; i < maxPages; i++) {
             content.push({
               type: 'image_url',
-              image_url: { url: `data:image/png;base64,${pageImages[i]}` }
+              image_url: { url: `data:${bulkImageAttachments[i].mimeType};base64,${bulkImageAttachments[i].data}` }
             });
           }
 
@@ -7014,38 +7055,46 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       }
 
       const tmpDir = os.tmpdir();
-      const pageImages: string[] = [];
+      const ownerImageAttachments: Array<{mimeType: string; data: string}> = [];
+      const ownerPdfBuffers: Buffer[] = [];
 
       for (const file of files) {
         if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
-          const pdfPath = path.join(tmpDir, `owner_contract_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
-          fs.writeFileSync(pdfPath, file.buffer);
-          tmpFiles.push(pdfPath);
-
-          const prefix = path.join(tmpDir, `owner_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+          let convertedOk = false;
           try {
-            execSync('which pdftoppm', { timeout: 5000 });
-          } catch {
-            return res.status(500).json({ message: "Brak narzędzia pdftoppm na serwerze. Obsługiwane są pliki graficzne (JPG, PNG, WEBP). Skonwertuj PDF na obrazy przed uploadem." });
+            const pdfPath = path.join(tmpDir, `owner_contract_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`);
+            fs.writeFileSync(pdfPath, file.buffer);
+            tmpFiles.push(pdfPath);
+
+            const prefix = path.join(tmpDir, `owner_pages_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+            execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 60000 });
+
+            const pageFiles = fs.readdirSync(tmpDir)
+              .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
+              .sort();
+
+            if (pageFiles.length > 0) {
+              convertedOk = true;
+              for (const pageFile of pageFiles) {
+                const pagePath = path.join(tmpDir, pageFile);
+                tmpFiles.push(pagePath);
+                const imgBuffer = fs.readFileSync(pagePath);
+                ownerImageAttachments.push({ mimeType: 'image/png', data: imgBuffer.toString('base64') });
+              }
+            }
+          } catch (e: any) {
+            console.log(`pdftoppm failed for owner contract PDF, sending PDF directly to AI: ${e.message}`);
           }
-          execSync(`pdftoppm -png -r 150 -l 10 "${pdfPath}" "${prefix}"`, { timeout: 120000 });
 
-          const pageFiles = fs.readdirSync(tmpDir)
-            .filter((f: string) => f.startsWith(path.basename(prefix)) && f.endsWith('.png'))
-            .sort();
-
-          for (const pageFile of pageFiles) {
-            const pagePath = path.join(tmpDir, pageFile);
-            tmpFiles.push(pagePath);
-            const imgBuffer = fs.readFileSync(pagePath);
-            pageImages.push(imgBuffer.toString('base64'));
+          if (!convertedOk) {
+            ownerPdfBuffers.push(file.buffer);
           }
         } else {
-          pageImages.push(file.buffer.toString('base64'));
+          ownerImageAttachments.push({ mimeType: file.mimetype || 'image/png', data: file.buffer.toString('base64') });
         }
       }
 
-      if (pageImages.length === 0) {
+      if (ownerImageAttachments.length === 0 && ownerPdfBuffers.length === 0) {
         return res.status(400).json({ message: "Nie udało się odczytać plików" });
       }
 
@@ -7054,11 +7103,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
-      const maxPages = Math.min(pageImages.length, 8);
-      const content: any[] = [
-        {
-          type: 'text',
-          text: `Przeanalizuj te zdjecia/strony umowy najmu z wlascicielem nieruchomosci (umowa miedzy agencja/firma zarzadzajaca a wlascicielem mieszkania/apartamentu). Wyciagnij nastepujace dane w formacie JSON.
+      const ownerPromptText = `Przeanalizuj te zdjecia/strony umowy najmu z wlascicielem nieruchomosci (umowa miedzy agencja/firma zarzadzajaca a wlascicielem mieszkania/apartamentu). Wyciagnij nastepujace dane w formacie JSON.
 Jesli dane nie wystepuja w dokumencie, wpisz null.
 {
   "ownerFirstName": "imie wlasciciela",
@@ -7094,14 +7139,22 @@ WAZNE:
 - Pole "apartments" to TABLICA - jesli umowa dotyczy jednego mieszkania, zwroc tablice z jednym elementem. Jesli wielu - wypisz wszystkie.
 - Jesli czynsz jest podany lacznie dla wielu mieszkan, podaj laczna kwote w monthlyRent.
 - Kwoty zawsze BRUTTO (z VAT). Jesli kwota netto + VAT, oblicz brutto.
-Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`
-        }
-      ];
+Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
 
-      for (let i = 0; i < maxPages; i++) {
+      const content: any[] = [{ type: 'text', text: ownerPromptText }];
+
+      for (const pdfBuf of ownerPdfBuffers) {
+        content.push({
+          type: 'file',
+          file: { filename: 'contract.pdf', file_data: `data:application/pdf;base64,${pdfBuf.toString('base64')}` }
+        });
+      }
+
+      const maxImages = Math.min(ownerImageAttachments.length, 8);
+      for (let i = 0; i < maxImages; i++) {
         content.push({
           type: 'image_url',
-          image_url: { url: `data:image/png;base64,${pageImages[i]}` }
+          image_url: { url: `data:${ownerImageAttachments[i].mimeType};base64,${ownerImageAttachments[i].data}` }
         });
       }
 
