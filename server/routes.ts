@@ -3613,8 +3613,6 @@ export async function registerRoutes(
     try {
       if (!req.file) return res.status(400).json({ message: "Brak pliku" });
       const tmpDir = os.tmpdir();
-      const pdfPath = path.join(tmpDir, `invoice_${Date.now()}.pdf`);
-      fs.writeFileSync(pdfPath, req.file.buffer);
 
       let base64Images: Array<{data: string; mimeType: string}> = [];
       const conv = convertPdfToImages(req.file.buffer, tmpDir, { maxPages: 10, label: 'invoice' });
@@ -3624,7 +3622,6 @@ export async function registerRoutes(
       for (const f of conv.tmpFiles) {
         try { fs.unlinkSync(f); } catch {}
       }
-      try { fs.unlinkSync(pdfPath); } catch {}
 
       if (base64Images.length === 0) {
         return res.status(400).json({ message: "Nie udało się przetworzyć PDF" });
