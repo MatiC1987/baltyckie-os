@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getAuthHeaders } from "@/lib/auth-token";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export default function CostAnalyticsTab({ year }: CostAnalyticsTabProps) {
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/v2/cost-analytics", year],
     queryFn: async () => {
-      const res = await fetch(`/api/v2/cost-analytics?year=${year}`, { credentials: "include" });
+      const res = await fetch(`/api/v2/cost-analytics?year=${year}`, { credentials: "include", headers: { ...getAuthHeaders() } });
       if (!res.ok) throw new Error("Błąd pobierania analityki");
       return res.json();
     },

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, Fragment, useRef } from "react";
 import type React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getAuthHeaders } from "@/lib/auth-token";
 import type { Apartment, Location } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -114,14 +115,14 @@ async function dbBulkSaveCells(cells: { year: number; entryId: string; category:
   const CHUNK = 500;
   for (let i = 0; i < cells.length; i += CHUNK) {
     await fetch('/api/apt-cost-data/bulk', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, credentials: 'include',
       body: JSON.stringify({ cells: cells.slice(i, i + CHUNK) }),
     });
   }
 }
 async function dbSaveSettings(entryId: string, settings: Partial<{ categories: string[]; colors: Record<string, { color: string; archived?: boolean }>; entryColor: string; sortOrder: string[] }>) {
   await fetch(`/api/apt-cost-settings/${entryId}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, credentials: 'include',
     body: JSON.stringify(settings),
   });
 }
@@ -213,16 +214,32 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   // DB queries
   const { data: aptCostRows, isLoading: isLoadingCostData } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-data', year],
+    queryFn: async () => {
+      const res = await fetch(`/api/apt-cost-data?year=${year}`, { credentials: 'include', headers: { ...getAuthHeaders() } });
+      if (!res.ok) throw new Error('Failed to load apt cost data');
+      return res.json();
+    },
     staleTime: 30000,
     refetchInterval: hasPendingEdits ? false : 30000,
   });
   const { data: compareCostRows } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-data', compareYear],
+    queryFn: async () => {
+      if (compareYear === null) return [];
+      const res = await fetch(`/api/apt-cost-data?year=${compareYear}`, { credentials: 'include', headers: { ...getAuthHeaders() } });
+      if (!res.ok) throw new Error('Failed to load compare cost data');
+      return res.json();
+    },
     enabled: compareYear !== null,
     staleTime: 30000,
   });
   const { data: settingsRows } = useQuery<any[]>({
     queryKey: ['/api/apt-cost-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/apt-cost-settings', { credentials: 'include', headers: { ...getAuthHeaders() } });
+      if (!res.ok) throw new Error('Failed to load apt cost settings');
+      return res.json();
+    },
     staleTime: 60000,
     refetchInterval: 60000,
   });
@@ -373,7 +390,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     setData({});
     setShowClearAllDialog(false);
     try {
-      await fetch(`/api/apt-cost-data?year=${year}`, { method: 'DELETE', credentials: 'include' });
+      await fetch(`/api/apt-cost-data?year=${year}`, { method: 'DELETE', credentials: 'include', headers: { ...getAuthHeaders() } });
       queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', year] });
     } catch (err) { console.error('Błąd czyszczenia:', err); }
     toast({ title: "Dane wyczyszczone", description: `Wszystkie koszty za rok ${year} zostały usunięte` });
@@ -717,7 +734,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     setCategoriesMap(nextCats);
     setResetEntryDialog(null);
     try {
-      await fetch(`/api/apt-cost-data?year=${year}&entryId=${entryId}`, { method: 'DELETE', credentials: 'include' });
+      await fetch(`/api/apt-cost-data?year=${year}&entryId=${entryId}`, { method: 'DELETE', credentials: 'include', headers: { ...getAuthHeaders() } });
       queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', year] });
     } catch (err) { console.error('Błąd resetu:', err); }
     toast({ title: "Zresetowano dane", description: "Koszty zostały usunięte dla wybranego apartamentu i roku" });
@@ -927,7 +944,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const handleImportHistory = useCallback(async () => {
     setIsImportingHistory(true);
     try {
-      const resp = await fetch('/api/apt-cost-data/seed', { method: 'POST', credentials: 'include' });
+      const resp = await fetch('/api/apt-cost-data/seed', { method: 'POST', credentials: 'include', headers: { ...getAuthHeaders() } });
       if (!resp.ok) throw new Error(await resp.text());
       const result = await resp.json();
       if (result.skipped) {

@@ -2,6 +2,7 @@ import type React from "react";
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { getAuthHeaders } from "@/lib/auth-token";
 import type { CostSchedule, CostSchedulePayment, OperationalCostForecast } from "@shared/schema";
 import { DEFAULT_OPLATY_CATEGORIES, loadOplatyCategories, type OplatyCostCategory, type OplatyCostItem } from "@/lib/oplaty-defaults";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -273,7 +274,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const { data: dbRows = [] } = useQuery<Array<{ catId: string; itemIdx: number; month: number; prognoza: string | null; realized: string | null }>>({
     queryKey: ["/api/op-cost-data", selectedYear],
     queryFn: async () => {
-      const res = await fetch(`/api/op-cost-data?year=${selectedYear}`, { credentials: "include" });
+      const res = await fetch(`/api/op-cost-data?year=${selectedYear}`, { credentials: "include", headers: { ...getAuthHeaders() } });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -300,7 +301,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         const legacyCats = _legacyLoadCategories();
         if (legacyCats.length > 0) {
           setCategories(legacyCats);
-          fetch("/api/op-cost-categories", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(legacyCats) });
+          fetch("/api/op-cost-categories", { method: "PUT", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, credentials: "include", body: JSON.stringify(legacyCats) });
           localStorage.removeItem("oplaty-categories");
         } else {
           setCategories(DEFAULT_CATEGORIES);
@@ -316,7 +317,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       if (Object.keys(legacy).length > 0) {
         setCellData(legacy);
         const payload = cellDataToBulkPayload(selectedYear, legacy);
-        fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ cells: payload }) })
+        fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, credentials: "include", body: JSON.stringify({ cells: payload }) })
           .then(() => {
             localStorage.setItem(`migrated-op-cost-to-db-v1-${selectedYear}`, "1");
             localStorage.removeItem(getStorageKey(selectedYear));
@@ -336,7 +337,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     if (Object.keys(pending).length === 0) return;
     pendingCellsRef.current = {};
     const payload = cellDataToBulkPayload(year, pending);
-    fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ cells: payload }) })
+    fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, credentials: "include", body: JSON.stringify({ cells: payload }) })
       .then(() => queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data", year] }));
   }, []);
 
@@ -347,7 +348,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   }, [flushPendingCells]);
 
   const dbSaveCategories = useCallback((cats: CostCategory[]) => {
-    fetch("/api/op-cost-categories", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(cats) })
+    fetch("/api/op-cost-categories", { method: "PUT", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, credentials: "include", body: JSON.stringify(cats) })
       .then(() => queryClient.invalidateQueries({ queryKey: ["/api/op-cost-categories"] }));
   }, []);
 
@@ -692,7 +693,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     if (changed) {
       fetch("/api/op-cost-data/reindex", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         credentials: "include",
         body: JSON.stringify({ catId: from.catId, oldToNew }),
       }).then(() => {
@@ -749,7 +750,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         if (val === 0) {
           fetch("/api/operational-cost-forecasts/delete", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
             credentials: "include",
             body: JSON.stringify({ year: selectedYear, month, categoryId: catId, itemIndex: itemIdx }),
           }).then(() => {
@@ -899,7 +900,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       });
     }
     if (cells.length > 0) {
-      await fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ cells }) });
+      await fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, credentials: "include", body: JSON.stringify({ cells }) });
       queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data", nextYear] });
     }
     setShowCopyToNextYear(false);
@@ -1116,7 +1117,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     queryKey: ["/api/op-cost-data", compareYear],
     queryFn: async () => {
       if (compareYear === null) return [];
-      const res = await fetch(`/api/op-cost-data?year=${compareYear}`, { credentials: "include" });
+      const res = await fetch(`/api/op-cost-data?year=${compareYear}`, { credentials: "include", headers: { ...getAuthHeaders() } });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -1614,7 +1615,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                                         Promise.all(toDelete.map(f =>
                                           fetch("/api/operational-cost-forecasts/delete", {
                                             method: "POST",
-                                            headers: { "Content-Type": "application/json" },
+                                            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                                             credentials: "include",
                                             body: JSON.stringify({ year: f.year, month: f.month, categoryId: f.categoryId, itemIndex: f.itemIndex }),
                                           })
