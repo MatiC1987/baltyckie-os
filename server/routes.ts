@@ -19,7 +19,7 @@ import os from "os";
 import OpenAI from "openai";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const contractUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const contractUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 function generateRecurrenceDates(startDate: string, endDate: string, recurrenceType: string): string[] {
   const VALID_TYPES = ["MIESIECZNIE", "KWARTALNIE", "ROCZNIE"];
