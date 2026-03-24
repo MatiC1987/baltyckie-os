@@ -6895,7 +6895,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         return res.status(422).json({ message: "Nie udalo sie sparsowac odpowiedzi AI", raw: rawText });
       }
 
-      res.json({ extracted, pages: pageImages.length });
+      res.json({ extracted, pages: imageAttachments.length });
     } catch (err: any) {
       console.error("Contract parse error:", err);
       res.status(500).json({ message: "Blad parsowania: " + (err.message || "Nieznany blad") });
@@ -7022,11 +7022,11 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           try {
             extracted = JSON.parse(jsonMatch);
           } catch {
-            results.push({ fileName: file.originalname, extracted: null, pages: pageImages.length, error: "Nie udało się sparsować odpowiedzi AI" });
+            results.push({ fileName: file.originalname, extracted: null, pages: bulkImageAttachments.length, error: "Nie udało się sparsować odpowiedzi AI" });
             continue;
           }
 
-          results.push({ fileName: file.originalname, extracted, pages: pageImages.length });
+          results.push({ fileName: file.originalname, extracted, pages: bulkImageAttachments.length });
         } catch (err: any) {
           results.push({ fileName: file.originalname, extracted: null, pages: 0, error: err.message || "Błąd przetwarzania" });
         }
@@ -7161,7 +7161,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         return res.status(422).json({ message: "Nie udało się sparsować odpowiedzi AI", raw: rawText });
       }
 
-      res.json({ extracted, pages: pageImages.length });
+      res.json({ extracted, pages: ownerImageAttachments.length });
     } catch (err: any) {
       console.error("Owner contract parse error:", err);
       res.status(500).json({ message: "Błąd parsowania: " + (err.message || "Nieznany błąd") });
