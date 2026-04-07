@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, ChevronRight, Copy, Sparkles, BarChart3, Thermometer } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Sparkles, Thermometer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -77,96 +77,65 @@ function MiniProgress({ value, colorClass }: { value: number; colorClass: string
   );
 }
 
-type ApartmentTrendData = {
-  apartment: { id: number; name: string };
-  years: number[];
-  yearlyData: Record<number, { months: Record<number, { actual: number; forecast: number }>; totalActual: number; totalForecast: number }>;
-};
+function revenuePctColor(pct: number) {
+  if (pct <= 0) return { text: "text-muted-foreground", bar: "bg-muted" };
+  if (pct >= 100) return { text: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500" };
+  if (pct >= 75) return { text: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500" };
+  return { text: "text-orange-600 dark:text-orange-400", bar: "bg-orange-500" };
+}
 
-function ApartmentYearComparison({ apartmentId, isOpen, colSpan }: { apartmentId: number; isOpen: boolean; colSpan: number }) {
-  const currentYear = new Date().getFullYear();
-  const { data, isLoading } = useQuery<ApartmentTrendData>({
-    queryKey: [`/api/v2/apartment-trend/${apartmentId}`],
-    enabled: isOpen,
-  });
+function RevenueTile({ title, forecast, actual, onClick, testId, variant = "default" }: {
+  title: string;
+  forecast: number;
+  actual: number;
+  onClick?: () => void;
+  testId?: string;
+  variant?: "default" | "summary" | "grand";
+}) {
+  const pct = forecast > 0 ? (actual / forecast) * 100 : 0;
+  const saldo = actual - forecast;
+  const color = revenuePctColor(pct);
 
-  if (!isOpen) return null;
+  const isGrand = variant === "grand";
+  const isSummary = variant === "summary";
 
   return (
-    <tr data-testid={`apt-year-comparison-${apartmentId}`}>
-      <td colSpan={colSpan} className="p-0 bg-muted/5">
-        <div className="px-4 py-3">
-          {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-            </div>
-          ) : data ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="text-left p-1.5 font-medium min-w-[70px]">Miesiąc</th>
-                    {data.years.map(y => (
-                      <th key={y} className={`text-right p-1.5 font-medium min-w-[70px] ${y === currentYear ? "text-cyan-600 dark:text-cyan-400 font-bold" : ""}`}>{y}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {MONTHS.map((m, mi) => (
-                    <tr key={mi} className="border-b hover:bg-muted/20">
-                      <td className="p-1.5 font-medium text-muted-foreground">{m}</td>
-                      {data.years.map(y => {
-                        const val = data.yearlyData[y]?.months[mi]?.actual || 0;
-                        const fc = data.yearlyData[y]?.months[mi]?.forecast || 0;
-                        const display = val > 0 ? val : (y === currentYear && fc > 0 ? fc : 0);
-                        return (
-                          <td key={y} className={`p-1.5 text-right tabular-nums ${y === currentYear ? "font-semibold text-cyan-700 dark:text-cyan-300" : ""} ${val === 0 && fc > 0 && y === currentYear ? "text-muted-foreground italic" : ""}`}>
-                            {display > 0 ? formatNum(display) : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  <tr className="border-t-2 font-bold bg-muted/20">
-                    <td className="p-1.5">Razem</td>
-                    {data.years.map(y => (
-                      <td key={y} className={`p-1.5 text-right tabular-nums ${y === currentYear ? "text-cyan-700 dark:text-cyan-300" : ""}`}>
-                        {formatNum(data.yearlyData[y]?.totalActual || 0)}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          ) : <p className="text-xs text-muted-foreground">Brak danych</p>}
+    <Card
+      className={`${onClick ? "cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" : ""} ${isGrand ? "border-primary/30 bg-primary/5" : isSummary ? "bg-muted/30 border-dashed" : ""}`}
+      onClick={onClick}
+      data-testid={testId}
+    >
+      <CardContent className="pt-4 pb-3 px-4">
+        <p className={`${isGrand ? "text-sm font-bold" : isSummary ? "text-xs font-semibold text-muted-foreground" : "text-xs text-muted-foreground"}`}>{title}</p>
+        <p className={`${isGrand ? "text-2xl" : "text-lg sm:text-xl"} font-bold mt-1 tabular-nums`}>{formatNum(forecast)} PLN</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Realizacja: <span className="font-medium text-foreground">{formatNum(actual)} PLN</span>
+        </p>
+        <div className="flex items-center gap-2 mt-2">
+          <div className="flex-1 bg-muted rounded-full h-1.5">
+            <div
+              className={`h-1.5 rounded-full transition-all ${color.bar}`}
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
+          </div>
+          <span className={`text-xs font-semibold tabular-nums ${color.text}`}>
+            {forecast > 0 ? `${pct.toFixed(0)}%` : "—"}
+          </span>
         </div>
-      </td>
-    </tr>
+        <p className={`text-xs mt-1 tabular-nums ${saldo >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+          Saldo: {saldo >= 0 ? "+" : ""}{formatNum(saldo)} PLN
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
-function handleTableScroll(e: React.UIEvent<HTMLDivElement>) {
-  const el = e.currentTarget;
-  const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10;
-  if (atEnd) el.classList.add('scrolled-end');
-  else el.classList.remove('scrolled-end');
-}
-
-function LocationGroup({ locationName, apartments, currentMonth, onApartmentClick }: {
+function LocationGroup({ locationName, apartments, onApartmentClick }: {
   locationName: string;
   apartments: AptRevenueData[];
-  currentMonth: number;
   onApartmentClick?: (id: number) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const [expandedComparison, setExpandedComparison] = useState<Set<number>>(new Set());
-  const toggleComparison = (id: number) => setExpandedComparison(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
 
   const sortedApts = useMemo(() => {
     if (locationName === "GRAND BALTIC") {
@@ -180,20 +149,16 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
     return apartments;
   }, [apartments, locationName]);
 
-  const totals = useMemo(() => {
-    const t: Record<number, { forecast: number; actual: number }> = {};
-    for (let m = 0; m < 12; m++) {
-      t[m] = { forecast: 0, actual: 0 };
-      for (const apt of sortedApts) {
-        t[m].forecast += apt.months[m]?.forecast || 0;
-        t[m].actual += apt.months[m]?.actual || 0;
+  const yearTotals = useMemo(() => {
+    let fc = 0, act = 0;
+    for (const apt of sortedApts) {
+      for (let m = 0; m < 12; m++) {
+        fc += apt.months[m]?.forecast || 0;
+        act += apt.months[m]?.actual || 0;
       }
     }
-    return t;
+    return { forecast: fc, actual: act };
   }, [sortedApts]);
-
-  const yearTotalFc = Object.values(totals).reduce((s, t) => s + t.forecast, 0);
-  const yearTotalAct = Object.values(totals).reduce((s, t) => s + t.actual, 0);
 
   return (
     <div className="mb-4" data-testid={`location-group-${locationName}`}>
@@ -206,128 +171,33 @@ function LocationGroup({ locationName, apartments, currentMonth, onApartmentClic
         <span>{locationName}</span>
         <Badge variant="secondary" className="ml-2">{sortedApts.length}</Badge>
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          Plan: {formatNum(yearTotalFc)} PLN | Realizacja: {formatNum(yearTotalAct)} PLN
+          Plan: {formatNum(yearTotals.forecast)} PLN | Realizacja: {formatNum(yearTotals.actual)} PLN
         </span>
       </button>
 
       {open && (
-        <div className="overflow-x-auto mt-1 table-scroll-container" onScroll={handleTableScroll}>
-          <table className="w-full text-[10px] sm:text-xs border-collapse" data-testid={`revenue-table-${locationName}`}>
-            <thead>
-              <tr className="border-b bg-muted/30 sticky top-0 z-10">
-                <th className="sticky left-0 z-20 bg-muted/30 text-left p-1.5 sm:p-2 min-w-[120px] sm:min-w-[160px] font-medium">Apartament</th>
-                <th className="text-left p-1.5 sm:p-2 min-w-[45px] sm:min-w-[60px] font-medium">Wiersz</th>
-                {MONTHS.map((m, i) => (
-                  <th key={i} className={`text-right p-1.5 sm:p-2 min-w-[60px] sm:min-w-[80px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                    {m}
-                  </th>
-                ))}
-                <th className="text-right p-1.5 sm:p-2 min-w-[70px] sm:min-w-[90px] font-bold">Razem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedApts.map(apt => {
-                const yearFc = Object.values(apt.months).reduce((s, m) => s + m.forecast, 0);
-                const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
-                const yearDev = yearAct - yearFc;
-                const yearPct = pctVal(yearAct, yearFc);
-                const compExpanded = expandedComparison.has(apt.apartmentId);
-                return [
-                  <tr key={`${apt.apartmentId}-plan`} className="border-b border-dashed" data-testid={`apt-row-plan-${apt.apartmentId}`}>
-                    <td className="sticky left-0 z-10 bg-background p-1.5 sm:p-2 font-medium" rowSpan={3}>
-                      <div className="flex items-center gap-1">
-                        <button className="text-left hover:text-[#5ADBFA] hover:underline transition-colors flex-1" onClick={() => onApartmentClick?.(apt.apartmentId)} data-testid={`apt-trend-link-${apt.apartmentId}`}>
-                          {apt.apartmentName}
-                        </button>
-                        <button
-                          className={`p-0.5 rounded transition-colors shrink-0 ${compExpanded ? "text-cyan-600" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() => toggleComparison(apt.apartmentId)}
-                          title="Porównaj lata"
-                          data-testid={`apt-toggle-comparison-${apt.apartmentId}`}
-                        >
-                          <BarChart3 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                    <td className="p-1.5 sm:p-2 text-muted-foreground">Plan</td>
-                    {MONTHS.map((_, i) => (
-                      <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                        {formatNum(apt.months[i]?.forecast || 0)}
-                      </td>
-                    ))}
-                    <td className="p-1.5 sm:p-2 text-right font-semibold tabular-nums">{formatNum(yearFc)} PLN</td>
-                  </tr>,
-                  <tr key={`${apt.apartmentId}-actual`} className="border-b border-dashed" data-testid={`apt-row-actual-${apt.apartmentId}`}>
-                    <td className="p-1.5 sm:p-2 text-muted-foreground">Rzecz.</td>
-                    {MONTHS.map((_, i) => (
-                      <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                        {formatNum(apt.months[i]?.actual || 0)}
-                      </td>
-                    ))}
-                    <td className="p-1.5 sm:p-2 text-right font-bold tabular-nums">{formatNum(yearAct)} PLN</td>
-                  </tr>,
-                  <tr key={`${apt.apartmentId}-dev`} className="border-b" data-testid={`apt-row-dev-${apt.apartmentId}`}>
-                    <td className="p-1.5 sm:p-2 text-muted-foreground">Odch.</td>
-                    {MONTHS.map((_, i) => {
-                      const fc = apt.months[i]?.forecast || 0;
-                      const act = apt.months[i]?.actual || 0;
-                      const dev = act - fc;
-                      const mPct = pctVal(act, fc);
-                      return (
-                        <td key={i} className={`p-1.5 sm:p-2 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                          {fc === 0 && act === 0 ? "—" : (
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1 justify-end">
-                                <div className="w-12"><MiniProgress value={mPct} colorClass={deviationBgColor(dev)} /></div>
-                                <span className="text-[10px] tabular-nums whitespace-nowrap">{mPct.toFixed(0)}%</span>
-                              </div>
-                              <span className={`block text-[10px] tabular-nums ${deviationColor(dev)}`}>
-                                {dev >= 0 ? "+" : ""}{formatNum(dev)}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="p-1.5 sm:p-2 text-right">
-                      {yearFc === 0 && yearAct === 0 ? "—" : (
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1 justify-end">
-                            <div className="w-14"><MiniProgress value={yearPct} colorClass={deviationBgColor(yearDev)} /></div>
-                            <span className="text-[10px] tabular-nums font-semibold whitespace-nowrap">{yearPct.toFixed(0)}%</span>
-                          </div>
-                          <span className={`block text-[10px] tabular-nums font-semibold ${deviationColor(yearDev)}`}>
-                            {yearDev >= 0 ? "+" : ""}{formatNum(yearDev)} PLN
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                  </tr>,
-                  <ApartmentYearComparison key={`${apt.apartmentId}-comp`} apartmentId={apt.apartmentId} isOpen={compExpanded} colSpan={15} />,
-                ];
-              })}
-              <tr className="border-t-2 font-bold bg-muted/20">
-                <td className="sticky left-0 z-10 bg-muted/20 p-1.5 sm:p-2">Razem {locationName}</td>
-                <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Plan</td>
-                {MONTHS.map((_, i) => (
-                  <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                    {formatNum(totals[i]?.forecast || 0)}
-                  </td>
-                ))}
-                <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalFc)} PLN</td>
-              </tr>
-              <tr className="font-bold bg-muted/20">
-                <td className="sticky left-0 z-10 bg-muted/20 p-1.5 sm:p-2"></td>
-                <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Rzecz.</td>
-                {MONTHS.map((_, i) => (
-                  <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                    {formatNum(totals[i]?.actual || 0)}
-                  </td>
-                ))}
-                <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalAct)} PLN</td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-2 px-1" data-testid={`revenue-tiles-${locationName}`}>
+          {sortedApts.map(apt => {
+            const yearFc = Object.values(apt.months).reduce((s, m) => s + m.forecast, 0);
+            const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
+            return (
+              <RevenueTile
+                key={apt.apartmentId}
+                title={apt.apartmentName}
+                forecast={yearFc}
+                actual={yearAct}
+                onClick={() => onApartmentClick?.(apt.apartmentId)}
+                testId={`revenue-tile-${apt.apartmentId}`}
+              />
+            );
+          })}
+          <RevenueTile
+            title={`Razem ${locationName}`}
+            forecast={yearTotals.forecast}
+            actual={yearTotals.actual}
+            variant="summary"
+            testId={`revenue-tile-summary-${locationName}`}
+          />
         </div>
       )}
     </div>
@@ -497,109 +367,32 @@ function ClimateFeeTable({ climateFee, currentMonth, year }: { climateFee?: Reco
   );
 }
 
-function GrandTotalTable({ apartments, currentMonth, climateFee }: { apartments: AptRevenueData[]; currentMonth: number; climateFee?: Record<number, { forecast: number; actual: number }> }) {
-  const totals = useMemo(() => {
-    const t: Record<number, { forecast: number; actual: number }> = {};
-    for (let m = 0; m < 12; m++) {
-      let fc = 0, act = 0;
-      for (const apt of apartments) {
+function GrandTotalTile({ apartments, climateFee }: { apartments: AptRevenueData[]; climateFee?: Record<number, { forecast: number; actual: number }> }) {
+  const yearTotals = useMemo(() => {
+    let fc = 0, act = 0;
+    for (const apt of apartments) {
+      for (let m = 0; m < 12; m++) {
         fc += apt.months[m]?.forecast || 0;
         act += apt.months[m]?.actual || 0;
       }
+    }
+    for (let m = 0; m < 12; m++) {
       fc += climateFee?.[m]?.forecast || 0;
       act += climateFee?.[m]?.actual || 0;
-      t[m] = { forecast: fc, actual: act };
     }
-    return t;
+    return { forecast: fc, actual: act };
   }, [apartments, climateFee]);
-
-  const yearTotalFc = Object.values(totals).reduce((s, t) => s + t.forecast, 0);
-  const yearTotalAct = Object.values(totals).reduce((s, t) => s + t.actual, 0);
 
   return (
     <div data-testid="grand-total-section">
-      <div className="flex items-center gap-2 py-2 px-3 font-semibold text-sm mb-1">
-        <span>Podsumowanie łączne — wszystkie lokalizacje</span>
-        <Badge variant="secondary">{apartments.length} apartamentów</Badge>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          Plan: {formatNum(yearTotalFc)} PLN | Realizacja: {formatNum(yearTotalAct)} PLN
-        </span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-[10px] sm:text-xs border-collapse" data-testid="revenue-table-grand-total">
-          <thead>
-            <tr className="border-b bg-muted/30 sticky top-0 z-10">
-              <th className="sticky left-0 z-20 bg-muted/30 text-left p-1.5 sm:p-2 min-w-[120px] sm:min-w-[160px] font-medium"></th>
-              <th className="text-left p-1.5 sm:p-2 min-w-[45px] sm:min-w-[60px] font-medium">Wiersz</th>
-              {MONTHS.map((m, i) => (
-                <th key={i} className={`text-right p-1.5 sm:p-2 min-w-[60px] sm:min-w-[80px] font-medium ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                  {m}
-                </th>
-              ))}
-              <th className="text-right p-1.5 sm:p-2 min-w-[70px] sm:min-w-[90px] font-bold">Razem</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-t-2 font-bold bg-primary/5">
-              <td className="sticky left-0 z-10 bg-primary/5 p-1.5 sm:p-2 font-bold">RAZEM WSZYSTKIE</td>
-              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Plan</td>
-              {MONTHS.map((_, i) => (
-                <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                  {formatNum(totals[i]?.forecast || 0)}
-                </td>
-              ))}
-              <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalFc)} PLN</td>
-            </tr>
-            <tr className="font-bold bg-primary/5">
-              <td className="sticky left-0 z-10 bg-primary/5 p-1.5 sm:p-2"></td>
-              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Rzecz.</td>
-              {MONTHS.map((_, i) => (
-                <td key={i} className={`p-1.5 sm:p-2 text-right tabular-nums ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                  {formatNum(totals[i]?.actual || 0)}
-                </td>
-              ))}
-              <td className="p-1.5 sm:p-2 text-right tabular-nums">{formatNum(yearTotalAct)} PLN</td>
-            </tr>
-            <tr className="font-bold bg-primary/5 border-t">
-              <td className="sticky left-0 z-10 bg-primary/5 p-1.5 sm:p-2"></td>
-              <td className="p-1.5 sm:p-2 text-muted-foreground text-xs">Odch.</td>
-              {MONTHS.map((_, i) => {
-                const fc = totals[i]?.forecast || 0;
-                const act = totals[i]?.actual || 0;
-                const dev = act - fc;
-                const mPct = pctVal(act, fc);
-                return (
-                  <td key={i} className={`p-1.5 sm:p-2 text-right ${i === currentMonth ? "bg-cyan-50/60 dark:bg-cyan-950/20" : ""}`}>
-                    {fc === 0 && act === 0 ? "—" : (
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1 justify-end">
-                          <div className="w-12"><MiniProgress value={mPct} colorClass={deviationBgColor(dev)} /></div>
-                          <span className="text-[10px] tabular-nums whitespace-nowrap">{mPct.toFixed(0)}%</span>
-                        </div>
-                        <span className={`block text-[10px] tabular-nums ${deviationColor(dev)}`}>
-                          {dev >= 0 ? "+" : ""}{formatNum(dev)}
-                        </span>
-                      </div>
-                    )}
-                  </td>
-                );
-              })}
-              <td className="p-1.5 sm:p-2 text-right">
-                {yearTotalFc === 0 && yearTotalAct === 0 ? "—" : (
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1 justify-end">
-                      <div className="w-14"><MiniProgress value={pctVal(yearTotalAct, yearTotalFc)} colorClass={deviationBgColor(yearTotalAct - yearTotalFc)} /></div>
-                      <span className="text-[10px] tabular-nums font-semibold whitespace-nowrap">{pctVal(yearTotalAct, yearTotalFc).toFixed(0)}%</span>
-                    </div>
-                    <span className={`block text-[10px] tabular-nums font-semibold ${deviationColor(yearTotalAct - yearTotalFc)}`}>
-                      {yearTotalAct - yearTotalFc >= 0 ? "+" : ""}{formatNum(yearTotalAct - yearTotalFc)} PLN
-                    </span>
-                  </div>
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="max-w-md mx-auto">
+        <RevenueTile
+          title="RAZEM WSZYSTKIE"
+          forecast={yearTotals.forecast}
+          actual={yearTotals.actual}
+          variant="grand"
+          testId="revenue-tile-grand-total"
+        />
       </div>
     </div>
   );
@@ -820,7 +613,6 @@ export function V2Przychody() {
             <LocationGroup
               locationName={locName}
               apartments={apts}
-              currentMonth={year === currentYear ? currentMonth : -1}
               onApartmentClick={(id) => setTrendAptId(id)}
             />
           </CardContent>
@@ -836,7 +628,7 @@ export function V2Przychody() {
       {grouped.size > 1 && (
         <Card data-testid="revenue-grand-total">
           <CardContent className="pt-4">
-            <GrandTotalTable apartments={apartments} currentMonth={year === currentYear ? currentMonth : -1} climateFee={data?.climateFee} />
+            <GrandTotalTile apartments={apartments} climateFee={data?.climateFee} />
           </CardContent>
         </Card>
       )}
