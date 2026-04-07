@@ -207,11 +207,13 @@ function progressColor(pct: number): string {
   return "bg-orange-500";
 }
 
-function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
+function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse, onYearChange, availableYears }: {
   apt: AptRevenueData;
   currentMonth: number;
   year: number;
   onCollapse: () => void;
+  onYearChange?: (y: number) => void;
+  availableYears?: number[];
 }) {
   const [showR1, setShowR1] = useState(false);
   const isGrouped = apt.apartmentId < 0;
@@ -325,7 +327,19 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {onYearChange && availableYears && (
+                <Select value={String(year)} onValueChange={v => onYearChange(Number(v))}>
+                  <SelectTrigger className="h-7 w-[80px] text-xs" data-testid={`year-select-${apt.apartmentId}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableYears.map(y => (
+                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-testid={`toggle-r1-${apt.apartmentId}`}>
                 <CalendarClock className="h-3.5 w-3.5" />
                 <span>R-1</span>
@@ -458,12 +472,57 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
   );
 }
 
-function LocationGroup({ locationName, apartments, expandedAptId, onApartmentClick, year }: {
+function LocationSummaryBar({ locationName, forecast, actual }: {
+  locationName: string;
+  forecast: number;
+  actual: number;
+}) {
+  const saldo = actual - forecast;
+  const pct = forecast > 0 ? (actual / forecast) * 100 : 0;
+  const color = revenuePctColor(pct);
+
+  return (
+    <div
+      className="mt-3 mx-1 rounded-lg border border-border/50 bg-muted/15 px-4 py-2.5 flex items-center gap-4 flex-wrap"
+      data-testid={`location-summary-${locationName}`}
+    >
+      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Razem {locationName}</span>
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">Prognoza:</span>
+          <span className="font-bold tabular-nums">{formatNum(forecast)} PLN</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">Realizacja:</span>
+          <span className="font-bold tabular-nums">{formatNum(actual)} PLN</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">Saldo:</span>
+          <span className={`font-bold tabular-nums ${deviationColor(saldo)}`}>
+            {saldo >= 0 ? "+" : ""}{formatNum(saldo)} PLN
+          </span>
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${color.bar}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+          </div>
+          <span className={`text-xs font-bold tabular-nums ${color.text}`}>
+            {forecast > 0 ? `${pct.toFixed(0)}%` : "—"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LocationGroup({ locationName, apartments, expandedAptId, onApartmentClick, year, onYearChange, availableYears }: {
   locationName: string;
   apartments: AptRevenueData[];
   expandedAptId: number | null;
   onApartmentClick?: (id: number) => void;
   year: number;
+  onYearChange?: (y: number) => void;
+  availableYears?: number[];
 }) {
   const [open, setOpen] = useState(true);
   const currentYear = new Date().getFullYear();
@@ -503,40 +562,42 @@ function LocationGroup({ locationName, apartments, expandedAptId, onApartmentCli
       </button>
 
       {open && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-2 px-1" data-testid={`revenue-tiles-${locationName}`}>
-          {sortedApts.map(apt => {
-            const yearFc = Object.values(apt.months).reduce((s, m) => s + m.forecast, 0);
-            const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
-            const isExpanded = expandedAptId === apt.apartmentId;
-            return (
-              <Fragment key={apt.apartmentId}>
-                <RevenueTile
-                  title={apt.apartmentName}
-                  forecast={yearFc}
-                  actual={yearAct}
-                  onClick={() => onApartmentClick?.(apt.apartmentId)}
-                  testId={`revenue-tile-${apt.apartmentId}`}
-                  isExpanded={isExpanded}
-                />
-                {isExpanded && (
-                  <ExpandedRevenueTile
-                    apt={apt}
-                    currentMonth={year === currentYear ? currentMonth : -1}
-                    year={year}
-                    onCollapse={() => onApartmentClick?.(apt.apartmentId)}
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-2 px-1" data-testid={`revenue-tiles-${locationName}`}>
+            {sortedApts.map(apt => {
+              const yearFc = Object.values(apt.months).reduce((s, m) => s + m.forecast, 0);
+              const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
+              const isExpanded = expandedAptId === apt.apartmentId;
+              return (
+                <Fragment key={apt.apartmentId}>
+                  <RevenueTile
+                    title={apt.apartmentName}
+                    forecast={yearFc}
+                    actual={yearAct}
+                    onClick={() => onApartmentClick?.(apt.apartmentId)}
+                    testId={`revenue-tile-${apt.apartmentId}`}
+                    isExpanded={isExpanded}
                   />
-                )}
-              </Fragment>
-            );
-          })}
-          <RevenueTile
-            title={`Razem ${locationName}`}
+                  {isExpanded && (
+                    <ExpandedRevenueTile
+                      apt={apt}
+                      currentMonth={year === currentYear ? currentMonth : -1}
+                      year={year}
+                      onCollapse={() => onApartmentClick?.(apt.apartmentId)}
+                      onYearChange={onYearChange}
+                      availableYears={availableYears}
+                    />
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
+          <LocationSummaryBar
+            locationName={locationName}
             forecast={yearTotals.forecast}
             actual={yearTotals.actual}
-            variant="summary"
-            testId={`revenue-tile-summary-${locationName}`}
           />
-        </div>
+        </>
       )}
     </div>
   );
@@ -954,6 +1015,8 @@ export function V2Przychody() {
               expandedAptId={expandedAptId}
               onApartmentClick={(id) => setExpandedAptId(prev => prev === id ? null : id)}
               year={year}
+              onYearChange={setYear}
+              availableYears={years}
             />
           </CardContent>
         </Card>
