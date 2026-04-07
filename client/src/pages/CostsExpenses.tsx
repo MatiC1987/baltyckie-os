@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getAuthHeaders } from "@/lib/auth-token";
@@ -13,18 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ResponsiveFormDialog } from "@/components/ResponsiveFormDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { FullscreenWrapper, useFullscreen, FullscreenToggleButton } from "@/components/FullscreenWrapper";
 import {
-  ChevronDown, ChevronRight, Plus, Trash2, GripVertical, Copy, ArrowRight,
+  ChevronDown, ChevronRight, Plus, Trash2, Copy, ArrowRight, ArrowDown, ArrowLeft,
   Pencil, CalendarPlus, CheckCircle2, XCircle, AlertTriangle, Calendar, Link2, Receipt, BarChart3, Archive, RotateCcw, MoreHorizontal,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { SwipeableRow } from "@/components/SwipeableRow";
-import { getHeatMapBg, Sparkline } from "@/components/DataVizHelpers";
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { format, addMonths, addQuarters, addYears, parseISO, isBefore, isAfter, startOfMonth } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -32,24 +30,52 @@ import { pl } from "date-fns/locale";
 type CostItem = OplatyCostItem;
 type CostCategory = OplatyCostCategory;
 
-const CATEGORY_COLORS = [
-  { label: "Niebieski", value: "bg-blue-600 dark:bg-blue-700" },
-  { label: "Czerwony", value: "bg-red-600 dark:bg-red-700" },
-  { label: "Fioletowy", value: "bg-purple-600 dark:bg-purple-700" },
-  { label: "Zielony", value: "bg-emerald-600 dark:bg-emerald-700" },
-  { label: "Bursztynowy", value: "bg-amber-600 dark:bg-amber-700" },
-  { label: "Różowy", value: "bg-pink-600 dark:bg-pink-700" },
-  { label: "Błękitny", value: "bg-cyan-600 dark:bg-cyan-700" },
-  { label: "Szary", value: "bg-slate-600 dark:bg-slate-700" },
-  { label: "Indygo", value: "bg-indigo-600 dark:bg-indigo-700" },
-  { label: "Pomarańczowy", value: "bg-orange-600 dark:bg-orange-700" },
-];
+const CATEGORY_COLORS: Record<string, string> = {
+  "Niebieski": "#2563eb",
+  "Czerwony": "#dc2626",
+  "Fioletowy": "#9333ea",
+  "Zielony": "#059669",
+  "Bursztynowy": "#d97706",
+  "Różowy": "#db2777",
+  "Błękitny": "#0891b2",
+  "Szary": "#475569",
+  "Indygo": "#4f46e5",
+  "Pomarańczowy": "#ea580c",
+};
+
+const COLOR_PRESETS = Object.entries(CATEGORY_COLORS).map(([label, hex]) => ({ label, hex }));
+
+function isHexColor(c: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(c);
+}
+
+function getCatBgColor(colorValue: string): string {
+  if (isHexColor(colorValue)) return colorValue;
+  const tailwindMap: Record<string, string> = {
+    "bg-blue-600 dark:bg-blue-700": "#2563eb",
+    "bg-red-600 dark:bg-red-700": "#dc2626",
+    "bg-purple-600 dark:bg-purple-700": "#9333ea",
+    "bg-emerald-600 dark:bg-emerald-700": "#059669",
+    "bg-amber-600 dark:bg-amber-700": "#d97706",
+    "bg-pink-600 dark:bg-pink-700": "#db2777",
+    "bg-cyan-600 dark:bg-cyan-700": "#0891b2",
+    "bg-slate-600 dark:bg-slate-700": "#475569",
+    "bg-indigo-600 dark:bg-indigo-700": "#4f46e5",
+    "bg-orange-600 dark:bg-orange-700": "#ea580c",
+  };
+  return tailwindMap[colorValue] || "#2563eb";
+}
 
 const DEFAULT_CATEGORIES = DEFAULT_OPLATY_CATEGORIES;
 
 const MONTHS_SHORT = [
   "STY", "LUT", "MAR", "KWI", "MAJ", "CZE",
   "LIP", "SIE", "WRZ", "PAŹ", "LIS", "GRU",
+];
+
+const MONTHS_LABELS = [
+  "Sty", "Lut", "Mar", "Kwi", "Maj", "Cze",
+  "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru",
 ];
 
 const SCHEDULE_CATEGORIES = [
@@ -141,27 +167,22 @@ function buildScheduleOverlay(
     if (!paymentsBySchedule[p.scheduleId]) paymentsBySchedule[p.scheduleId] = [];
     paymentsBySchedule[p.scheduleId].push(p);
   }
-
   for (const schedule of schedules) {
     if (!schedule.active) continue;
     if (!schedule.linkCategoryId || schedule.linkItemIndex === null || schedule.linkItemIndex === undefined) continue;
     const catId = schedule.linkCategoryId;
     const itemIdx = schedule.linkItemIndex;
     const schPayments = paymentsBySchedule[schedule.id] || [];
-
     for (let month = 0; month < 12; month++) {
       const monthPayments = schPayments.filter(p => {
         const d = parseDateLocal(p.dueDate);
         return d.year === year && d.month === month;
       });
-
       if (monthPayments.length > 0) {
         const prognozaKey = makeCellKey(catId, itemIdx, month, "prognoza");
         const rzeczKey = makeCellKey(catId, itemIdx, month, "rzeczywiste");
-
         let prognozaTotal = 0;
         let rzeczTotal = 0;
-
         for (const p of monthPayments) {
           const amt = parseFloat(p.amount || "0");
           const forecast = p.forecastAmount ? parseFloat(p.forecastAmount) : amt;
@@ -170,7 +191,6 @@ function buildScheduleOverlay(
             rzeczTotal += amt;
           }
         }
-
         if (prognozaTotal !== 0) overlay[prognozaKey] = (overlay[prognozaKey] || 0) + prognozaTotal;
         if (rzeczTotal !== 0) overlay[rzeczKey] = (overlay[rzeczKey] || 0) + rzeczTotal;
       }
@@ -191,25 +211,21 @@ function buildPaymentStatusMap(
     if (!paymentsBySchedule[p.scheduleId]) paymentsBySchedule[p.scheduleId] = [];
     paymentsBySchedule[p.scheduleId].push(p);
   }
-
   for (const schedule of schedules) {
     if (!schedule.active) continue;
     if (!schedule.linkCategoryId || schedule.linkItemIndex === null || schedule.linkItemIndex === undefined) continue;
     const catId = schedule.linkCategoryId;
     const itemIdx = schedule.linkItemIndex;
     const schPayments = paymentsBySchedule[schedule.id] || [];
-
     for (let month = 0; month < 12; month++) {
       const monthPayments = schPayments.filter(p => {
         const d = parseDateLocal(p.dueDate);
         return d.year === year && d.month === month;
       });
       if (monthPayments.length === 0) continue;
-
       const key = `${catId}__${itemIdx}__${month}`;
       const allPaid = monthPayments.every(p => p.status === "OPLACONE");
       const hasOverdue = monthPayments.some(p => p.status === "NIEOPLACONE" && isBefore(parseISO(p.dueDate), now));
-
       if (allPaid) {
         map[key] = "paid";
       } else if (hasOverdue) {
@@ -226,11 +242,9 @@ function generatePaymentDates(startDate: string, endDate: string | null, frequen
   const dates: string[] = [];
   let current = parseISO(startDate);
   const end = endDate ? parseISO(endDate) : addYears(new Date(), 2);
-
   if (frequency === "one_time") {
     return [startDate];
   }
-
   while (!isAfter(current, end) && dates.length < 120) {
     dates.push(format(current, "yyyy-MM-dd"));
     if (frequency === "monthly") current = addMonths(current, 1);
@@ -243,6 +257,12 @@ function generatePaymentDates(startDate: string, endDate: string | null, frequen
 
 function freqLabel(f: string): string {
   return FREQUENCIES.find(x => x.value === f)?.label || f;
+}
+
+function formatNum(v: number | string | null | undefined): string {
+  const n = typeof v === "string" ? parseFloat(v) : (v ?? 0);
+  if (isNaN(n) || n === 0) return "";
+  return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatNum2(v: number | string | null | undefined): string {
@@ -264,12 +284,74 @@ function costChangeColor(current: number, previous: number): string {
   return "text-muted-foreground";
 }
 
+function TransposedEditableCell({
+  value, isEditing, editValue, onStartEdit, onCommitEdit, onCancelEdit, onEditValueChange,
+  isCurrentMonth, className = "", onKeyDown, onCommitAndMoveDown, onFillToEnd, isServerManaged,
+}: {
+  value: number; isEditing: boolean; editValue: string;
+  onStartEdit: () => void; onCommitEdit: () => void; onCancelEdit: () => void;
+  onEditValueChange: (v: string) => void;
+  isCurrentMonth?: boolean; className?: string;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+  onCommitAndMoveDown?: () => void; onFillToEnd?: () => void;
+  isServerManaged?: boolean;
+}) {
+  return (
+    <td
+      className={`group/cell border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums relative select-none
+        ${isCurrentMonth ? "bg-primary/[0.04]" : ""}
+        ${isServerManaged ? "bg-blue-50/40 dark:bg-blue-950/20" : ""}
+        ${className}`}
+      onDoubleClick={onStartEdit}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); onStartEdit(); }
+        onKeyDown?.(e);
+      }}
+      title={isServerManaged ? "Wartość z modułu Prognoza" : undefined}
+    >
+      {isEditing ? (
+        <input
+          type="number"
+          autoFocus
+          className="w-full h-full px-1 py-0 text-right text-[11px] tabular-nums bg-primary/5 outline-none border-0 rounded"
+          value={editValue}
+          onChange={(e) => onEditValueChange(e.target.value)}
+          onBlur={onCommitEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); if (onCommitAndMoveDown) onCommitAndMoveDown(); else onCommitEdit(); }
+            if (e.key === "Escape") onCancelEdit();
+            if (e.key === "Tab") { e.preventDefault(); onCommitEdit(); }
+          }}
+        />
+      ) : (
+        <div className="flex items-center gap-0.5">
+          {onFillToEnd && value !== 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onFillToEnd(); }}
+              className="opacity-0 group-hover/cell:opacity-100 transition-opacity text-muted-foreground/40 hover:text-primary shrink-0"
+              title="Wypełnij do końca roku"
+              data-testid="button-fill-to-end"
+            >
+              <ArrowDown className="h-2.5 w-2.5" />
+            </button>
+          )}
+          <span className="text-[11px] min-h-[18px] cursor-cell flex-1">{formatNum(value)}</span>
+        </div>
+      )}
+    </td>
+  );
+}
+
 export function CostsExpensesContent({ embedded = false, externalYear, onTotalsChange, onMonthlyDataChange }: { embedded?: boolean; externalYear?: number; onTotalsChange?: (prognoza: number, realized: number) => void; onMonthlyDataChange?: (data: Array<{p: number, r: number}>) => void }) {
   const { toast } = useToast();
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const [selectedYear, setSelectedYear] = useState(externalYear ?? currentYear);
   const [compareYear, setCompareYear] = useState<number | null>(null);
+
+  const [drillLevel, setDrillLevel] = useState<"categories" | "items">("categories");
+  const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
 
   const { data: dbRows = [] } = useQuery<Array<{ catId: string; itemIdx: number; month: number; prognoza: string | null; realized: string | null }>>({
     queryKey: ["/api/op-cost-data", selectedYear],
@@ -397,11 +479,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   );
 
   const [showArchived, setShowArchived] = useState(false);
-
   const activeCategories = useMemo(() => categories.filter(c => !c.archived), [categories]);
   const archivedCategories = useMemo(() => categories.filter(c => c.archived), [categories]);
 
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState("");
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -414,7 +494,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCatTitle, setNewCatTitle] = useState("");
-  const [newCatColor, setNewCatColor] = useState(CATEGORY_COLORS[0].value);
+  const [newCatColor, setNewCatColor] = useState(COLOR_PRESETS[0].hex);
   const [showCopyToNextYear, setShowCopyToNextYear] = useState(false);
   const [editCatDialog, setEditCatDialog] = useState<CostCategory | null>(null);
   const [editCatTitle, setEditCatTitle] = useState("");
@@ -438,24 +518,13 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
-      toast({ title: "Dodano do prognozy", description: "Wartosci prognozowane zostaly zaktualizowane" });
+      toast({ title: "Dodano do prognozy", description: "Wartości prognozowane zostały zaktualizowane" });
       setForecastPrompt(null);
     },
     onError: () => {
-      toast({ title: "Blad", description: "Nie udalo sie dodac do prognozy", variant: "destructive" });
+      toast({ title: "Błąd", description: "Nie udało się dodać do prognozy", variant: "destructive" });
     },
   });
-
-  const dragCatRef = useRef<string | null>(null);
-  const dragOverCatRef = useRef<string | null>(null);
-  const dragItemRef = useRef<{ catId: string; idx: number } | null>(null);
-  const dragOverItemRef = useRef<{ catId: string; idx: number } | null>(null);
-  const [dragCatId, setDragCatId] = useState<string | null>(null);
-  const [dragItemKey, setDragItemKey] = useState<string | null>(null);
-
-  const [selectedCell, setSelectedCell] = useState<CellKey | null>(null);
-  const [fillRangeEnd, setFillRangeEnd] = useState<number | null>(null);
-  const fillDragging = useRef(false);
 
   const [sheetItem, setSheetItem] = useState<{ catId: string; itemIdx: number } | null>(null);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
@@ -520,41 +589,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     return map;
   }, [costSchedulePayments]);
 
-  const overdueSummary = useMemo(() => {
-    const now = new Date();
-    const overduePayments = costSchedulePayments.filter(
-      p => p.status === "NIEOPLACONE" && isBefore(parseISO(p.dueDate), now)
-    );
-    const overdueAmount = overduePayments.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
-    const currentMonthPayments = costSchedulePayments.filter(p => {
-      const d = parseDateLocal(p.dueDate);
-      return d.year === currentYear && d.month === currentMonth;
-    });
-    const currentMonthUnpaid = currentMonthPayments.filter(p => p.status === "NIEOPLACONE");
-    const currentMonthUnpaidAmount = currentMonthUnpaid.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
-    const paidThisMonth = currentMonthPayments.filter(p => p.status === "OPLACONE");
-    const paidThisMonthAmount = paidThisMonth.reduce((s, p) => s + parseFloat(p.amount || "0"), 0);
-    const activeSchedules = costSchedules.filter(s => s.active && s.category !== "APARTAMENTY");
-    const monthlyTotal = activeSchedules.reduce((sum, s) => {
-      const amt = parseFloat(s.amount || "0");
-      if (s.frequency === "monthly") return sum + amt;
-      if (s.frequency === "quarterly") return sum + amt / 3;
-      if (s.frequency === "yearly") return sum + amt / 12;
-      return sum;
-    }, 0);
-
-    return {
-      overdueCount: overduePayments.length,
-      overdueAmount,
-      currentMonthUnpaidCount: currentMonthUnpaid.length,
-      currentMonthUnpaidAmount,
-      paidThisMonthCount: paidThisMonth.length,
-      paidThisMonthAmount,
-      monthlyTotal,
-      activeSchedules: activeSchedules.length,
-    };
-  }, [costSchedulePayments, costSchedules, currentYear, currentMonth]);
-
   const linkedSchedules = useMemo(() => {
     if (!sheetItem) return [];
     return costSchedules.filter(
@@ -614,108 +648,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     return items;
   }, [categories]);
 
-  const archivedItemsByCategory = useMemo(() => {
-    const grouped: Record<string, { catId: string; catTitle: string; catColor: string; items: { itemIdx: number; item: CostItem }[] }> = {};
-    for (const ai of archivedItems) {
-      if (!grouped[ai.catId]) {
-        grouped[ai.catId] = { catId: ai.catId, catTitle: ai.catTitle, catColor: ai.catColor, items: [] };
-      }
-      grouped[ai.catId].items.push({ itemIdx: ai.itemIdx, item: ai.item });
-    }
-    return Object.values(grouped);
-  }, [archivedItems]);
-
-  const handleCatDragStart = useCallback((catId: string) => {
-    dragCatRef.current = catId;
-    setDragCatId(catId);
-  }, []);
-
-  const handleCatDragOver = useCallback((e: React.DragEvent, catId: string) => {
-    e.preventDefault();
-    dragOverCatRef.current = catId;
-  }, []);
-
-  const handleCatDragEnd = useCallback(() => {
-    const fromId = dragCatRef.current;
-    const toId = dragOverCatRef.current;
-    setDragCatId(null);
-    dragCatRef.current = null;
-    dragOverCatRef.current = null;
-    if (!fromId || !toId || fromId === toId) return;
-    const newCats = [...categories];
-    const fromIdx = newCats.findIndex(c => c.id === fromId);
-    const toIdx = newCats.findIndex(c => c.id === toId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const [moved] = newCats.splice(fromIdx, 1);
-    newCats.splice(toIdx, 0, moved);
-    updateCategories(newCats);
-  }, [categories, updateCategories]);
-
-  const handleItemDragStart = useCallback((catId: string, idx: number) => {
-    dragItemRef.current = { catId, idx };
-    setDragItemKey(`${catId}__${idx}`);
-  }, []);
-
-  const handleItemDragOver = useCallback((e: React.DragEvent, catId: string, idx: number) => {
-    e.preventDefault();
-    dragOverItemRef.current = { catId, idx };
-  }, []);
-
-  const handleItemDragEnd = useCallback(() => {
-    const from = dragItemRef.current;
-    const to = dragOverItemRef.current;
-    setDragItemKey(null);
-    dragItemRef.current = null;
-    dragOverItemRef.current = null;
-    if (!from || !to) return;
-    if (from.catId === to.catId && from.idx === to.idx) return;
-    if (from.catId !== to.catId) {
-      return;
-    }
-    const cat = categories.find(c => c.id === from.catId);
-    if (!cat) return;
-    const oldItems = cat.items.map((_, i) => i);
-    const newItems = [...oldItems];
-    const [moved] = newItems.splice(from.idx, 1);
-    newItems.splice(to.idx, 0, moved);
-    const oldToNew: Record<number, number> = {};
-    let changed = false;
-    for (let i = 0; i < newItems.length; i++) {
-      if (newItems[i] !== i) changed = true;
-      oldToNew[newItems[i]] = i;
-    }
-    const newCats = categories.map(c => {
-      if (c.id !== from.catId) return c;
-      const reordered = newItems.map(i => c.items[i]);
-      return { ...c, items: reordered };
-    });
-    updateCategories(newCats);
-    if (changed) {
-      fetch("/api/op-cost-data/reindex", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        credentials: "include",
-        body: JSON.stringify({ catId: from.catId, oldToNew }),
-      }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/cost-schedules"] });
-      });
-    }
-  }, [categories, updateCategories]);
-
   const handleYearChange = useCallback((year: string) => {
     const y = parseInt(year);
     setSelectedYear(y);
-  }, []);
-
-  const toggleCategory = useCallback((catId: string) => {
-    setCollapsedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(catId)) next.delete(catId);
-      else next.add(catId);
-      return next;
-    });
   }, []);
 
   const getCellValue = useCallback((key: CellKey): number => {
@@ -744,7 +679,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const commitEdit = useCallback(() => {
     if (editingCell) {
       const val = parseFloat(editValue) || 0;
-
       if (editingCell.endsWith("__prognoza") && editingCell in serverForecastLookup) {
         const { catId, itemIdx, month } = parseCellKey(editingCell);
         if (val === 0) {
@@ -766,7 +700,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         setEditingCell(null);
         return;
       }
-
       const newData = { ...cellData };
       if (val === 0) {
         delete newData[editingCell];
@@ -775,7 +708,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       }
       setCellData(newData);
       queueCellSave(editingCell, val, selectedYear);
-
       if (val > 0 && editingCell.endsWith("__rzeczywiste")) {
         const { catId, itemIdx, month } = parseCellKey(editingCell);
         const prognozaKey = makeCellKey(catId, itemIdx, month, "prognoza");
@@ -787,103 +719,44 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
           if (cat && item) {
             setForecastPrompt({
               catId, itemIdx, month, amount: val,
-              itemName: item.label, catTitle: cat.title,
+              itemName: item.name, catTitle: cat.title,
             });
             setForecastPromptOption("remaining");
           }
         }
       }
-
       setEditingCell(null);
     }
-  }, [editingCell, editValue, cellData, selectedYear, serverForecastLookup, categories, parseCellKey]);
+  }, [editingCell, editValue, cellData, selectedYear, serverForecastLookup, categories, parseCellKey, queueCellSave]);
 
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
   }, []);
 
-  const handleCellClick = useCallback((key: CellKey) => {
-    setSelectedCell(key);
-    setFillRangeEnd(null);
-  }, []);
+  const handleFillToEnd = useCallback((catId: string, itemIdx: number, month: number, field: "prognoza" | "rzeczywiste") => {
+    const sourceKey = makeCellKey(catId, itemIdx, month, field);
+    const sourceVal = getCellValue(sourceKey);
+    if (sourceVal === 0) return;
 
-  const handleFillHandleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    fillDragging.current = true;
-  }, []);
-
-  const handleCellMouseEnter = useCallback((month: number) => {
-    if (fillDragging.current && selectedCell) {
-      setFillRangeEnd(month);
-    }
-  }, [selectedCell]);
-
-  const handleMouseUp = useCallback(() => {
-    if (fillDragging.current && selectedCell && fillRangeEnd !== null) {
-      const source = parseCellKey(selectedCell);
-      const sourceVal = cellData[selectedCell] || serverForecastLookup[selectedCell] || 0;
-      const startM = Math.min(source.month, fillRangeEnd);
-      const endM = Math.max(source.month, fillRangeEnd);
-      if (startM !== endM) {
-        const isServerForecastSource = selectedCell in serverForecastLookup && source.field === "prognoza";
-        if (isServerForecastSource) {
-          const entries = [];
-          for (let m = startM; m <= endM; m++) {
-            entries.push({ year: selectedYear, month: m, categoryId: source.catId, itemIndex: source.itemIdx, forecast: String(sourceVal) });
-          }
-          apiRequest("POST", "/api/operational-cost-forecasts/bulk", { entries }).then(() => {
-            queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
-          });
-        } else {
-          const newData = { ...cellData };
-          for (let m = startM; m <= endM; m++) {
-            const k = makeCellKey(source.catId, source.itemIdx, m, source.field);
-            if (sourceVal === 0) {
-              delete newData[k];
-            } else {
-              newData[k] = sourceVal;
-            }
-          }
-          setCellData(newData);
-          for (let m2 = startM; m2 <= endM; m2++) {
-            const k2 = makeCellKey(source.catId, source.itemIdx, m2, source.field);
-            queueCellSave(k2, sourceVal, selectedYear);
-          }
-        }
+    if (field === "prognoza" && sourceKey in serverForecastLookup) {
+      const entries = [];
+      for (let m = month; m < 12; m++) {
+        entries.push({ year: selectedYear, month: m, categoryId: catId, itemIndex: itemIdx, forecast: String(sourceVal) });
       }
+      apiRequest("POST", "/api/operational-cost-forecasts/bulk", { entries }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+      });
+      return;
     }
-    fillDragging.current = false;
-    setFillRangeEnd(null);
-  }, [selectedCell, fillRangeEnd, cellData, serverForecastLookup, selectedYear, parseCellKey, queueCellSave]);
 
-  const isInFillRange = useCallback((key: CellKey): boolean => {
-    if (!selectedCell || fillRangeEnd === null) return false;
-    const source = parseCellKey(selectedCell);
-    const target = parseCellKey(key);
-    if (source.catId !== target.catId || source.itemIdx !== target.itemIdx || source.field !== target.field) return false;
-    const startM = Math.min(source.month, fillRangeEnd);
-    const endM = Math.max(source.month, fillRangeEnd);
-    return target.month >= startM && target.month <= endM;
-  }, [selectedCell, fillRangeEnd, parseCellKey]);
-
-  const handleFillToEnd = useCallback(() => {
-    if (!selectedCell) return;
-    const source = parseCellKey(selectedCell);
-    const sourceVal = cellData[selectedCell] || 0;
     const newData = { ...cellData };
-    for (let m = source.month; m < 12; m++) {
-      const k = makeCellKey(source.catId, source.itemIdx, m, source.field);
-      if (sourceVal === 0) {
-        delete newData[k];
-      } else {
-        newData[k] = sourceVal;
-      }
+    for (let m = month; m < 12; m++) {
+      const k = makeCellKey(catId, itemIdx, m, field);
+      newData[k] = sourceVal;
       queueCellSave(k, sourceVal, selectedYear);
     }
     setCellData(newData);
-    setSelectedCell(null);
-  }, [selectedCell, cellData, selectedYear, parseCellKey, queueCellSave]);
+  }, [cellData, selectedYear, serverForecastLookup, getCellValue, queueCellSave]);
 
   const handleCopyForecastToNextYear = useCallback(async () => {
     const nextYear = selectedYear + 1;
@@ -979,7 +852,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     };
     updateCategories([...categories, newCat]);
     setNewCatTitle("");
-    setNewCatColor(CATEGORY_COLORS[0].value);
+    setNewCatColor(COLOR_PRESETS[0].hex);
     setShowAddCategory(false);
   }, [newCatTitle, newCatColor, categories, updateCategories]);
 
@@ -1061,23 +934,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     onTotalsChange?.(grandTotal.prognoza, grandTotal.rzeczywiste);
   }, [grandTotal.prognoza, grandTotal.rzeczywiste]);
 
-  const expenseHeatMax = useMemo(() => {
-    let max = 0;
-    activeCategories.forEach(cat => {
-      cat.items.forEach((_, idx) => {
-        for (let m = 0; m < 12; m++) {
-          const rVal = getCellValue(makeCellKey(cat.id, idx, m, "rzeczywiste"));
-          if (rVal > max) max = rVal;
-        }
-      });
-    });
-    return max;
-  }, [activeCategories, getCellValue]);
-
-  const getItemSparklineData = useCallback((catId: string, itemIdx: number): number[] => {
-    return Array.from({ length: 12 }, (_, m) => getCellValue(makeCellKey(catId, itemIdx, m, "rzeczywiste")));
-  }, [getCellValue]);
-
   const MONTHS_SHORT_CHART = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
   const monthlySummaryChart = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
@@ -1098,12 +954,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   }, [monthlySummaryChart]);
 
   const [showChart, setShowChart] = useState(false);
-  const fullscreen = useFullscreen();
-
-  const formatNum = (n: number) => {
-    if (n === 0) return "";
-    return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
 
   const saldoColor = (n: number) => {
     if (n > 0) return "text-emerald-600 dark:text-emerald-400";
@@ -1178,12 +1028,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     const existingDates = new Set(existing.map(p => p.dueDate));
     const dates = generatePaymentDates(schedule.startDate, schedule.endDate, schedule.frequency);
     const newDates = dates.filter(d => !existingDates.has(d));
-
     if (newDates.length === 0) {
       toast({ title: "Brak nowych terminów do wygenerowania" });
       return;
     }
-
     for (const dueDate of newDates) {
       await createPayment.mutateAsync({
         scheduleId: schedule.id,
@@ -1215,14 +1063,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     setEditSchedule(null);
   }, []);
 
-  const getCellStatusColor = (catId: string, itemIdx: number, month: number): string => {
-    const key = `${catId}__${itemIdx}__${month}`;
-    const status = paymentStatusMap[key];
-    if (status === "paid") return "bg-emerald-50/60 dark:bg-emerald-950/20";
-    if (status === "overdue") return "bg-red-50/60 dark:bg-red-950/20";
-    return "";
-  };
-
   const sheetItemData = useMemo(() => {
     if (!sheetItem) return null;
     const cat = categories.find(c => c.id === sheetItem.catId);
@@ -1231,6 +1071,422 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     if (!item) return null;
     return { cat, item };
   }, [sheetItem, categories]);
+
+  const selectedCategory = useMemo(() => {
+    if (!selectedCatId) return null;
+    return categories.find(c => c.id === selectedCatId) || null;
+  }, [selectedCatId, categories]);
+
+  const renderCategoryCard = (cat: CostCategory) => {
+    const catHex = getCatBgColor(cat.color);
+    const headerBg = catHex || 'hsl(var(--sidebar))';
+    let catYearP = 0, catYearR = 0;
+
+    return (
+      <Card key={cat.id} className="overflow-hidden border-sidebar-border" style={{ borderColor: headerBg }} data-testid={`card-category-${cat.id}`}>
+        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '36px' }}>
+          <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
+            <CardTitle
+              className="text-xs font-bold leading-tight cursor-pointer hover:underline"
+              style={{ color: '#fff' }}
+              onClick={() => { setDrillLevel("items"); setSelectedCatId(cat.id); }}
+              data-testid={`text-category-name-${cat.id}`}
+            >
+              {cat.title}
+            </CardTitle>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); setAddItemCatId(cat.id); }}
+                className="p-1 rounded hover:bg-white/10"
+                style={{ color: '#fff' }}
+                title="Dodaj pozycję"
+                data-testid={`button-add-item-${cat.id}`}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-1 rounded hover:bg-white/10 shrink-0" style={{ color: '#fff' }} data-testid={`button-options-cat-${cat.id}`}>
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[140px]">
+                  <DropdownMenuItem onClick={() => openEditCatDialog(cat)} data-testid={`btn-edit-cat-${cat.id}`}>
+                    <Pencil className="h-3 w-3 mr-2" /> Edytuj
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleArchiveCategory(cat.id)} data-testid={`btn-archive-${cat.id}`}>
+                    <Archive className="h-3 w-3 mr-2" /> Archiwizuj
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć kategorię "${cat.title}" i wszystkie jej pozycje?`)) handleDeleteCategory(cat.id); }} className="text-destructive" data-testid={`button-delete-category-${cat.id}`}>
+                    <Trash2 className="h-3 w-3 mr-2" /> Usuń
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+            </colgroup>
+            <thead>
+              <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
+                <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-[10px] text-muted-foreground">Mies.</th>
+                <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-[10px] text-muted-foreground">P</th>
+                <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-[10px] text-muted-foreground">R</th>
+                <th className="border-b border-border px-1 py-1 text-center font-medium text-[10px] text-muted-foreground">S</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MONTHS_LABELS.map((monthLabel, mi) => {
+                const isCurrentMo = mi === currentMonth && selectedYear === currentYear;
+                const s = getCategorySummary(cat, mi);
+                catYearP += s.prognoza;
+                catYearR += s.rzeczywiste;
+                return (
+                  <tr
+                    key={mi}
+                    className={`transition-colors duration-300 hover:bg-muted/20 dark:hover:bg-muted/10
+                      ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}`}
+                    data-testid={`row-cat-month-${cat.id}-${mi}`}
+                  >
+                    <td className="border-b border-r border-border px-2 py-1 font-semibold text-[10px]">
+                      <div className="flex items-center gap-1">
+                        <span>{monthLabel}</span>
+                        {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
+                      </div>
+                    </td>
+                    <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] text-muted-foreground">{formatNum(s.prognoza)}</td>
+                    <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] font-medium">{formatNum(s.rzeczywiste)}</td>
+                    <td className={`border-b border-border px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold ${saldoColor(s.saldo)}`}>{formatNum(s.saldo)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="font-bold" style={{ backgroundColor: headerBg, color: '#fff' }}>
+                <td className="border-t px-2 py-1.5 text-[10px]">ROCZNIE</td>
+                <td className="border-t px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ opacity: 0.7 }}>{formatNum(catYearP)}</td>
+                <td className="border-t px-1.5 py-1.5 text-right tabular-nums text-[10px]">{formatNum(catYearR)}</td>
+                <td className="border-t px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ color: (catYearP - catYearR) > 0 ? '#4ade80' : (catYearP - catYearR) < 0 ? '#f87171' : '#fff' }}>{formatNum(catYearP - catYearR)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderItemCard = (cat: CostCategory, item: CostItem, idx: number) => {
+    const catHex = getCatBgColor(cat.color);
+    const headerBg = catHex || 'hsl(var(--sidebar))';
+    let itemYearP = 0, itemYearR = 0;
+    const nameKey = `${cat.id}__${idx}`;
+    const isEditingThisName = editingName === nameKey;
+    const hasLinkedSchedule = costSchedules.some(
+      s => s.linkCategoryId === cat.id && s.linkItemIndex === idx
+    );
+
+    return (
+      <Card key={`${cat.id}-${idx}`} className="overflow-hidden border-sidebar-border" style={{ borderColor: headerBg }} data-testid={`card-item-${cat.id}-${idx}`}>
+        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '36px' }}>
+          <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
+            {isEditingThisName ? (
+              <div className="space-y-0.5 flex-1">
+                <input
+                  autoFocus
+                  value={editNameValue}
+                  onChange={e => setEditNameValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") commitNameEdit();
+                    if (e.key === "Escape") cancelNameEdit();
+                  }}
+                  className="w-full px-1 py-0.5 text-xs font-medium bg-white/20 outline-none rounded-sm text-white placeholder-white/60"
+                  placeholder="Nazwa"
+                  data-testid={`input-name-${nameKey}`}
+                />
+                <input
+                  value={editSubLabelValue}
+                  onChange={e => setEditSubLabelValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") commitNameEdit();
+                    if (e.key === "Escape") cancelNameEdit();
+                  }}
+                  onBlur={commitNameEdit}
+                  className="w-full px-1 py-0.5 text-[10px] bg-white/10 outline-none rounded-sm text-white/70 placeholder-white/40"
+                  placeholder="Podtytuł (opcjonalnie)"
+                  data-testid={`input-sublabel-${nameKey}`}
+                />
+              </div>
+            ) : (
+              <div
+                className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer"
+                onClick={() => openItemSheet(cat.id, idx)}
+                onDoubleClick={(e) => { e.stopPropagation(); startEditingName(cat.id, idx); }}
+              >
+                <CardTitle className="text-xs font-bold leading-tight truncate" style={{ color: '#fff' }} data-testid={`text-item-name-${cat.id}-${idx}`}>
+                  {item.name}
+                </CardTitle>
+                {item.subLabel && <span className="text-[10px] opacity-70 truncate">({item.subLabel})</span>}
+                {hasLinkedSchedule && <Link2 className="h-2.5 w-2.5 opacity-60 shrink-0" />}
+              </div>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="p-1 rounded hover:bg-white/10 shrink-0" style={{ color: '#fff' }} data-testid={`button-options-item-${cat.id}-${idx}`}>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[140px]">
+                <DropdownMenuItem onClick={() => startEditingName(cat.id, idx)} data-testid={`btn-edit-name-${cat.id}-${idx}`}>
+                  <Pencil className="h-3 w-3 mr-2" /> Edytuj nazwę
+                </DropdownMenuItem>
+                {serverForecasts.some(f => f.categoryId === cat.id && f.itemIndex === idx) && (
+                  <DropdownMenuItem onClick={() => {
+                    if (window.confirm(`Wyczyścić wszystkie prognozy dla "${item.name}"?`)) {
+                      const toDelete = serverForecasts.filter(f => f.categoryId === cat.id && f.itemIndex === idx);
+                      Promise.all(toDelete.map(f =>
+                        fetch("/api/operational-cost-forecasts/delete", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                          credentials: "include",
+                          body: JSON.stringify({ year: f.year, month: f.month, categoryId: f.categoryId, itemIndex: f.itemIndex }),
+                        })
+                      )).then(() => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
+                        toast({ title: "Wyczyszczono prognozy" });
+                      });
+                    }
+                  }} data-testid={`button-clear-forecasts-${cat.id}-${idx}`}>
+                    <XCircle className="h-3 w-3 mr-2" /> Wyczyść prognozy
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => handleArchiveItem(cat.id, idx)} data-testid={`button-archive-item-${cat.id}-${idx}`}>
+                  <Archive className="h-3 w-3 mr-2" /> Archiwizuj
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć pozycję "${item.name}"?`)) handleDeleteItem(cat.id, idx); }} className="text-destructive" data-testid={`button-delete-item-${cat.id}-${idx}`}>
+                  <Trash2 className="h-3 w-3 mr-2" /> Usuń
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+            </colgroup>
+            <thead>
+              <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
+                <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-[10px] text-muted-foreground">Mies.</th>
+                <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-[10px] text-muted-foreground">P</th>
+                <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-[10px] text-muted-foreground">R</th>
+                <th className="border-b border-border px-1 py-1 text-center font-medium text-[10px] text-muted-foreground">S</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MONTHS_LABELS.map((monthLabel, mi) => {
+                const isCurrentMo = mi === currentMonth && selectedYear === currentYear;
+                const pKey = makeCellKey(cat.id, idx, mi, "prognoza");
+                const rKey = makeCellKey(cat.id, idx, mi, "rzeczywiste");
+                const pVal = getCellValue(pKey);
+                const rVal = getCellValue(rKey);
+                const saldo = pVal - rVal;
+                itemYearP += pVal;
+                itemYearR += rVal;
+                const payStatus = paymentStatusMap[`${cat.id}__${idx}__${mi}`];
+                return (
+                  <tr
+                    key={mi}
+                    className={`transition-colors duration-300 hover:bg-muted/20 dark:hover:bg-muted/10
+                      ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
+                      ${payStatus === "overdue" ? "bg-red-50/50 dark:bg-red-950/10" : ""}
+                      ${payStatus === "paid" ? "bg-emerald-50/30 dark:bg-emerald-950/10" : ""}`}
+                    data-testid={`row-item-month-${cat.id}-${idx}-${mi}`}
+                  >
+                    <td className="border-b border-r border-border px-2 py-1 font-semibold text-[10px]">
+                      <div className="flex items-center gap-1">
+                        {payStatus && (
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${payStatus === "paid" ? "bg-emerald-500" : payStatus === "overdue" ? "bg-red-500" : "bg-amber-500"}`} title={payStatus === "paid" ? "Opłacone" : payStatus === "overdue" ? "Zaległe" : "Oczekujące"} />
+                        )}
+                        <span>{monthLabel}</span>
+                        {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
+                      </div>
+                    </td>
+                    <TransposedEditableCell
+                      value={pVal}
+                      isEditing={editingCell === pKey}
+                      editValue={editValue}
+                      onStartEdit={() => startEditing(pKey)}
+                      onCommitEdit={commitEdit}
+                      onCancelEdit={cancelEdit}
+                      onEditValueChange={setEditValue}
+                      isCurrentMonth={isCurrentMo}
+                      className="text-muted-foreground"
+                      isServerManaged={pKey in serverForecastLookup}
+                      onCommitAndMoveDown={() => {
+                        commitEdit();
+                        if (mi < 11) setTimeout(() => startEditing(makeCellKey(cat.id, idx, mi + 1, "prognoza")), 0);
+                      }}
+                      onFillToEnd={mi < 11 ? () => handleFillToEnd(cat.id, idx, mi, "prognoza") : undefined}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown" && mi < 11) {
+                          e.preventDefault();
+                          startEditing(makeCellKey(cat.id, idx, mi + 1, "prognoza"));
+                        }
+                        if (e.key === "ArrowUp" && mi > 0) {
+                          e.preventDefault();
+                          startEditing(makeCellKey(cat.id, idx, mi - 1, "prognoza"));
+                        }
+                        if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          startEditing(rKey);
+                        }
+                      }}
+                    />
+                    <TransposedEditableCell
+                      value={rVal}
+                      isEditing={editingCell === rKey}
+                      editValue={editValue}
+                      onStartEdit={() => startEditing(rKey)}
+                      onCommitEdit={commitEdit}
+                      onCancelEdit={cancelEdit}
+                      onEditValueChange={setEditValue}
+                      isCurrentMonth={isCurrentMo}
+                      className="font-medium"
+                      onCommitAndMoveDown={() => {
+                        commitEdit();
+                        if (mi < 11) setTimeout(() => startEditing(makeCellKey(cat.id, idx, mi + 1, "rzeczywiste")), 0);
+                      }}
+                      onFillToEnd={mi < 11 ? () => handleFillToEnd(cat.id, idx, mi, "rzeczywiste") : undefined}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown" && mi < 11) {
+                          e.preventDefault();
+                          startEditing(makeCellKey(cat.id, idx, mi + 1, "rzeczywiste"));
+                        }
+                        if (e.key === "ArrowUp" && mi > 0) {
+                          e.preventDefault();
+                          startEditing(makeCellKey(cat.id, idx, mi - 1, "rzeczywiste"));
+                        }
+                        if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          startEditing(pKey);
+                        }
+                      }}
+                    />
+                    <td className={`border-b border-border px-1.5 py-1 text-right tabular-nums text-[11px] font-semibold ${saldoColor(saldo)}`}>
+                      {formatNum(saldo)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="font-bold" style={{ backgroundColor: headerBg, color: '#fff' }}>
+                <td className="border-t px-2 py-1.5 text-[10px]">ROCZNIE</td>
+                <td className="border-t px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ opacity: 0.7 }}>{formatNum(itemYearP)}</td>
+                <td className="border-t px-1.5 py-1.5 text-right tabular-nums text-[10px]">{formatNum(itemYearR)}</td>
+                <td className="border-t px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ color: (itemYearP - itemYearR) > 0 ? '#4ade80' : (itemYearP - itemYearR) < 0 ? '#f87171' : '#fff' }}>{formatNum(itemYearP - itemYearR)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderRazemCard = (level: "categories" | "items") => {
+    let totalYearP = 0, totalYearR = 0;
+    const headerBg = 'hsl(var(--sidebar))';
+
+    return (
+      <Card className="overflow-hidden ring-2 ring-sidebar" style={{ borderColor: 'hsl(var(--sidebar))' }} data-testid="card-category-summary">
+        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '36px' }}>
+          <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
+            <CardTitle className="text-xs font-bold leading-tight" style={{ color: '#fff' }} data-testid="card-title-summary">
+              RAZEM
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0" style={{ backgroundColor: 'hsl(var(--sidebar) / 0.95)' }}>
+          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+            </colgroup>
+            <thead>
+              <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.8)' }}>
+                <th className="border-b border-r border-sidebar-border/30 px-2 py-1 text-left font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>Mies.</th>
+                <th className="border-b border-r border-sidebar-border/30 px-1 py-1 text-center font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>P</th>
+                <th className="border-b border-r border-sidebar-border/30 px-1 py-1 text-center font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>R</th>
+                <th className="border-b border-sidebar-border/30 px-1 py-1 text-center font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>S</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MONTHS_LABELS.map((monthLabel, mi) => {
+                const isCurrentMo = mi === currentMonth && selectedYear === currentYear;
+                let pVal = 0, rVal = 0;
+
+                if (level === "categories") {
+                  activeCategories.forEach(cat => {
+                    const s = getCategorySummary(cat, mi);
+                    pVal += s.prognoza;
+                    rVal += s.rzeczywiste;
+                  });
+                } else if (selectedCategory) {
+                  selectedCategory.items.forEach((item, itemIdx) => {
+                    if (item.archived) return;
+                    pVal += getCellValue(makeCellKey(selectedCategory.id, itemIdx, mi, "prognoza"));
+                    rVal += getCellValue(makeCellKey(selectedCategory.id, itemIdx, mi, "rzeczywiste"));
+                  });
+                }
+
+                const saldo = pVal - rVal;
+                totalYearP += pVal;
+                totalYearR += rVal;
+
+                return (
+                  <tr
+                    key={mi}
+                    className="hover:bg-white/5"
+                    style={{ color: 'hsl(var(--sidebar-foreground))' }}
+                    data-testid={`row-summary-month-${mi}`}
+                  >
+                    <td className="border-b border-r border-sidebar-border/30 px-2 py-1 font-semibold text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground))' }}>
+                      <div className="flex items-center gap-1">
+                        <span>{monthLabel}</span>
+                        {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
+                      </div>
+                    </td>
+                    <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.6)' }}>{formatNum(pVal)}</td>
+                    <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(rVal)}</td>
+                    <td className="border-b border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(saldo)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="font-bold" style={{ backgroundColor: 'hsl(var(--sidebar))', color: '#fff' }}>
+                <td className="border-t border-sidebar-border/30 px-2 py-1.5 text-[10px]">ROCZNIE</td>
+                <td className="border-t border-sidebar-border/30 px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ opacity: 0.7 }}>{formatNum(totalYearP)}</td>
+                <td className="border-t border-sidebar-border/30 px-1.5 py-1.5 text-right tabular-nums text-[10px]">{formatNum(totalYearR)}</td>
+                <td className="border-t border-sidebar-border/30 px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ color: (totalYearP - totalYearR) > 0 ? '#4ade80' : (totalYearP - totalYearR) < 0 ? '#f87171' : '#fff' }}>{formatNum(totalYearP - totalYearR)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -1241,7 +1497,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
           icon={Receipt}
           actions={
             <>
-              <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
               <Button variant="outline" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
                 <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
               </Button>
@@ -1279,7 +1534,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
       {embedded && (
         <div className="flex flex-wrap items-center gap-2">
-          <FullscreenToggleButton isFullscreen={fullscreen.isFullscreen} onToggle={fullscreen.toggle} />
           <Button variant="outline" size="sm" onClick={() => setShowCopyToNextYear(true)} data-testid="button-copy-forecast-next-year">
             <ArrowRight className="mr-1 h-4 w-4" /> Kopiuj prognozę na {selectedYear + 1}
           </Button>
@@ -1423,310 +1677,37 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         </>
       )}
 
-      {selectedCell && cellData[selectedCell] !== undefined && cellData[selectedCell] !== 0 && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>Zaznaczona komórka: <strong>{cellData[selectedCell]?.toLocaleString("pl-PL", { minimumFractionDigits: 2 })}</strong> zł</span>
-          <Button variant="outline" size="sm" onClick={handleFillToEnd} data-testid="button-fill-to-end">
-            <Copy className="mr-1 h-3 w-3" /> Wypełnij do grudnia
-          </Button>
-          <span className="text-muted-foreground/60">lub przeciągnij kwadracik w rogu komórki</span>
+      {drillLevel === "categories" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="grid-categories">
+          {activeCategories.map(cat => renderCategoryCard(cat))}
+          {renderRazemCard("categories")}
         </div>
-      )}
-
-      <FullscreenWrapper title={`Opłaty i koszty ${selectedYear}`} toolbar={<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setShowChart(!showChart)}><BarChart3 className="mr-1 h-3 w-3" />{showChart ? "Ukryj wykres" : "Pokaż wykres"}</Button></div>} isFullscreen={fullscreen.isFullscreen} onExit={fullscreen.exit}>
-      <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" data-testid="table-oplaty" onMouseUp={handleMouseUp} onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
-        <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1400px" }}>
-          <thead className="sticky top-0 z-20">
-            <tr className="bg-muted/80 dark:bg-muted/50">
-              <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[140px] min-w-[140px] sm:w-[220px] sm:min-w-[220px]" rowSpan={2}>
-                Pozycja
-              </th>
-              {MONTHS_SHORT.map((m, i) => (
-                <th key={i} colSpan={3} className="border-b border-r-2 border-border px-1 py-1 text-center font-bold">
-                  {m}
-                </th>
-              ))}
-              <th colSpan={3} className="border-b border-border px-1 py-1 text-center font-bold bg-muted dark:bg-muted/70">
-                ROCZNIE
-              </th>
-            </tr>
-            <tr className="bg-muted/60 dark:bg-muted/40">
-              {[...Array(13)].map((_, mi) => (
-                <Fragment key={mi}>
-                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">P</th>
-                  <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">R</th>
-                  <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
-                </Fragment>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {activeCategories.map(cat => {
-              const isCollapsed = collapsedCategories.has(cat.id);
-              const annualCat = getCategoryAnnualSummary(cat);
-              const isDraggingCat = dragCatId === cat.id;
-              return (
-                <Fragment key={cat.id}>
-                  <tr
-                    className={`${cat.color} text-white select-none ${isDraggingCat ? "opacity-40" : ""}`}
-                    data-testid={`row-category-${cat.id}`}
-                    onDragOver={(e) => handleCatDragOver(e, cat.id)}
-                    onDrop={handleCatDragEnd}
-                  >
-                    <td className={`sticky left-0 z-20 ${cat.color} border-b border-r border-border/30 px-1 py-1 font-bold`}>
-                      <div className="flex items-center gap-0.5">
-                        <span
-                          draggable
-                          onDragStart={() => handleCatDragStart(cat.id)}
-                          onDragEnd={handleCatDragEnd}
-                          className="cursor-grab active:cursor-grabbing opacity-60 hover:opacity-100 shrink-0"
-                          data-testid={`drag-category-${cat.id}`}
-                        >
-                          <GripVertical className="h-3.5 w-3.5" />
-                        </span>
-                        <span className="cursor-pointer shrink-0" onClick={() => toggleCategory(cat.id)} data-testid={`button-toggle-category-${cat.id}`}>
-                          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                        </span>
-                        <span
-                          className="truncate flex-1 min-w-0 cursor-pointer hover:underline"
-                          onClick={(e) => { e.stopPropagation(); openEditCatDialog(cat); }}
-                          title="Kliknij aby edytować kategorię"
-                          data-testid={`text-category-name-${cat.id}`}
-                        >
-                          {cat.title}
-                        </span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setAddItemCatId(cat.id); }}
-                          className="opacity-60 hover:opacity-100 p-0.5 rounded shrink-0"
-                          title="Dodaj pozycję"
-                          data-testid={`button-add-item-${cat.id}`}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button className="p-0.5 rounded shrink-0 text-muted-foreground hover:text-foreground sm:opacity-40 sm:hover:opacity-100" onClick={(e) => e.stopPropagation()} data-testid={`button-options-cat-${cat.id}`}>
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="min-w-[140px]">
-                            <DropdownMenuItem onClick={() => handleArchiveCategory(cat.id)} data-testid={`btn-archive-${cat.id}`}>
-                              <Archive className="h-3 w-3 mr-2" /> Archiwizuj
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć kategorię "${cat.title}" i wszystkie jej pozycje?`)) handleDeleteCategory(cat.id); }} className="text-destructive" data-testid={`button-delete-category-${cat.id}`}>
-                              <Trash2 className="h-3 w-3 mr-2" /> Usuń
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-                    {Array.from({ length: 12 }, (_, m) => {
-                      const s = getCategorySummary(cat, m);
-                      return (
-                        <Fragment key={m}>
-                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
-                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.rzeczywiste)}</td>
-                          <td className={`border-b border-r-2 border-border/30 px-1 py-1 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
-                        </Fragment>
-                      );
-                    })}
-                    <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.prognoza)}</td>
-                    <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.rzeczywiste)}</td>
-                    <td className={`border-b border-border/30 px-1 py-1 text-right font-bold tabular-nums ${annualCat.saldo > 0 ? "text-green-200" : annualCat.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(annualCat.saldo)}</td>
-                  </tr>
-                  {!isCollapsed && cat.items.map((item, idx) => {
-                    if (item.archived) return null;
-                    const annualItem = getItemAnnualSummary(cat.id, idx);
-                    const nameKey = `${cat.id}__${idx}`;
-                    const isEditingThisName = editingName === nameKey;
-                    const isDraggingItem = dragItemKey === nameKey;
-                    const hasLinkedSchedule = costSchedules.some(
-                      s => s.linkCategoryId === cat.id && s.linkItemIndex === idx
-                    );
-                    return (
-                      <tr
-                        key={idx}
-                        className={`hover:bg-muted/30 dark:hover:bg-muted/20 group ${isDraggingItem ? "opacity-40" : ""}`}
-                        data-testid={`row-item-${cat.id}-${idx}`}
-                        onDragOver={(e) => handleItemDragOver(e, cat.id, idx)}
-                        onDrop={handleItemDragEnd}
-                      >
-                        <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1 text-right">
-                          {isEditingThisName ? (
-                            <div className="space-y-0.5 pl-4">
-                              <input
-                                autoFocus
-                                value={editNameValue}
-                                onChange={e => setEditNameValue(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === "Enter") commitNameEdit();
-                                  if (e.key === "Escape") cancelNameEdit();
-                                }}
-                                className="w-full px-1 py-0.5 text-xs font-medium bg-background border-0 outline-none ring-2 ring-[#5ADBFA] rounded-sm"
-                                placeholder="Nazwa"
-                                data-testid={`input-name-${nameKey}`}
-                              />
-                              <input
-                                value={editSubLabelValue}
-                                onChange={e => setEditSubLabelValue(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === "Enter") commitNameEdit();
-                                  if (e.key === "Escape") cancelNameEdit();
-                                }}
-                                onBlur={commitNameEdit}
-                                className="w-full px-1 py-0.5 text-[10px] text-muted-foreground bg-background border-0 outline-none ring-1 ring-border rounded-sm"
-                                placeholder="Podtytuł (opcjonalnie)"
-                                data-testid={`input-sublabel-${nameKey}`}
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-0.5">
-                              <span
-                                draggable
-                                onDragStart={() => handleItemDragStart(cat.id, idx)}
-                                onDragEnd={handleItemDragEnd}
-                                className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground shrink-0"
-                                data-testid={`drag-item-${cat.id}-${idx}`}
-                              >
-                                <GripVertical className="h-3 w-3" />
-                              </span>
-                              <div
-                                className="flex-1 cursor-pointer hover:bg-accent/50 rounded-sm px-0.5 min-w-0 flex items-center gap-1"
-                                onClick={() => openItemSheet(cat.id, idx)}
-                                onDoubleClick={() => startEditingName(cat.id, idx)}
-                                data-testid={`name-${nameKey}`}
-                              >
-                                <span className="font-medium truncate hover:underline">{item.name}</span>
-                                {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
-                                {hasLinkedSchedule && <Link2 className="inline h-2.5 w-2.5 ml-1 text-muted-foreground" />}
-                                <Sparkline data={getItemSparklineData(cat.id, idx)} width={50} height={14} color="rgb(239, 68, 68)" />
-                              </div>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button className="p-0.5 rounded shrink-0 text-muted-foreground hover:text-foreground sm:invisible sm:group-hover:visible" data-testid={`button-options-item-${cat.id}-${idx}`}>
-                                    <MoreHorizontal className="h-3.5 w-3.5" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="min-w-[140px]">
-                                  {serverForecasts.some(f => f.categoryId === cat.id && f.itemIndex === idx) && (
-                                    <DropdownMenuItem onClick={() => {
-                                      if (window.confirm(`Wyczyścić wszystkie prognozy dla "${item.name}"?`)) {
-                                        const toDelete = serverForecasts.filter(f => f.categoryId === cat.id && f.itemIndex === idx);
-                                        Promise.all(toDelete.map(f =>
-                                          fetch("/api/operational-cost-forecasts/delete", {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-                                            credentials: "include",
-                                            body: JSON.stringify({ year: f.year, month: f.month, categoryId: f.categoryId, itemIndex: f.itemIndex }),
-                                          })
-                                        )).then(() => {
-                                          queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
-                                          toast({ title: "Wyczyszczono prognozy" });
-                                        });
-                                      }
-                                    }} data-testid={`button-clear-forecasts-${cat.id}-${idx}`}>
-                                      <XCircle className="h-3 w-3 mr-2" /> Wyczyść prognozy
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuItem onClick={() => handleArchiveItem(cat.id, idx)} data-testid={`button-archive-item-${cat.id}-${idx}`}>
-                                    <Archive className="h-3 w-3 mr-2" /> Archiwizuj
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć pozycję "${item.name}"?`)) handleDeleteItem(cat.id, idx); }} className="text-destructive" data-testid={`button-delete-item-${cat.id}-${idx}`}>
-                                    <Trash2 className="h-3 w-3 mr-2" /> Usuń
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          )}
-                        </td>
-                        {Array.from({ length: 12 }, (_, m) => {
-                          const pKey = makeCellKey(cat.id, idx, m, "prognoza");
-                          const rKey = makeCellKey(cat.id, idx, m, "rzeczywiste");
-                          const pVal = getCellValue(pKey);
-                          const rVal = getCellValue(rKey);
-                          const saldo = pVal - rVal;
-                          const statusBg = getCellStatusColor(cat.id, idx, m);
-                          return (
-                            <Fragment key={m}>
-                              <EditableCell
-                                cellKey={pKey}
-                                value={pVal}
-                                editingCell={editingCell}
-                                editValue={editValue}
-                                setEditValue={setEditValue}
-                                startEditing={startEditing}
-                                commitEdit={commitEdit}
-                                cancelEdit={cancelEdit}
-                                className={`border-b border-r border-border bg-muted/20 dark:bg-muted/10 text-[10px] ${statusBg}`}
-                                isSelected={selectedCell === pKey}
-                                isInRange={isInFillRange(pKey)}
-                                onCellClick={handleCellClick}
-                                onFillHandleMouseDown={handleFillHandleMouseDown}
-                                onCellMouseEnter={handleCellMouseEnter}
-                                month={m}
-                                isServerManaged={pKey in serverForecastLookup}
-                              />
-                              <EditableCell
-                                cellKey={rKey}
-                                value={rVal}
-                                editingCell={editingCell}
-                                editValue={editValue}
-                                setEditValue={setEditValue}
-                                startEditing={startEditing}
-                                commitEdit={commitEdit}
-                                cancelEdit={cancelEdit}
-                                className={`border-b border-r border-border font-semibold ${statusBg} ${getHeatMapBg(rVal, expenseHeatMax, "expense")}`}
-                                isSelected={selectedCell === rKey}
-                                isInRange={isInFillRange(rKey)}
-                                onCellClick={handleCellClick}
-                                onFillHandleMouseDown={handleFillHandleMouseDown}
-                                onCellMouseEnter={handleCellMouseEnter}
-                                month={m}
-                              />
-                              <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)} ${statusBg}`}>
-                                {formatNum(saldo)}
-                              </td>
-                            </Fragment>
-                          );
-                        })}
-                        <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums bg-muted/30 dark:bg-muted/20 text-[10px]">{formatNum(annualItem.prognoza)}</td>
-                        <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.rzeczywiste)}</td>
-                        <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(annualItem.saldo)}`}>{formatNum(annualItem.saldo)}</td>
-                      </tr>
-                    );
-                  })}
-                </Fragment>
-              );
+      ) : (
+        <>
+          <div className="flex items-center gap-3 mb-2">
+            <Button variant="outline" size="sm" onClick={() => { setDrillLevel("categories"); setSelectedCatId(null); }} data-testid="button-back-to-categories">
+              <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Powrót
+            </Button>
+            {selectedCategory && (
+              <>
+                <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: getCatBgColor(selectedCategory.color) }} />
+                <h2 className="text-sm font-bold" data-testid="text-selected-category">{selectedCategory.title}</h2>
+                <Badge variant="secondary" className="text-xs">{selectedCategory.items.filter(i => !i.archived).length} pozycji</Badge>
+                <Button variant="outline" size="sm" onClick={() => setAddItemCatId(selectedCategory.id)} data-testid="button-add-item-drill">
+                  <Plus className="mr-1 h-3 w-3" /> Pozycja
+                </Button>
+              </>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="grid-items">
+            {selectedCategory?.items.map((item, idx) => {
+              if (item.archived) return null;
+              return renderItemCard(selectedCategory, item, idx);
             })}
-            <tr className="bg-muted/80 dark:bg-muted/50 font-bold">
-              <td className="sticky left-0 z-20 bg-muted/80 dark:bg-muted/50 border-t-2 border-r border-border px-2 py-1 text-right">
-                SUMA
-              </td>
-              {Array.from({ length: 12 }, (_, m) => {
-                let prognoza = 0;
-                let rzeczywiste = 0;
-                activeCategories.forEach(cat => {
-                  const s = getCategorySummary(cat, m);
-                  prognoza += s.prognoza;
-                  rzeczywiste += s.rzeczywiste;
-                });
-                const saldo = prognoza - rzeczywiste;
-                return (
-                  <Fragment key={m}>
-                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums text-[10px] bg-muted/20 dark:bg-muted/10">{formatNum(prognoza)}</td>
-                    <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rzeczywiste)}</td>
-                    <td className={`border-t-2 border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
-                  </Fragment>
-                );
-              })}
-              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70 text-[10px]">{formatNum(grandTotal.prognoza)}</td>
-              <td className="border-t-2 border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted dark:bg-muted/70">{formatNum(grandTotal.rzeczywiste)}</td>
-              <td className={`border-t-2 border-border px-1 py-1 text-right tabular-nums bg-muted dark:bg-muted/70 ${saldoColor(grandTotal.saldo)}`}>{formatNum(grandTotal.saldo)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      </FullscreenWrapper>
+            {renderRazemCard("items")}
+          </div>
+        </>
+      )}
 
       {(archivedCategories.length > 0 || archivedItems.length > 0) && (
         <div className="mt-4" data-testid="archived-operational-costs">
@@ -1741,152 +1722,71 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             <Badge variant="secondary" className="text-xs">{archivedCategories.length + archivedItems.length}</Badge>
           </button>
           {showArchived && (
-            <div className="rounded-md border border-border bg-card overflow-x-auto opacity-60">
-              <table className="w-full text-xs border-collapse" style={{ minWidth: "2000px" }}>
-                <thead className="sticky top-0 z-20">
-                  <tr className="bg-muted/80 dark:bg-muted/50">
-                    <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-2 py-1 text-right font-bold w-[140px] min-w-[140px] sm:w-[220px] sm:min-w-[220px]" rowSpan={2}>
-                      Pozycja
-                    </th>
-                    {MONTHS_SHORT.map((m, i) => (
-                      <th key={i} colSpan={3} className="border-b border-r-2 border-border px-1 py-1 text-center font-bold">
-                        {m}
-                      </th>
-                    ))}
-                    <th colSpan={3} className="border-b border-border px-1 py-1 text-center font-bold bg-muted dark:bg-muted/70">
-                      ROCZNIE
-                    </th>
-                  </tr>
-                  <tr className="bg-muted/60 dark:bg-muted/40">
-                    {[...Array(13)].map((_, mi) => (
-                      <Fragment key={mi}>
-                        <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">P</th>
-                        <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px]">R</th>
-                        <th className={`border-b border-border px-1 py-1 text-center font-medium text-muted-foreground w-[60px] min-w-[60px] ${mi < 12 ? "border-r-2" : ""}`}>S</th>
-                      </Fragment>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {archivedCategories.map(cat => {
-                    const isCollapsed = collapsedCategories.has(cat.id);
-                    const annualCat = getCategoryAnnualSummary(cat, true);
-                    return (
-                      <Fragment key={cat.id}>
-                        <tr className={`${cat.color} text-white select-none`} data-testid={`row-archived-category-${cat.id}`}>
-                          <td className={`sticky left-0 z-20 ${cat.color} border-b border-r border-border/30 px-1 py-1 font-bold`}>
-                            <div className="flex items-center gap-0.5">
-                              <span className="cursor-pointer shrink-0" onClick={() => toggleCategory(cat.id)}>
-                                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                              </span>
-                              <span className="truncate flex-1 min-w-0">{cat.title}</span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleRestoreCategory(cat.id); }}
-                                className="opacity-60 hover:opacity-100 p-0.5 rounded shrink-0"
-                                title="Przywróć kategorię"
-                                data-testid={`btn-restore-${cat.id}`}
-                              >
-                                <RotateCcw className="h-3 w-3" />
-                              </button>
-                            </div>
-                          </td>
-                          {Array.from({ length: 12 }, (_, m) => {
-                            const s = getCategorySummary(cat, m, true);
-                            return (
-                              <Fragment key={m}>
-                                <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.prognoza)}</td>
-                                <td className="border-b border-r border-border/30 px-1 py-1 text-right font-semibold tabular-nums">{formatNum(s.rzeczywiste)}</td>
-                                <td className={`border-b border-r-2 border-border/30 px-1 py-1 text-right font-semibold tabular-nums ${s.saldo > 0 ? "text-green-200" : s.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(s.saldo)}</td>
-                              </Fragment>
-                            );
-                          })}
-                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.prognoza)}</td>
-                          <td className="border-b border-r border-border/30 px-1 py-1 text-right font-bold tabular-nums">{formatNum(annualCat.rzeczywiste)}</td>
-                          <td className={`border-b border-border/30 px-1 py-1 text-right font-bold tabular-nums ${annualCat.saldo > 0 ? "text-green-200" : annualCat.saldo < 0 ? "text-red-200" : ""}`}>{formatNum(annualCat.saldo)}</td>
-                        </tr>
-                        {!isCollapsed && cat.items.map((item, idx) => {
-                          const annualItem = getItemAnnualSummary(cat.id, idx);
-                          return (
-                            <tr key={idx} className="hover:bg-muted/30 dark:hover:bg-muted/20" data-testid={`row-archived-item-${cat.id}-${idx}`}>
-                              <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1 text-right">
-                                <div className="flex items-center gap-0.5 pl-4">
-                                  <span className="font-medium truncate">{item.name}</span>
-                                  {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
-                                </div>
-                              </td>
-                              {Array.from({ length: 12 }, (_, m) => {
-                                const pVal = getCellValue(makeCellKey(cat.id, idx, m, "prognoza"));
-                                const rVal = getCellValue(makeCellKey(cat.id, idx, m, "rzeczywiste"));
-                                const saldo = pVal - rVal;
-                                return (
-                                  <Fragment key={m}>
-                                    <td className="border-b border-r border-border bg-muted/20 dark:bg-muted/10 px-1 py-1 text-right tabular-nums text-[10px]">{formatNum(pVal)}</td>
-                                    <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rVal)}</td>
-                                    <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
-                                  </Fragment>
-                                );
-                              })}
-                              <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums bg-muted/30 dark:bg-muted/20 text-[10px]">{formatNum(annualItem.prognoza)}</td>
-                              <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.rzeczywiste)}</td>
-                              <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(annualItem.saldo)}`}>{formatNum(annualItem.saldo)}</td>
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
-                    );
-                  })}
-                  {archivedItemsByCategory.map(group => (
-                    <Fragment key={`archived-items-${group.catId}`}>
-                      <tr className="bg-amber-600/80 dark:bg-amber-700/80 text-white select-none" data-testid={`row-archived-items-group-${group.catId}`}>
-                        <td className="sticky left-0 z-20 bg-amber-600/80 dark:bg-amber-700/80 border-b border-r border-border/30 px-1 py-1 font-bold" colSpan={40}>
-                          <div className="flex items-center gap-1.5 pl-1">
-                            <Archive className="h-3.5 w-3.5 shrink-0" />
-                            <span className="text-xs">Pozycje z:</span>
-                            <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0">{group.catTitle}</Badge>
-                            <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0 ml-1">{group.items.length}</Badge>
+            <div className="space-y-3 opacity-60">
+              {archivedCategories.map(cat => {
+                let catP = 0, catR = 0;
+                cat.items.forEach((item, iIdx) => {
+                  for (let mi = 0; mi < 12; mi++) {
+                    catP += getCellValue(makeCellKey(cat.id, iIdx, mi, "prognoza"));
+                    catR += getCellValue(makeCellKey(cat.id, iIdx, mi, "rzeczywiste"));
+                  }
+                });
+                return (
+                  <Card key={cat.id} className="overflow-hidden" data-testid={`card-archived-cat-${cat.id}`}>
+                    <CardHeader className="px-3 py-2" style={{ backgroundColor: getCatBgColor(cat.color), color: '#fff' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-xs font-bold">{cat.title}</CardTitle>
+                          <div className="flex gap-3 mt-1 text-[10px] opacity-80">
+                            <span>P: {catP.toLocaleString("pl-PL")} zł</span>
+                            <span>R: {catR.toLocaleString("pl-PL")} zł</span>
+                            <span>S: {(catP - catR).toLocaleString("pl-PL")} zł</span>
                           </div>
-                        </td>
-                      </tr>
-                      {group.items.map(({ itemIdx, item }) => {
-                        const annualItem = getItemAnnualSummary(group.catId, itemIdx);
-                        return (
-                          <tr key={itemIdx} className="hover:bg-muted/30 dark:hover:bg-muted/20 group" data-testid={`row-archived-single-item-${group.catId}-${itemIdx}`}>
-                            <td className="sticky left-0 z-20 bg-card border-b border-r border-border px-1 py-1 text-right">
-                              <div className="flex items-center gap-0.5 pl-4">
-                                <span className="font-medium truncate">{item.name}</span>
-                                {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
-                                <button
-                                  onClick={() => handleRestoreItem(group.catId, itemIdx)}
-                                  className="invisible group-hover:visible text-muted-foreground hover:text-emerald-600 p-0.5 shrink-0 ml-auto"
-                                  title="Przywróć pozycję"
-                                  data-testid={`button-restore-item-${group.catId}-${itemIdx}`}
-                                >
-                                  <RotateCcw className="h-3 w-3" />
-                                </button>
-                              </div>
-                            </td>
-                            {Array.from({ length: 12 }, (_, m) => {
-                              const pVal = getCellValue(makeCellKey(group.catId, itemIdx, m, "prognoza"));
-                              const rVal = getCellValue(makeCellKey(group.catId, itemIdx, m, "rzeczywiste"));
-                              const saldo = pVal - rVal;
-                              return (
-                                <Fragment key={m}>
-                                  <td className="border-b border-r border-border bg-muted/20 dark:bg-muted/10 px-1 py-1 text-right tabular-nums text-[10px]">{formatNum(pVal)}</td>
-                                  <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold">{formatNum(rVal)}</td>
-                                  <td className={`border-b border-r-2 border-border px-1 py-1 text-right tabular-nums ${saldoColor(saldo)}`}>{formatNum(saldo)}</td>
-                                </Fragment>
-                              );
-                            })}
-                            <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums bg-muted/30 dark:bg-muted/20 text-[10px]">{formatNum(annualItem.prognoza)}</td>
-                            <td className="border-b border-r border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20">{formatNum(annualItem.rzeczywiste)}</td>
-                            <td className={`border-b border-border px-1 py-1 text-right tabular-nums font-semibold bg-muted/30 dark:bg-muted/20 ${saldoColor(annualItem.saldo)}`}>{formatNum(annualItem.saldo)}</td>
-                          </tr>
-                        );
-                      })}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
+                        </div>
+                        <button
+                          onClick={() => handleRestoreCategory(cat.id)}
+                          className="p-1 rounded hover:bg-white/10"
+                          title="Przywróć kategorię"
+                          data-testid={`btn-restore-${cat.id}`}
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                );
+              })}
+              {archivedItems.map(({ catId, catTitle, itemIdx, item }) => {
+                let itemP = 0, itemR = 0;
+                for (let mi = 0; mi < 12; mi++) {
+                  itemP += getCellValue(makeCellKey(catId, itemIdx, mi, "prognoza"));
+                  itemR += getCellValue(makeCellKey(catId, itemIdx, mi, "rzeczywiste"));
+                }
+                return (
+                  <Card key={`${catId}-${itemIdx}`} className="overflow-hidden" data-testid={`card-archived-item-${catId}-${itemIdx}`}>
+                    <CardContent className="py-2 px-3 flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-medium">{item.name}</span>
+                        {item.subLabel && <span className="text-[10px] text-muted-foreground ml-1">({item.subLabel})</span>}
+                        <span className="text-[10px] text-muted-foreground ml-2">z: {catTitle}</span>
+                        <div className="flex gap-3 mt-0.5 text-[10px] text-muted-foreground">
+                          <span>P: {itemP.toLocaleString("pl-PL")} zł</span>
+                          <span>R: {itemR.toLocaleString("pl-PL")} zł</span>
+                          <span>S: {(itemP - itemR).toLocaleString("pl-PL")} zł</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRestoreItem(catId, itemIdx)}
+                        className="text-muted-foreground hover:text-emerald-600 p-1"
+                        title="Przywróć pozycję"
+                        data-testid={`button-restore-item-${catId}-${itemIdx}`}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -2132,12 +2032,23 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             </div>
             <div className="space-y-1">
               <Label>Kolor</Label>
+              <div className="flex items-center gap-3 mb-2">
+                <input
+                  type="color"
+                  value={newCatColor}
+                  onChange={e => setNewCatColor(e.target.value)}
+                  className="w-10 h-10 rounded cursor-pointer border border-border"
+                  data-testid="input-new-category-color-picker"
+                />
+                <span className="text-xs text-muted-foreground">{newCatColor}</span>
+              </div>
               <div className="flex flex-wrap gap-2">
-                {CATEGORY_COLORS.map(c => (
+                {COLOR_PRESETS.map(c => (
                   <button
-                    key={c.value}
-                    onClick={() => setNewCatColor(c.value)}
-                    className={`w-8 h-8 rounded-md ${c.value} ${newCatColor === c.value ? "ring-2 ring-offset-2 ring-[#5ADBFA]" : ""}`}
+                    key={c.hex}
+                    onClick={() => setNewCatColor(c.hex)}
+                    className={`w-8 h-8 rounded-md ${newCatColor === c.hex ? "ring-2 ring-offset-2 ring-[#5ADBFA]" : ""}`}
+                    style={{ backgroundColor: c.hex }}
                     title={c.label}
                     data-testid={`color-${c.label}`}
                   />
@@ -2170,12 +2081,23 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             </div>
             <div className="space-y-1">
               <Label>Kolor</Label>
+              <div className="flex items-center gap-3 mb-2">
+                <input
+                  type="color"
+                  value={isHexColor(editCatColor) ? editCatColor : getCatBgColor(editCatColor)}
+                  onChange={e => setEditCatColor(e.target.value)}
+                  className="w-10 h-10 rounded cursor-pointer border border-border"
+                  data-testid="input-edit-category-color-picker"
+                />
+                <span className="text-xs text-muted-foreground">{isHexColor(editCatColor) ? editCatColor : getCatBgColor(editCatColor)}</span>
+              </div>
               <div className="flex flex-wrap gap-2">
-                {CATEGORY_COLORS.map(c => (
+                {COLOR_PRESETS.map(c => (
                   <button
-                    key={c.value}
-                    onClick={() => setEditCatColor(c.value)}
-                    className={`w-8 h-8 rounded-md ${c.value} ${editCatColor === c.value ? "ring-2 ring-offset-2 ring-[#5ADBFA]" : ""}`}
+                    key={c.hex}
+                    onClick={() => setEditCatColor(c.hex)}
+                    className={`w-8 h-8 rounded-md ${editCatColor === c.hex ? "ring-2 ring-offset-2 ring-[#5ADBFA]" : ""}`}
+                    style={{ backgroundColor: c.hex }}
                     title={c.label}
                     data-testid={`edit-color-${c.label}`}
                   />
@@ -2222,16 +2144,16 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       <Dialog open={forecastPrompt !== null} onOpenChange={(open) => { if (!open) setForecastPrompt(null); }}>
         <DialogContent className="max-w-sm" data-testid="dialog-forecast-prompt">
           <DialogHeader>
-            <DialogTitle>Dodac do prognozy?</DialogTitle>
+            <DialogTitle>Dodać do prognozy?</DialogTitle>
           </DialogHeader>
           {forecastPrompt && (
             <div className="space-y-3 py-1">
               <p className="text-sm text-muted-foreground">
-                Wprowadziles koszt <strong>{forecastPrompt.amount.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zl</strong> dla pozycji
+                Wprowadzono koszt <strong>{forecastPrompt.amount.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</strong> dla pozycji
                 &ldquo;{forecastPrompt.itemName}&rdquo; ({forecastPrompt.catTitle}).
               </p>
               <p className="text-sm text-muted-foreground">
-                Czy chcesz dodac te kwote do prognozy operacyjnej?
+                Czy chcesz dodać tę kwotę do prognozy operacyjnej?
               </p>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer text-sm">
@@ -2240,18 +2162,18 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-sm">
                   <input type="radio" name="forecastOption" checked={forecastPromptOption === "remaining"} onChange={() => setForecastPromptOption("remaining")} data-testid="radio-forecast-remaining" />
-                  {MONTHS_SHORT[forecastPrompt.month]} - GRU (pozostale miesiace)
+                  {MONTHS_SHORT[forecastPrompt.month]} - GRU (pozostałe miesiące)
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-sm">
                   <input type="radio" name="forecastOption" checked={forecastPromptOption === "all"} onChange={() => setForecastPromptOption("all")} data-testid="radio-forecast-all" />
-                  STY - GRU (caly rok)
+                  STY - GRU (cały rok)
                 </label>
               </div>
             </div>
           )}
           <DialogFooter className="gap-2">
             <Button variant="outline" size="sm" onClick={() => setForecastPrompt(null)} data-testid="btn-skip-forecast">
-              Pomin
+              Pomiń
             </Button>
             <Button
               size="sm"
@@ -2275,7 +2197,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               }}
               data-testid="btn-confirm-forecast"
             >
-              {addToForecastMutation.isPending ? "Dodaje..." : "Dodaj do prognozy"}
+              {addToForecastMutation.isPending ? "Dodaję..." : "Dodaj do prognozy"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2286,89 +2208,6 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
 export default function CostsExpenses() {
   return <CostsExpensesContent />;
-}
-
-function Fragment({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
-
-function EditableCell({
-  cellKey,
-  value,
-  editingCell,
-  editValue,
-  setEditValue,
-  startEditing,
-  commitEdit,
-  cancelEdit,
-  className,
-  isSelected,
-  isInRange,
-  onCellClick,
-  onFillHandleMouseDown,
-  onCellMouseEnter,
-  month,
-  isServerManaged,
-}: {
-  cellKey: CellKey;
-  value: number;
-  editingCell: string | null;
-  editValue: string;
-  setEditValue: (v: string) => void;
-  startEditing: (key: CellKey) => void;
-  commitEdit: () => void;
-  cancelEdit: () => void;
-  className?: string;
-  isSelected: boolean;
-  isInRange: boolean;
-  onCellClick: (key: CellKey) => void;
-  onFillHandleMouseDown: (e: React.MouseEvent) => void;
-  onCellMouseEnter: (month: number) => void;
-  month: number;
-  isServerManaged?: boolean;
-}) {
-  const isEditing = editingCell === cellKey;
-
-  if (isEditing) {
-    return (
-      <td className={`${className} p-0`}>
-        <input
-          type="number"
-          step="0.01"
-          autoFocus
-          value={editValue}
-          onChange={e => setEditValue(e.target.value)}
-          onBlur={commitEdit}
-          onKeyDown={e => {
-            if (e.key === "Enter") commitEdit();
-            if (e.key === "Escape") cancelEdit();
-          }}
-          className="w-full h-full px-1 py-1 text-right text-xs bg-background border-0 outline-none ring-2 ring-[#5ADBFA] tabular-nums"
-          data-testid={`input-cell-${cellKey}`}
-        />
-      </td>
-    );
-  }
-
-  return (
-    <td
-      className={`${className} px-1 py-1 text-right tabular-nums relative select-none ${isServerManaged ? "cursor-default bg-blue-50/40 dark:bg-blue-950/20" : "cursor-pointer hover:bg-accent/50"} ${isSelected ? "ring-2 ring-[#5ADBFA] ring-inset z-10" : ""} ${isInRange ? "bg-[#5ADBFA]/15" : ""}`}
-      onDoubleClick={() => startEditing(cellKey)}
-      onClick={() => onCellClick(cellKey)}
-      onMouseEnter={() => onCellMouseEnter(month)}
-      title={isServerManaged ? "Wartość z modułu Prognoza" : undefined}
-      data-testid={`cell-${cellKey}`}
-    >
-      {value !== 0 ? value.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
-      {isSelected && value !== 0 && (
-        <span
-          onMouseDown={onFillHandleMouseDown}
-          className="absolute -bottom-[3px] -right-[3px] w-[7px] h-[7px] bg-[#5ADBFA] border border-white cursor-crosshair z-20"
-          data-testid={`fill-handle-${cellKey}`}
-        />
-      )}
-    </td>
-  );
 }
 
 function ScheduleDialog({
