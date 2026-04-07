@@ -1553,7 +1553,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           );
         })()}
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(325px, 1fr))' }} data-testid="category-cards-grid">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(305px, 420px))' }} data-testid="category-cards-grid">
           {cats.map((cat) => (
             <Fragment key={cat}>
               {renderCategoryCard(cat)}
