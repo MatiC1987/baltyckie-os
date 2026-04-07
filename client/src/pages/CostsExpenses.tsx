@@ -336,7 +336,7 @@ function TransposedEditableCell({
               <ArrowDown className="h-2.5 w-2.5" />
             </button>
           )}
-          <span className="text-[11px] min-h-[18px] cursor-cell flex-1">{formatNum(value)}</span>
+          <span className="min-h-[18px] cursor-cell flex-1">{formatNum(value)}</span>
         </div>
       )}
     </td>
@@ -1126,7 +1126,13 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
           </div>
         </CardHeader>
         <CardContent className="p-0 flex-1">
-          <table className="w-full text-[11px] sm:text-xs border-collapse">
+          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '65px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+            </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
                 <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-[10px] text-muted-foreground">Mies.</th>
@@ -1146,6 +1152,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                     key={mi}
                     className={`transition-colors duration-300 hover:bg-muted/20 dark:hover:bg-muted/10
                       ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}`}
+                    style={isCurrentMo ? { outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' } : undefined}
                     data-testid={`row-cat-month-${cat.id}-${mi}`}
                   >
                     <td className="border-b border-r border-border px-2 py-1 font-semibold text-[10px]">
@@ -1154,9 +1161,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                         {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
                       </div>
                     </td>
-                    <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] text-muted-foreground">{formatNum(s.prognoza)}</td>
-                    <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] font-medium">{formatNum(s.rzeczywiste)}</td>
-                    <td className={`border-b border-border px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold ${saldoColor(s.saldo)}`}>{formatNum(s.saldo)}</td>
+                    <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[9px] text-muted-foreground overflow-hidden">{formatNum(s.prognoza)}</td>
+                    <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] font-medium overflow-hidden">{formatNum(s.rzeczywiste)}</td>
+                    <td className={`border-b border-border px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold overflow-hidden ${saldoColor(s.saldo)}`}>{formatNum(s.saldo)}</td>
                   </tr>
                 );
               })}
@@ -1270,7 +1277,13 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
           </div>
         </CardHeader>
         <CardContent className="p-0 flex-1">
-          <table className="w-full text-[11px] sm:text-xs border-collapse">
+          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '65px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+            </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
                 <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-[10px] text-muted-foreground">Mies.</th>
@@ -1297,6 +1310,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                       ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
                       ${payStatus === "overdue" ? "bg-red-50/50 dark:bg-red-950/10" : ""}
                       ${payStatus === "paid" ? "bg-emerald-50/30 dark:bg-emerald-950/10" : ""}`}
+                    style={isCurrentMo ? { outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' } : undefined}
                     data-testid={`row-item-month-${cat.id}-${idx}-${mi}`}
                   >
                     <td className="border-b border-r border-border px-2 py-1 font-semibold text-[10px]">
@@ -1317,7 +1331,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                       onCancelEdit={cancelEdit}
                       onEditValueChange={setEditValue}
                       isCurrentMonth={isCurrentMo}
-                      className="text-muted-foreground"
+                      className="text-muted-foreground text-[9px]"
                       isServerManaged={pKey in serverForecastLookup}
                       onCommitAndMoveDown={() => {
                         commitEdit();
@@ -1390,83 +1404,63 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     );
   };
 
-  const renderRazemCard = (level: "categories" | "items") => {
+  const renderSummaryTiles = (level: "categories" | "items") => {
     let totalYearP = 0, totalYearR = 0;
-    const headerBg = 'hsl(var(--sidebar))';
+    const currentMoP: number[] = [];
+    const currentMoR: number[] = [];
+    for (let mi = 0; mi < 12; mi++) {
+      let pVal = 0, rVal = 0;
+      if (level === "categories") {
+        activeCategories.forEach(cat => {
+          const s = getCategorySummary(cat, mi);
+          pVal += s.prognoza;
+          rVal += s.rzeczywiste;
+        });
+      } else if (selectedCategory) {
+        selectedCategory.items.forEach((item, itemIdx) => {
+          if (item.archived) return;
+          pVal += getCellValue(makeCellKey(selectedCategory.id, itemIdx, mi, "prognoza"));
+          rVal += getCellValue(makeCellKey(selectedCategory.id, itemIdx, mi, "rzeczywiste"));
+        });
+      }
+      totalYearP += pVal;
+      totalYearR += rVal;
+      currentMoP.push(pVal);
+      currentMoR.push(rVal);
+    }
+    const moP = currentMoP[currentMonth] || 0;
+    const moR = currentMoR[currentMonth] || 0;
+    const moS = moP - moR;
+    const yearS = totalYearP - totalYearR;
 
     return (
-      <Card className="overflow-hidden ring-2 ring-sidebar flex flex-col" style={{ borderColor: 'hsl(var(--sidebar))' }} data-testid="card-category-summary">
-        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '40px' }}>
-          <div className="flex items-center justify-between gap-2" style={{ minHeight: '24px' }}>
-            <CardTitle className="text-xs font-bold leading-tight" style={{ color: '#fff' }} data-testid="card-title-summary">
-              RAZEM
-            </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0 flex-1" style={{ backgroundColor: 'hsl(var(--sidebar) / 0.95)' }}>
-          <table className="w-full text-[11px] sm:text-xs border-collapse">
-            <thead>
-              <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.8)' }}>
-                <th className="border-b border-r border-sidebar-border/30 px-2 py-1 text-left font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>Mies.</th>
-                <th className="border-b border-r border-sidebar-border/30 px-1 py-1 text-center font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>P</th>
-                <th className="border-b border-r border-sidebar-border/30 px-1 py-1 text-center font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>R</th>
-                <th className="border-b border-sidebar-border/30 px-1 py-1 text-center font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>S</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MONTHS_LABELS.map((monthLabel, mi) => {
-                const isCurrentMo = mi === currentMonth && selectedYear === currentYear;
-                let pVal = 0, rVal = 0;
-
-                if (level === "categories") {
-                  activeCategories.forEach(cat => {
-                    const s = getCategorySummary(cat, mi);
-                    pVal += s.prognoza;
-                    rVal += s.rzeczywiste;
-                  });
-                } else if (selectedCategory) {
-                  selectedCategory.items.forEach((item, itemIdx) => {
-                    if (item.archived) return;
-                    pVal += getCellValue(makeCellKey(selectedCategory.id, itemIdx, mi, "prognoza"));
-                    rVal += getCellValue(makeCellKey(selectedCategory.id, itemIdx, mi, "rzeczywiste"));
-                  });
-                }
-
-                const saldo = pVal - rVal;
-                totalYearP += pVal;
-                totalYearR += rVal;
-
-                return (
-                  <tr
-                    key={mi}
-                    className="hover:bg-white/5"
-                    style={{ color: 'hsl(var(--sidebar-foreground))' }}
-                    data-testid={`row-summary-month-${mi}`}
-                  >
-                    <td className="border-b border-r border-sidebar-border/30 px-2 py-1 font-semibold text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground))' }}>
-                      <div className="flex items-center gap-1">
-                        <span>{monthLabel}</span>
-                        {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
-                      </div>
-                    </td>
-                    <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.6)' }}>{formatNum(pVal)}</td>
-                    <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(rVal)}</td>
-                    <td className="border-b border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(saldo)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="font-bold" style={{ backgroundColor: 'hsl(var(--sidebar))', color: '#fff' }}>
-                <td className="border-t border-sidebar-border/30 px-2 py-1.5 text-[10px]">ROCZNIE</td>
-                <td className="border-t border-sidebar-border/30 px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ opacity: 0.7 }}>{formatNum(totalYearP)}</td>
-                <td className="border-t border-sidebar-border/30 px-1.5 py-1.5 text-right tabular-nums text-[10px]">{formatNum(totalYearR)}</td>
-                <td className="border-t border-sidebar-border/30 px-1.5 py-1.5 text-right tabular-nums text-[10px]" style={{ color: (totalYearP - totalYearR) > 0 ? '#4ade80' : (totalYearP - totalYearR) < 0 ? '#f87171' : '#fff' }}>{formatNum(totalYearP - totalYearR)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3" data-testid="summary-tiles">
+        <Card className="border-sidebar/30">
+          <CardContent className="py-2.5 px-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Prognoza ({MONTHS_LABELS[currentMonth]})</p>
+            <p className="text-sm font-bold tabular-nums mt-0.5" data-testid="tile-month-p">{formatNum(moP)} zł</p>
+          </CardContent>
+        </Card>
+        <Card className="border-sidebar/30">
+          <CardContent className="py-2.5 px-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Rzeczywiste ({MONTHS_LABELS[currentMonth]})</p>
+            <p className="text-sm font-bold tabular-nums mt-0.5 text-emerald-600" data-testid="tile-month-r">{formatNum(moR)} zł</p>
+          </CardContent>
+        </Card>
+        <Card className="border-sidebar/30">
+          <CardContent className="py-2.5 px-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Saldo ({MONTHS_LABELS[currentMonth]})</p>
+            <p className={`text-sm font-bold tabular-nums mt-0.5 ${moS > 0 ? 'text-emerald-600' : moS < 0 ? 'text-red-500' : ''}`} data-testid="tile-month-s">{formatNum(moS)} zł</p>
+          </CardContent>
+        </Card>
+        <Card className="border-sidebar/30">
+          <CardContent className="py-2.5 px-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Rocznie</p>
+            <p className="text-sm font-bold tabular-nums mt-0.5" data-testid="tile-year-total">{formatNum(totalYearR)} zł</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">P: {formatNum(totalYearP)} · S: <span className={yearS > 0 ? 'text-emerald-600' : yearS < 0 ? 'text-red-500' : ''}>{formatNum(yearS)}</span></p>
+          </CardContent>
+        </Card>
+      </div>
     );
   };
 
@@ -1661,11 +1655,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
       {drillLevel === "categories" ? (
         <>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="grid-categories">
+          {renderSummaryTiles("categories")}
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(325px, 1fr))' }} data-testid="grid-categories">
             {activeCategories.map(cat => renderCategoryCard(cat))}
-          </div>
-          <div className="mt-3" style={{ maxWidth: '380px' }}>
-            {renderRazemCard("categories")}
           </div>
         </>
       ) : (
@@ -1685,14 +1677,12 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               </>
             )}
           </div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="grid-items">
+          {renderSummaryTiles("items")}
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(325px, 1fr))' }} data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);
             })}
-          </div>
-          <div className="mt-3" style={{ maxWidth: '380px' }}>
-            {renderRazemCard("items")}
           </div>
         </>
       )}

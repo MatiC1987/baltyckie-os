@@ -232,7 +232,7 @@ function TransposedEditableCell({
             </button>
           )}
           <div className="flex flex-col items-end gap-0 flex-1">
-            <span className="text-[11px] min-h-[18px] cursor-cell">{formatNum(value)}</span>
+            <span className="min-h-[18px] cursor-cell">{formatNum(value)}</span>
             {compareValue !== undefined && compareValue !== 0 && (
               <span className="text-[9px] text-muted-foreground/60">{formatNum(compareValue)}</span>
             )}
@@ -1256,7 +1256,13 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
             </div>
           </CardHeader>
           <CardContent className="p-0 flex-1" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
-            <table className="w-full text-[11px] sm:text-xs border-collapse">
+            <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '65px' }} />
+                <col style={{ width: '80px' }} />
+                <col style={{ width: '80px' }} />
+                <col style={{ width: '80px' }} />
+              </colgroup>
               <thead>
                 <tr style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.8)' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
                   <th className={`border-b border-r px-2 py-1 text-left font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>Mies.</th>
@@ -1300,7 +1306,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                         ${isSummary ? "" : isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
                         ${isSummary ? "" : isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}
                         ${isSummary ? "hover:bg-white/5" : "hover:bg-muted/20 dark:hover:bg-muted/10"}`}
-                      style={isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : undefined}
+                      style={isCurrentMo
+                        ? { ...(isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : {}), outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' }
+                        : (isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : undefined)}
                       data-testid={isSummary ? `row-summary-month-${mi}` : `row-month-${cat}-${mi}`}
                     >
                       <td className={`border-b border-r px-2 py-1 font-semibold text-[10px]
@@ -1315,9 +1323,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                       </td>
                       {isSummary ? (
                         <>
-                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.6)' }}>{formatNum(pVal)}</td>
-                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(rVal)}</td>
-                          <td className="border-b border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(saldo)}</td>
+                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[9px] font-semibold overflow-hidden" style={{ color: 'hsl(var(--sidebar-foreground) / 0.6)' }}>{formatNum(pVal)}</td>
+                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold overflow-hidden" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(rVal)}</td>
+                          <td className="border-b border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold overflow-hidden" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(saldo)}</td>
                         </>
                       ) : (
                         <>
@@ -1330,7 +1338,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                             onCancelEdit={cancelEdit}
                             onEditValueChange={setEditValue}
                             isCurrentMonth={isCurrentMo}
-                            className="text-muted-foreground"
+                            className="text-muted-foreground text-[9px]"
                             compareValue={compP || undefined}
                             flashKey={[...savedFlashKeys].find(k => k.startsWith(`${year}__${entry.id}__${cat}__${mi}__`))}
                             onCommitAndMoveDown={() => {
@@ -1497,18 +1505,63 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </div>
         </div>
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="category-cards-grid">
+        {cats.length > 0 && (() => {
+          let tileYearP = 0, tileYearR = 0;
+          const tileMonthP: number[] = [];
+          const tileMonthR: number[] = [];
+          for (let mi = 0; mi < 12; mi++) {
+            let pV = 0, rV = 0;
+            cats.forEach(c => {
+              pV += getCellValue(entry.id, c, mi, "p");
+              rV += getCellValue(entry.id, c, mi, "r");
+            });
+            tileYearP += pV;
+            tileYearR += rV;
+            tileMonthP.push(pV);
+            tileMonthR.push(rV);
+          }
+          const moP = tileMonthP[currentMonth] || 0;
+          const moR = tileMonthR[currentMonth] || 0;
+          const moS = moP - moR;
+          const yearS = tileYearP - tileYearR;
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-1" data-testid="summary-tiles">
+              <Card className="border-sidebar/30">
+                <CardContent className="py-2.5 px-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Prognoza ({MONTHS[currentMonth]})</p>
+                  <p className="text-sm font-bold tabular-nums mt-0.5" data-testid="tile-month-p">{formatNum(moP)} zł</p>
+                </CardContent>
+              </Card>
+              <Card className="border-sidebar/30">
+                <CardContent className="py-2.5 px-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Rzeczywiste ({MONTHS[currentMonth]})</p>
+                  <p className="text-sm font-bold tabular-nums mt-0.5 text-emerald-600" data-testid="tile-month-r">{formatNum(moR)} zł</p>
+                </CardContent>
+              </Card>
+              <Card className="border-sidebar/30">
+                <CardContent className="py-2.5 px-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Saldo ({MONTHS[currentMonth]})</p>
+                  <p className={`text-sm font-bold tabular-nums mt-0.5 ${moS > 0 ? 'text-emerald-600' : moS < 0 ? 'text-red-500' : ''}`} data-testid="tile-month-s">{formatNum(moS)} zł</p>
+                </CardContent>
+              </Card>
+              <Card className="border-sidebar/30">
+                <CardContent className="py-2.5 px-3">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Rocznie</p>
+                  <p className="text-sm font-bold tabular-nums mt-0.5" data-testid="tile-year-total">{formatNum(tileYearR)} zł</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">P: {formatNum(tileYearP)} · S: <span className={yearS > 0 ? 'text-emerald-600' : yearS < 0 ? 'text-red-500' : ''}>{formatNum(yearS)}</span></p>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
+
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(325px, 1fr))' }} data-testid="category-cards-grid">
           {cats.map((cat) => (
             <Fragment key={cat}>
               {renderCategoryCard(cat)}
             </Fragment>
           ))}
         </div>
-        {cats.length > 0 && (
-          <div className="mt-3" style={{ maxWidth: '380px' }}>
-            {renderCategoryCard("RAZEM", true)}
-          </div>
-        )}
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
           <span>Podpowiedzi: Kliknij dwukrotnie aby edytować · Enter / Tab potwierdza · Escape anuluje · Strzałki ↑↓ nawigacja · Ctrl+Z cofnij · Ctrl+Y ponów</span>
