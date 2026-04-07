@@ -1199,6 +1199,213 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     const entry = selectedEntry;
     const cats = entry.categories;
 
+    const renderCategoryCard = (cat: string, isSummary = false) => {
+      let catYearP = 0, catYearR = 0;
+      return (
+        <Card className="overflow-hidden border-sidebar-border" style={{ borderColor: 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
+          <CardHeader className="px-3 py-2" style={{ backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))' }}>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-xs font-bold leading-tight" style={{ color: 'hsl(var(--sidebar-foreground))' }} data-testid={isSummary ? "card-title-summary" : `card-title-${cat}`}>
+                {isSummary ? "RAZEM" : cat}
+              </CardTitle>
+              {!isSummary && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-1 rounded hover:bg-white/10 shrink-0" style={{ color: 'hsl(var(--sidebar-foreground))' }} data-testid={`btn-options-${entry.id}-${cat}`}>
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[140px]">
+                    <DropdownMenuItem onClick={() => openEditCatDialog(entry.id, cat)} data-testid={`btn-edit-cat-${entry.id}-${cat}`}>
+                      <Pencil className="h-3 w-3 mr-2" /> Edytuj
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleArchiveCategory(entry.id, cat)} data-testid={`btn-archive-${entry.id}-${cat}`}>
+                      <Archive className="h-3 w-3 mr-2" /> Archiwizuj
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"?`)) handleDeleteCategory(entry.id, cat); }} className="text-destructive" data-testid={`btn-delete-${entry.id}-${cat}`}>
+                      <Trash2 className="h-3 w-3 mr-2" /> Usuń
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+              <thead>
+
+                <colgroup>
+                  <col />
+                  <col style={{ width: '80px' }} />
+                  <col style={{ width: '80px' }} />
+                  <col style={{ width: '80px' }} />
+                </colgroup>
+                <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
+                  <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-muted-foreground text-[10px]">Mies.</th>
+                  <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px]">P</th>
+                  <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px]">R</th>
+                  <th className="border-b border-border px-1 py-1 text-center font-medium text-muted-foreground text-[10px]">S</th>
+                </tr>
+              </thead>
+              <tbody>
+                {MONTHS.map((monthLabel, mi) => {
+                  const isCurrentMo = mi === currentMonth && year === currentYear;
+                  const isHighlighted = highlightMonth === mi;
+
+                  let pVal: number, rVal: number;
+                  if (isSummary) {
+                    pVal = 0; rVal = 0;
+                    cats.forEach(c => {
+                      pVal += getCellValue(entry.id, c, mi, "p");
+                      rVal += getCellValue(entry.id, c, mi, "r");
+                    });
+                  } else {
+                    pVal = getCellValue(entry.id, cat, mi, "p");
+                    rVal = getCellValue(entry.id, cat, mi, "r");
+                  }
+                  const saldo = pVal - rVal;
+                  catYearP += pVal;
+                  catYearR += rVal;
+
+                  const pKey = makeCellKey(entry.id, cat, mi, "p");
+                  const rKey = makeCellKey(entry.id, cat, mi, "r");
+                  const noteKey = `${entry.id}__${cat}__${mi}`;
+                  const note = notesMap[noteKey];
+                  const compKey = getCellKeyOld(entry.id, cat);
+                  const compP = showYoY && compareData[compKey]?.[mi]?.p;
+                  const compR = showYoY && compareData[compKey]?.[mi]?.r;
+
+                  return (
+                    <tr
+                      key={mi}
+                      className={`transition-colors duration-300
+                        ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
+                        ${isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}
+                        hover:bg-muted/20 dark:hover:bg-muted/10`}
+                      data-testid={isSummary ? `row-summary-month-${mi}` : `row-month-${cat}-${mi}`}
+                    >
+                      <td className={`border-b border-r border-border px-2 py-1 font-semibold text-[11px]
+                        ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
+                        ${isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}`}>
+                        <div className="flex items-center gap-1">
+                          <span>{MONTHS[mi]}</span>
+                          {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
+                        </div>
+                      </td>
+                      {isSummary ? (
+                        <>
+                          <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] text-muted-foreground font-semibold">{formatNum(pVal)}</td>
+                          <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums font-bold">{formatNum(rVal)}</td>
+                          <td className={`border-b border-border px-1.5 py-1 text-right tabular-nums font-bold ${saldoColor(saldo)} ${saldoBg(saldo)}`}>{formatNum(saldo)}</td>
+                        </>
+                      ) : (
+                        <>
+                          <TransposedEditableCell
+                            value={pVal}
+                            isEditing={editingCell === pKey}
+                            editValue={editValue}
+                            onStartEdit={() => startEditing(pKey)}
+                            onCommitEdit={commitEdit}
+                            onCancelEdit={cancelEdit}
+                            onEditValueChange={setEditValue}
+                            isCurrentMonth={isCurrentMo}
+                            className="text-muted-foreground"
+                            compareValue={compP || undefined}
+                            flashKey={[...savedFlashKeys].find(k => k.startsWith(`${year}__${entry.id}__${cat}__${mi}__`))}
+                            onCommitAndMoveDown={() => {
+                              commitEdit();
+                              if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "p")), 0);
+                            }}
+                            onFillToEnd={mi < 11 ? () => handleFillToEnd(entry.id, cat, mi, "p") : undefined}
+                            onKeyDown={(e) => {
+                              if (e.key === "ArrowDown" && mi < 11) {
+                                e.preventDefault();
+                                startEditing(makeCellKey(entry.id, cat, mi + 1, "p"));
+                              }
+                              if (e.key === "ArrowUp" && mi > 0) {
+                                e.preventDefault();
+                                startEditing(makeCellKey(entry.id, cat, mi - 1, "p"));
+                              }
+                              if (e.key === "ArrowRight") {
+                                e.preventDefault();
+                                startEditing(rKey);
+                              }
+                            }}
+                          />
+                          <TransposedEditableCell
+                            value={rVal}
+                            isEditing={editingCell === rKey}
+                            editValue={editValue}
+                            onStartEdit={() => startEditing(rKey)}
+                            onCommitEdit={commitEdit}
+                            onCancelEdit={cancelEdit}
+                            onEditValueChange={setEditValue}
+                            isCurrentMonth={isCurrentMo}
+                            className="font-medium"
+                            note={note}
+                            compareValue={compR || undefined}
+                            flashKey={[...savedFlashKeys].find(k => k.startsWith(`${year}__${entry.id}__${cat}__${mi}__`))}
+                            onCommitAndMoveDown={() => {
+                              commitEdit();
+                              if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "r")), 0);
+                            }}
+                            onFillToEnd={mi < 11 ? () => handleFillToEnd(entry.id, cat, mi, "r") : undefined}
+                            onKeyDown={(e) => {
+                              if (e.key === "ArrowDown" && mi < 11) {
+                                e.preventDefault();
+                                startEditing(makeCellKey(entry.id, cat, mi + 1, "r"));
+                              }
+                              if (e.key === "ArrowUp" && mi > 0) {
+                                e.preventDefault();
+                                startEditing(makeCellKey(entry.id, cat, mi - 1, "r"));
+                              }
+                              if (e.key === "ArrowLeft") {
+                                e.preventDefault();
+                                startEditing(pKey);
+                              }
+                            }}
+                          />
+                          <td
+                            className={`group border-b border-border px-1.5 py-1 text-right tabular-nums text-[11px] font-semibold ${saldoColor(saldo)} ${saldoBg(saldo)}
+                              ${isCurrentMo ? "bg-primary/[0.04]" : ""}`}
+                          >
+                            <div className="flex items-center justify-end gap-0.5">
+                              {formatNum(saldo)}
+                              {note && (
+                                <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(note); }} className="text-amber-500 hover:text-amber-600 shrink-0" title={note}>
+                                  <MessageSquare className="h-2.5 w-2.5" />
+                                </button>
+                              )}
+                              {!note && (
+                                <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(""); }} className="text-muted-foreground/30 hover:text-muted-foreground/60 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <MessageSquare className="h-2.5 w-2.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+                {(() => {
+                  const catS = catYearP - catYearR;
+                  return (
+                    <tr className="font-bold border-t-2" style={{ backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))', borderColor: 'hsl(var(--sidebar))' }}>
+                      <td className="px-2 py-1.5 font-bold text-[10px] uppercase" style={{ color: 'hsl(var(--sidebar-foreground))' }}>Rocznie</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[10px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.7)' }}>{formatNum(catYearP)}</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(catYearR)}</td>
+                      <td className={`px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold ${catS > 0 ? "text-emerald-300" : catS < 0 ? "text-red-300" : ""}`} style={catS === 0 ? { color: 'hsl(var(--sidebar-foreground))' } : undefined}>{formatNum(catS)}</td>
+                    </tr>
+                  );
+                })()}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      );
+    };
+
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 flex-wrap">
@@ -1269,232 +1476,13 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto" data-testid="table-transposed-costs">
-          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ minWidth: `${200 + cats.length * 280}px` }}>
-            <thead className="sticky top-0 z-20">
-              <tr className="bg-muted/80 dark:bg-muted/50">
-                <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-3 py-2 text-left font-bold w-[120px] min-w-[120px]">
-                  Miesiąc
-                </th>
-                {cats.map((cat, ci) => (
-                  <th key={cat} colSpan={3} className="border-b border-r border-border px-1 py-2 text-center font-bold">
-                    <div className="flex items-center justify-center gap-1">
-                      <span
-                        draggable
-                        onDragStart={() => handleCatDragStart(entry.id, cat)}
-                        onDragEnd={handleCatDragEnd}
-                        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground"
-                      >
-                        <GripVertical className="h-3 w-3" />
-                      </span>
-                      <span className="truncate max-w-[140px]" title={cat}>{cat}</span>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="p-0.5 rounded text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100" data-testid={`btn-options-${entry.id}-${cat}`}>
-                            <MoreHorizontal className="h-3 w-3" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[140px]">
-                          <DropdownMenuItem onClick={() => openEditCatDialog(entry.id, cat)} data-testid={`btn-edit-cat-${entry.id}-${cat}`}>
-                            <Pencil className="h-3 w-3 mr-2" /> Edytuj
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleArchiveCategory(entry.id, cat)} data-testid={`btn-archive-${entry.id}-${cat}`}>
-                            <Archive className="h-3 w-3 mr-2" /> Archiwizuj
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { if (window.confirm(`Usunąć kategorię "${cat}"?`)) handleDeleteCategory(entry.id, cat); }} className="text-destructive" data-testid={`btn-delete-${entry.id}-${cat}`}>
-                            <Trash2 className="h-3 w-3 mr-2" /> Usuń
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </th>
-                ))}
-                <th colSpan={3} className="border-b border-border px-1 py-2 text-center font-bold bg-muted dark:bg-muted/70">
-                  RAZEM
-                </th>
-              </tr>
-              <tr className="bg-muted/60 dark:bg-muted/40">
-                <th className="sticky left-0 z-30 bg-muted/60 dark:bg-muted/40 border-b border-r border-border px-3 py-1 text-left text-[10px] text-muted-foreground">
-                </th>
-                {[...cats, "TOTAL"].map((cat, ci) => (
-                  <Fragment key={ci}>
-                    <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[90px] min-w-[90px]">P</th>
-                    <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[90px] min-w-[90px]">R</th>
-                    <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[90px] min-w-[90px]">S</th>
-                  </Fragment>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MONTHS.map((monthLabel, mi) => {
-                const isCurrentMo = mi === currentMonth && year === currentYear;
-                const isHighlighted = highlightMonth === mi;
-                let rowP = 0, rowR = 0;
-                return (
-                  <tr
-                    key={mi}
-                    className={`transition-colors duration-300
-                      ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
-                      ${isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}
-                      hover:bg-muted/20 dark:hover:bg-muted/10`}
-                    data-testid={`row-month-${mi}`}
-                  >
-                    <td className={`sticky left-0 z-20 border-b border-r border-border px-3 py-1.5 font-semibold text-xs
-                      ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : "bg-card"}
-                      ${isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}`}>
-                      <div className="flex items-center justify-between gap-1">
-                        <span>{MONTHS_PL[mi]}</span>
-                        {isCurrentMo && <Badge variant="secondary" className="text-[8px] px-1 py-0 h-4">teraz</Badge>}
-                      </div>
-                    </td>
-                    {cats.map((cat) => {
-                      const pKey = makeCellKey(entry.id, cat, mi, "p");
-                      const rKey = makeCellKey(entry.id, cat, mi, "r");
-                      const pVal = getCellValue(entry.id, cat, mi, "p");
-                      const rVal = getCellValue(entry.id, cat, mi, "r");
-                      const saldo = pVal - rVal;
-                      rowP += pVal;
-                      rowR += rVal;
-                      const noteKey = `${entry.id}__${cat}__${mi}`;
-                      const note = notesMap[noteKey];
-                      const compKey = getCellKeyOld(entry.id, cat);
-                      const compP = showYoY && compareData[compKey]?.[mi]?.p;
-                      const compR = showYoY && compareData[compKey]?.[mi]?.r;
-                      return (
-                        <Fragment key={cat}>
-                          <TransposedEditableCell
-                            value={pVal}
-                            isEditing={editingCell === pKey}
-                            editValue={editValue}
-                            onStartEdit={() => startEditing(pKey)}
-                            onCommitEdit={commitEdit}
-                            onCancelEdit={cancelEdit}
-                            onEditValueChange={setEditValue}
-                            isCurrentMonth={isCurrentMo}
-                            className="text-muted-foreground"
-                            compareValue={compP || undefined}
-                            flashKey={[...savedFlashKeys].find(k => k.startsWith(`${year}__${entry.id}__${cat}__${mi}__`))}
-                            onCommitAndMoveDown={() => {
-                              commitEdit();
-                              if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "p")), 0);
-                            }}
-                            onFillToEnd={mi < 11 ? () => handleFillToEnd(entry.id, cat, mi, "p") : undefined}
-                            onKeyDown={(e) => {
-                              if (e.key === "ArrowDown" && mi < 11) {
-                                e.preventDefault();
-                                const nextKey = makeCellKey(entry.id, cat, mi + 1, "p");
-                                startEditing(nextKey);
-                              }
-                              if (e.key === "ArrowUp" && mi > 0) {
-                                e.preventDefault();
-                                const prevKey = makeCellKey(entry.id, cat, mi - 1, "p");
-                                startEditing(prevKey);
-                              }
-                              if (e.key === "ArrowRight") {
-                                e.preventDefault();
-                                startEditing(rKey);
-                              }
-                            }}
-                          />
-                          <TransposedEditableCell
-                            value={rVal}
-                            isEditing={editingCell === rKey}
-                            editValue={editValue}
-                            onStartEdit={() => startEditing(rKey)}
-                            onCommitEdit={commitEdit}
-                            onCancelEdit={cancelEdit}
-                            onEditValueChange={setEditValue}
-                            isCurrentMonth={isCurrentMo}
-                            className="font-medium"
-                            note={note}
-                            compareValue={compR || undefined}
-                            flashKey={[...savedFlashKeys].find(k => k.startsWith(`${year}__${entry.id}__${cat}__${mi}__`))}
-                            onCommitAndMoveDown={() => {
-                              commitEdit();
-                              if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "r")), 0);
-                            }}
-                            onFillToEnd={mi < 11 ? () => handleFillToEnd(entry.id, cat, mi, "r") : undefined}
-                            onKeyDown={(e) => {
-                              if (e.key === "ArrowDown" && mi < 11) {
-                                e.preventDefault();
-                                const nextKey = makeCellKey(entry.id, cat, mi + 1, "r");
-                                startEditing(nextKey);
-                              }
-                              if (e.key === "ArrowUp" && mi > 0) {
-                                e.preventDefault();
-                                const prevKey = makeCellKey(entry.id, cat, mi - 1, "r");
-                                startEditing(prevKey);
-                              }
-                              if (e.key === "ArrowLeft") {
-                                e.preventDefault();
-                                startEditing(pKey);
-                              }
-                            }}
-                          />
-                          <td
-                            className={`group border-b border-r border-border px-1.5 py-1 text-right tabular-nums text-[11px] font-semibold ${saldoColor(saldo)} ${saldoBg(saldo)}
-                              ${isCurrentMo ? "bg-primary/[0.04]" : ""}`}
-                          >
-                            <div className="flex items-center justify-end gap-0.5">
-                              {formatNum(saldo)}
-                              {note && (
-                                <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(note); }} className="text-amber-500 hover:text-amber-600 shrink-0" title={note}>
-                                  <MessageSquare className="h-2.5 w-2.5" />
-                                </button>
-                              )}
-                              {!note && (
-                                <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(""); }} className="text-muted-foreground/30 hover:text-muted-foreground/60 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <MessageSquare className="h-2.5 w-2.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </Fragment>
-                      );
-                    })}
-                    {(() => {
-                      const rowSaldo = rowP - rowR;
-                      return (
-                        <>
-                          <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] text-muted-foreground bg-muted/30 dark:bg-muted/20 font-semibold">{formatNum(rowP)}</td>
-                          <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums font-bold bg-muted/30 dark:bg-muted/20">{formatNum(rowR)}</td>
-                          <td className={`border-b border-r border-border px-1.5 py-1 text-right tabular-nums font-bold bg-muted/30 dark:bg-muted/20 ${saldoColor(rowSaldo)}`}>{formatNum(rowSaldo)}</td>
-                        </>
-                      );
-                    })()}
-                  </tr>
-                );
-              })}
-              <tr className="bg-muted/50 dark:bg-muted/30 font-bold border-t-2 border-border">
-                <td className="sticky left-0 z-20 bg-muted/50 dark:bg-muted/30 border-b border-r border-border px-3 py-2 font-bold text-xs uppercase">
-                  Rocznie
-                </td>
-                {cats.map((cat) => {
-                  let catP = 0, catR = 0;
-                  for (let m = 0; m < 12; m++) { catP += getCellValue(entry.id, cat, m, "p"); catR += getCellValue(entry.id, cat, m, "r"); }
-                  const catS = catP - catR;
-                  return (
-                    <Fragment key={cat}>
-                      <td className="border-b border-r border-border/60 px-1.5 py-2 text-right tabular-nums text-[10px] text-muted-foreground font-bold">{formatNum(catP)}</td>
-                      <td className="border-b border-r border-border/60 px-1.5 py-2 text-right tabular-nums font-bold">{formatNum(catR)}</td>
-                      <td className={`border-b border-r border-border px-1.5 py-2 text-right tabular-nums font-bold ${saldoColor(catS)}`}>{formatNum(catS)}</td>
-                    </Fragment>
-                  );
-                })}
-                {(() => {
-                  const totals = getEntryYearTotal(entry);
-                  const totS = totals.p - totals.r;
-                  return (
-                    <>
-                      <td className="border-b border-r border-border/60 px-1.5 py-2 text-right tabular-nums text-[10px] font-bold bg-muted/40 dark:bg-muted/30">{formatNum(totals.p)}</td>
-                      <td className="border-b border-r border-border/60 px-1.5 py-2 text-right tabular-nums font-bold bg-muted/40 dark:bg-muted/30">{formatNum(totals.r)}</td>
-                      <td className={`border-b border-border px-1.5 py-2 text-right tabular-nums font-bold bg-muted/40 dark:bg-muted/30 ${saldoColor(totS)}`}>{formatNum(totS)}</td>
-                    </>
-                  );
-                })()}
-              </tr>
-            </tbody>
-          </table>
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="category-cards-grid">
+          {cats.map((cat) => (
+            <Fragment key={cat}>
+              {renderCategoryCard(cat)}
+            </Fragment>
+          ))}
+          {cats.length > 0 && renderCategoryCard("RAZEM", true)}
         </div>
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
