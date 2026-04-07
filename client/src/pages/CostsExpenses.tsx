@@ -1656,7 +1656,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       {drillLevel === "categories" ? (
         <>
           {renderSummaryTiles("categories")}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(305px, 420px))' }} data-testid="grid-categories">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 380px))', justifyContent: 'center' }} data-testid="grid-categories">
             {activeCategories.map(cat => renderCategoryCard(cat))}
           </div>
         </>
@@ -1678,7 +1678,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             )}
           </div>
           {renderSummaryTiles("items")}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(305px, 420px))' }} data-testid="grid-items">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 380px))', justifyContent: 'center' }} data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);
