@@ -995,7 +995,7 @@ export class DatabaseStorage implements IStorage {
     if (filters?.startDate) conditions.push(gte(saldoEntries.date, filters.startDate));
     if (filters?.endDate) conditions.push(lte(saldoEntries.date, filters.endDate));
     if (filters?.personName) conditions.push(eq(saldoEntries.personName, filters.personName));
-    return db.select().from(saldoEntries).where(conditions.length ? and(...conditions) : undefined).orderBy(saldoEntries.id);
+    return db.select().from(saldoEntries).where(conditions.length ? and(...conditions) : undefined).orderBy(saldoEntries.date, saldoEntries.id);
   }
 
   async getSaldoCategories(personName?: string): Promise<string[]> {

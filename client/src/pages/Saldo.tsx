@@ -452,6 +452,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
         case "cashAmount": cmp = (Number(a.cashAmount || 0)) - (Number(b.cashAmount || 0)); break;
         case "cardAmount": cmp = (Number(a.cardAmount || 0)) - (Number(b.cardAmount || 0)); break;
       }
+      if (cmp === 0) cmp = a.id - b.id;
       return sortDir === "asc" ? cmp : -cmp;
     });
     return result;
