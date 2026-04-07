@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Location } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, ChevronRight, Copy, Sparkles, Thermometer } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { ChevronDown, ChevronRight, ChevronUp, Copy, Sparkles, Thermometer, CalendarClock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { CopyForecastDialog } from "@/components/v2/CopyForecastDialog";
 import { AutoFillDialog } from "@/components/v2/AutoFillDialog";
-import { ApartmentTrendSheet } from "@/components/v2/ApartmentTrendSheet";
 import RevenueForecastSection, { type ForecastMonth } from "@/components/RevenueForecastSection";
 
 const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "Paź", "Lis", "Gru"];
@@ -84,13 +84,14 @@ function revenuePctColor(pct: number) {
   return { text: "text-orange-600 dark:text-orange-400", bar: "bg-orange-500" };
 }
 
-function RevenueTile({ title, forecast, actual, onClick, testId, variant = "default" }: {
+function RevenueTile({ title, forecast, actual, onClick, testId, variant = "default", isExpanded = false }: {
   title: string;
   forecast: number;
   actual: number;
   onClick?: () => void;
   testId?: string;
   variant?: "default" | "summary" | "grand";
+  isExpanded?: boolean;
 }) {
   const pct = forecast > 0 ? (actual / forecast) * 100 : 0;
   const saldo = actual - forecast;
@@ -101,7 +102,7 @@ function RevenueTile({ title, forecast, actual, onClick, testId, variant = "defa
 
   return (
     <Card
-      className={`${onClick ? "cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" : ""} ${isGrand ? "border-primary/30 bg-primary/5" : isSummary ? "bg-muted/30 border-dashed" : ""}`}
+      className={`${onClick ? "cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" : ""} ${isGrand ? "border-primary/30 bg-primary/5" : isSummary ? "bg-muted/30 border-dashed" : ""} ${isExpanded ? "border-primary/50 shadow-md ring-1 ring-primary/20" : ""}`}
       onClick={onClick}
       data-testid={testId}
     >
@@ -130,12 +131,218 @@ function RevenueTile({ title, forecast, actual, onClick, testId, variant = "defa
   );
 }
 
-function LocationGroup({ locationName, apartments, onApartmentClick }: {
+type ApartmentTrendData = {
+  apartment: { id: number; name: string; location: string | null };
+  years: number[];
+  yearlyData: Record<number, {
+    months: Record<number, { actual: number; forecast: number; cost: number }>;
+    totalActual: number;
+    totalForecast: number;
+    totalCost: number;
+  }>;
+};
+
+function rowBgClass(actual: number, forecast: number): string {
+  if (forecast === 0 && actual === 0) return "";
+  if (actual >= forecast) return "bg-emerald-50/40 dark:bg-emerald-950/10";
+  return "bg-red-50/40 dark:bg-red-950/10";
+}
+
+function progressColor(pct: number): string {
+  if (pct >= 100) return "bg-emerald-500";
+  if (pct >= 75) return "bg-amber-500";
+  return "bg-orange-500";
+}
+
+function ExpandedRevenueTile({ apt, currentMonth, year }: {
+  apt: AptRevenueData;
+  currentMonth: number;
+  year: number;
+}) {
+  const [showR1, setShowR1] = useState(false);
+
+  const { data: trendData, isLoading: trendLoading } = useQuery<ApartmentTrendData>({
+    queryKey: [`/api/v2/apartment-trend/${apt.apartmentId}`],
+    enabled: showR1,
+  });
+
+  const prevYear = year - 1;
+  const prevYearMonths = trendData?.yearlyData[prevYear]?.months;
+
+  const yearTotals = useMemo(() => {
+    let fc = 0, act = 0, naj = 0, pod = 0;
+    for (let m = 0; m < 12; m++) {
+      fc += apt.months[m]?.forecast || 0;
+      act += apt.months[m]?.actual || 0;
+      naj += apt.months[m]?.najem || 0;
+      pod += apt.months[m]?.podnajem || 0;
+    }
+    return { forecast: fc, actual: act, najem: naj, podnajem: pod };
+  }, [apt.months]);
+
+  const prevYearTotal = useMemo(() => {
+    if (!prevYearMonths) return 0;
+    let total = 0;
+    for (let m = 0; m < 12; m++) {
+      total += prevYearMonths[m]?.actual || 0;
+    }
+    return total;
+  }, [prevYearMonths]);
+
+  const najPct = yearTotals.actual > 0 ? Math.round((yearTotals.najem / yearTotals.actual) * 100) : 0;
+  const podPct = yearTotals.actual > 0 ? 100 - najPct : 0;
+
+  return (
+    <div className="col-span-full" data-testid={`expanded-tile-${apt.apartmentId}`}>
+      <Card className="border-primary/30 shadow-md">
+        <CardContent className="pt-4 pb-3 px-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+            <div>
+              <p className="text-sm font-bold">{apt.apartmentName}</p>
+              <p className="text-lg font-bold tabular-nums mt-0.5">{formatNum(yearTotals.actual)} PLN</p>
+              <div className="flex items-center gap-3 mt-1">
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                  <span className="text-muted-foreground">Najem {najPct}%</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+                  <span className="text-muted-foreground">Podnajem {podPct}%</span>
+                </div>
+                {yearTotals.actual > 0 && (
+                  <div className="flex h-2 w-24 rounded-full overflow-hidden bg-muted">
+                    <div className="bg-blue-500 transition-all" style={{ width: `${najPct}%` }} />
+                    <div className="bg-violet-500 transition-all" style={{ width: `${podPct}%` }} />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer" data-testid={`toggle-r1-${apt.apartmentId}`}>
+                <CalendarClock className="h-3.5 w-3.5" />
+                <span>R-1</span>
+                <Switch checked={showR1} onCheckedChange={setShowR1} className="scale-75" />
+              </label>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto -mx-4 px-4">
+            <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }} data-testid={`expanded-table-${apt.apartmentId}`}>
+              <colgroup>
+                <col className="w-[50px]" />
+                <col className="w-[75px]" />
+                <col className="w-[75px]" />
+                <col className="w-[75px]" />
+                <col className="w-[75px]" />
+                <col className="w-[75px]" />
+                <col className="w-[30px]" />
+                {showR1 && <col className="w-[75px]" />}
+                {showR1 && <col className="w-[55px]" />}
+              </colgroup>
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className="text-left p-1.5 font-medium">Mies.</th>
+                  <th className="text-right p-1.5 font-medium">P</th>
+                  <th className="text-right p-1.5 font-medium">R</th>
+                  <th className="text-right p-1.5 font-medium">S</th>
+                  <th className="text-right p-1.5 font-medium">Najem</th>
+                  <th className="text-right p-1.5 font-medium">Podn.</th>
+                  <th className="p-1.5 font-medium"></th>
+                  {showR1 && <th className="text-right p-1.5 font-medium">R-1</th>}
+                  {showR1 && <th className="text-right p-1.5 font-medium">Δ r/r</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {MONTHS.map((monthLabel, mi) => {
+                  const md = apt.months[mi] || { forecast: 0, actual: 0, najem: 0, podnajem: 0 };
+                  const saldo = md.actual - md.forecast;
+                  const pct = md.forecast > 0 ? (md.actual / md.forecast) * 100 : 0;
+                  const isCurrentMonth = year === new Date().getFullYear() && mi === currentMonth;
+                  const prevActual = prevYearMonths?.[mi]?.actual || 0;
+                  const yoyPct = prevActual > 0 ? ((md.actual - prevActual) / prevActual) * 100 : 0;
+
+                  return (
+                    <tr
+                      key={mi}
+                      className={`border-b transition-colors ${rowBgClass(md.actual, md.forecast)} ${isCurrentMonth ? "ring-1 ring-inset ring-cyan-400/50" : ""}`}
+                      data-testid={`expanded-row-${apt.apartmentId}-${mi}`}
+                    >
+                      <td className={`p-1.5 font-semibold ${isCurrentMonth ? "text-cyan-700 dark:text-cyan-300" : ""}`}>{monthLabel}</td>
+                      <td className="p-1.5 text-right tabular-nums">{formatNum(md.forecast)}</td>
+                      <td className="p-1.5 text-right tabular-nums font-medium">{formatNum(md.actual)}</td>
+                      <td className={`p-1.5 text-right tabular-nums font-medium ${deviationColor(saldo)}`}>
+                        {md.forecast === 0 && md.actual === 0 ? "—" : `${saldo >= 0 ? "+" : ""}${formatNum(saldo)}`}
+                      </td>
+                      <td className="p-1.5 text-right tabular-nums text-blue-600 dark:text-blue-400">{formatNum(md.najem)}</td>
+                      <td className="p-1.5 text-right tabular-nums text-violet-600 dark:text-violet-400">{formatNum(md.podnajem)}</td>
+                      <td className="p-1.5">
+                        {md.forecast > 0 && (
+                          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                            <div className={`h-full rounded-full ${progressColor(pct)}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                          </div>
+                        )}
+                      </td>
+                      {showR1 && (
+                        <td className="p-1.5 text-right tabular-nums text-muted-foreground">
+                          {trendLoading ? "…" : formatNum(prevActual)}
+                        </td>
+                      )}
+                      {showR1 && (
+                        <td className={`p-1.5 text-right tabular-nums text-[10px] ${prevActual > 0 ? deviationColor(md.actual - prevActual) : "text-muted-foreground"}`}>
+                          {trendLoading ? "…" : prevActual > 0 ? `${yoyPct >= 0 ? "+" : ""}${yoyPct.toFixed(0)}%` : "—"}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 font-bold">
+                  <td className="p-1.5">ROCZNIE</td>
+                  <td className="p-1.5 text-right tabular-nums">{formatNum(yearTotals.forecast)}</td>
+                  <td className="p-1.5 text-right tabular-nums">{formatNum(yearTotals.actual)}</td>
+                  <td className={`p-1.5 text-right tabular-nums ${deviationColor(yearTotals.actual - yearTotals.forecast)}`}>
+                    {yearTotals.actual - yearTotals.forecast >= 0 ? "+" : ""}{formatNum(yearTotals.actual - yearTotals.forecast)}
+                  </td>
+                  <td className="p-1.5 text-right tabular-nums text-blue-600 dark:text-blue-400">{formatNum(yearTotals.najem)}</td>
+                  <td className="p-1.5 text-right tabular-nums text-violet-600 dark:text-violet-400">{formatNum(yearTotals.podnajem)}</td>
+                  <td className="p-1.5">
+                    {yearTotals.forecast > 0 && (
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div className={`h-full rounded-full ${progressColor(pctVal(yearTotals.actual, yearTotals.forecast))}`} style={{ width: `${Math.min(pctVal(yearTotals.actual, yearTotals.forecast), 100)}%` }} />
+                      </div>
+                    )}
+                  </td>
+                  {showR1 && (
+                    <td className="p-1.5 text-right tabular-nums text-muted-foreground">
+                      {trendLoading ? "…" : formatNum(prevYearTotal)}
+                    </td>
+                  )}
+                  {showR1 && (
+                    <td className={`p-1.5 text-right tabular-nums text-[10px] ${prevYearTotal > 0 ? deviationColor(yearTotals.actual - prevYearTotal) : "text-muted-foreground"}`}>
+                      {trendLoading ? "…" : prevYearTotal > 0 ? `${((yearTotals.actual - prevYearTotal) / prevYearTotal * 100) >= 0 ? "+" : ""}${((yearTotals.actual - prevYearTotal) / prevYearTotal * 100).toFixed(0)}%` : "—"}
+                    </td>
+                  )}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function LocationGroup({ locationName, apartments, expandedAptId, onApartmentClick, year }: {
   locationName: string;
   apartments: AptRevenueData[];
+  expandedAptId: number | null;
   onApartmentClick?: (id: number) => void;
+  year: number;
 }) {
   const [open, setOpen] = useState(true);
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
 
   const sortedApts = useMemo(() => {
     if (locationName === "GRAND BALTIC") {
@@ -180,15 +387,25 @@ function LocationGroup({ locationName, apartments, onApartmentClick }: {
           {sortedApts.map(apt => {
             const yearFc = Object.values(apt.months).reduce((s, m) => s + m.forecast, 0);
             const yearAct = Object.values(apt.months).reduce((s, m) => s + m.actual, 0);
+            const isExpanded = expandedAptId === apt.apartmentId;
             return (
-              <RevenueTile
-                key={apt.apartmentId}
-                title={apt.apartmentName}
-                forecast={yearFc}
-                actual={yearAct}
-                onClick={() => onApartmentClick?.(apt.apartmentId)}
-                testId={`revenue-tile-${apt.apartmentId}`}
-              />
+              <Fragment key={apt.apartmentId}>
+                <RevenueTile
+                  title={apt.apartmentName}
+                  forecast={yearFc}
+                  actual={yearAct}
+                  onClick={() => onApartmentClick?.(apt.apartmentId)}
+                  testId={`revenue-tile-${apt.apartmentId}`}
+                  isExpanded={isExpanded}
+                />
+                {isExpanded && (
+                  <ExpandedRevenueTile
+                    apt={apt}
+                    currentMonth={year === currentYear ? currentMonth : -1}
+                    year={year}
+                  />
+                )}
+              </Fragment>
             );
           })}
           <RevenueTile
@@ -405,7 +622,7 @@ export function V2Przychody() {
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [showAutoFill, setShowAutoFill] = useState(false);
-  const [trendAptId, setTrendAptId] = useState<number | null>(null);
+  const [expandedAptId, setExpandedAptId] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery<RevenueSummaryResponse>({
     queryKey: [`/api/v2/revenue-summary?year=${year}`],
@@ -613,7 +830,9 @@ export function V2Przychody() {
             <LocationGroup
               locationName={locName}
               apartments={apts}
-              onApartmentClick={(id) => setTrendAptId(id)}
+              expandedAptId={expandedAptId}
+              onApartmentClick={(id) => setExpandedAptId(prev => prev === id ? null : id)}
+              year={year}
             />
           </CardContent>
         </Card>
@@ -635,7 +854,6 @@ export function V2Przychody() {
 
       <CopyForecastDialog open={showCopyDialog} onOpenChange={setShowCopyDialog} currentYear={year} defaultTypes={["revenue"]} />
       <AutoFillDialog open={showAutoFill} onOpenChange={setShowAutoFill} currentYear={year} />
-      <ApartmentTrendSheet apartmentId={trendAptId} open={!!trendAptId} onOpenChange={(o) => { if (!o) setTrendAptId(null); }} />
     </div>
   );
 }
