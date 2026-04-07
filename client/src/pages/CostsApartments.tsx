@@ -1202,8 +1202,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     const renderCategoryCard = (cat: string, isSummary = false) => {
       let catYearP = 0, catYearR = 0;
       return (
-        <Card className="overflow-hidden border-sidebar-border" style={{ borderColor: 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
-          <CardHeader className="px-3 py-2" style={{ backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))' }}>
+        <Card className={`overflow-hidden ${isSummary ? "ring-2 ring-blue-800 dark:ring-blue-500" : "border-sidebar-border"}`} style={{ borderColor: isSummary ? '#1e3a5f' : 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
+          <CardHeader className="px-3 py-2" style={isSummary ? { backgroundColor: '#1e3a5f', color: '#ffffff' } : { backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))' }}>
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-xs font-bold leading-tight" style={{ color: 'hsl(var(--sidebar-foreground))' }} data-testid={isSummary ? "card-title-summary" : `card-title-${cat}`}>
                 {isSummary ? "RAZEM" : cat}
@@ -1230,7 +1230,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               )}
             </div>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0" style={isSummary ? { backgroundColor: '#0f2440' } : undefined}>
             <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
               <thead>
 
@@ -1240,11 +1240,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                   <col style={{ width: '80px' }} />
                   <col style={{ width: '80px' }} />
                 </colgroup>
-                <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
-                  <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-muted-foreground text-[10px]">Mies.</th>
-                  <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px]">P</th>
-                  <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px]">R</th>
-                  <th className="border-b border-border px-1 py-1 text-center font-medium text-muted-foreground text-[10px]">S</th>
+                <tr style={isSummary ? { backgroundColor: '#162d4d' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
+                  <th className={`border-b border-r px-2 py-1 text-left font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border text-muted-foreground"}`}>Mies.</th>
+                  <th className={`border-b border-r px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border/60 text-muted-foreground"}`}>P</th>
+                  <th className={`border-b border-r px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border/60 text-muted-foreground"}`}>R</th>
+                  <th className={`border-b px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border text-muted-foreground"}`}>S</th>
                 </tr>
               </thead>
               <tbody>
@@ -1279,14 +1279,17 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                     <tr
                       key={mi}
                       className={`transition-colors duration-300
-                        ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
-                        ${isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}
-                        hover:bg-muted/20 dark:hover:bg-muted/10`}
+                        ${isSummary ? "" : isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
+                        ${isSummary ? "" : isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}
+                        ${isSummary ? "hover:bg-white/5" : "hover:bg-muted/20 dark:hover:bg-muted/10"}`}
+                      style={isSummary ? { backgroundColor: isCurrentMo ? '#1a3355' : isHighlighted ? '#1a3355' : undefined, color: '#e2e8f0' } : undefined}
                       data-testid={isSummary ? `row-summary-month-${mi}` : `row-month-${cat}-${mi}`}
                     >
-                      <td className={`border-b border-r border-border px-2 py-1 font-semibold text-[11px]
-                        ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
-                        ${isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}`}>
+                      <td className={`border-b border-r px-2 py-1 font-semibold text-[11px]
+                        ${isSummary ? "border-blue-900/40" : "border-border"}
+                        ${isSummary ? "" : isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
+                        ${isSummary ? "" : isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}`}
+                      style={isSummary ? { color: '#e2e8f0' } : undefined}>
                         <div className="flex items-center gap-1">
                           <span>{MONTHS[mi]}</span>
                           {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
@@ -1294,9 +1297,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                       </td>
                       {isSummary ? (
                         <>
-                          <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums text-[10px] text-muted-foreground font-semibold">{formatNum(pVal)}</td>
-                          <td className="border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums font-bold">{formatNum(rVal)}</td>
-                          <td className={`border-b border-border px-1.5 py-1 text-right tabular-nums font-bold ${saldoColor(saldo)} ${saldoBg(saldo)}`}>{formatNum(saldo)}</td>
+                          <td className="border-b border-r border-blue-900/40 px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold" style={{ color: '#94a3b8' }}>{formatNum(pVal)}</td>
+                          <td className="border-b border-r border-blue-900/40 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: '#e2e8f0' }}>{formatNum(rVal)}</td>
+                          <td className="border-b border-blue-900/40 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : '#e2e8f0' }}>{formatNum(saldo)}</td>
                         </>
                       ) : (
                         <>
@@ -1391,11 +1394,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                 {(() => {
                   const catS = catYearP - catYearR;
                   return (
-                    <tr className="font-bold border-t-2" style={{ backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))', borderColor: 'hsl(var(--sidebar))' }}>
-                      <td className="px-2 py-1.5 font-bold text-[10px] uppercase" style={{ color: 'hsl(var(--sidebar-foreground))' }}>Rocznie</td>
-                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[10px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.7)' }}>{formatNum(catYearP)}</td>
-                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(catYearR)}</td>
-                      <td className={`px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold ${catS > 0 ? "text-emerald-300" : catS < 0 ? "text-red-300" : ""}`} style={catS === 0 ? { color: 'hsl(var(--sidebar-foreground))' } : undefined}>{formatNum(catS)}</td>
+                    <tr className="font-bold border-t-2" style={isSummary ? { backgroundColor: '#1e3a5f', color: '#ffffff', borderColor: '#2d5a8e' } : { backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))', borderColor: 'hsl(var(--sidebar))' }}>
+                      <td className="px-2 py-1.5 font-bold text-[10px] uppercase" style={isSummary ? { color: '#ffffff' } : { color: 'hsl(var(--sidebar-foreground))' }}>Rocznie</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[10px] font-bold" style={isSummary ? { color: '#94a3b8' } : { color: 'hsl(var(--sidebar-foreground) / 0.7)' }}>{formatNum(catYearP)}</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={isSummary ? { color: '#ffffff' } : { color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(catYearR)}</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={{ color: isSummary ? (catS > 0 ? '#4ade80' : catS < 0 ? '#f87171' : '#ffffff') : catS === 0 ? 'hsl(var(--sidebar-foreground))' : catS > 0 ? '#4ade80' : '#f87171' }}>{formatNum(catS)}</td>
                     </tr>
                   );
                 })()}
