@@ -1228,8 +1228,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       const headerFg = '#ffffff';
       return (
         <Card className={`overflow-hidden ${isSummary ? "ring-2 ring-sidebar" : "border-sidebar-border"}`} style={{ borderColor: isSummary ? 'hsl(var(--sidebar))' : 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
-          <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: headerFg }}>
-            <div className="flex items-center justify-between gap-2">
+          <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: headerFg, minHeight: '36px' }}>
+            <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
               <CardTitle className="text-xs font-bold leading-tight" style={{ color: headerFg }} data-testid={isSummary ? "card-title-summary" : `card-title-${cat}`}>
                 {isSummary ? "RAZEM" : cat}
               </CardTitle>
@@ -1310,7 +1310,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                       style={isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : undefined}
                       data-testid={isSummary ? `row-summary-month-${mi}` : `row-month-${cat}-${mi}`}
                     >
-                      <td className={`border-b border-r px-2 py-1 font-semibold text-[11px]
+                      <td className={`border-b border-r px-2 py-1 font-semibold text-[10px]
                         ${isSummary ? "border-sidebar-border/30" : "border-border"}
                         ${isSummary ? "" : isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
                         ${isSummary ? "" : isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}`}
@@ -1323,8 +1323,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                       {isSummary ? (
                         <>
                           <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.6)' }}>{formatNum(pVal)}</td>
-                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(rVal)}</td>
-                          <td className="border-b border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(saldo)}</td>
+                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(rVal)}</td>
+                          <td className="border-b border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(saldo)}</td>
                         </>
                       ) : (
                         <>
