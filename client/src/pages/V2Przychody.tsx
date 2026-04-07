@@ -27,6 +27,57 @@ function getGBCategory(name: string): number {
   return 99;
 }
 
+const GB_CATEGORY_LABELS: Record<number, string> = {
+  0: "Superior",
+  1: "Studio",
+  2: "Studio Mini",
+  3: "Apt. 2-osobowe",
+};
+
+function aggregateGBGroups(apartments: AptRevenueData[]): AptRevenueData[] {
+  const groups: Record<number, AptRevenueData[]> = {};
+  for (const apt of apartments) {
+    const cat = getGBCategory(apt.apartmentName);
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(apt);
+  }
+
+  const result: AptRevenueData[] = [];
+  for (const cat of [0, 1, 2, 3]) {
+    const items = groups[cat];
+    if (!items || items.length === 0) continue;
+    const months: Record<number, { forecast: number; actual: number; najem: number; podnajem: number }> = {};
+    for (let m = 0; m < 12; m++) {
+      months[m] = { forecast: 0, actual: 0, najem: 0, podnajem: 0 };
+      for (const apt of items) {
+        const md = apt.months[m];
+        if (md) {
+          months[m].forecast += md.forecast;
+          months[m].actual += md.actual;
+          months[m].najem += md.najem;
+          months[m].podnajem += md.podnajem;
+        }
+      }
+    }
+    const label = GB_CATEGORY_LABELS[cat] || `Kategoria ${cat}`;
+    result.push({
+      apartmentId: -(cat + 1),
+      apartmentName: `${label} (${items.length} apt.)`,
+      locationId: items[0].locationId,
+      months,
+    });
+  }
+
+  const uncategorized = groups[99];
+  if (uncategorized) {
+    for (const apt of uncategorized) {
+      result.push(apt);
+    }
+  }
+
+  return result;
+}
+
 type AptRevenueData = {
   apartmentId: number;
   apartmentName: string;
@@ -161,10 +212,11 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
   onCollapse: () => void;
 }) {
   const [showR1, setShowR1] = useState(false);
+  const isGrouped = apt.apartmentId < 0;
 
   const { data: trendData, isLoading: trendLoading } = useQuery<ApartmentTrendData>({
     queryKey: [`/api/v2/apartment-trend/${apt.apartmentId}`],
-    enabled: showR1,
+    enabled: showR1 && !isGrouped,
   });
 
   const prevYear = year - 1;
@@ -193,32 +245,46 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
   const najPct = yearTotals.actual > 0 ? Math.round((yearTotals.najem / yearTotals.actual) * 100) : 0;
   const podPct = yearTotals.actual > 0 ? 100 - najPct : 0;
 
+  const chartData = useMemo(() => {
+    return MONTHS.map((label, mi) => {
+      const md = apt.months[mi] || { forecast: 0, actual: 0 };
+      return { month: label, prognoza: md.forecast, rzeczywiste: md.actual };
+    });
+  }, [apt.months]);
+
+  const saldoYear = yearTotals.actual - yearTotals.forecast;
+
   return (
     <div
       className="col-span-full animate-in fade-in slide-in-from-top-2 duration-200"
       data-testid={`expanded-tile-${apt.apartmentId}`}
     >
-      <Card className="border-primary/30 shadow-md">
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+      <Card className="border-primary/20 shadow-lg bg-gradient-to-b from-card to-card/95 overflow-hidden">
+        <CardContent className="pt-5 pb-4 px-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
             <div
               className="cursor-pointer hover:opacity-80 transition-opacity"
               onClick={onCollapse}
               data-testid={`collapse-expanded-${apt.apartmentId}`}
             >
-              <p className="text-sm font-bold">{apt.apartmentName}</p>
-              <p className="text-lg font-bold tabular-nums mt-0.5">{formatNum(yearTotals.actual)} PLN</p>
-              <div className="flex items-center gap-3 mt-1">
-                <div className="flex items-center gap-1.5 text-[11px]">
+              <p className="text-base font-bold tracking-tight">{apt.apartmentName}</p>
+              <div className="flex items-baseline gap-3 mt-1">
+                <p className="text-2xl font-extrabold tabular-nums tracking-tight">{formatNum(yearTotals.actual)} <span className="text-sm font-semibold text-muted-foreground">PLN</span></p>
+                <span className={`text-sm font-bold tabular-nums ${saldoYear >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {saldoYear >= 0 ? "+" : ""}{formatNum(saldoYear)}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-1.5 text-xs">
                   <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                  <span className="text-muted-foreground">Najem {najPct}%</span>
+                  <span className="text-muted-foreground font-medium">Najem {najPct}%</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px]">
+                <div className="flex items-center gap-1.5 text-xs">
                   <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />
-                  <span className="text-muted-foreground">Podnajem {podPct}%</span>
+                  <span className="text-muted-foreground font-medium">Podnajem {podPct}%</span>
                 </div>
                 {yearTotals.actual > 0 && (
-                  <div className="flex h-2 w-24 rounded-full overflow-hidden bg-muted">
+                  <div className="flex h-2.5 w-28 rounded-full overflow-hidden bg-muted/60">
                     <div className="bg-blue-500 transition-all" style={{ width: `${najPct}%` }} />
                     <div className="bg-violet-500 transition-all" style={{ width: `${podPct}%` }} />
                   </div>
@@ -226,38 +292,57 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer" data-testid={`toggle-r1-${apt.apartmentId}`}>
-                <CalendarClock className="h-3.5 w-3.5" />
-                <span>R-1</span>
-                <Switch checked={showR1} onCheckedChange={setShowR1} className="scale-75" />
-              </label>
+              {!isGrouped && (
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-testid={`toggle-r1-${apt.apartmentId}`}>
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  <span>R-1</span>
+                  <Switch checked={showR1} onCheckedChange={setShowR1} className="scale-75" />
+                </label>
+              )}
             </div>
           </div>
 
-          <div className="overflow-x-auto -mx-4 px-4">
-            <table className="w-full text-[11px] border-collapse" style={{ tableLayout: "fixed" }} data-testid={`expanded-table-${apt.apartmentId}`}>
+          <div className="mb-4 rounded-lg border border-border/40 bg-muted/10 p-3" data-testid={`expanded-chart-${apt.apartmentId}`}>
+            <ResponsiveContainer width="100%" height={180}>
+              <ComposedChart data={chartData} barGap={2}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} width={45} />
+                <Tooltip
+                  contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", fontSize: 12 }}
+                  formatter={(value: number, name: string) => [formatNum(value) + " PLN", name]}
+                  labelFormatter={(label: string) => label}
+                />
+                <Bar dataKey="prognoza" name="Prognoza" fill="hsl(var(--muted-foreground))" opacity={0.35} radius={[3, 3, 0, 0]} barSize={18} />
+                <Bar dataKey="rzeczywiste" name="Rzeczywiste" fill="hsl(217, 91%, 60%)" radius={[3, 3, 0, 0]} barSize={18} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="overflow-x-auto -mx-5 px-5">
+            <table className="w-full text-xs border-collapse" style={{ tableLayout: "fixed" }} data-testid={`expanded-table-${apt.apartmentId}`}>
               <colgroup>
-                <col className="w-[50px]" />
-                <col className="w-[75px]" />
-                <col className="w-[75px]" />
-                <col className="w-[75px]" />
-                <col className="w-[75px]" />
-                <col className="w-[75px]" />
-                <col className="w-[30px]" />
-                {showR1 && <col className="w-[75px]" />}
-                {showR1 && <col className="w-[55px]" />}
+                <col style={{ width: "40px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "85px" }} />
+                <col style={{ width: "75px" }} />
+                <col style={{ width: "75px" }} />
+                <col style={{ width: "30px" }} />
+                {showR1 && !isGrouped && <col style={{ width: "75px" }} />}
+                {showR1 && !isGrouped && <col style={{ width: "55px" }} />}
               </colgroup>
               <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="text-left p-1.5 font-medium">Mies.</th>
-                  <th className="text-right p-1.5 font-medium">P</th>
-                  <th className="text-right p-1.5 font-medium">R</th>
-                  <th className="text-right p-1.5 font-medium">S</th>
-                  <th className="text-right p-1.5 font-medium">Najem</th>
-                  <th className="text-right p-1.5 font-medium">Podn.</th>
-                  <th className="p-1.5 font-medium"></th>
-                  {showR1 && <th className="text-right p-1.5 font-medium">R-1</th>}
-                  {showR1 && <th className="text-right p-1.5 font-medium">Δ r/r</th>}
+                <tr className="border-b-2 border-border/60">
+                  <th className="text-left py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Mies.</th>
+                  <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Prognoza</th>
+                  <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Rzeczywiste</th>
+                  <th className="text-right py-2 px-1.5 font-bold text-foreground uppercase tracking-wider text-[10px] border-l-2 border-r-2 border-border/40 bg-muted/20">Saldo</th>
+                  <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Najem</th>
+                  <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Podn.</th>
+                  <th className="py-2 px-1.5"></th>
+                  {showR1 && !isGrouped && <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">R-1</th>}
+                  {showR1 && !isGrouped && <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Δ r/r</th>}
                 </tr>
               </thead>
               <tbody>
@@ -272,31 +357,31 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
                   return (
                     <tr
                       key={mi}
-                      className={`border-b transition-colors ${rowBgClass(md.actual, md.forecast)} ${isCurrentMonth ? "ring-1 ring-inset ring-cyan-400/50" : ""}`}
+                      className={`border-b border-border/30 transition-colors ${rowBgClass(md.actual, md.forecast)} ${isCurrentMonth ? "ring-1 ring-inset ring-cyan-400/50" : ""}`}
                       data-testid={`expanded-row-${apt.apartmentId}-${mi}`}
                     >
-                      <td className={`p-1.5 font-semibold ${isCurrentMonth ? "text-cyan-700 dark:text-cyan-300" : ""}`}>{monthLabel}</td>
-                      <td className="p-1.5 text-right tabular-nums">{formatNum(md.forecast)}</td>
-                      <td className="p-1.5 text-right tabular-nums font-medium">{formatNum(md.actual)}</td>
-                      <td className={`p-1.5 text-right tabular-nums font-medium ${deviationColor(saldo)}`}>
+                      <td className={`py-1.5 px-1.5 font-semibold text-[11px] ${isCurrentMonth ? "text-cyan-700 dark:text-cyan-300" : ""}`}>{monthLabel}</td>
+                      <td className="py-1.5 px-1.5 text-right tabular-nums">{formatNum(md.forecast)}</td>
+                      <td className="py-1.5 px-1.5 text-right tabular-nums font-semibold">{formatNum(md.actual)}</td>
+                      <td className={`py-1.5 px-1.5 text-right tabular-nums font-bold border-l-2 border-r-2 border-border/40 bg-muted/10 ${deviationColor(saldo)}`}>
                         {md.forecast === 0 && md.actual === 0 ? "—" : `${saldo >= 0 ? "+" : ""}${formatNum(saldo)}`}
                       </td>
-                      <td className="p-1.5 text-right tabular-nums text-blue-600 dark:text-blue-400">{formatNum(md.najem)}</td>
-                      <td className="p-1.5 text-right tabular-nums text-violet-600 dark:text-violet-400">{formatNum(md.podnajem)}</td>
-                      <td className="p-1.5">
+                      <td className="py-1.5 px-1.5 text-right tabular-nums text-blue-600 dark:text-blue-400">{formatNum(md.najem)}</td>
+                      <td className="py-1.5 px-1.5 text-right tabular-nums text-violet-600 dark:text-violet-400">{formatNum(md.podnajem)}</td>
+                      <td className="py-1.5 px-1.5">
                         {md.forecast > 0 && (
                           <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                             <div className={`h-full rounded-full ${progressColor(pct)}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                           </div>
                         )}
                       </td>
-                      {showR1 && (
-                        <td className="p-1.5 text-right tabular-nums text-muted-foreground">
+                      {showR1 && !isGrouped && (
+                        <td className="py-1.5 px-1.5 text-right tabular-nums text-muted-foreground">
                           {trendLoading ? "…" : formatNum(prevActual)}
                         </td>
                       )}
-                      {showR1 && (
-                        <td className={`p-1.5 text-right tabular-nums text-[10px] ${prevActual > 0 ? deviationColor(md.actual - prevActual) : "text-muted-foreground"}`}>
+                      {showR1 && !isGrouped && (
+                        <td className={`py-1.5 px-1.5 text-right tabular-nums text-[10px] ${prevActual > 0 ? deviationColor(md.actual - prevActual) : "text-muted-foreground"}`}>
                           {trendLoading ? "…" : prevActual > 0 ? `${yoyPct >= 0 ? "+" : ""}${yoyPct.toFixed(0)}%` : "—"}
                         </td>
                       )}
@@ -305,29 +390,29 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 font-bold">
-                  <td className="p-1.5">ROCZNIE</td>
-                  <td className="p-1.5 text-right tabular-nums">{formatNum(yearTotals.forecast)}</td>
-                  <td className="p-1.5 text-right tabular-nums">{formatNum(yearTotals.actual)}</td>
-                  <td className={`p-1.5 text-right tabular-nums ${deviationColor(yearTotals.actual - yearTotals.forecast)}`}>
-                    {yearTotals.actual - yearTotals.forecast >= 0 ? "+" : ""}{formatNum(yearTotals.actual - yearTotals.forecast)}
+                <tr className="border-t-2 border-border font-bold bg-muted/20">
+                  <td className="py-2 px-1.5 text-[11px]">ROCZNIE</td>
+                  <td className="py-2 px-1.5 text-right tabular-nums">{formatNum(yearTotals.forecast)}</td>
+                  <td className="py-2 px-1.5 text-right tabular-nums">{formatNum(yearTotals.actual)}</td>
+                  <td className={`py-2 px-1.5 text-right tabular-nums font-extrabold border-l-2 border-r-2 border-border/40 bg-muted/30 ${deviationColor(saldoYear)}`}>
+                    {saldoYear >= 0 ? "+" : ""}{formatNum(saldoYear)}
                   </td>
-                  <td className="p-1.5 text-right tabular-nums text-blue-600 dark:text-blue-400">{formatNum(yearTotals.najem)}</td>
-                  <td className="p-1.5 text-right tabular-nums text-violet-600 dark:text-violet-400">{formatNum(yearTotals.podnajem)}</td>
-                  <td className="p-1.5">
+                  <td className="py-2 px-1.5 text-right tabular-nums text-blue-600 dark:text-blue-400">{formatNum(yearTotals.najem)}</td>
+                  <td className="py-2 px-1.5 text-right tabular-nums text-violet-600 dark:text-violet-400">{formatNum(yearTotals.podnajem)}</td>
+                  <td className="py-2 px-1.5">
                     {yearTotals.forecast > 0 && (
                       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                         <div className={`h-full rounded-full ${progressColor(pctVal(yearTotals.actual, yearTotals.forecast))}`} style={{ width: `${Math.min(pctVal(yearTotals.actual, yearTotals.forecast), 100)}%` }} />
                       </div>
                     )}
                   </td>
-                  {showR1 && (
-                    <td className="p-1.5 text-right tabular-nums text-muted-foreground">
+                  {showR1 && !isGrouped && (
+                    <td className="py-2 px-1.5 text-right tabular-nums text-muted-foreground">
                       {trendLoading ? "…" : formatNum(prevYearTotal)}
                     </td>
                   )}
-                  {showR1 && (
-                    <td className={`p-1.5 text-right tabular-nums text-[10px] ${prevYearTotal > 0 ? deviationColor(yearTotals.actual - prevYearTotal) : "text-muted-foreground"}`}>
+                  {showR1 && !isGrouped && (
+                    <td className={`py-2 px-1.5 text-right tabular-nums text-[10px] ${prevYearTotal > 0 ? deviationColor(yearTotals.actual - prevYearTotal) : "text-muted-foreground"}`}>
                       {trendLoading ? "…" : prevYearTotal > 0 ? `${((yearTotals.actual - prevYearTotal) / prevYearTotal * 100) >= 0 ? "+" : ""}${((yearTotals.actual - prevYearTotal) / prevYearTotal * 100).toFixed(0)}%` : "—"}
                     </td>
                   )}
@@ -354,26 +439,21 @@ function LocationGroup({ locationName, apartments, expandedAptId, onApartmentCli
 
   const sortedApts = useMemo(() => {
     if (locationName === "GRAND BALTIC") {
-      return [...apartments].sort((a, b) => {
-        const catA = getGBCategory(a.apartmentName);
-        const catB = getGBCategory(b.apartmentName);
-        if (catA !== catB) return catA - catB;
-        return a.apartmentName.localeCompare(b.apartmentName, "pl");
-      });
+      return aggregateGBGroups(apartments);
     }
     return apartments;
   }, [apartments, locationName]);
 
   const yearTotals = useMemo(() => {
     let fc = 0, act = 0;
-    for (const apt of sortedApts) {
+    for (const apt of apartments) {
       for (let m = 0; m < 12; m++) {
         fc += apt.months[m]?.forecast || 0;
         act += apt.months[m]?.actual || 0;
       }
     }
     return { forecast: fc, actual: act };
-  }, [sortedApts]);
+  }, [apartments]);
 
   return (
     <div className="mb-4" data-testid={`location-group-${locationName}`}>
@@ -384,7 +464,7 @@ function LocationGroup({ locationName, apartments, expandedAptId, onApartmentCli
       >
         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         <span>{locationName}</span>
-        <Badge variant="secondary" className="ml-2">{sortedApts.length}</Badge>
+        <Badge variant="secondary" className="ml-2">{apartments.length}</Badge>
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">
           Plan: {formatNum(yearTotals.forecast)} PLN | Realizacja: {formatNum(yearTotals.actual)} PLN
         </span>
