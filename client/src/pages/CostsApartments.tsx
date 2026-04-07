@@ -1260,10 +1260,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               <thead>
 
                 <colgroup>
-                  <col />
-                  <col style={{ width: '80px' }} />
-                  <col style={{ width: '80px' }} />
-                  <col style={{ width: '80px' }} />
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '26%' }} />
+                  <col style={{ width: '26%' }} />
+                  <col style={{ width: '26%' }} />
                 </colgroup>
                 <tr style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.8)' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
                   <th className={`border-b border-r px-2 py-1 text-left font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>Mies.</th>
@@ -1504,7 +1504,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </div>
         </div>
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="category-cards-grid">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="category-cards-grid">
           {cats.map((cat) => (
             <Fragment key={cat}>
               {renderCategoryCard(cat)}
@@ -2119,7 +2119,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       </Dialog>
 
       <Sheet open={!!apartmentSheet} onOpenChange={(open) => { if (!open) setApartmentSheet(null); }}>
-        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-apartment">
+        <SheetContent className="w-full sm:w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-apartment">
           {(() => {
             if (!apartmentSheet) return null;
             const entry = costEntries.flatMap(g => g.items).find(e => e.id === apartmentSheet);
@@ -2216,7 +2216,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       </Sheet>
 
       <Sheet open={!!categorySheet} onOpenChange={(open) => { if (!open) setCategorySheet(null); }}>
-        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-category">
+        <SheetContent className="w-full sm:w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-category">
           {(() => {
             if (!categorySheet) return null;
             const { entryId, cat } = categorySheet;

@@ -1128,10 +1128,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <CardContent className="p-0">
           <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '26%' }} />
             </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
@@ -1278,10 +1278,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <CardContent className="p-0">
           <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '26%' }} />
             </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
@@ -1418,10 +1418,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <CardContent className="p-0" style={{ backgroundColor: 'hsl(var(--sidebar) / 0.95)' }}>
           <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '26%' }} />
             </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.8)' }}>
@@ -1678,7 +1678,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       )}
 
       {drillLevel === "categories" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="grid-categories">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4" data-testid="grid-categories">
           {activeCategories.map(cat => renderCategoryCard(cat))}
           {renderRazemCard("categories")}
         </div>
@@ -1699,7 +1699,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               </>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="grid-items">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4" data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);
@@ -1793,7 +1793,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       )}
 
       <Sheet open={!!sheetItem} onOpenChange={(open) => { if (!open) setSheetItem(null); }}>
-        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-cost-detail">
+        <SheetContent className="w-full sm:w-[480px] sm:max-w-[480px] overflow-y-auto" data-testid="sheet-cost-detail">
           {sheetItemData && sheetItem && (
             <>
               <SheetHeader>
