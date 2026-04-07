@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, Fragment } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import type { Location } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -65,6 +65,7 @@ function aggregateGBGroups(apartments: AptRevenueData[]): AptRevenueData[] {
       apartmentName: `${label} (${items.length} apt.)`,
       locationId: items[0].locationId,
       months,
+      constituentIds: items.map(a => a.apartmentId),
     });
   }
 
@@ -83,6 +84,7 @@ type AptRevenueData = {
   apartmentName: string;
   locationId: number | null;
   months: Record<number, { forecast: number; actual: number; najem: number; podnajem: number }>;
+  constituentIds?: number[];
 };
 
 type RevenueSummaryResponse = {
@@ -213,14 +215,46 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
 }) {
   const [showR1, setShowR1] = useState(false);
   const isGrouped = apt.apartmentId < 0;
+  const constituentIds = apt.constituentIds || [];
 
-  const { data: trendData, isLoading: trendLoading } = useQuery<ApartmentTrendData>({
+  const { data: trendData, isLoading: singleTrendLoading } = useQuery<ApartmentTrendData>({
     queryKey: [`/api/v2/apartment-trend/${apt.apartmentId}`],
     enabled: showR1 && !isGrouped,
   });
 
+  const constituentTrends = useQueries({
+    queries: constituentIds.map(id => ({
+      queryKey: [`/api/v2/apartment-trend/${id}`],
+      enabled: showR1 && isGrouped,
+    })),
+  });
+
+  const groupedTrendLoading = isGrouped && constituentTrends.some(q => q.isLoading);
+  const trendLoading = isGrouped ? groupedTrendLoading : singleTrendLoading;
+
   const prevYear = year - 1;
-  const prevYearMonths = trendData?.yearlyData[prevYear]?.months;
+
+  const prevYearMonths = useMemo(() => {
+    if (!isGrouped) {
+      return trendData?.yearlyData[prevYear]?.months || null;
+    }
+    const allLoaded = constituentTrends.every(q => q.data);
+    if (!allLoaded) return null;
+    const aggregated: Record<number, { actual: number; forecast: number; cost: number }> = {};
+    for (let m = 0; m < 12; m++) {
+      aggregated[m] = { actual: 0, forecast: 0, cost: 0 };
+      for (const q of constituentTrends) {
+        const td = q.data as ApartmentTrendData | undefined;
+        const md = td?.yearlyData[prevYear]?.months?.[m];
+        if (md) {
+          aggregated[m].actual += md.actual;
+          aggregated[m].forecast += md.forecast;
+          aggregated[m].cost += md.cost;
+        }
+      }
+    }
+    return aggregated;
+  }, [isGrouped, trendData, constituentTrends, prevYear]);
 
   const yearTotals = useMemo(() => {
     let fc = 0, act = 0, naj = 0, pod = 0;
@@ -292,13 +326,11 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {!isGrouped && (
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-testid={`toggle-r1-${apt.apartmentId}`}>
-                  <CalendarClock className="h-3.5 w-3.5" />
-                  <span>R-1</span>
-                  <Switch checked={showR1} onCheckedChange={setShowR1} className="scale-75" />
-                </label>
-              )}
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" data-testid={`toggle-r1-${apt.apartmentId}`}>
+                <CalendarClock className="h-3.5 w-3.5" />
+                <span>R-1</span>
+                <Switch checked={showR1} onCheckedChange={setShowR1} className="scale-75" />
+              </label>
             </div>
           </div>
 
@@ -329,8 +361,8 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
                 <col style={{ width: "75px" }} />
                 <col style={{ width: "75px" }} />
                 <col style={{ width: "30px" }} />
-                {showR1 && !isGrouped && <col style={{ width: "75px" }} />}
-                {showR1 && !isGrouped && <col style={{ width: "55px" }} />}
+                {showR1 && <col style={{ width: "75px" }} />}
+                {showR1 && <col style={{ width: "55px" }} />}
               </colgroup>
               <thead>
                 <tr className="border-b-2 border-border/60">
@@ -341,8 +373,8 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
                   <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Najem</th>
                   <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Podn.</th>
                   <th className="py-2 px-1.5"></th>
-                  {showR1 && !isGrouped && <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">R-1</th>}
-                  {showR1 && !isGrouped && <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Δ r/r</th>}
+                  {showR1 && <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">R-1</th>}
+                  {showR1 && <th className="text-right py-2 px-1.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">Δ r/r</th>}
                 </tr>
               </thead>
               <tbody>
@@ -375,12 +407,12 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
                           </div>
                         )}
                       </td>
-                      {showR1 && !isGrouped && (
+                      {showR1 && (
                         <td className="py-1.5 px-1.5 text-right tabular-nums text-muted-foreground">
                           {trendLoading ? "…" : formatNum(prevActual)}
                         </td>
                       )}
-                      {showR1 && !isGrouped && (
+                      {showR1 && (
                         <td className={`py-1.5 px-1.5 text-right tabular-nums text-[10px] ${prevActual > 0 ? deviationColor(md.actual - prevActual) : "text-muted-foreground"}`}>
                           {trendLoading ? "…" : prevActual > 0 ? `${yoyPct >= 0 ? "+" : ""}${yoyPct.toFixed(0)}%` : "—"}
                         </td>
@@ -406,12 +438,12 @@ function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
                       </div>
                     )}
                   </td>
-                  {showR1 && !isGrouped && (
+                  {showR1 && (
                     <td className="py-2 px-1.5 text-right tabular-nums text-muted-foreground">
                       {trendLoading ? "…" : formatNum(prevYearTotal)}
                     </td>
                   )}
-                  {showR1 && !isGrouped && (
+                  {showR1 && (
                     <td className={`py-2 px-1.5 text-right tabular-nums text-[10px] ${prevYearTotal > 0 ? deviationColor(yearTotals.actual - prevYearTotal) : "text-muted-foreground"}`}>
                       {trendLoading ? "…" : prevYearTotal > 0 ? `${((yearTotals.actual - prevYearTotal) / prevYearTotal * 100) >= 0 ? "+" : ""}${((yearTotals.actual - prevYearTotal) / prevYearTotal * 100).toFixed(0)}%` : "—"}
                     </td>
