@@ -150,14 +150,14 @@ type UndoAction = { type: "cell"; key: string; month: number; field: "p" | "r"; 
 
 function TransposedEditableCell({
   value, isEditing, editValue, onStartEdit, onCommitEdit, onCancelEdit, onEditValueChange,
-  isCurrentMonth, className = "", flashKey, onKeyDown, cellRef, note, compareValue, onCommitAndMoveDown,
+  isCurrentMonth, className = "", flashKey, onKeyDown, cellRef, note, compareValue, onCommitAndMoveDown, onFillToEnd,
 }: {
   value: number; isEditing: boolean; editValue: string;
   onStartEdit: () => void; onCommitEdit: () => void; onCancelEdit: () => void;
   onEditValueChange: (v: string) => void;
   isCurrentMonth?: boolean; className?: string; flashKey?: string;
   onKeyDown?: (e: React.KeyboardEvent) => void; cellRef?: React.Ref<HTMLTableCellElement>;
-  note?: string; compareValue?: number; onCommitAndMoveDown?: () => void;
+  note?: string; compareValue?: number; onCommitAndMoveDown?: () => void; onFillToEnd?: () => void;
 }) {
   const [flash, setFlash] = useState(false);
   const prevFlashKey = useRef(flashKey);
@@ -173,7 +173,7 @@ function TransposedEditableCell({
   return (
     <td
       ref={cellRef}
-      className={`border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums relative select-none transition-colors duration-200
+      className={`group/cell border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums relative select-none transition-colors duration-200
         ${isCurrentMonth ? "bg-primary/[0.04]" : ""}
         ${flash ? "!bg-emerald-200/60 dark:!bg-emerald-800/40" : ""}
         ${className}`}
@@ -199,11 +199,23 @@ function TransposedEditableCell({
           }}
         />
       ) : (
-        <div className="flex flex-col items-end gap-0">
-          <span className="text-[11px] min-h-[18px] cursor-cell">{formatNum(value)}</span>
-          {compareValue !== undefined && compareValue !== 0 && (
-            <span className="text-[9px] text-muted-foreground/60">{formatNum(compareValue)}</span>
+        <div className="flex items-center gap-0.5">
+          {onFillToEnd && value !== 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onFillToEnd(); }}
+              className="opacity-0 group-hover/cell:opacity-100 transition-opacity text-muted-foreground/40 hover:text-primary shrink-0"
+              title="Wypełnij do końca roku"
+              data-testid="button-fill-to-end"
+            >
+              <ArrowDown className="h-2.5 w-2.5" />
+            </button>
           )}
+          <div className="flex flex-col items-end gap-0 flex-1">
+            <span className="text-[11px] min-h-[18px] cursor-cell">{formatNum(value)}</span>
+            {compareValue !== undefined && compareValue !== 0 && (
+              <span className="text-[9px] text-muted-foreground/60">{formatNum(compareValue)}</span>
+            )}
+          </div>
         </div>
       )}
       {note && (
@@ -954,7 +966,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     setNotesMap(prev => ({ ...prev, [noteKey]: cellNoteText }));
     const key = getCellKeyOld(entryId, category);
     const cell = data[key]?.[month] || { p: 0, r: 0 };
-    await dbBulkSaveCells([{ year, entryId, category, month, prognoza: String(cell.p), realized: String(cell.r), note: cellNoteText || null }]);
+    await dbBulkSaveCells([{ year, entryId, category, month, prognoza: String(cell.p), realized: String(cell.r), note: cellNoteText === "" ? "" : cellNoteText }]);
     setCellNoteDialog(null);
     toast({ title: "Notatka zapisana" });
   }, [cellNoteDialog, cellNoteText, data, year, toast]);
@@ -1350,6 +1362,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                               commitEdit();
                               if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "p")), 0);
                             }}
+                            onFillToEnd={mi < 11 ? () => handleFillToEnd(entry.id, cat, mi, "p") : undefined}
                             onKeyDown={(e) => {
                               if (e.key === "ArrowDown" && mi < 11) {
                                 e.preventDefault();
@@ -1384,6 +1397,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                               commitEdit();
                               if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "r")), 0);
                             }}
+                            onFillToEnd={mi < 11 ? () => handleFillToEnd(entry.id, cat, mi, "r") : undefined}
                             onKeyDown={(e) => {
                               if (e.key === "ArrowDown" && mi < 11) {
                                 e.preventDefault();

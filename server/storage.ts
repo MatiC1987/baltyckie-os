@@ -2067,7 +2067,7 @@ export class DatabaseStorage implements IStorage {
           set: {
             prognoza: sql`EXCLUDED.prognoza`,
             realized: sql`EXCLUDED.realized`,
-            note: sql`COALESCE(EXCLUDED.note, ${aptCostData.note})`,
+            note: sql`CASE WHEN EXCLUDED.note IS NULL THEN ${aptCostData.note} WHEN EXCLUDED.note = '' THEN NULL ELSE EXCLUDED.note END`,
           },
         });
     }
