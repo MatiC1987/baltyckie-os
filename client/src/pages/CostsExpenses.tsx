@@ -1128,10 +1128,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <CardContent className="p-0 flex-1">
           <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: '65px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
+              <col style={{ width: '60px' }} />
+              <col />
+              <col />
+              <col />
             </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
@@ -1279,10 +1279,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <CardContent className="p-0 flex-1">
           <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: '65px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '80px' }} />
+              <col style={{ width: '60px' }} />
+              <col />
+              <col />
+              <col />
             </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>

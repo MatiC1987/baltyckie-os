@@ -1258,10 +1258,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           <CardContent className="p-0 flex-1" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
             <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '65px' }} />
-                <col style={{ width: '80px' }} />
-                <col style={{ width: '80px' }} />
-                <col style={{ width: '80px' }} />
+                <col style={{ width: '60px' }} />
+                <col />
+                <col />
+                <col />
               </colgroup>
               <thead>
                 <tr style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.8)' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
