@@ -1255,16 +1255,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               )}
             </div>
           </CardHeader>
-          <CardContent className="p-0 flex-1 flex flex-col" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
-            <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
+          <CardContent className="p-0 flex-1" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
+            <table className="w-full text-[11px] sm:text-xs border-collapse">
               <thead>
-
-                <colgroup>
-                  <col style={{ width: '22%' }} />
-                  <col style={{ width: '26%' }} />
-                  <col style={{ width: '26%' }} />
-                  <col style={{ width: '26%' }} />
-                </colgroup>
                 <tr style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.8)' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
                   <th className={`border-b border-r px-2 py-1 text-left font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>Mies.</th>
                   <th className={`border-b border-r px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border/60 text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>P</th>
@@ -1504,7 +1497,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </div>
         </div>
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }} data-testid="category-cards-grid">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="category-cards-grid">
           {cats.map((cat) => (
             <Fragment key={cat}>
               {renderCategoryCard(cat)}
@@ -1512,7 +1505,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           ))}
         </div>
         {cats.length > 0 && (
-          <div className="mt-3 max-w-md">
+          <div className="mt-3" style={{ maxWidth: '380px' }}>
             {renderCategoryCard("RAZEM", true)}
           </div>
         )}

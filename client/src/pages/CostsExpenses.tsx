@@ -1125,14 +1125,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-0 flex-1 flex flex-col">
-          <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '26%' }} />
-              <col style={{ width: '26%' }} />
-              <col style={{ width: '26%' }} />
-            </colgroup>
+        <CardContent className="p-0 flex-1">
+          <table className="w-full text-[11px] sm:text-xs border-collapse">
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
                 <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-[10px] text-muted-foreground">Mies.</th>
@@ -1275,14 +1269,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             </DropdownMenu>
           </div>
         </CardHeader>
-        <CardContent className="p-0 flex-1 flex flex-col">
-          <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '26%' }} />
-              <col style={{ width: '26%' }} />
-              <col style={{ width: '26%' }} />
-            </colgroup>
+        <CardContent className="p-0 flex-1">
+          <table className="w-full text-[11px] sm:text-xs border-collapse">
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
                 <th className="border-b border-r border-border px-2 py-1 text-left font-medium text-[10px] text-muted-foreground">Mies.</th>
@@ -1415,14 +1403,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             </CardTitle>
           </div>
         </CardHeader>
-        <CardContent className="p-0 flex-1 flex flex-col" style={{ backgroundColor: 'hsl(var(--sidebar) / 0.95)' }}>
-          <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '26%' }} />
-              <col style={{ width: '26%' }} />
-              <col style={{ width: '26%' }} />
-            </colgroup>
+        <CardContent className="p-0 flex-1" style={{ backgroundColor: 'hsl(var(--sidebar) / 0.95)' }}>
+          <table className="w-full text-[11px] sm:text-xs border-collapse">
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.8)' }}>
                 <th className="border-b border-r border-sidebar-border/30 px-2 py-1 text-left font-medium text-[10px]" style={{ color: 'hsl(var(--sidebar-foreground) / 0.5)' }}>Mies.</th>
@@ -1679,10 +1661,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
 
       {drillLevel === "categories" ? (
         <>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }} data-testid="grid-categories">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="grid-categories">
             {activeCategories.map(cat => renderCategoryCard(cat))}
           </div>
-          <div className="mt-3 max-w-md">
+          <div className="mt-3" style={{ maxWidth: '380px' }}>
             {renderRazemCard("categories")}
           </div>
         </>
@@ -1703,13 +1685,13 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               </>
             )}
           </div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }} data-testid="grid-items">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }} data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);
             })}
           </div>
-          <div className="mt-3 max-w-md">
+          <div className="mt-3" style={{ maxWidth: '380px' }}>
             {renderRazemCard("items")}
           </div>
         </>
