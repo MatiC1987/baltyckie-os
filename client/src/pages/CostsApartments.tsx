@@ -1504,14 +1504,18 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-testid="category-cards-grid">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }} data-testid="category-cards-grid">
           {cats.map((cat) => (
             <Fragment key={cat}>
               {renderCategoryCard(cat)}
             </Fragment>
           ))}
-          {cats.length > 0 && renderCategoryCard("RAZEM", true)}
         </div>
+        {cats.length > 0 && (
+          <div className="mt-3 max-w-md">
+            {renderCategoryCard("RAZEM", true)}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
           <span>Podpowiedzi: Kliknij dwukrotnie aby edytować · Enter / Tab potwierdza · Escape anuluje · Strzałki ↑↓ nawigacja · Ctrl+Z cofnij · Ctrl+Y ponów</span>

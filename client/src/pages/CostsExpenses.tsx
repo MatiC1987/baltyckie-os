@@ -1678,10 +1678,14 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       )}
 
       {drillLevel === "categories" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-4" data-testid="grid-categories">
-          {activeCategories.map(cat => renderCategoryCard(cat))}
-          {renderRazemCard("categories")}
-        </div>
+        <>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }} data-testid="grid-categories">
+            {activeCategories.map(cat => renderCategoryCard(cat))}
+          </div>
+          <div className="mt-3 max-w-md">
+            {renderRazemCard("categories")}
+          </div>
+        </>
       ) : (
         <>
           <div className="flex items-center gap-3 mb-2">
@@ -1699,11 +1703,13 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               </>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-4" data-testid="grid-items">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }} data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);
             })}
+          </div>
+          <div className="mt-3 max-w-md">
             {renderRazemCard("items")}
           </div>
         </>
