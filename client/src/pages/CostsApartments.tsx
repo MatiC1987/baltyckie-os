@@ -593,6 +593,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); }
     };
@@ -897,6 +899,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
 
   const handleBulkCopy = useCallback(() => {
     if (!selectedEntry) return;
+    if (bulkCopyStart > bulkCopyEnd) {
+      toast({ title: "Błąd zakresu", description: "Miesiąc początkowy musi być przed końcowym", variant: "destructive" });
+      return;
+    }
     const entry = selectedEntry;
     for (let m = bulkCopyStart; m <= bulkCopyEnd; m++) {
       entry.categories.forEach(cat => {
