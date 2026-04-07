@@ -30,17 +30,38 @@ const MONTHS = ["Sty", "Lut", "Mar", "Kwi", "Maj", "Cze", "Lip", "Sie", "Wrz", "
 const MONTHS_PL = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 
 const CATEGORY_COLORS = [
-  { label: "Niebieski", value: "bg-blue-600 dark:bg-blue-700" },
-  { label: "Czerwony", value: "bg-red-600 dark:bg-red-700" },
-  { label: "Fioletowy", value: "bg-purple-600 dark:bg-purple-700" },
-  { label: "Zielony", value: "bg-emerald-600 dark:bg-emerald-700" },
-  { label: "Bursztynowy", value: "bg-amber-600 dark:bg-amber-700" },
-  { label: "Różowy", value: "bg-pink-600 dark:bg-pink-700" },
-  { label: "Błękitny", value: "bg-cyan-600 dark:bg-cyan-700" },
-  { label: "Szary", value: "bg-slate-600 dark:bg-slate-700" },
-  { label: "Indygo", value: "bg-indigo-600 dark:bg-indigo-700" },
-  { label: "Pomarańczowy", value: "bg-orange-600 dark:bg-orange-700" },
+  { label: "Niebieski", value: "#2563eb" },
+  { label: "Czerwony", value: "#dc2626" },
+  { label: "Fioletowy", value: "#9333ea" },
+  { label: "Zielony", value: "#059669" },
+  { label: "Bursztynowy", value: "#d97706" },
+  { label: "Różowy", value: "#db2777" },
+  { label: "Błękitny", value: "#0891b2" },
+  { label: "Szary", value: "#475569" },
+  { label: "Indygo", value: "#4f46e5" },
+  { label: "Pomarańczowy", value: "#ea580c" },
 ];
+
+function isHexColor(v: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(v);
+}
+
+function getCatBgColor(colorVal: string): string {
+  if (isHexColor(colorVal)) return colorVal;
+  const map: Record<string, string> = {
+    "bg-blue-600 dark:bg-blue-700": "#2563eb",
+    "bg-red-600 dark:bg-red-700": "#dc2626",
+    "bg-purple-600 dark:bg-purple-700": "#9333ea",
+    "bg-emerald-600 dark:bg-emerald-700": "#059669",
+    "bg-amber-600 dark:bg-amber-700": "#d97706",
+    "bg-pink-600 dark:bg-pink-700": "#db2777",
+    "bg-cyan-600 dark:bg-cyan-700": "#0891b2",
+    "bg-slate-600 dark:bg-slate-700": "#475569",
+    "bg-indigo-600 dark:bg-indigo-700": "#4f46e5",
+    "bg-orange-600 dark:bg-orange-700": "#ea580c",
+  };
+  return map[colorVal] || "#2563eb";
+}
 
 const DEFAULT_CATEGORIES_INDIVIDUAL = [
   "RATA DLA WŁAŚCICIELA",
@@ -1090,11 +1111,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               onClick={() => navigateToLocation(group.location)}
               data-testid={`tile-location-${group.location.replace(/\s+/g, "-").toLowerCase()}`}
             >
-              <div className={`h-1.5 w-full ${CATEGORY_COLORS[gi % CATEGORY_COLORS.length].value}`} />
+              <div className="h-1.5 w-full" style={{ backgroundColor: CATEGORY_COLORS[gi % CATEGORY_COLORS.length].value }} />
               <CardContent className="pt-4 pb-4 px-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className={`p-2 rounded-lg ${CATEGORY_COLORS[gi % CATEGORY_COLORS.length].value} text-white`}>
+                    <div className="p-2 rounded-lg text-white" style={{ backgroundColor: CATEGORY_COLORS[gi % CATEGORY_COLORS.length].value }}>
                       <MapPin className="h-4 w-4" />
                     </div>
                     <div>
@@ -1159,11 +1180,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                 onClick={() => navigateToEntry(entry)}
                 data-testid={`tile-apartment-${entry.id}`}
               >
-                <div className={`h-1 w-full ${entryColor}`} />
+                <div className="h-1 w-full" style={{ backgroundColor: getCatBgColor(entryColor) }} />
                 <CardContent className="pt-3 pb-3 px-4">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <div className={`p-1.5 rounded-md ${entryColor} text-white shrink-0`}>
+                      <div className="p-1.5 rounded-md text-white shrink-0" style={{ backgroundColor: getCatBgColor(entryColor) }}>
                         <Building2 className="h-3.5 w-3.5" />
                       </div>
                       <h3 className="font-bold text-sm truncate" data-testid={`apartment-name-${entry.id}`}>{entry.name}</h3>
@@ -1201,11 +1222,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
 
     const renderCategoryCard = (cat: string, isSummary = false) => {
       let catYearP = 0, catYearR = 0;
+      const catColorRaw = !isSummary ? (colorMap[entry.id]?.[cat]?.color || "") : "";
+      const catHex = catColorRaw ? getCatBgColor(catColorRaw) : "";
+      const headerBg = isSummary ? 'hsl(var(--sidebar))' : catHex || 'hsl(var(--sidebar))';
+      const headerFg = '#ffffff';
       return (
-        <Card className={`overflow-hidden ${isSummary ? "ring-2 ring-blue-800 dark:ring-blue-500" : "border-sidebar-border"}`} style={{ borderColor: isSummary ? '#1e3a5f' : 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
-          <CardHeader className="px-3 py-2" style={isSummary ? { backgroundColor: '#1e3a5f', color: '#ffffff' } : { backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))' }}>
+        <Card className={`overflow-hidden ${isSummary ? "ring-2 ring-sidebar" : "border-sidebar-border"}`} style={{ borderColor: isSummary ? 'hsl(var(--sidebar))' : 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
+          <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: headerFg }}>
             <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-xs font-bold leading-tight" style={{ color: 'hsl(var(--sidebar-foreground))' }} data-testid={isSummary ? "card-title-summary" : `card-title-${cat}`}>
+              <CardTitle className="text-xs font-bold leading-tight" style={{ color: headerFg }} data-testid={isSummary ? "card-title-summary" : `card-title-${cat}`}>
                 {isSummary ? "RAZEM" : cat}
               </CardTitle>
               {!isSummary && (
@@ -1230,7 +1255,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               )}
             </div>
           </CardHeader>
-          <CardContent className="p-0" style={isSummary ? { backgroundColor: '#0f2440' } : undefined}>
+          <CardContent className="p-0" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
             <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
               <thead>
 
@@ -1240,11 +1265,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                   <col style={{ width: '80px' }} />
                   <col style={{ width: '80px' }} />
                 </colgroup>
-                <tr style={isSummary ? { backgroundColor: '#162d4d' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
-                  <th className={`border-b border-r px-2 py-1 text-left font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border text-muted-foreground"}`}>Mies.</th>
-                  <th className={`border-b border-r px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border/60 text-muted-foreground"}`}>P</th>
-                  <th className={`border-b border-r px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border/60 text-muted-foreground"}`}>R</th>
-                  <th className={`border-b px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-blue-900/40 text-blue-200" : "border-border text-muted-foreground"}`}>S</th>
+                <tr style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.8)' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
+                  <th className={`border-b border-r px-2 py-1 text-left font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>Mies.</th>
+                  <th className={`border-b border-r px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border/60 text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>P</th>
+                  <th className={`border-b border-r px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border/60 text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>R</th>
+                  <th className={`border-b px-1 py-1 text-center font-medium text-[10px] ${isSummary ? "border-sidebar-border/30" : "border-border text-muted-foreground"}`} style={isSummary ? { color: 'hsl(var(--sidebar-foreground) / 0.5)' } : undefined}>S</th>
                 </tr>
               </thead>
               <tbody>
@@ -1282,14 +1307,14 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                         ${isSummary ? "" : isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
                         ${isSummary ? "" : isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}
                         ${isSummary ? "hover:bg-white/5" : "hover:bg-muted/20 dark:hover:bg-muted/10"}`}
-                      style={isSummary ? { backgroundColor: isCurrentMo ? '#1a3355' : isHighlighted ? '#1a3355' : undefined, color: '#e2e8f0' } : undefined}
+                      style={isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : undefined}
                       data-testid={isSummary ? `row-summary-month-${mi}` : `row-month-${cat}-${mi}`}
                     >
                       <td className={`border-b border-r px-2 py-1 font-semibold text-[11px]
-                        ${isSummary ? "border-blue-900/40" : "border-border"}
+                        ${isSummary ? "border-sidebar-border/30" : "border-border"}
                         ${isSummary ? "" : isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
                         ${isSummary ? "" : isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}`}
-                      style={isSummary ? { color: '#e2e8f0' } : undefined}>
+                      style={isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : undefined}>
                         <div className="flex items-center gap-1">
                           <span>{MONTHS[mi]}</span>
                           {isCurrentMo && <Badge variant="secondary" className="text-[7px] px-0.5 py-0 h-3.5 leading-none">teraz</Badge>}
@@ -1297,9 +1322,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                       </td>
                       {isSummary ? (
                         <>
-                          <td className="border-b border-r border-blue-900/40 px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold" style={{ color: '#94a3b8' }}>{formatNum(pVal)}</td>
-                          <td className="border-b border-r border-blue-900/40 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: '#e2e8f0' }}>{formatNum(rVal)}</td>
-                          <td className="border-b border-blue-900/40 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : '#e2e8f0' }}>{formatNum(saldo)}</td>
+                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums text-[10px] font-semibold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.6)' }}>{formatNum(pVal)}</td>
+                          <td className="border-b border-r border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(rVal)}</td>
+                          <td className="border-b border-sidebar-border/30 px-1.5 py-1 text-right tabular-nums font-bold" style={{ color: saldo > 0 ? '#4ade80' : saldo < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(saldo)}</td>
                         </>
                       ) : (
                         <>
@@ -1394,11 +1419,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                 {(() => {
                   const catS = catYearP - catYearR;
                   return (
-                    <tr className="font-bold border-t-2" style={isSummary ? { backgroundColor: '#1e3a5f', color: '#ffffff', borderColor: '#2d5a8e' } : { backgroundColor: 'hsl(var(--sidebar))', color: 'hsl(var(--sidebar-foreground))', borderColor: 'hsl(var(--sidebar))' }}>
-                      <td className="px-2 py-1.5 font-bold text-[10px] uppercase" style={isSummary ? { color: '#ffffff' } : { color: 'hsl(var(--sidebar-foreground))' }}>Rocznie</td>
-                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[10px] font-bold" style={isSummary ? { color: '#94a3b8' } : { color: 'hsl(var(--sidebar-foreground) / 0.7)' }}>{formatNum(catYearP)}</td>
-                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={isSummary ? { color: '#ffffff' } : { color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(catYearR)}</td>
-                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={{ color: isSummary ? (catS > 0 ? '#4ade80' : catS < 0 ? '#f87171' : '#ffffff') : catS === 0 ? 'hsl(var(--sidebar-foreground))' : catS > 0 ? '#4ade80' : '#f87171' }}>{formatNum(catS)}</td>
+                    <tr className="font-bold border-t-2" style={{ backgroundColor: isSummary ? 'hsl(var(--sidebar))' : (catHex || 'hsl(var(--sidebar))'), color: 'hsl(var(--sidebar-foreground))', borderColor: 'hsl(var(--sidebar))' }}>
+                      <td className="px-2 py-1.5 font-bold text-[10px] uppercase" style={{ color: 'hsl(var(--sidebar-foreground))' }}>Rocznie</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[10px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground) / 0.7)' }}>{formatNum(catYearP)}</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={{ color: 'hsl(var(--sidebar-foreground))' }}>{formatNum(catYearR)}</td>
+                      <td className="px-1.5 py-1.5 text-right tabular-nums text-[11px] font-bold" style={{ color: catS > 0 ? '#4ade80' : catS < 0 ? '#f87171' : 'hsl(var(--sidebar-foreground))' }}>{formatNum(catS)}</td>
                     </tr>
                   );
                 })()}
@@ -1758,17 +1783,30 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Kolor</label>
-              <div className="grid grid-cols-5 gap-2 mt-2">
-                {CATEGORY_COLORS.map(c => (
-                  <button
-                    key={c.value}
-                    className={`h-8 rounded-md ${c.value} ${newCatColor === c.value ? "ring-2 ring-primary ring-offset-2" : ""}`}
-                    onClick={() => setNewCatColor(c.value)}
-                    title={c.label}
-                    data-testid={`color-${c.label}`}
+              <label className="text-sm font-medium">Kolor tła karty</label>
+              <div className="flex items-center gap-3 mt-2">
+                <div className="grid grid-cols-5 gap-1.5 flex-1">
+                  {CATEGORY_COLORS.map(c => (
+                    <button
+                      key={c.value}
+                      className={`h-7 rounded-md ${getCatBgColor(newCatColor) === c.value ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                      style={{ backgroundColor: c.value }}
+                      onClick={() => setNewCatColor(c.value)}
+                      title={c.label}
+                      data-testid={`color-${c.label}`}
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <label className="text-[10px] text-muted-foreground">Własny</label>
+                  <input
+                    type="color"
+                    value={getCatBgColor(newCatColor)}
+                    onChange={(e) => setNewCatColor(e.target.value)}
+                    className="w-10 h-10 rounded-md border border-border cursor-pointer"
+                    data-testid="new-cat-color-picker"
                   />
-                ))}
+                </div>
               </div>
             </div>
           </div>
@@ -1795,17 +1833,30 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Kolor</label>
-              <div className="grid grid-cols-5 gap-2 mt-2">
-                {CATEGORY_COLORS.map(c => (
-                  <button
-                    key={c.value}
-                    className={`h-8 rounded-md ${c.value} ${editCatColor === c.value ? "ring-2 ring-primary ring-offset-2" : ""}`}
-                    onClick={() => setEditCatColor(c.value)}
-                    title={c.label}
-                    data-testid={`edit-color-${c.label}`}
+              <label className="text-sm font-medium">Kolor tła karty</label>
+              <div className="flex items-center gap-3 mt-2">
+                <div className="grid grid-cols-5 gap-1.5 flex-1">
+                  {CATEGORY_COLORS.map(c => (
+                    <button
+                      key={c.value}
+                      className={`h-7 rounded-md ${getCatBgColor(editCatColor) === c.value ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                      style={{ backgroundColor: c.value }}
+                      onClick={() => setEditCatColor(c.value)}
+                      title={c.label}
+                      data-testid={`edit-color-${c.label}`}
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <label className="text-[10px] text-muted-foreground">Własny</label>
+                  <input
+                    type="color"
+                    value={getCatBgColor(editCatColor)}
+                    onChange={(e) => setEditCatColor(e.target.value)}
+                    className="w-10 h-10 rounded-md border border-border cursor-pointer"
+                    data-testid="edit-color-picker"
                   />
-                ))}
+                </div>
               </div>
             </div>
           </div>
@@ -1823,16 +1874,29 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </DialogHeader>
           <div>
             <label className="text-sm font-medium">Wybierz kolor</label>
-            <div className="grid grid-cols-5 gap-2 mt-3">
-              {CATEGORY_COLORS.map(c => (
-                <button
-                  key={c.value}
-                  className={`h-10 rounded-md ${c.value} ${editEntryColor === c.value ? "ring-2 ring-primary ring-offset-2" : ""} transition-all`}
-                  onClick={() => setEditEntryColor(c.value)}
-                  title={c.label}
-                  data-testid={`entry-color-${c.label}`}
+            <div className="flex items-center gap-3 mt-3">
+              <div className="grid grid-cols-5 gap-2 flex-1">
+                {CATEGORY_COLORS.map(c => (
+                  <button
+                    key={c.value}
+                    className={`h-10 rounded-md ${getCatBgColor(editEntryColor) === c.value ? "ring-2 ring-primary ring-offset-2" : ""} transition-all`}
+                    style={{ backgroundColor: c.value }}
+                    onClick={() => setEditEntryColor(c.value)}
+                    title={c.label}
+                    data-testid={`entry-color-${c.label}`}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <label className="text-[10px] text-muted-foreground">Własny</label>
+                <input
+                  type="color"
+                  value={getCatBgColor(editEntryColor)}
+                  onChange={(e) => setEditEntryColor(e.target.value)}
+                  className="w-12 h-12 rounded-md border border-border cursor-pointer"
+                  data-testid="entry-color-picker"
                 />
-              ))}
+              </div>
             </div>
           </div>
           <DialogFooter>
