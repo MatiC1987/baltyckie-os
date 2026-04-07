@@ -9288,7 +9288,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const ws = wb.addWorksheet(`Koszty ${year}`);
       const MONTHS = ["Sty","Lut","Mar","Kwi","Maj","Cze","Lip","Sie","Wrz","Paź","Lis","Gru"];
       const entryIds = [...new Set(costRows.map(r => r.entryId))];
-      const settingsMap: Record<string, any> = {};
+      const settingsMap: Record<string, { categories?: string[]; colors?: Record<string, string>; entryColor?: string }> = {};
       for (const s of settings) settingsMap[s.entryId] = s;
       for (const entryId of entryIds) {
         const cats = settingsMap[entryId]?.categories as string[] || [...new Set(costRows.filter(r => r.entryId === entryId).map(r => r.category))];

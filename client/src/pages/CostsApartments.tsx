@@ -245,7 +245,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
 
   const [drillLevel, setDrillLevel] = useState<"locations" | "apartments" | "table">("locations");
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-  const [selectedEntry, setSelectedEntry] = useState<CostEntry | null>(null);
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const selectedEntry = useMemo(() => {
+    if (!selectedEntryId) return null;
+    for (const group of costEntries) {
+      const found = group.entries.find(e => e.id === selectedEntryId);
+      if (found) return found;
+    }
+    return null;
+  }, [selectedEntryId, costEntries]);
 
   const [showYoY, setShowYoY] = useState(false);
   const [showBulkCopy, setShowBulkCopy] = useState(false);
@@ -929,10 +937,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         const currentP = getCellValue(entry.id, cat, m, "p");
         if (currentP !== 0) continue;
         let forecastVal = 0;
-        if (forecastMethod === "avg") {
+        if (forecastMethod === "avg" && compareYear !== null) {
+          const compKey = getCellKeyOld(entry.id, cat);
           let total = 0, count = 0;
           for (let pm = 0; pm < 12; pm++) {
-            const v = getCellValue(entry.id, cat, pm, "r");
+            const v = compareData[compKey]?.[pm]?.r || 0;
             if (v > 0) { total += v; count++; }
           }
           forecastVal = count > 0 ? total / count : 0;
@@ -1008,18 +1017,18 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
 
   const navigateToLocation = (loc: string) => {
     setSelectedLocation(loc);
-    setSelectedEntry(null);
+    setSelectedEntryId(null);
     setDrillLevel("apartments");
   };
 
   const navigateToEntry = (entry: CostEntry) => {
-    setSelectedEntry(entry);
+    setSelectedEntryId(entry.id);
     setDrillLevel("table");
   };
 
   const navigateBack = () => {
     if (drillLevel === "table") {
-      setSelectedEntry(null);
+      setSelectedEntryId(null);
       setDrillLevel("apartments");
     } else if (drillLevel === "apartments") {
       setSelectedLocation(null);
@@ -1028,7 +1037,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   };
 
   const navigateHome = () => {
-    setSelectedEntry(null);
+    setSelectedEntryId(null);
     setSelectedLocation(null);
     setDrillLevel("locations");
   };
@@ -1043,7 +1052,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         {selectedLocation && (
           <>
             <ChevronRight className="h-3 w-3" />
-            <button onClick={() => { setSelectedEntry(null); setDrillLevel("apartments"); }} className="hover:text-foreground transition-colors" data-testid="breadcrumb-location">
+            <button onClick={() => { setSelectedEntryId(null); setDrillLevel("apartments"); }} className="hover:text-foreground transition-colors" data-testid="breadcrumb-location">
               {selectedLocation}
             </button>
           </>
@@ -1958,10 +1967,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
             </p>
             <div className="space-y-2">
               <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="forecast-avg">
-                <input type="radio" name="forecast" checked={forecastMethod === "avg"} onChange={() => { setForecastMethod("avg"); setForecastPreview(null); }} />
+                <input type="radio" name="forecast" checked={forecastMethod === "avg"} onChange={() => { setForecastMethod("avg"); setForecastPreview(null); }} disabled={compareYear === null} />
                 <div>
-                  <p className="text-sm font-medium">Średnia roczna</p>
-                  <p className="text-xs text-muted-foreground">Średnia z istniejących danych R bieżącego roku</p>
+                  <p className="text-sm font-medium">Średnia roczna z roku poprzedniego {compareYear !== null ? `(${compareYear})` : ""}</p>
+                  <p className="text-xs text-muted-foreground">{compareYear === null ? "Wybierz rok porównawczy" : `Średnia R z roku ${compareYear}`}</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="forecast-prev">
@@ -1995,7 +2004,18 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                     <tr key={i} className="border-t">
                       <td className="px-2 py-0.5">{item.cat}</td>
                       <td className="px-2 py-0.5">{MONTHS[item.month]}</td>
-                      <td className="px-2 py-0.5 text-right font-medium text-emerald-600">{formatNum(item.newVal)}</td>
+                      <td className="px-2 py-0.5 text-right">
+                        <input
+                          type="number"
+                          className="w-20 text-right text-xs font-medium text-emerald-600 bg-transparent border-b border-emerald-300 focus:outline-none focus:border-emerald-500 px-1"
+                          value={item.newVal}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setForecastPreview(prev => prev ? prev.map((p, j) => j === i ? { ...p, newVal: val } : p) : null);
+                          }}
+                          data-testid={`forecast-preview-input-${i}`}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
