@@ -483,37 +483,42 @@ function LocationSummaryBar({ locationName, forecast, actual }: {
 
   return (
     <div
-      className="mt-3 mx-1 rounded-lg border border-border/50 bg-muted/15 px-4 py-2.5 flex items-center gap-4 flex-wrap"
+      className="mt-4 mx-1 rounded-xl border-2 border-primary/20 bg-gradient-to-r from-primary/5 via-card to-primary/5 px-6 py-4 shadow-sm"
       data-testid={`location-summary-${locationName}`}
     >
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Razem {locationName}</span>
-      <div className="flex items-center gap-4 flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-muted-foreground">Prognoza:</span>
-          <span className="font-bold tabular-nums">{formatNum(forecast)} PLN</span>
+      <div className="flex items-center justify-between gap-6 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-1 rounded-full bg-primary/60" />
+          <span className="text-sm font-bold uppercase tracking-wide">Razem {locationName}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-muted-foreground">Realizacja:</span>
-          <span className="font-bold tabular-nums">{formatNum(actual)} PLN</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-muted-foreground">Saldo:</span>
-          <span className={`font-bold tabular-nums ${deviationColor(saldo)}`}>
-            {saldo >= 0 ? "+" : ""}{formatNum(saldo)} PLN
-          </span>
-          {forecast > 0 && (
-            <span className={`text-[10px] tabular-nums ${deviationColor(saldo)}`}>
-              ({pctStr(actual, forecast)})
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${color.bar}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+        <div className="flex items-center gap-6 flex-wrap">
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Prognoza</p>
+            <p className="text-base font-bold tabular-nums mt-0.5">{formatNum(forecast)} <span className="text-xs text-muted-foreground">PLN</span></p>
           </div>
-          <span className={`text-xs font-bold tabular-nums ${color.text}`}>
-            {forecast > 0 ? `${pct.toFixed(0)}%` : "—"}
-          </span>
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Realizacja</p>
+            <p className="text-base font-bold tabular-nums mt-0.5">{formatNum(actual)} <span className="text-xs text-muted-foreground">PLN</span></p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Saldo</p>
+            <p className={`text-base font-extrabold tabular-nums mt-0.5 ${deviationColor(saldo)}`}>
+              {saldo >= 0 ? "+" : ""}{formatNum(saldo)} <span className="text-xs">PLN</span>
+            </p>
+            {forecast > 0 && (
+              <p className={`text-[10px] tabular-nums font-semibold ${deviationColor(saldo)}`}>
+                {pctStr(actual, forecast)}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1 min-w-[120px]">
+            <div className="h-3 w-full rounded-full bg-muted/60 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${color.bar}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            </div>
+            <span className={`text-sm font-extrabold tabular-nums ${color.text}`}>
+              {forecast > 0 ? `${pct.toFixed(0)}%` : "—"}
+            </span>
+          </div>
         </div>
       </div>
     </div>
