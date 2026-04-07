@@ -1258,10 +1258,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           <CardContent className="p-0 flex-1" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
             <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '60px' }} />
-                <col />
-                <col />
-                <col />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '27.3%' }} />
+                <col style={{ width: '27.3%' }} />
+                <col style={{ width: '27.4%' }} />
               </colgroup>
               <thead>
                 <tr style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.8)' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
@@ -1395,22 +1395,20 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                             }}
                           />
                           <td
-                            className={`group border-b border-border px-1.5 py-1 text-right tabular-nums text-[11px] font-semibold ${saldoColor(saldo)} ${saldoBg(saldo)}
+                            className={`relative group border-b border-border px-1.5 py-1 text-right tabular-nums text-[11px] font-semibold overflow-hidden ${saldoColor(saldo)} ${saldoBg(saldo)}
                               ${isCurrentMo ? "bg-primary/[0.04]" : ""}`}
                           >
-                            <div className="flex items-center justify-end gap-0.5">
-                              {formatNum(saldo)}
-                              {note && (
-                                <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(note); }} className="text-amber-500 hover:text-amber-600 shrink-0" title={note}>
-                                  <MessageSquare className="h-2.5 w-2.5" />
-                                </button>
-                              )}
-                              {!note && (
-                                <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(""); }} className="text-muted-foreground/30 hover:text-muted-foreground/60 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <MessageSquare className="h-2.5 w-2.5" />
-                                </button>
-                              )}
-                            </div>
+                            {formatNum(saldo)}
+                            {note && (
+                              <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(note); }} className="absolute right-0.5 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600" title={note}>
+                                <MessageSquare className="h-2.5 w-2.5" />
+                              </button>
+                            )}
+                            {!note && (
+                              <button onClick={() => { setCellNoteDialog({ entryId: entry.id, category: cat, month: mi }); setCellNoteText(""); }} className="absolute right-0.5 top-1/2 -translate-y-1/2 text-muted-foreground/30 hover:text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <MessageSquare className="h-2.5 w-2.5" />
+                              </button>
+                            )}
                           </td>
                         </>
                       )}
