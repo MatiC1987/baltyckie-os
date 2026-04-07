@@ -249,7 +249,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const selectedEntry = useMemo(() => {
     if (!selectedEntryId) return null;
     for (const group of costEntries) {
-      const found = group.entries.find(e => e.id === selectedEntryId);
+      const found = group.items.find(e => e.id === selectedEntryId);
       if (found) return found;
     }
     return null;
