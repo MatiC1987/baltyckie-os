@@ -9279,7 +9279,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
   app.get('/api/apt-cost-data/export-excel', isAuthenticated, async (req, res) => {
     try {
       const year = Number(req.query.year) || new Date().getFullYear();
-      const costRows = await storage.getAptCostData(year);
+      const filterEntryId = req.query.entryId as string | undefined;
+      const allCostRows = await storage.getAptCostData(year);
+      const costRows = filterEntryId ? allCostRows.filter(r => r.entryId === filterEntryId) : allCostRows;
       const settings = await storage.getAptCostSettings();
       const ExcelJS = (await import('exceljs')).default;
       const wb = new ExcelJS.Workbook();

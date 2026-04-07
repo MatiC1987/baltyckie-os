@@ -150,14 +150,14 @@ type UndoAction = { type: "cell"; key: string; month: number; field: "p" | "r"; 
 
 function TransposedEditableCell({
   value, isEditing, editValue, onStartEdit, onCommitEdit, onCancelEdit, onEditValueChange,
-  isCurrentMonth, className = "", flashKey, onKeyDown, cellRef, note, compareValue,
+  isCurrentMonth, className = "", flashKey, onKeyDown, cellRef, note, compareValue, onCommitAndMoveDown,
 }: {
   value: number; isEditing: boolean; editValue: string;
   onStartEdit: () => void; onCommitEdit: () => void; onCancelEdit: () => void;
   onEditValueChange: (v: string) => void;
   isCurrentMonth?: boolean; className?: string; flashKey?: string;
   onKeyDown?: (e: React.KeyboardEvent) => void; cellRef?: React.Ref<HTMLTableCellElement>;
-  note?: string; compareValue?: number;
+  note?: string; compareValue?: number; onCommitAndMoveDown?: () => void;
 }) {
   const [flash, setFlash] = useState(false);
   const prevFlashKey = useRef(flashKey);
@@ -193,7 +193,7 @@ function TransposedEditableCell({
           onChange={(e) => onEditValueChange(e.target.value)}
           onBlur={onCommitEdit}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); onCommitEdit(); }
+            if (e.key === "Enter") { e.preventDefault(); if (onCommitAndMoveDown) onCommitAndMoveDown(); else onCommitEdit(); }
             if (e.key === "Escape") onCancelEdit();
             if (e.key === "Tab") { e.preventDefault(); onCommitEdit(); }
           }}
@@ -243,6 +243,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const [bulkCopyFields, setBulkCopyFields] = useState<"p" | "r" | "both">("both");
   const [showForecast, setShowForecast] = useState(false);
   const [forecastMethod, setForecastMethod] = useState<"avg" | "prev" | "recent">("avg");
+  const [forecastPreview, setForecastPreview] = useState<Array<{ cat: string; month: number; oldVal: number; newVal: number }> | null>(null);
   const [cellNoteDialog, setCellNoteDialog] = useState<{ entryId: string; category: string; month: number } | null>(null);
   const [cellNoteText, setCellNoteText] = useState("");
   const [savedFlashKeys, setSavedFlashKeys] = useState<Set<string>>(new Set());
@@ -877,8 +878,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   }, [toast, queryClient]);
 
   const handleExcelExport = useCallback(() => {
-    window.open(`/api/apt-cost-data/export-excel?year=${year}`, '_blank');
-  }, [year]);
+    const params = new URLSearchParams({ year: String(year) });
+    if (selectedEntry) params.set('entryId', selectedEntry.id);
+    window.open(`/api/apt-cost-data/export-excel?${params.toString()}`, '_blank');
+  }, [year, selectedEntry]);
 
   const handleBulkCopy = useCallback(() => {
     if (!selectedEntry) return;
@@ -899,11 +902,14 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     toast({ title: "Skopiowano", description: `Dane z ${MONTHS[bulkCopySource]} skopiowane na miesiące ${MONTHS[bulkCopyStart]}–${MONTHS[bulkCopyEnd]}` });
   }, [selectedEntry, bulkCopySource, bulkCopyStart, bulkCopyEnd, bulkCopyFields, getCellValue, handleCellChange, toast]);
 
-  const handleAutoForecast = useCallback(() => {
+  const generateForecastPreview = useCallback(() => {
     if (!selectedEntry) return;
     const entry = selectedEntry;
+    const preview: Array<{ cat: string; month: number; oldVal: number; newVal: number }> = [];
     entry.categories.forEach(cat => {
       for (let m = 0; m < 12; m++) {
+        const currentP = getCellValue(entry.id, cat, m, "p");
+        if (currentP !== 0) continue;
         let forecastVal = 0;
         if (forecastMethod === "avg") {
           let total = 0, count = 0;
@@ -924,13 +930,22 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           forecastVal = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
         }
         if (forecastVal > 0) {
-          handleCellChange(entry.id, cat, m, "p", String(Math.round(forecastVal * 100) / 100));
+          preview.push({ cat, month: m, oldVal: currentP, newVal: Math.round(forecastVal * 100) / 100 });
         }
       }
     });
+    setForecastPreview(preview);
+  }, [selectedEntry, forecastMethod, compareYear, compareData, getCellValue]);
+
+  const handleAutoForecast = useCallback(() => {
+    if (!forecastPreview || !selectedEntry) return;
+    for (const item of forecastPreview) {
+      handleCellChange(selectedEntry.id, item.cat, item.month, "p", String(item.newVal));
+    }
     setShowForecast(false);
-    toast({ title: "Prognoza wygenerowana", description: `Prognoza uzupełniona dla ${entry.name}` });
-  }, [selectedEntry, forecastMethod, compareYear, compareData, getCellValue, handleCellChange, toast]);
+    setForecastPreview(null);
+    toast({ title: "Prognoza wygenerowana", description: `Uzupełniono ${forecastPreview.length} pustych komórek P dla ${selectedEntry.name}` });
+  }, [selectedEntry, forecastPreview, handleCellChange, toast]);
 
   const handleSaveNote = useCallback(async () => {
     if (!cellNoteDialog) return;
@@ -1330,6 +1345,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                             isCurrentMonth={isCurrentMo}
                             className="text-muted-foreground"
                             compareValue={compP || undefined}
+                            flashKey={[...savedFlashKeys].find(k => k.startsWith(`${year}__${entry.id}__${cat}__${mi}__`))}
+                            onCommitAndMoveDown={() => {
+                              commitEdit();
+                              if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "p")), 0);
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === "ArrowDown" && mi < 11) {
                                 e.preventDefault();
@@ -1340,6 +1360,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                                 e.preventDefault();
                                 const prevKey = makeCellKey(entry.id, cat, mi - 1, "p");
                                 startEditing(prevKey);
+                              }
+                              if (e.key === "ArrowRight") {
+                                e.preventDefault();
+                                startEditing(rKey);
                               }
                             }}
                           />
@@ -1355,6 +1379,11 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                             className="font-medium"
                             note={note}
                             compareValue={compR || undefined}
+                            flashKey={[...savedFlashKeys].find(k => k.startsWith(`${year}__${entry.id}__${cat}__${mi}__`))}
+                            onCommitAndMoveDown={() => {
+                              commitEdit();
+                              if (mi < 11) setTimeout(() => startEditing(makeCellKey(entry.id, cat, mi + 1, "r")), 0);
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === "ArrowDown" && mi < 11) {
                                 e.preventDefault();
@@ -1365,6 +1394,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                                 e.preventDefault();
                                 const prevKey = makeCellKey(entry.id, cat, mi - 1, "r");
                                 startEditing(prevKey);
+                              }
+                              if (e.key === "ArrowLeft") {
+                                e.preventDefault();
+                                startEditing(pKey);
                               }
                             }}
                           />
@@ -1905,21 +1938,21 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
             </p>
             <div className="space-y-2">
               <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="forecast-avg">
-                <input type="radio" name="forecast" checked={forecastMethod === "avg"} onChange={() => setForecastMethod("avg")} />
+                <input type="radio" name="forecast" checked={forecastMethod === "avg"} onChange={() => { setForecastMethod("avg"); setForecastPreview(null); }} />
                 <div>
                   <p className="text-sm font-medium">Średnia roczna</p>
                   <p className="text-xs text-muted-foreground">Średnia z istniejących danych R bieżącego roku</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="forecast-prev">
-                <input type="radio" name="forecast" checked={forecastMethod === "prev"} onChange={() => setForecastMethod("prev")} disabled={compareYear === null} />
+                <input type="radio" name="forecast" checked={forecastMethod === "prev"} onChange={() => { setForecastMethod("prev"); setForecastPreview(null); }} disabled={compareYear === null} />
                 <div>
                   <p className="text-sm font-medium">Rok poprzedni {compareYear !== null ? `(${compareYear})` : ""}</p>
                   <p className="text-xs text-muted-foreground">{compareYear === null ? "Wybierz rok porównawczy" : `Kopiuj R z roku ${compareYear} jako P`}</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="forecast-recent">
-                <input type="radio" name="forecast" checked={forecastMethod === "recent"} onChange={() => setForecastMethod("recent")} />
+                <input type="radio" name="forecast" checked={forecastMethod === "recent"} onChange={() => { setForecastMethod("recent"); setForecastPreview(null); }} />
                 <div>
                   <p className="text-sm font-medium">Średnia ostatnich 3 mies.</p>
                   <p className="text-xs text-muted-foreground">Średnia krocząca z 3 poprzednich miesięcy</p>
@@ -1927,9 +1960,38 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               </label>
             </div>
           </div>
+          {forecastPreview && forecastPreview.length > 0 && (
+            <div className="max-h-48 overflow-y-auto border rounded-lg">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50 sticky top-0">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Kategoria</th>
+                    <th className="px-2 py-1 text-left">Miesiąc</th>
+                    <th className="px-2 py-1 text-right">Nowa P</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forecastPreview.map((item, i) => (
+                    <tr key={i} className="border-t">
+                      <td className="px-2 py-0.5">{item.cat}</td>
+                      <td className="px-2 py-0.5">{MONTHS[item.month]}</td>
+                      <td className="px-2 py-0.5 text-right font-medium text-emerald-600">{formatNum(item.newVal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {forecastPreview && forecastPreview.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-2">Brak pustych komórek P do uzupełnienia.</p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowForecast(false)}>Anuluj</Button>
-            <Button onClick={handleAutoForecast} data-testid="button-confirm-forecast">Generuj</Button>
+            <Button variant="outline" onClick={() => { setShowForecast(false); setForecastPreview(null); }}>Anuluj</Button>
+            {!forecastPreview ? (
+              <Button onClick={generateForecastPreview} data-testid="button-preview-forecast">Podgląd</Button>
+            ) : (
+              <Button onClick={handleAutoForecast} disabled={!forecastPreview.length} data-testid="button-confirm-forecast">Zastosuj ({forecastPreview.length})</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
