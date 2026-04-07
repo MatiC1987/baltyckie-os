@@ -246,14 +246,6 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const [drillLevel, setDrillLevel] = useState<"locations" | "apartments" | "table">("locations");
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  const selectedEntry = useMemo(() => {
-    if (!selectedEntryId) return null;
-    for (const group of costEntries) {
-      const found = group.items.find(e => e.id === selectedEntryId);
-      if (found) return found;
-    }
-    return null;
-  }, [selectedEntryId, costEntries]);
 
   const [showYoY, setShowYoY] = useState(false);
   const [showBulkCopy, setShowBulkCopy] = useState(false);
@@ -544,6 +536,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     }
     return entries;
   }, [apartments, sortedLocations, getActiveCategories]);
+
+  const selectedEntry = useMemo(() => {
+    if (!selectedEntryId) return null;
+    for (const group of costEntries) {
+      const found = group.items.find(e => e.id === selectedEntryId);
+      if (found) return found;
+    }
+    return null;
+  }, [selectedEntryId, costEntries]);
 
   const compareData = useMemo(() => {
     if (compareYear === null || !compareCostRows) return {};
