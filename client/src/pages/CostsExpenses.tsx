@@ -1678,7 +1678,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       )}
 
       {drillLevel === "categories" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4" data-testid="grid-categories">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4" data-testid="grid-categories">
           {activeCategories.map(cat => renderCategoryCard(cat))}
           {renderRazemCard("categories")}
         </div>
@@ -1699,7 +1699,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               </>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4" data-testid="grid-items">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4" data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);
