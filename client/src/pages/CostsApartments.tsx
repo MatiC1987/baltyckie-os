@@ -1270,7 +1270,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         </div>
 
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-x-auto" data-testid="table-transposed-costs">
-          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ minWidth: `${200 + cats.length * 200}px` }}>
+          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ minWidth: `${200 + cats.length * 280}px` }}>
             <thead className="sticky top-0 z-20">
               <tr className="bg-muted/80 dark:bg-muted/50">
                 <th className="sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 border-b border-r border-border px-3 py-2 text-left font-bold w-[120px] min-w-[120px]">
@@ -1318,9 +1318,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                 </th>
                 {[...cats, "TOTAL"].map((cat, ci) => (
                   <Fragment key={ci}>
-                    <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[65px] min-w-[65px]">P</th>
-                    <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[65px] min-w-[65px]">R</th>
-                    <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[65px] min-w-[65px]">S</th>
+                    <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[90px] min-w-[90px]">P</th>
+                    <th className="border-b border-r border-border/60 px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[90px] min-w-[90px]">R</th>
+                    <th className="border-b border-r border-border px-1 py-1 text-center font-medium text-muted-foreground text-[10px] w-[90px] min-w-[90px]">S</th>
                   </Fragment>
                 ))}
               </tr>
