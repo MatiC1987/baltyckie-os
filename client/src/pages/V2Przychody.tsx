@@ -501,6 +501,11 @@ function LocationSummaryBar({ locationName, forecast, actual }: {
           <span className={`font-bold tabular-nums ${deviationColor(saldo)}`}>
             {saldo >= 0 ? "+" : ""}{formatNum(saldo)} PLN
           </span>
+          {forecast > 0 && (
+            <span className={`text-[10px] tabular-nums ${deviationColor(saldo)}`}>
+              ({pctStr(actual, forecast)})
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 ml-auto">
           <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
