@@ -9276,6 +9276,45 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     }
   });
 
+  app.get('/api/apt-cost-data/export-excel', isAuthenticated, async (req, res) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const costRows = await storage.getAptCostData(year);
+      const settings = await storage.getAptCostSettings();
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(`Koszty ${year}`);
+      const MONTHS = ["Sty","Lut","Mar","Kwi","Maj","Cze","Lip","Sie","Wrz","Paź","Lis","Gru"];
+      const entryIds = [...new Set(costRows.map(r => r.entryId))];
+      const settingsMap: Record<string, any> = {};
+      for (const s of settings) settingsMap[s.entryId] = s;
+      for (const entryId of entryIds) {
+        const cats = settingsMap[entryId]?.categories as string[] || [...new Set(costRows.filter(r => r.entryId === entryId).map(r => r.category))];
+        const headerRow = ws.addRow([entryId, ...cats.flatMap(c => [`${c} P`, `${c} R`, `${c} S`])]);
+        headerRow.font = { bold: true };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+        for (let m = 0; m < 12; m++) {
+          const vals: (string | number)[] = [MONTHS[m]];
+          for (const cat of cats) {
+            const row = costRows.find(r => r.entryId === entryId && r.category === cat && r.month === m);
+            const p = parseFloat(row?.prognoza ?? '0');
+            const r2 = parseFloat(row?.realized ?? '0');
+            vals.push(p, r2, p - r2);
+          }
+          ws.addRow(vals);
+        }
+        ws.addRow([]);
+      }
+      ws.columns.forEach(col => { col.width = 14; });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=koszty_apartamentow_${year}.xlsx`);
+      await wb.xlsx.write(res);
+      res.end();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/apt-cost-data/:year', isAuthenticated, async (req, res) => {
     try {
       const year = Number(req.params.year) || new Date().getFullYear();

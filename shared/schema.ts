@@ -1177,6 +1177,7 @@ export const aptCostData = pgTable("apt_cost_data", {
   month: integer("month").notNull(),
   prognoza: numeric("prognoza", { precision: 12, scale: 2 }).default("0"),
   realized: numeric("realized", { precision: 12, scale: 2 }).default("0"),
+  note: text("note"),
 }, (t) => [
   uniqueIndex("apt_cost_data_unique").on(t.year, t.entryId, t.category, t.month),
 ]);
