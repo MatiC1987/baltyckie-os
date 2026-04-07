@@ -193,7 +193,10 @@ function ExpandedRevenueTile({ apt, currentMonth, year }: {
   const podPct = yearTotals.actual > 0 ? 100 - najPct : 0;
 
   return (
-    <div className="col-span-full" data-testid={`expanded-tile-${apt.apartmentId}`}>
+    <div
+      className="col-span-full animate-in fade-in slide-in-from-top-2 duration-200"
+      data-testid={`expanded-tile-${apt.apartmentId}`}
+    >
       <Card className="border-primary/30 shadow-md">
         <CardContent className="pt-4 pb-3 px-4">
           <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
