@@ -1083,9 +1083,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     let catYearP = 0, catYearR = 0;
 
     return (
-      <Card key={cat.id} className="overflow-hidden border-sidebar-border" style={{ borderColor: headerBg }} data-testid={`card-category-${cat.id}`}>
-        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '36px' }}>
-          <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
+      <Card key={cat.id} className="overflow-hidden border-sidebar-border flex flex-col" style={{ borderColor: headerBg }} data-testid={`card-category-${cat.id}`}>
+        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '40px' }}>
+          <div className="flex items-center justify-between gap-2" style={{ minHeight: '24px' }}>
             <CardTitle
               className="text-xs font-bold leading-tight cursor-pointer hover:underline"
               style={{ color: '#fff' }}
@@ -1125,8 +1125,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+        <CardContent className="p-0 flex-1 flex flex-col">
+          <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: '22%' }} />
               <col style={{ width: '26%' }} />
@@ -1192,9 +1192,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     );
 
     return (
-      <Card key={`${cat.id}-${idx}`} className="overflow-hidden border-sidebar-border" style={{ borderColor: headerBg }} data-testid={`card-item-${cat.id}-${idx}`}>
-        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '36px' }}>
-          <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
+      <Card key={`${cat.id}-${idx}`} className="overflow-hidden border-sidebar-border flex flex-col" style={{ borderColor: headerBg }} data-testid={`card-item-${cat.id}-${idx}`}>
+        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '40px' }}>
+          <div className="flex items-center justify-between gap-2" style={{ minHeight: '24px' }}>
             {isEditingThisName ? (
               <div className="space-y-0.5 flex-1">
                 <input
@@ -1275,8 +1275,8 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             </DropdownMenu>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+        <CardContent className="p-0 flex-1 flex flex-col">
+          <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: '22%' }} />
               <col style={{ width: '26%' }} />
@@ -1407,16 +1407,16 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     const headerBg = 'hsl(var(--sidebar))';
 
     return (
-      <Card className="overflow-hidden ring-2 ring-sidebar" style={{ borderColor: 'hsl(var(--sidebar))' }} data-testid="card-category-summary">
-        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '36px' }}>
-          <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
+      <Card className="overflow-hidden ring-2 ring-sidebar flex flex-col" style={{ borderColor: 'hsl(var(--sidebar))' }} data-testid="card-category-summary">
+        <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: '#fff', minHeight: '40px' }}>
+          <div className="flex items-center justify-between gap-2" style={{ minHeight: '24px' }}>
             <CardTitle className="text-xs font-bold leading-tight" style={{ color: '#fff' }} data-testid="card-title-summary">
               RAZEM
             </CardTitle>
           </div>
         </CardHeader>
-        <CardContent className="p-0" style={{ backgroundColor: 'hsl(var(--sidebar) / 0.95)' }}>
-          <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+        <CardContent className="p-0 flex-1 flex flex-col" style={{ backgroundColor: 'hsl(var(--sidebar) / 0.95)' }}>
+          <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: '22%' }} />
               <col style={{ width: '26%' }} />
@@ -1678,7 +1678,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       )}
 
       {drillLevel === "categories" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4" data-testid="grid-categories">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-4" data-testid="grid-categories">
           {activeCategories.map(cat => renderCategoryCard(cat))}
           {renderRazemCard("categories")}
         </div>
@@ -1699,7 +1699,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
               </>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4" data-testid="grid-items">
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-4" data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);

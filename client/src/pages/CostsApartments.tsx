@@ -1227,9 +1227,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       const headerBg = isSummary ? 'hsl(var(--sidebar))' : catHex || 'hsl(var(--sidebar))';
       const headerFg = '#ffffff';
       return (
-        <Card className={`overflow-hidden ${isSummary ? "ring-2 ring-sidebar" : "border-sidebar-border"}`} style={{ borderColor: isSummary ? 'hsl(var(--sidebar))' : 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
-          <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: headerFg, minHeight: '36px' }}>
-            <div className="flex items-center justify-between gap-2" style={{ minHeight: '20px' }}>
+        <Card className={`overflow-hidden flex flex-col ${isSummary ? "ring-2 ring-sidebar" : "border-sidebar-border"}`} style={{ borderColor: isSummary ? 'hsl(var(--sidebar))' : 'hsl(var(--sidebar))' }} data-testid={isSummary ? "card-category-summary" : `card-category-${cat.replace(/\s+/g, "-").toLowerCase()}`}>
+          <CardHeader className="px-3 py-2" style={{ backgroundColor: headerBg, color: headerFg, minHeight: '40px' }}>
+            <div className="flex items-center justify-between gap-2" style={{ minHeight: '24px' }}>
               <CardTitle className="text-xs font-bold leading-tight" style={{ color: headerFg }} data-testid={isSummary ? "card-title-summary" : `card-title-${cat}`}>
                 {isSummary ? "RAZEM" : cat}
               </CardTitle>
@@ -1255,8 +1255,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
               )}
             </div>
           </CardHeader>
-          <CardContent className="p-0" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
-            <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+          <CardContent className="p-0 flex-1 flex flex-col" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
+            <table className="w-full text-[11px] sm:text-xs border-collapse flex-1" style={{ tableLayout: 'fixed' }}>
               <thead>
 
                 <colgroup>
@@ -1504,7 +1504,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3" data-testid="category-cards-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3" data-testid="category-cards-grid">
           {cats.map((cat) => (
             <Fragment key={cat}>
               {renderCategoryCard(cat)}
