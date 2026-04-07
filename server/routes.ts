@@ -12604,6 +12604,158 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post("/api/hotres/import-csv", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: "Nie przesłano pliku CSV" });
+      }
+
+      const csvContent = req.file.buffer.toString("utf-8");
+      const { parseHotResCsv } = await import("./hotres");
+      const parsed = parseHotResCsv(csvContent);
+
+      if (parsed.length === 0) {
+        return res.json({
+          success: false,
+          message: "Nie znaleziono rezerwacji w pliku CSV. Sprawdź format pliku (nagłówki kolumn).",
+          imported: 0,
+          skipped: 0,
+        });
+      }
+
+      const apartments = await storage.getApartments();
+      const apartmentMap = new Map(apartments.map(a => [a.name.trim().toLowerCase(), a.id]));
+      const hotresNameMap = new Map(apartments.filter(a => a.hotresName).map(a => [a.hotresName!.trim().toLowerCase(), a.id]));
+
+      let imported = 0;
+      let updated = 0;
+      let skipped = 0;
+      let newApartments = 0;
+      const log: string[] = [];
+
+      log.push(`Znaleziono ${parsed.length} rezerwacji w pliku CSV`);
+
+      for (const hr of parsed) {
+        if (!hr.startDate || !hr.endDate) {
+          skipped++;
+          log.push(`Pominięto rezerwację ${hr.reservationNumber}: brak dat`);
+          continue;
+        }
+
+        const resolvedAptIds: number[] = [];
+        if (hr.apartmentName) {
+          const aptNames = hr.apartmentName.split(/[,+\/]/).map(s => s.trim()).filter(Boolean);
+          for (const aptName of aptNames) {
+            const key = aptName.toLowerCase();
+            let foundId = hotresNameMap.get(key) || apartmentMap.get(key);
+            if (!foundId) {
+              const apt = await storage.createApartment({
+                name: aptName,
+                location: "",
+                address: "",
+                ownerName: "",
+                active: true,
+              });
+              apartmentMap.set(key, apt.id);
+              apartments.push(apt);
+              foundId = apt.id;
+              newApartments++;
+              log.push(`Utworzono apartament: ${aptName}`);
+            }
+            if (!resolvedAptIds.includes(foundId)) {
+              resolvedAptIds.push(foundId);
+            }
+          }
+        }
+
+        const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
+        const isGroupReservation = resolvedAptIds.length > 1;
+
+        let totalCleaningFee = 0;
+        for (const aptId of resolvedAptIds) {
+          const apt = apartments.find(a => a.id === aptId);
+          if (apt && apt.cleaningFee) {
+            totalCleaningFee += Number(apt.cleaningFee);
+          }
+        }
+        const basePrice = Number(hr.price) || 0;
+        const adjustedPrice = (basePrice + totalCleaningFee).toFixed(2);
+        const cleaningSurcharge = totalCleaningFee.toFixed(2);
+        if (totalCleaningFee > 0) {
+          log.push(`Rez. ${hr.reservationNumber}: doliczono sprzątanie ${totalCleaningFee.toFixed(2)} zł (${basePrice.toFixed(2)} → ${adjustedPrice})`);
+        }
+
+        const existing = await storage.getReservationByNumber(hr.reservationNumber);
+        if (existing) {
+          await storage.updateReservation(existing.id, {
+            apartmentId: primaryAptId,
+            apartmentIds: isGroupReservation ? resolvedAptIds : null,
+            startDate: hr.startDate,
+            endDate: hr.endDate,
+            guestName: hr.guestName,
+            price: adjustedPrice,
+            prepayment: hr.prepayment || "0",
+            paidAmount: hr.paidAmount || "0",
+            surcharge: cleaningSurcharge,
+            status: hr.status,
+            ...(hr.source && { source: hr.source }),
+          });
+          updated++;
+          continue;
+        }
+
+        await storage.createReservation({
+          reservationNumber: hr.reservationNumber,
+          apartmentId: primaryAptId,
+          apartmentIds: isGroupReservation ? resolvedAptIds : null,
+          addDate: hr.addDate || null,
+          startDate: hr.startDate,
+          endDate: hr.endDate,
+          guestName: hr.guestName,
+          price: adjustedPrice,
+          prepayment: hr.prepayment || "0",
+          paidAmount: hr.paidAmount || "0",
+          surcharge: cleaningSurcharge,
+          status: hr.status,
+          ...(hr.source && { source: hr.source }),
+        });
+        imported++;
+        if (isGroupReservation) {
+          const aptNamesList = resolvedAptIds.map(id => {
+            const apt = apartments.find(a => a.id === id);
+            return apt?.name || `ID:${id}`;
+          }).join(", ");
+          log.push(`Rezerwacja grupowa ${hr.reservationNumber}: ${aptNamesList}`);
+        }
+      }
+
+      if (updated > 0) {
+        log.push(`Zaktualizowano ${updated} istniejących rezerwacji`);
+      }
+      log.push(`Podsumowanie: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}, nowe apartamenty=${newApartments}`);
+
+      await storage.saveImportMetadata({
+        importType: 'hotres_csv',
+        recordsImported: imported,
+        recordsUpdated: updated,
+        recordsSkipped: skipped,
+        details: `Plik CSV: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`,
+      });
+
+      res.json({
+        success: true,
+        message: `Import CSV HotRes: ${imported} nowych, ${updated} zaktualizowanych${skipped > 0 ? `, ${skipped} pominiętych` : ""}`,
+        imported,
+        updated,
+        skipped,
+        newApartments,
+        log,
+      });
+    } catch (e: any) {
+      console.error("HotRes CSV import error:", e);
+      res.status(500).json({ success: false, message: `Błąd importu CSV: ${e.message}` });
+    }
+  });
 
   return httpServer;
 }
