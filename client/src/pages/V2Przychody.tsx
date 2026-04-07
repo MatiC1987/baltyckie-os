@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ChevronDown, ChevronRight, ChevronUp, Copy, Sparkles, Thermometer, CalendarClock } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Sparkles, Thermometer, CalendarClock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -154,10 +154,11 @@ function progressColor(pct: number): string {
   return "bg-orange-500";
 }
 
-function ExpandedRevenueTile({ apt, currentMonth, year }: {
+function ExpandedRevenueTile({ apt, currentMonth, year, onCollapse }: {
   apt: AptRevenueData;
   currentMonth: number;
   year: number;
+  onCollapse: () => void;
 }) {
   const [showR1, setShowR1] = useState(false);
 
@@ -200,7 +201,11 @@ function ExpandedRevenueTile({ apt, currentMonth, year }: {
       <Card className="border-primary/30 shadow-md">
         <CardContent className="pt-4 pb-3 px-4">
           <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
-            <div>
+            <div
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={onCollapse}
+              data-testid={`collapse-expanded-${apt.apartmentId}`}
+            >
               <p className="text-sm font-bold">{apt.apartmentName}</p>
               <p className="text-lg font-bold tabular-nums mt-0.5">{formatNum(yearTotals.actual)} PLN</p>
               <div className="flex items-center gap-3 mt-1">
@@ -406,6 +411,7 @@ function LocationGroup({ locationName, apartments, expandedAptId, onApartmentCli
                     apt={apt}
                     currentMonth={year === currentYear ? currentMonth : -1}
                     year={year}
+                    onCollapse={() => onApartmentClick?.(apt.apartmentId)}
                   />
                 )}
               </Fragment>
