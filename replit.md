@@ -54,3 +54,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 *   **jsonwebtoken:** JWT-based authentication for Recepcja panel.
 *   **web-push:** Push notification delivery.
 *   **GoCardless Bank Account Data API:** Automatic bank transaction fetching via PSD2/PolishAPI.
+
+## Key Pages & Routes
+*   `/konta-firmowe` — **Konta Firmowe** page: Full bank transaction history per account with tabs (Pekao SA / Santander). Features: infinite scroll (30 per load), sticky table headers, compact rows, summary cards (balance, income/expense, pending count), date filters (this month/last month/quarter/year/all), text search, cost status filter. Inline cost assignment and skip from expanded transaction rows. After CSV import in `/import-bankowy`, user is redirected here with `?status=pending`. Component: `client/src/pages/CompanyAccounts.tsx`. Backend: `GET /api/bank-transactions/history` with accountId, dateFrom, dateTo, search, costStatus, offset, limit params.
+*   Auto-balance after import: `POST /api/bank-transactions/bulk` now creates an `account_snapshot` from the latest transaction's balance with note "Import bankowy".

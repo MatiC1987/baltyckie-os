@@ -487,6 +487,15 @@ export interface IStorage {
   createBankTransactionsBulk(data: InsertBankTransaction[]): Promise<BankTransaction[]>;
   updateBankTransaction(id: number, data: Partial<InsertBankTransaction>): Promise<BankTransaction>;
   checkDuplicateTransactions(accountId: number, items: { date: string; amount: string; description: string }[]): Promise<{ date: string; amount: string; description: string; existingId: number }[]>;
+  getBankTransactionHistory(params: {
+    accountId: number;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    costStatus?: "all" | "categorized" | "skipped" | "pending";
+    offset?: number;
+    limit?: number;
+  }): Promise<{ transactions: (BankTransaction & { statementFileName?: string })[]; total: number }>;
 
   // Bank Mapping Rules
   getBankMappingRules(): Promise<BankMappingRule[]>;
@@ -759,9 +768,9 @@ export class DatabaseStorage implements IStorage {
 
   async getSnapshots(accountId?: number): Promise<AccountSnapshot[]> {
     if (accountId) {
-      return await db.select().from(accountSnapshots).where(eq(accountSnapshots.accountId, accountId)).orderBy(desc(accountSnapshots.date));
+      return await db.select().from(accountSnapshots).where(eq(accountSnapshots.accountId, accountId)).orderBy(desc(accountSnapshots.date), desc(accountSnapshots.id));
     }
-    return await db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.date));
+    return await db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.date), desc(accountSnapshots.id));
   }
 
   async createSnapshot(snapshot: InsertAccountSnapshot): Promise<AccountSnapshot> {
@@ -2421,6 +2430,65 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return duplicates;
+  }
+
+  async getBankTransactionHistory(params: {
+    accountId: number;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    costStatus?: "all" | "categorized" | "skipped" | "pending";
+    offset?: number;
+    limit?: number;
+  }): Promise<{ transactions: (BankTransaction & { statementFileName?: string })[]; total: number }> {
+    const conditions: SQL[] = [eq(bankTransactions.accountId, params.accountId)];
+    if (params.dateFrom) conditions.push(gte(bankTransactions.date, params.dateFrom));
+    if (params.dateTo) conditions.push(lte(bankTransactions.date, params.dateTo));
+    if (params.search) {
+      const searchPattern = `%${params.search}%`;
+      conditions.push(or(
+        sql`${bankTransactions.description} ILIKE ${searchPattern}`,
+        sql`${bankTransactions.counterparty} ILIKE ${searchPattern}`
+      )!);
+    }
+    if (params.costStatus === "categorized") {
+      conditions.push(eq(bankTransactions.costImported, true));
+    } else if (params.costStatus === "skipped") {
+      conditions.push(eq(bankTransactions.costSkipped, true));
+    } else if (params.costStatus === "pending") {
+      conditions.push(or(
+        eq(bankTransactions.costImported, false),
+        isNull(bankTransactions.costImported)
+      )!);
+      conditions.push(or(
+        eq(bankTransactions.costSkipped, false),
+        isNull(bankTransactions.costSkipped)
+      )!);
+    }
+
+    const whereClause = and(...conditions)!;
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(bankTransactions)
+      .where(whereClause);
+
+    const rows = await db.select({
+      transaction: bankTransactions,
+      statementFileName: bankStatements.fileName,
+    })
+      .from(bankTransactions)
+      .leftJoin(bankStatements, eq(bankTransactions.statementId, bankStatements.id))
+      .where(whereClause)
+      .orderBy(desc(bankTransactions.date), desc(bankTransactions.id))
+      .offset(params.offset || 0)
+      .limit(params.limit || 30);
+
+    const transactions = rows.map(r => ({
+      ...r.transaction,
+      statementFileName: r.statementFileName || undefined,
+    }));
+
+    return { transactions, total: countResult?.count || 0 };
   }
 
   // Bank Mapping Rules

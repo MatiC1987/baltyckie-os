@@ -11353,9 +11353,83 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     }
   });
 
+  app.get("/api/bank-transactions/history", async (req, res) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+      if (!accountId) return res.status(400).json({ message: "Brak accountId" });
+      const result = await storage.getBankTransactionHistory({
+        accountId,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        search: req.query.search as string | undefined,
+        costStatus: (req.query.costStatus as any) || "all",
+        offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 30,
+      });
+
+      const snapshots = await storage.getSnapshots(accountId);
+      const latestSnapshot = snapshots[0];
+      const statements = await storage.getBankStatements();
+      const accountStatements = statements.filter(s => s.accountId === accountId);
+      const lastImport = accountStatements[0];
+
+      const allTxResult = await storage.getBankTransactionHistory({
+        accountId,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        offset: 0,
+        limit: 999999,
+      });
+      let totalIncome = 0;
+      let totalExpense = 0;
+      let pendingCount = 0;
+      for (const tx of allTxResult.transactions) {
+        const amt = Number(tx.amount);
+        if (amt >= 0) totalIncome += amt;
+        else totalExpense += amt;
+        if (!tx.costImported && !tx.costSkipped) pendingCount++;
+      }
+
+      res.json({
+        ...result,
+        summary: {
+          currentBalance: latestSnapshot?.balance || "0",
+          lastImportDate: lastImport?.importDate || null,
+          lastImportFileName: lastImport?.fileName || null,
+          totalIncome: totalIncome.toFixed(2),
+          totalExpense: totalExpense.toFixed(2),
+          pendingCount,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/bank-transactions/bulk", async (req, res) => {
     try {
       const transactions = await storage.createBankTransactionsBulk(req.body);
+
+      if (transactions.length > 0) {
+        const lastTx = transactions.reduce((latest, tx) => {
+          if (!latest) return tx;
+          if ((tx.date || "") > (latest.date || "")) return tx;
+          if ((tx.date || "") === (latest.date || "") && tx.id > latest.id) return tx;
+          return latest;
+        }, transactions[0]);
+
+        if (lastTx.balance && lastTx.accountId) {
+          try {
+            await storage.createSnapshot({
+              accountId: lastTx.accountId,
+              date: lastTx.date,
+              balance: lastTx.balance,
+              notes: "Import bankowy",
+            });
+          } catch {}
+        }
+      }
+
       res.json(transactions);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

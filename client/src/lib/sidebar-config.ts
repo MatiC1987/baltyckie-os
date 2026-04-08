@@ -136,13 +136,14 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
   "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
   "sprawy-sadowe": { id: "sprawy-sadowe", href: "/sprawy-sadowe", label: "Sprawy sądowe", iconName: "Gavel" },
+  "konta-firmowe": { id: "konta-firmowe", href: "/konta-firmowe", label: "Konta firmowe", iconName: "Landmark" },
 };
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
   { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "customers", "podnajem"], color: "cyan" },
   { id: "nieruchomosci", title: "NIERUCHOMOŚCI", itemIds: ["apartments", "owners"], color: "orange" },
-  { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "sprawy-sadowe"], color: "emerald" },
+  { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "konta-firmowe", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "sprawy-sadowe"], color: "emerald" },
   { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy"], color: "pink" },
   { id: "analityka", title: "ANALITYKA", itemIds: ["occupancy", "profitability", "year-comparison", "apartment-comparison", "price-seasonality", "source-comparison"], color: "blue" },
 ];

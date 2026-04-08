@@ -69,7 +69,7 @@ import {
   Ban,
   CheckCircle2,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import type { Account, BankStatement, BankTransaction, BankMappingRule, GocardlessConnection } from "@shared/schema";
 
 interface AssignmentTarget {
@@ -222,6 +222,7 @@ function saveRules(rules: CategorizationRule[]) {
 
 export default function BankStatementImport() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -368,8 +369,10 @@ export default function BankStatementImport() {
       toast({ title: "Import zakończony", description: `Zaimportowano ${imported} transakcji` });
       setParsedTransactions([]);
       setShowPreview(false);
-      setSelectedAccountId("");
       queryClient.invalidateQueries({ queryKey: ["/api/bank-statements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions/history"] });
+      navigate("/konta-firmowe?status=pending");
     },
     onError: (err: Error) => {
       toast({ title: "Błąd importu", description: err.message, variant: "destructive" });
