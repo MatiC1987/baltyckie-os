@@ -1367,10 +1367,20 @@ export default function Subleases() {
     if (!revenueData) return monthNames.map((m, i) => ({ name: m, przychod: 0 }));
     const monthTotals: number[] = new Array(12).fill(0);
     for (const aptId of Object.keys(revenueData)) {
+      if (aptId === '_checksum') continue;
       const months = revenueData[aptId];
+      if (!months || typeof months !== 'object') continue;
       for (const mStr of Object.keys(months)) {
         const m = Number(mStr);
+        if (isNaN(m) || m < 0 || m > 11) continue;
         monthTotals[m] += months[mStr].podnajem || 0;
+      }
+    }
+    const checksum = (revenueData as any)._checksum;
+    if (checksum) {
+      const computedTotal = monthTotals.reduce((a, b) => a + b, 0);
+      if (Math.abs(computedTotal - checksum.totalPodnajem) > 1) {
+        console.warn(`[Podnajem] Rozbieżność sum: wykres=${Math.round(computedTotal)}, baza=${checksum.totalPodnajem}`);
       }
     }
     return monthNames.map((name, i) => ({ name, przychod: Math.round(monthTotals[i]) }));
@@ -2287,39 +2297,39 @@ export default function Subleases() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("tenant")}>
+                        <TableHead className="cursor-pointer select-none min-w-[180px]" onClick={() => handleSort("tenant")}>
                           <div className="flex items-center">Najemca<SortIcon column="tenant" /></div>
                         </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("type")}>
+                        <TableHead className="cursor-pointer select-none min-w-[70px]" onClick={() => handleSort("type")}>
                           <div className="flex items-center">Typ<SortIcon column="type" /></div>
                         </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("apartment")}>
+                        <TableHead className="cursor-pointer select-none min-w-[160px]" onClick={() => handleSort("apartment")}>
                           <div className="flex items-center">Apartament<SortIcon column="apartment" /></div>
                         </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("startDate")}>
+                        <TableHead className="cursor-pointer select-none min-w-[110px]" onClick={() => handleSort("startDate")}>
                           <div className="flex items-center">Od<SortIcon column="startDate" /></div>
                         </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("endDate")}>
+                        <TableHead className="cursor-pointer select-none min-w-[110px]" onClick={() => handleSort("endDate")}>
                           <div className="flex items-center">Do<SortIcon column="endDate" /></div>
                         </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("rent")}>
+                        <TableHead className="cursor-pointer select-none min-w-[120px]" onClick={() => handleSort("rent")}>
                           <div className="flex items-center">Czynsz<SortIcon column="rent" /></div>
                         </TableHead>
-                        <TableHead>Załączniki</TableHead>
+                        <TableHead className="min-w-[120px]">Załączniki</TableHead>
                         <TableHead className="w-[100px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {sortList(activeList).map((s) => (
-                        <TableRow key={s.id} className="cursor-pointer" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
-                          <TableCell className="font-medium">
+                        <TableRow key={s.id} className="cursor-pointer h-[52px]" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
+                          <TableCell className="font-medium py-3">
                             <div className="flex items-center gap-2">
-                              {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
-                              {getTenantName(s)}
+                              {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                              <span className="truncate">{getTenantName(s)}</span>
                             </div>
                           </TableCell>
-                          <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
-                          <TableCell>
+                          <TableCell className="py-3"><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
+                          <TableCell className="py-3">
                             <div className="flex flex-wrap gap-1">
                               {resolveCurrentApartmentIds(s).map(id => {
                                 const apt = apartments.find(a => a.id === id);
@@ -2328,9 +2338,9 @@ export default function Subleases() {
                               {resolveCurrentApartmentIds(s).length === 0 && "—"}
                             </div>
                           </TableCell>
-                          <TableCell className="text-sm">{s.startDate}</TableCell>
-                          <TableCell className="text-sm">{s.endDate}</TableCell>
-                          <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
+                          <TableCell className="text-sm py-3 tabular-nums">{s.startDate}</TableCell>
+                          <TableCell className="text-sm py-3 tabular-nums">{s.endDate}</TableCell>
+                          <TableCell className="py-3 tabular-nums font-medium">{s.rentAmount ? `${Number(s.rentAmount).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN` : "—"}</TableCell>
                           <TableCell>
                             {(() => {
                               const atts = allAttachments.filter(a => a.subleaseId === s.id);
@@ -2413,27 +2423,27 @@ export default function Subleases() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Najemca</TableHead>
-                          <TableHead>Typ</TableHead>
-                          <TableHead>Apartament</TableHead>
-                          <TableHead>Od</TableHead>
-                          <TableHead>Do</TableHead>
-                          <TableHead>Czynsz</TableHead>
-                          <TableHead>Załączniki</TableHead>
+                          <TableHead className="min-w-[180px]">Najemca</TableHead>
+                          <TableHead className="min-w-[70px]">Typ</TableHead>
+                          <TableHead className="min-w-[160px]">Apartament</TableHead>
+                          <TableHead className="min-w-[110px]">Od</TableHead>
+                          <TableHead className="min-w-[110px]">Do</TableHead>
+                          <TableHead className="min-w-[120px]">Czynsz</TableHead>
+                          <TableHead className="min-w-[120px]">Załączniki</TableHead>
                           <TableHead className="w-[100px]"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {sortList(archiveList).map((s) => (
-                          <TableRow key={s.id} className="cursor-pointer opacity-70" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
-                            <TableCell className="font-medium">
+                          <TableRow key={s.id} className="cursor-pointer opacity-70 h-[52px]" onClick={() => openEdit(s)} data-testid={`row-sublease-${s.id}`}>
+                            <TableCell className="font-medium py-3">
                               <div className="flex items-center gap-2">
-                                {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
-                                {getTenantName(s)}
+                                {s.tenantType === "firma" ? <Briefcase className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                                <span className="truncate">{getTenantName(s)}</span>
                               </div>
                             </TableCell>
-                            <TableCell><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
-                            <TableCell>
+                            <TableCell className="py-3"><Badge variant="outline" className="text-xs">{s.tenantType === "firma" ? "Firma" : "Osoba"}</Badge></TableCell>
+                            <TableCell className="py-3">
                               <div className="flex flex-wrap gap-1">
                                 {resolveCurrentApartmentIds(s).map(id => {
                                   const apt = apartments.find(a => a.id === id);
@@ -2442,9 +2452,9 @@ export default function Subleases() {
                                 {resolveCurrentApartmentIds(s).length === 0 && "—"}
                               </div>
                             </TableCell>
-                            <TableCell className="text-sm">{s.startDate}</TableCell>
-                            <TableCell className="text-sm">{s.endDate}</TableCell>
-                            <TableCell>{s.rentAmount ? `${Number(s.rentAmount).toFixed(2)} PLN` : "—"}</TableCell>
+                            <TableCell className="text-sm py-3 tabular-nums">{s.startDate}</TableCell>
+                            <TableCell className="text-sm py-3 tabular-nums">{s.endDate}</TableCell>
+                            <TableCell className="py-3 tabular-nums font-medium">{s.rentAmount ? `${Number(s.rentAmount).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN` : "—"}</TableCell>
                             <TableCell>
                               {(() => {
                                 const atts = allAttachments.filter(a => a.subleaseId === s.id);

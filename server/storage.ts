@@ -227,6 +227,7 @@ export interface IStorage {
   getSubleaseApartmentChanges(subleaseId: number): Promise<SubleaseApartmentChange[]>;
   createSubleaseApartmentChange(change: InsertSubleaseApartmentChange): Promise<SubleaseApartmentChange>;
   deleteSubleaseApartmentChange(id: number): Promise<void>;
+  getSubleasePaymentsTotalByYear(year: number): Promise<{ total: number; byMonth: Record<number, number> }>;
 
   // Sublease Attachments
   getSubleaseAttachments(subleaseId: number): Promise<SubleaseAttachment[]>;
@@ -1214,6 +1215,34 @@ export class DatabaseStorage implements IStorage {
 
   async getSubleaseApartmentChanges(subleaseId: number): Promise<SubleaseApartmentChange[]> {
     return db.select().from(subleaseApartmentChanges).where(eq(subleaseApartmentChanges.subleaseId, subleaseId)).orderBy(subleaseApartmentChanges.changeDate);
+  }
+
+  async getSubleasePaymentsTotalByYear(year: number): Promise<{ total: number; byMonth: Record<number, number> }> {
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+    const rows = await db.select({
+      month: sql<number>`EXTRACT(MONTH FROM ${subleasePayments.dueDate}::date)::int`,
+      total: sql<string>`COALESCE(SUM(${subleasePayments.amount}), 0)`,
+    })
+      .from(subleasePayments)
+      .where(
+        and(
+          gte(subleasePayments.dueDate, startDate),
+          lte(subleasePayments.dueDate, endDate),
+          sql`LOWER(COALESCE(${subleasePayments.category}, '')) != 'kaucja'`
+        )
+      )
+      .groupBy(sql`EXTRACT(MONTH FROM ${subleasePayments.dueDate}::date)`);
+
+    let total = 0;
+    const byMonth: Record<number, number> = {};
+    for (const r of rows) {
+      const m = r.month - 1;
+      const amt = Number(r.total) || 0;
+      byMonth[m] = amt;
+      total += amt;
+    }
+    return { total, byMonth };
   }
 
   async createSubleaseApartmentChange(change: InsertSubleaseApartmentChange): Promise<SubleaseApartmentChange> {

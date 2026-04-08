@@ -1128,10 +1128,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <CardContent className="p-0 flex-1">
           <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: '18%' }} />
-              <col style={{ width: '27.3%' }} />
-              <col style={{ width: '27.3%' }} />
-              <col style={{ width: '27.4%' }} />
+              <col style={{ width: '65px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
             </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
@@ -1279,10 +1279,10 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         <CardContent className="p-0 flex-1">
           <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: '18%' }} />
-              <col style={{ width: '27.3%' }} />
-              <col style={{ width: '27.3%' }} />
-              <col style={{ width: '27.4%' }} />
+              <col style={{ width: '65px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
+              <col style={{ width: '80px' }} />
             </colgroup>
             <thead>
               <tr style={{ backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
@@ -1656,7 +1656,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       {drillLevel === "categories" ? (
         <>
           {renderSummaryTiles("categories")}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 380px))', justifyContent: 'center' }} data-testid="grid-categories">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(325px, 380px))', justifyContent: 'center' }} data-testid="grid-categories">
             {activeCategories.map(cat => renderCategoryCard(cat))}
           </div>
         </>
@@ -1678,7 +1678,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
             )}
           </div>
           {renderSummaryTiles("items")}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 380px))', justifyContent: 'center' }} data-testid="grid-items">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(325px, 380px))', justifyContent: 'center' }} data-testid="grid-items">
             {selectedCategory?.items.map((item, idx) => {
               if (item.archived) return null;
               return renderItemCard(selectedCategory, item, idx);

@@ -1610,37 +1610,10 @@ export async function registerRoutes(
       }
     }
 
-    const allChangesRaw = await storage.getAllSubleaseApartmentChanges();
-    const allApartmentChanges: Record<number, any[]> = {};
-    for (const ch of allChangesRaw) {
-      if (!allApartmentChanges[ch.subleaseId]) allApartmentChanges[ch.subleaseId] = [];
-      allApartmentChanges[ch.subleaseId].push(ch);
-    }
-
-    const resolveAptIds = (s: any, dueDate: string, paymentAptId: number | null): number[] => {
-      if (paymentAptId) return [paymentAptId];
-      const baseIds = s.apartmentIds && s.apartmentIds.length > 0
-        ? [...s.apartmentIds]
-        : (s.apartmentId ? [s.apartmentId] : []);
-      const changes = allApartmentChanges[s.id] || [];
-      const resolved = baseIds.map((id: number) => {
-        let currentId = id;
-        for (const ch of changes) {
-          if (ch.oldApartmentId === currentId && dueDate >= ch.changeDate) {
-            currentId = ch.newApartmentId;
-          }
-        }
-        return currentId;
-      });
-      return resolved;
-    };
-
     for (const s of subleases) {
-      const aptIds = s.apartmentIds && s.apartmentIds.length > 0
+      const subleaseAptIds = s.apartmentIds && s.apartmentIds.length > 0
         ? s.apartmentIds
         : (s.apartmentId ? [s.apartmentId] : []);
-
-      if (aptIds.length === 0) continue;
 
       const payments = subleasePaymentsAll[s.id] || [];
       for (const p of payments) {
@@ -1650,20 +1623,22 @@ export async function registerRoutes(
         if (pd.getFullYear() !== year) continue;
         const month = pd.getMonth();
         const amount = Number(p.amount) || 0;
-        const payAptIds = resolveAptIds(s, p.dueDate, p.apartmentId);
+        const paymentAptIds = p.apartmentId ? [p.apartmentId] : subleaseAptIds;
 
-        for (const aptId of payAptIds) {
+        for (const aptId of paymentAptIds) {
           if (!aptId) continue;
           initMonth(aptId, month);
-          revenueData[aptId][month].podnajem += amount / payAptIds.length;
+          revenueData[aptId][month].podnajem += paymentAptIds.length > 0 ? amount / paymentAptIds.length : amount;
           if (p.status === "do_oplacenia") {
-            revenueData[aptId][month].doplaty_podnajem += amount / payAptIds.length;
+            revenueData[aptId][month].doplaty_podnajem += paymentAptIds.length > 0 ? amount / paymentAptIds.length : amount;
           }
         }
       }
     }
 
-    res.json(revenueData);
+    const checksumData = await storage.getSubleasePaymentsTotalByYear(year);
+
+    res.json({ ...revenueData, _checksum: { totalPodnajem: checksumData.total, byMonth: checksumData.byMonth } });
   });
 
   app.get("/api/costs", isAuthenticated, async (req, res) => {

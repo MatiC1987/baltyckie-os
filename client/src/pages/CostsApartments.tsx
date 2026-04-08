@@ -1258,10 +1258,10 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           <CardContent className="p-0 flex-1" style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.95)' } : undefined}>
             <table className="w-full text-[11px] sm:text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '18%' }} />
-                <col style={{ width: '27.3%' }} />
-                <col style={{ width: '27.3%' }} />
-                <col style={{ width: '27.4%' }} />
+                <col style={{ width: '65px' }} />
+                <col style={{ width: '80px' }} />
+                <col style={{ width: '80px' }} />
+                <col style={{ width: '80px' }} />
               </colgroup>
               <thead>
                 <tr style={isSummary ? { backgroundColor: 'hsl(var(--sidebar) / 0.8)' } : { backgroundColor: 'hsl(var(--sidebar) / 0.08)' }}>
@@ -1553,7 +1553,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           );
         })()}
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 380px))', justifyContent: 'center' }} data-testid="category-cards-grid">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(325px, 380px))', justifyContent: 'center' }} data-testid="category-cards-grid">
           {cats.map((cat) => (
             <Fragment key={cat}>
               {renderCategoryCard(cat)}
