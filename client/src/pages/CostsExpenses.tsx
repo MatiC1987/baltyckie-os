@@ -298,7 +298,7 @@ function TransposedEditableCell({
 }) {
   return (
     <td
-      className={`group/cell border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums relative select-none
+      className={`group/cell border-b border-r border-border/60 px-1.5 py-1 text-right tabular-nums relative select-none overflow-hidden
         ${isCurrentMonth ? "bg-primary/[0.04]" : ""}
         ${isServerManaged ? "bg-blue-50/40 dark:bg-blue-950/20" : ""}
         ${className}`}
@@ -325,19 +325,19 @@ function TransposedEditableCell({
           }}
         />
       ) : (
-        <div className="flex items-center gap-0.5">
+        <>
           {onFillToEnd && value !== 0 && (
             <button
               onClick={(e) => { e.stopPropagation(); onFillToEnd(); }}
-              className="opacity-0 group-hover/cell:opacity-100 transition-opacity text-muted-foreground/40 hover:text-primary shrink-0"
+              className="absolute left-0.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 transition-opacity text-muted-foreground/40 hover:text-primary"
               title="Wypełnij do końca roku"
               data-testid="button-fill-to-end"
             >
               <ArrowDown className="h-2.5 w-2.5" />
             </button>
           )}
-          <span className="min-h-[18px] cursor-cell flex-1">{formatNum(value)}</span>
-        </div>
+          <span className="min-h-[18px] cursor-cell">{formatNum(value)}</span>
+        </>
       )}
     </td>
   );
