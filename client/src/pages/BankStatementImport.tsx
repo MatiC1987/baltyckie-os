@@ -892,9 +892,14 @@ function StatementRow({
               <span className="text-sm text-muted-foreground">
                 {statement.transactionCount} transakcji
               </span>
+              {statement.importDate && (
+                <span className="text-sm text-muted-foreground" data-testid={`text-import-date-${statement.id}`}>
+                  Import: {new Date(statement.importDate).toLocaleDateString("pl-PL")}
+                </span>
+              )}
               {statement.startDate && statement.endDate && (
                 <span className="text-sm text-muted-foreground">
-                  {statement.startDate} - {statement.endDate}
+                  Okres: {statement.startDate} - {statement.endDate}
                 </span>
               )}
             </div>
