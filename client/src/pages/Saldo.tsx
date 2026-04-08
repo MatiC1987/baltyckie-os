@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp, CheckCircle2, Ban, Minus, Loader2, Sparkles } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp, CheckCircle2, Ban, Minus, Loader2, Sparkles, ListFilter } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -478,6 +478,61 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     return null;
   };
 
+  useEffect(() => {
+    if (expandedEntryId === null) return;
+    const entry = entries.find(e => e.id === expandedEntryId);
+    if (!entry || entry.costImported || entry.costSkipped) return;
+    const rule = applyRulesToEntry(entry);
+    if (rule) {
+      if (rule.category && !selectedCategories[expandedEntryId]) {
+        setSelectedCategories(prev => ({ ...prev, [expandedEntryId]: rule.category! }));
+      }
+      if (rule.targetKey && !selectedTargets[expandedEntryId]) {
+        setSelectedTargets(prev => ({ ...prev, [expandedEntryId]: rule.targetKey! }));
+      }
+    }
+    if (entry.aiCategory && !selectedCategories[expandedEntryId] && !rule?.category) {
+      setSelectedCategories(prev => ({ ...prev, [expandedEntryId]: entry.aiCategory! }));
+    }
+  }, [expandedEntryId]);
+
+  const handleApplyRulesToAll = async () => {
+    const pending = entries.filter(e => !e.costImported && !e.costSkipped);
+    let applied = 0;
+    const newCats: Record<number, string> = {};
+    const newTargets: Record<number, string> = {};
+    for (const entry of pending) {
+      const rule = applyRulesToEntry(entry);
+      if (rule) {
+        let didApply = false;
+        if (rule.category) {
+          try {
+            await apiRequest("PUT", `/api/saldo/${entry.id}`, { category: rule.category });
+            newCats[entry.id] = rule.category;
+            didApply = true;
+          } catch {}
+        }
+        if (rule.targetKey) {
+          newTargets[entry.id] = rule.targetKey;
+          didApply = true;
+        }
+        if (didApply) applied++;
+      }
+    }
+    if (Object.keys(newCats).length > 0) {
+      setSelectedCategories(prev => ({ ...prev, ...newCats }));
+    }
+    if (Object.keys(newTargets).length > 0) {
+      setSelectedTargets(prev => ({ ...prev, ...newTargets }));
+    }
+    if (applied > 0) {
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+      toast({ title: `Zastosowano reguły do ${applied} wpisów` });
+    } else {
+      toast({ title: "Brak pasujących reguł do zastosowania" });
+    }
+  };
+
   const handleAssignCost = async (entryId: number) => {
     const targetKey = selectedTargets[entryId];
     if (!targetKey) return;
@@ -567,8 +622,23 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       const res = await apiRequest("POST", "/api/saldo/ai-categorize", {
         entries: batch.map(e => ({ id: e.id, date: e.date, cashAmount: e.cashAmount, operationName: e.operationName, guestName: e.guestName, type: e.type })),
         personCategories: categoriesWithType,
+        targetOptions: targetOptions.slice(0, 100).map(t => ({ key: t.key, group: t.group, label: t.label })),
       });
       const data = await res.json();
+      if (data.categories && Array.isArray(data.categories)) {
+        const newTargets: Record<number, string> = {};
+        const newCats: Record<number, string> = {};
+        for (const cat of data.categories) {
+          const idx = cat.index - 1;
+          if (idx >= 0 && idx < batch.length) {
+            const entryId = batch[idx].id;
+            if (cat.category) newCats[entryId] = cat.category;
+            if (cat.targetKey) newTargets[entryId] = cat.targetKey;
+          }
+        }
+        setSelectedCategories(prev => ({ ...prev, ...newCats }));
+        setSelectedTargets(prev => ({ ...prev, ...newTargets }));
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: `AI skategoryzowało ${data.categories?.length || 0} wpisów` });
     } catch (err: any) {
@@ -1177,6 +1247,16 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                   {aiCategorizing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
                   Kategoryzuj AI
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleApplyRulesToAll}
+                  disabled={summary.pendingCount === 0}
+                  data-testid="button-apply-rules"
+                >
+                  <ListFilter className="h-3.5 w-3.5 mr-1" />
+                  Zastosuj reguły
+                </Button>
               </div>
             </div>
             <div className="flex-1 w-full min-w-0" data-testid="chart-saldo-trend">
@@ -1436,17 +1516,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                       </div>
                     </td>
                   </tr>
-                  {isExpanded && isCostPending && (() => {
-                    const matchedRule = applyRulesToEntry(entry);
-                    const suggestedCat = entry.aiCategory || matchedRule?.category || "";
-                    const suggestedTarget = matchedRule?.targetKey || "";
-                    if (!selectedCategories[entry.id] && suggestedCat) {
-                      setTimeout(() => setSelectedCategories(prev => ({ ...prev, [entry.id]: suggestedCat })), 0);
-                    }
-                    if (!selectedTargets[entry.id] && suggestedTarget) {
-                      setTimeout(() => setSelectedTargets(prev => ({ ...prev, [entry.id]: suggestedTarget })), 0);
-                    }
-                    return (
+                  {isExpanded && isCostPending && (
                     <tr className="bg-muted/20 border-b border-border/30">
                       <td colSpan={16} className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1491,18 +1561,17 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                           >
                             Pomiń
                           </Button>
-                          {(entry.aiCategory || matchedRule) && (
+                          {(entry.aiCategory || applyRulesToEntry(entry)) && (
                             <span className="text-[10px] text-purple-500 ml-2">
                               <Sparkles className="h-3 w-3 inline mr-0.5" />
                               {entry.aiCategory ? `AI: ${entry.aiCategory}` : ""}
-                              {matchedRule ? ` Reguła: "${matchedRule.pattern}"` : ""}
+                              {applyRulesToEntry(entry) ? ` Reguła: "${applyRulesToEntry(entry)!.pattern}"` : ""}
                             </span>
                           )}
                         </div>
                       </td>
                     </tr>
-                    );
-                  })()}
+                  )}
                   </React.Fragment>
                 );
               })}

@@ -3931,8 +3931,21 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         await storage.deleteAllSaldoEntries();
       }
 
-      const created = await storage.createSaldoEntriesBulk(entries);
-      res.json({ imported: created.length, sheetName });
+      let filteredEntries = entries;
+      if (req.query?.skipDuplicates === 'true') {
+        const pName = req.query?.personName as string;
+        const existing = await storage.getSaldoEntries({ personName: pName });
+        filteredEntries = entries.filter((e: any) => {
+          return !existing.some(ex =>
+            ex.date === e.date &&
+            ex.operationName === e.operationName &&
+            Math.abs(parseFloat(ex.cashAmount || "0") - parseFloat(e.cashAmount || "0")) < 0.01
+          );
+        });
+      }
+
+      const created = await storage.createSaldoEntriesBulk(filteredEntries);
+      res.json({ imported: created.length, sheetName, skippedDuplicates: entries.length - filteredEntries.length });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Błąd importu" });
     }
@@ -4094,12 +4107,16 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         ? personCategories.map((c: any) => `- ${c.name} (${c.type === 'PRZYCHOD' ? 'przychód' : 'koszt'})`).join("\n")
         : "";
 
-      const prompt = `Jesteś asystentem finansowym zarządzającym wynajmem apartamentów. Kategoryzuj poniższe wpisy z salda osobowego. ${categoryList ? `Dostępne kategorie:\n${categoryList}` : `Dostępne kategorie:\n- CZYNSZ (opłaty czynszowe)\n- MEDIA (prąd, gaz, woda, internet)\n- WYNAGRODZENIA (pensje, zlecenia)\n- PODATKI (PIT, ZUS, składki)\n- NAPRAWY (konserwacja, remonty)\n- PRZYCHOD_REZERWACJA (wpływy od gości)\n- PRZYCHOD_PODNAJEM (wpływy od podnajemców)\n- UBEZPIECZENIE (polisy)\n- ADMINISTRACJA (opłaty biurowe)\n- INNE (pozostałe)`}
+      const targetHints = req.body.targetOptions && Array.isArray(req.body.targetOptions)
+        ? `\nDostępne pozycje kosztowe:\n${req.body.targetOptions.map((t: any) => `- ${t.key}: [${t.group}] ${t.label}`).join("\n")}`
+        : "";
+
+      const prompt = `Jesteś asystentem finansowym zarządzającym wynajmem apartamentów. Kategoryzuj poniższe wpisy z salda osobowego i zasugeruj pozycję kosztową. ${categoryList ? `Dostępne kategorie:\n${categoryList}` : `Dostępne kategorie:\n- CZYNSZ (opłaty czynszowe)\n- MEDIA (prąd, gaz, woda, internet)\n- WYNAGRODZENIA (pensje, zlecenia)\n- PODATKI (PIT, ZUS, składki)\n- NAPRAWY (konserwacja, remonty)\n- PRZYCHOD_REZERWACJA (wpływy od gości)\n- PRZYCHOD_PODNAJEM (wpływy od podnajemców)\n- UBEZPIECZENIE (polisy)\n- ADMINISTRACJA (opłaty biurowe)\n- INNE (pozostałe)`}${targetHints}
 
 Wpisy do kategoryzacji:
 ${entryList.map((e: any, i: number) => `${i + 1}. ${e.date} | ${e.cashAmount || 0} PLN | ${e.operationName} | ${e.guestName || ""} | ${e.type || ""}`).join("\n")}
 
-Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": string, "confidence": number (0-1) }. Bez dodatkowego tekstu.`;
+Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": string, "targetKey": string | null, "confidence": number (0-1) }. targetKey to klucz pasującej pozycji kosztowej (lub null jeśli brak pewności). Bez dodatkowego tekstu.`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
