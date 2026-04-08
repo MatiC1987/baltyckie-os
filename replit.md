@@ -23,7 +23,7 @@ The application employs a modern full-stack architecture designed for scalabilit
 **Mobile UX Features:** Incorporates responsive components like `ResponsiveTable`, `ResponsiveFormDialog`, `SwipeableRow`, and `Pull-to-refresh`. It also features a contextual bottom navigation, mobile-optimized calendars, and forms designed for touch interfaces.
 
 **Core Feature Specifications:**
-*   **Financial Management:** Dashboards with balance forecasts, expense tracking, bank account management, owner payments, and financial reporting, including `Saldo Firmowe` and `V2Przychody`.
+*   **Financial Management:** Dashboards with balance forecasts, expense tracking, bank account management, owner payments, and financial reporting, including `Saldo Firmowe`, `V2Przychody`, and `Przychody Dodatkowe` (one-off non-operational revenues like vehicle/property sales, integrated into balance forecast).
 *   **Property & Rental Management:** CRUD for apartments, reservations, and long-term leases. A Gantt-chart-style calendar (`Terminarz`) for visual management.
 *   **Document & Workflow Automation:** AI-powered PDF contract import (GPT-4o vision OCR), Word contract generation, invoice generation, cost invoice management, and automated PDF generation for accounting notes and handover protocols.
 *   **User & Employee Management:** Role-based user accounts, employee records with medical exam and training tracking, and contract management with PDF generation and expiry reminders. Includes an HR calendar.

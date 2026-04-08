@@ -73,6 +73,7 @@ import {
   checkoutSettlements, CheckoutSettlement, InsertCheckoutSettlement,
   dashboardWidgetConfigs,
   gocardlessConnections, GocardlessConnection, InsertGocardlessConnection,
+  extraRevenues, ExtraRevenue, InsertExtraRevenue,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, type SQL } from "drizzle-orm";
@@ -520,6 +521,11 @@ export interface IStorage {
   createGocardlessConnection(data: InsertGocardlessConnection): Promise<GocardlessConnection>;
   updateGocardlessConnection(id: number, data: Partial<InsertGocardlessConnection>): Promise<GocardlessConnection>;
   deleteGocardlessConnection(id: number): Promise<void>;
+
+  getExtraRevenues(year?: number): Promise<ExtraRevenue[]>;
+  createExtraRevenue(data: InsertExtraRevenue): Promise<ExtraRevenue>;
+  updateExtraRevenue(id: number, data: Partial<InsertExtraRevenue>): Promise<ExtraRevenue | undefined>;
+  deleteExtraRevenue(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2556,6 +2562,32 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGocardlessConnection(id: number): Promise<void> {
     await db.delete(gocardlessConnections).where(eq(gocardlessConnections.id, id));
+  }
+
+  async getExtraRevenues(year?: number): Promise<ExtraRevenue[]> {
+    if (year) {
+      return db.select().from(extraRevenues)
+        .where(and(
+          gte(extraRevenues.date, `${year}-01-01`),
+          lte(extraRevenues.date, `${year}-12-31`)
+        ))
+        .orderBy(desc(extraRevenues.date));
+    }
+    return db.select().from(extraRevenues).orderBy(desc(extraRevenues.date));
+  }
+
+  async createExtraRevenue(data: InsertExtraRevenue): Promise<ExtraRevenue> {
+    const [created] = await db.insert(extraRevenues).values(data).returning();
+    return created;
+  }
+
+  async updateExtraRevenue(id: number, data: Partial<InsertExtraRevenue>): Promise<ExtraRevenue | undefined> {
+    const [updated] = await db.update(extraRevenues).set(data).where(eq(extraRevenues.id, id)).returning();
+    return updated;
+  }
+
+  async deleteExtraRevenue(id: number): Promise<void> {
+    await db.delete(extraRevenues).where(eq(extraRevenues.id, id));
   }
 }
 

@@ -1831,6 +1831,20 @@ export const insertPriceTemplateSchema = createInsertSchema(priceTemplates).omit
 export type PriceTemplate = typeof priceTemplates.$inferSelect;
 export type InsertPriceTemplate = z.infer<typeof insertPriceTemplateSchema>;
 
+export const extraRevenues = pgTable("extra_revenues", {
+  id: serial("id").primaryKey(),
+  description: text("description").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  date: text("date").notNull(),
+  status: text("status").notNull().default("planowany"),
+  category: text("category"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertExtraRevenueSchema = createInsertSchema(extraRevenues).omit({ id: true, createdAt: true });
+export type ExtraRevenue = typeof extraRevenues.$inferSelect;
+export type InsertExtraRevenue = z.infer<typeof insertExtraRevenueSchema>;
+
 export const localEvents = pgTable("local_events", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),

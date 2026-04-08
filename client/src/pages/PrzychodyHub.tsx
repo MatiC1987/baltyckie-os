@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnimatedTabContent } from "@/components/AnimatedTabContent";
 import { PageHeader } from "@/components/PageHeader";
-import { Wallet, TrendingUp } from "lucide-react";
+import { Wallet, TrendingUp, PlusCircle } from "lucide-react";
 import V2Przychody from "@/pages/V2Przychody";
 import PriorityRevenueForecast from "@/pages/PriorityRevenueForecast";
+import ExtraRevenues from "@/pages/ExtraRevenues";
 
 const TABS = [
   { value: "przychody", label: "Przychody", icon: Wallet },
+  { value: "dodatkowe", label: "Przychody Dodatkowe", icon: PlusCircle },
   { value: "prognoza", label: "Prognoza", icon: TrendingUp },
 ];
 
@@ -51,6 +53,9 @@ export default function PrzychodyHub() {
           </TabsList>
           <AnimatedTabContent value="przychody" activeValue={activeTab}>
             <V2Przychody />
+          </AnimatedTabContent>
+          <AnimatedTabContent value="dodatkowe" activeValue={activeTab}>
+            <ExtraRevenues />
           </AnimatedTabContent>
           <AnimatedTabContent value="prognoza" activeValue={activeTab}>
             <PriorityRevenueForecast />

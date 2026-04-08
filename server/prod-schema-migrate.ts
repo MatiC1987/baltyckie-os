@@ -10,6 +10,18 @@ const SCHEMA_MIGRATIONS = [
     name: "add_saldo_categories_type",
     sql: `ALTER TABLE saldo_categories ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'KOSZT';`,
   },
+  {
+    name: "create_extra_revenues",
+    sql: `CREATE TABLE IF NOT EXISTS extra_revenues (
+      id SERIAL PRIMARY KEY,
+      description TEXT NOT NULL,
+      amount NUMERIC(12, 2) NOT NULL,
+      date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'planowany',
+      category TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    );`,
+  },
 ];
 
 export async function runProdSchemaMigration() {
