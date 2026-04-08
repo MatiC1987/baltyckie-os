@@ -3927,12 +3927,12 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         });
       }
 
-      if (req.body?.replace === 'true' || req.query?.replace === 'true') {
-        await storage.deleteAllSaldoEntries();
-      }
-
       let filteredEntries = entries;
-      if (req.query?.skipDuplicates === 'true') {
+      let skippedCount = 0;
+      const doReplace = req.body?.replace === 'true' || req.query?.replace === 'true';
+      const doSkipDuplicates = req.query?.skipDuplicates === 'true';
+
+      if (doSkipDuplicates) {
         const pName = req.query?.personName as string;
         const existing = await storage.getSaldoEntries({ personName: pName });
         filteredEntries = entries.filter((e: any) => {
@@ -3942,10 +3942,13 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
             Math.abs(parseFloat(ex.cashAmount || "0") - parseFloat(e.cashAmount || "0")) < 0.01
           );
         });
+        skippedCount = entries.length - filteredEntries.length;
+      } else if (doReplace) {
+        await storage.deleteAllSaldoEntries();
       }
 
       const created = await storage.createSaldoEntriesBulk(filteredEntries);
-      res.json({ imported: created.length, sheetName, skippedDuplicates: entries.length - filteredEntries.length });
+      res.json({ imported: created.length, sheetName, skippedDuplicates: skippedCount });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Błąd importu" });
     }

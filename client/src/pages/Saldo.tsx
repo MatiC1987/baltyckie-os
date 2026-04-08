@@ -852,8 +852,10 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const skipParam = skipDuplicatesOnImport && importDuplicates.length > 0 ? "&skipDuplicates=true" : "";
-      const res = await fetch(`/api/saldo/import-xlsx?replace=true&personName=${encodeURIComponent(personName)}${skipParam}`, {
+      const skipDups = skipDuplicatesOnImport && importDuplicates.length > 0;
+      const replaceParam = skipDups ? "" : "replace=true&";
+      const skipParam = skipDups ? "&skipDuplicates=true" : "";
+      const res = await fetch(`/api/saldo/import-xlsx?${replaceParam}personName=${encodeURIComponent(personName)}${skipParam}`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -861,9 +863,37 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       const result = await res.json();
       if (!res.ok) throw new Error(result.message);
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
-      toast({ title: `Zaimportowano ${result.imported} wpisów z arkusza "${result.sheetName}"` });
+      const skipMsg = result.skippedDuplicates > 0 ? ` (pominięto ${result.skippedDuplicates} duplikatów)` : "";
+      toast({ title: `Zaimportowano ${result.imported} wpisów z arkusza "${result.sheetName}"${skipMsg}` });
       setShowImportDialog(false);
       setImportDuplicates([]);
+
+      const freshData = await fetch(`/api/saldo?personName=${encodeURIComponent(personName)}`, { credentials: "include" });
+      if (freshData.ok) {
+        const freshEntries = await freshData.json();
+        const rules = JSON.parse(localStorage.getItem("saldo-categorization-rules") || "[]");
+        if (rules.length > 0 && Array.isArray(freshEntries)) {
+          let ruleApplied = 0;
+          for (const entry of freshEntries) {
+            if (entry.costImported || entry.costSkipped || entry.category) continue;
+            for (const rule of rules) {
+              if (entry.operationName?.toLowerCase().includes(rule.pattern?.toLowerCase())) {
+                if (rule.category) {
+                  try {
+                    await apiRequest("PUT", `/api/saldo/${entry.id}`, { category: rule.category });
+                    ruleApplied++;
+                  } catch {}
+                }
+                break;
+              }
+            }
+          }
+          if (ruleApplied > 0) {
+            queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+            toast({ title: `Automatycznie zastosowano reguły do ${ruleApplied} nowych wpisów` });
+          }
+        }
+      }
     } catch (err: any) {
       toast({ title: "Błąd importu", description: err.message, variant: "destructive" });
     } finally {
@@ -1441,7 +1471,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                   <React.Fragment key={entry.id}>
                   <tr
                     className={`group hover:bg-accent/30 cursor-pointer ${rowBg}`}
-                    onClick={() => setPreviewEntry(entry)}
+                    onClick={() => { if (isCostPending) { setExpandedEntryId(isExpanded ? null : entry.id); } else { setPreviewEntry(entry); } }}
                     data-testid={`row-saldo-${entry.id}`}
                   >
                     <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
