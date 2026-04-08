@@ -1352,7 +1352,11 @@ export default function Subleases() {
 
   const [chartYear, setChartYear] = useState(new Date().getFullYear());
 
-  const { data: revenueData } = useQuery<Record<string, Record<string, { najem: number; podnajem: number; doplaty_najem: number; doplaty_podnajem: number }>>>({
+  type RevenueMonthData = { najem: number; podnajem: number; doplaty_najem: number; doplaty_podnajem: number };
+  type RevenueChecksum = { totalPodnajem: number; byMonth: Record<number, number> };
+  type RevenueResponse = Record<string, Record<string, RevenueMonthData>> & { _checksum?: RevenueChecksum };
+
+  const { data: revenueData } = useQuery<RevenueResponse>({
     queryKey: ['/api/revenue', chartYear],
     queryFn: async () => {
       const res = await fetch(`/api/revenue?year=${chartYear}`, { credentials: 'include' });
@@ -1373,10 +1377,11 @@ export default function Subleases() {
       for (const mStr of Object.keys(months)) {
         const m = Number(mStr);
         if (isNaN(m) || m < 0 || m > 11) continue;
-        monthTotals[m] += months[mStr].podnajem || 0;
+        const monthData = months[mStr] as RevenueMonthData;
+        monthTotals[m] += monthData.podnajem || 0;
       }
     }
-    const checksum = (revenueData as any)._checksum;
+    const checksum = revenueData._checksum;
     if (checksum) {
       const computedTotal = monthTotals.reduce((a, b) => a + b, 0);
       if (Math.abs(computedTotal - checksum.totalPodnajem) > 1) {
