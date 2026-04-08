@@ -286,6 +286,7 @@ export interface IStorage {
   getAllCostSchedulePayments(): Promise<CostSchedulePayment[]>;
   createCostSchedulePayment(payment: InsertCostSchedulePayment): Promise<CostSchedulePayment>;
   updateCostSchedulePayment(id: number, payment: Partial<InsertCostSchedulePayment>): Promise<CostSchedulePayment>;
+  deleteUnpaidPaymentsAfterDate(scheduleId: number, afterDate: string): Promise<number>;
   deleteCostSchedulePayment(id: number): Promise<void>;
 
   // Installment Schedules
@@ -1505,6 +1506,19 @@ export class DatabaseStorage implements IStorage {
   async updateCostSchedulePayment(id: number, payment: Partial<InsertCostSchedulePayment>): Promise<CostSchedulePayment> {
     const [updated] = await db.update(costSchedulePayments).set(payment).where(eq(costSchedulePayments.id, id)).returning();
     return updated;
+  }
+
+  async deleteUnpaidPaymentsAfterDate(scheduleId: number, afterDate: string): Promise<number> {
+    const deleted = await db.delete(costSchedulePayments)
+      .where(
+        and(
+          eq(costSchedulePayments.scheduleId, scheduleId),
+          sql`${costSchedulePayments.dueDate} > ${afterDate}`,
+          sql`UPPER(${costSchedulePayments.status}) != 'OPLACONE'`
+        )
+      )
+      .returning({ id: costSchedulePayments.id });
+    return deleted.length;
   }
 
   async deleteCostSchedulePayment(id: number): Promise<void> {

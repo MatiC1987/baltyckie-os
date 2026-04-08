@@ -544,6 +544,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       apiRequest("PATCH", `/api/cost-schedules/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cost-schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cost-schedule-payments"] });
       setEditSchedule(null);
       toast({ title: "Zaktualizowano harmonogram" });
     },

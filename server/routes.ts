@@ -5507,8 +5507,13 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
   });
 
   app.patch('/api/cost-schedules/:id', isAuthenticated, async (req, res) => {
-    const schedule = await storage.updateCostSchedule(Number(req.params.id), req.body);
-    res.json(schedule);
+    const id = Number(req.params.id);
+    const schedule = await storage.updateCostSchedule(id, req.body);
+    let deletedPayments = 0;
+    if (req.body.endDate) {
+      deletedPayments = await storage.deleteUnpaidPaymentsAfterDate(id, req.body.endDate);
+    }
+    res.json({ ...schedule, _deletedPayments: deletedPayments });
   });
 
   app.delete('/api/cost-schedules/:id', isAuthenticated, async (req, res) => {
