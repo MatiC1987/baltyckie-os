@@ -918,10 +918,24 @@ function buildTargetOptions(targets: AssignmentTargets | undefined): AssignmentT
   return options;
 }
 
-function findMatchingRule(tx: BankTransaction, rules: BankMappingRule[]): AssignmentTarget | null {
+function findMatchingRule(tx: BankTransaction, rules: BankMappingRule[], targets: AssignmentTargets | undefined): AssignmentTarget | null {
   for (const rule of rules) {
     const field = rule.matchField === "description" ? tx.description : (tx.counterparty || "");
     if (field && field.toLowerCase().includes(rule.pattern.toLowerCase())) {
+      if (rule.targetType === "sublease" && rule.targetSubleaseId && targets) {
+        const sub = targets.sublease.find(s => s.subleaseId === rule.targetSubleaseId);
+        if (sub && sub.unpaidPayments.length > 0) {
+          const oldest = sub.unpaidPayments[0];
+          return {
+            targetType: "sublease",
+            label: "",
+            subleaseId: sub.subleaseId,
+            subleasePaymentId: oldest.id,
+            category: oldest.category,
+          };
+        }
+        continue;
+      }
       return {
         targetType: rule.targetType as "operational" | "apartment" | "sublease",
         label: "",
@@ -962,6 +976,8 @@ function StatementRow({
   const [assignments, setAssignments] = useState<Record<number, AssignmentTarget>>({});
   const [duplicateWarnings, setDuplicateWarnings] = useState<any[]>([]);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [mismatchWarnings, setMismatchWarnings] = useState<any[]>([]);
+  const [showMismatchDialog, setShowMismatchDialog] = useState(false);
 
   const { data: transactions = [], isLoading } = useQuery<BankTransaction[]>({
     queryKey: ["/api/bank-transactions", statement.id],
@@ -1000,7 +1016,7 @@ function StatementRow({
       const autoAssignments: Record<number, AssignmentTarget> = {};
       for (const tx of unassignedTxs) {
         if (assignments[tx.id]) continue;
-        const match = findMatchingRule(tx, mappingRules);
+        const match = findMatchingRule(tx, mappingRules, targets);
         if (match) {
           const opt = targetOptions.find(o => targetToKey(o) === targetToKey(match));
           if (opt) autoAssignments[tx.id] = opt;
@@ -1019,10 +1035,15 @@ function StatementRow({
     },
     onSuccess: (data) => {
       const warnings = data.results.filter((r: any) => r.duplicateWarning);
+      const mismatches = data.results.filter((r: any) => r.amountMismatch);
       const successes = data.results.filter((r: any) => r.success);
       if (warnings.length > 0) {
         setDuplicateWarnings(warnings);
         setShowDuplicateDialog(true);
+      }
+      if (mismatches.length > 0) {
+        setMismatchWarnings(mismatches);
+        setShowMismatchDialog(true);
       }
       if (successes.length > 0) {
         toast({ title: "Zaimportowano", description: `${successes.length} transakcji przypisano do kosztów` });
@@ -1125,6 +1146,39 @@ function StatementRow({
       };
     });
     confirmDuplicateMutation.mutate({ assignments: toConfirm });
+  };
+
+  const confirmMismatchMutation = useMutation({
+    mutationFn: async (data: { assignments: any[] }) => {
+      const res = await apiRequest("POST", "/api/bank-transactions/import-to-targets", {
+        assignments: data.assignments.map(a => ({ ...a, forceAmount: true })),
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const count = data.results.filter((r: any) => r.success).length;
+      toast({ title: "Zaimportowano", description: `${count} płatności oznaczono jako opłacone mimo różnicy kwot` });
+      setMismatchWarnings([]);
+      setShowMismatchDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleConfirmMismatch = () => {
+    const toConfirm = mismatchWarnings.map(w => {
+      const a = assignments[w.transactionId];
+      return {
+        transactionId: w.transactionId,
+        targetType: "sublease",
+        subleasePaymentId: w.paymentId,
+        subleaseId: a?.subleaseId,
+      };
+    });
+    confirmMismatchMutation.mutate({ assignments: toConfirm });
   };
 
   const toggleTx = (id: number) => {
@@ -1247,6 +1301,30 @@ function StatementRow({
           </AlertDialogContent>
         </AlertDialog>
 
+        <AlertDialog open={showMismatchDialog} onOpenChange={setShowMismatchDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Różnica kwot płatności</AlertDialogTitle>
+              <AlertDialogDescription>
+                {mismatchWarnings.length} transakcji ma inną kwotę niż przypisana płatność podnajmu. Czy chcesz oznaczyć te płatności jako opłacone mimo to?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="max-h-[200px] overflow-y-auto space-y-2 my-2">
+              {mismatchWarnings.map((w: any) => (
+                <div key={w.transactionId} className="text-sm p-2 rounded bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800">
+                  {w.message}
+                </div>
+              ))}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-mismatch">Anuluj</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmMismatch} data-testid="button-confirm-mismatch">
+                Przypisz mimo to
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <CollapsibleContent>
           <div className="border-t p-3">
             {isLoading ? (
@@ -1361,38 +1439,50 @@ function StatementRow({
                                   </SelectTrigger>
                                   <SelectContent className="max-h-[300px]">
                                     <SelectItem value="__clear__">— Wyczyść —</SelectItem>
-                                    {targets?.operational && targets.operational.length > 0 && (
-                                      <>
-                                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Opłaty operacyjne</div>
-                                        {targets.operational.map(cat =>
-                                          cat.items.map(item => (
-                                            <SelectItem
-                                              key={`op__${item.catId}__${item.itemIdx}`}
-                                              value={`op__${item.catId}__${item.itemIdx}`}
-                                              data-testid={`option-op-${item.catId}-${item.itemIdx}`}
-                                            >
-                                              {cat.title} → {item.name}{item.subLabel ? ` (${item.subLabel})` : ""}
-                                            </SelectItem>
-                                          ))
-                                        )}
-                                      </>
-                                    )}
-                                    {targets?.apartment && targets.apartment.length > 0 && (
-                                      <>
-                                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Koszty mieszkań</div>
-                                        {targets.apartment.map(apt =>
-                                          apt.categories.map(c => (
-                                            <SelectItem
-                                              key={`apt__${apt.entryId}__${c.category}`}
-                                              value={`apt__${apt.entryId}__${c.category}`}
-                                              data-testid={`option-apt-${apt.entryId}-${c.category}`}
-                                            >
-                                              {apt.name} → {c.category}
-                                            </SelectItem>
-                                          ))
-                                        )}
-                                      </>
-                                    )}
+                                    {targets?.operational && targets.operational.length > 0 && (() => {
+                                      const txMonth = new Date(tx.date).getMonth();
+                                      return (
+                                        <>
+                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Opłaty operacyjne</div>
+                                          {targets.operational.map(cat =>
+                                            cat.items.map(item => {
+                                              const realized = item.realizedByMonth[txMonth] || 0;
+                                              return (
+                                                <SelectItem
+                                                  key={`op__${item.catId}__${item.itemIdx}`}
+                                                  value={`op__${item.catId}__${item.itemIdx}`}
+                                                  data-testid={`option-op-${item.catId}-${item.itemIdx}`}
+                                                >
+                                                  {cat.title} → {item.name}{item.subLabel ? ` (${item.subLabel})` : ""}{realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}
+                                                </SelectItem>
+                                              );
+                                            })
+                                          )}
+                                        </>
+                                      );
+                                    })()}
+                                    {targets?.apartment && targets.apartment.length > 0 && (() => {
+                                      const txMonth = new Date(tx.date).getMonth();
+                                      return (
+                                        <>
+                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Koszty mieszkań</div>
+                                          {targets.apartment.map(apt =>
+                                            apt.categories.map(c => {
+                                              const realized = c.realizedByMonth[txMonth] || 0;
+                                              return (
+                                                <SelectItem
+                                                  key={`apt__${apt.entryId}__${c.category}`}
+                                                  value={`apt__${apt.entryId}__${c.category}`}
+                                                  data-testid={`option-apt-${apt.entryId}-${c.category}`}
+                                                >
+                                                  {apt.name} → {c.category}{realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}
+                                                </SelectItem>
+                                              );
+                                            })
+                                          )}
+                                        </>
+                                      );
+                                    })()}
                                     {targets?.sublease && targets.sublease.length > 0 && (
                                       <>
                                         <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Podnajmy — nieopłacone</div>

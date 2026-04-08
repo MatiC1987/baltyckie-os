@@ -11774,7 +11774,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
             costTargetType: "operational",
             costTargetCatId: a.catId,
             costTargetItemIdx: a.itemIdx,
-          } as any);
+          });
 
           results.push({ transactionId: a.transactionId, success: true, newRealized });
 
@@ -11810,7 +11810,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
             costTargetType: "apartment",
             costTargetEntryId: a.entryId,
             costTargetCategory: a.category,
-          } as any);
+          });
 
           results.push({ transactionId: a.transactionId, success: true, newRealized });
 
@@ -11818,13 +11818,38 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           const paymentId = a.subleasePaymentId;
           if (!paymentId) continue;
 
+          if (!a.forceAmount) {
+            const allSubleases = await storage.getSubleases();
+            let targetPayment: { id: number; amount: string; status: string } | null = null;
+            for (const sub of allSubleases) {
+              const payments = await storage.getSubleasePayments(sub.id);
+              const found = payments.find(p => p.id === paymentId);
+              if (found) { targetPayment = found; break; }
+            }
+
+            if (targetPayment) {
+              const paymentAmount = parseFloat(targetPayment.amount);
+              if (Math.abs(paymentAmount - absAmount) > 0.01) {
+                results.push({
+                  transactionId: a.transactionId,
+                  amountMismatch: true,
+                  paymentAmount,
+                  transactionAmount: absAmount,
+                  paymentId,
+                  message: `Kwota transakcji (${absAmount.toFixed(2)} zł) różni się od kwoty płatności (${paymentAmount.toFixed(2)} zł).`,
+                });
+                continue;
+              }
+            }
+          }
+
           await storage.updateSubleasePayment(paymentId, { status: "oplacona" });
 
           await storage.updateBankTransaction(a.transactionId, {
             costImported: true,
             costTargetType: "sublease",
             costTargetSubleasePaymentId: paymentId,
-          } as any);
+          });
 
           results.push({ transactionId: a.transactionId, success: true });
         }
@@ -11884,7 +11909,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           await storage.updateBankTransaction(a.transactionId, {
             costImported: true, costTargetType: "operational",
             costTargetCatId: a.catId, costTargetItemIdx: a.itemIdx,
-          } as any);
+          });
 
           results.push({ transactionId: a.transactionId, success: true, newRealized });
 
@@ -11903,7 +11928,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           await storage.updateBankTransaction(a.transactionId, {
             costImported: true, costTargetType: "apartment",
             costTargetEntryId: a.entryId, costTargetCategory: a.category,
-          } as any);
+          });
 
           results.push({ transactionId: a.transactionId, success: true, newRealized });
         }
@@ -11922,7 +11947,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         return res.status(400).json({ message: "Brak ID transakcji" });
       }
       for (const id of transactionIds) {
-        await storage.updateBankTransaction(id, { costSkipped: true } as any);
+        await storage.updateBankTransaction(id, { costSkipped: true });
       }
       res.json({ success: true, count: transactionIds.length });
     } catch (err: any) {
