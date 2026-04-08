@@ -990,9 +990,9 @@ function StatementRow({
   });
 
   const { data: targets } = useQuery<AssignmentTargets>({
-    queryKey: ["/api/assignment-targets"],
+    queryKey: ["/api/assignment-targets", new Date().getFullYear()],
     queryFn: async () => {
-      const res = await fetch("/api/assignment-targets");
+      const res = await fetch(`/api/assignment-targets?year=${new Date().getFullYear()}`);
       if (!res.ok) throw new Error("Błąd");
       return res.json();
     },
@@ -1055,6 +1055,7 @@ function StatementRow({
         });
         queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
         queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-mapping-rules"] });
       }
     },
     onError: (err: Error) => {

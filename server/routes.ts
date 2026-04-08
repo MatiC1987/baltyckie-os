@@ -11610,7 +11610,6 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
   app.get("/api/assignment-targets", async (req, res) => {
     try {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
-      const month = parseInt(req.query.month as string);
 
       const opRows = await storage.getOpCostData(year);
       const aptRows = await storage.getAptCostData(year);
@@ -11854,19 +11853,28 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           results.push({ transactionId: a.transactionId, success: true });
         }
 
-        if (a.saveRule && a.rulePattern) {
-          try {
-            await storage.createBankMappingRule({
-              pattern: a.rulePattern,
-              matchField: a.ruleField || "counterparty",
-              targetType: a.targetType,
-              targetCatId: a.catId || null,
-              targetItemIdx: a.itemIdx ?? null,
-              targetEntryId: a.entryId || null,
-              targetCategory: a.category || null,
-              targetSubleaseId: a.subleaseId || null,
-            });
-          } catch (e) {}
+        if (a.forceAmount) continue;
+        const rulePattern = transaction.counterparty?.trim() || transaction.description?.substring(0, 80)?.trim();
+        if (rulePattern && rulePattern.length >= 3) {
+          const existingRules = await storage.getBankMappingRules();
+          const alreadyExists = existingRules.some(
+            r => r.pattern.toLowerCase() === rulePattern.toLowerCase() &&
+              r.targetType === a.targetType
+          );
+          if (!alreadyExists) {
+            try {
+              await storage.createBankMappingRule({
+                pattern: rulePattern,
+                matchField: transaction.counterparty?.trim() ? "counterparty" : "description",
+                targetType: a.targetType,
+                targetCatId: a.catId || null,
+                targetItemIdx: a.itemIdx ?? null,
+                targetEntryId: a.entryId || null,
+                targetCategory: a.category || null,
+                targetSubleaseId: a.subleaseId || null,
+              });
+            } catch (e) {}
+          }
         }
       }
 
