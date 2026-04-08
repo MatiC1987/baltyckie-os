@@ -276,7 +276,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     cashAmount: "", saldo: "", cardAmount: "", authCode: "", notes: "",
     entryKind: "PRZYCHOD" as string, category: "",
   });
-  const [activeTab, setActiveTab] = useState<"wpisy" | "kategorie">("wpisy");
+  const [activeTab, setActiveTab] = useState<"wpisy" | "kategorie" | "reguly">("wpisy");
   const [editingCat, setEditingCat] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
@@ -285,7 +285,23 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
   const [costStatusFilter, setCostStatusFilter] = useState<CostStatus>("all");
   const [expandedEntryId, setExpandedEntryId] = useState<number | null>(null);
   const [selectedTargets, setSelectedTargets] = useState<Record<number, string>>({});
+  const [selectedCategories, setSelectedCategories] = useState<Record<number, string>>({});
   const [aiCategorizing, setAiCategorizing] = useState(false);
+  const [showRulesPanel, setShowRulesPanel] = useState(false);
+  const [newRulePattern, setNewRulePattern] = useState("");
+  const [newRuleCategory, setNewRuleCategory] = useState("");
+  const [newRuleTarget, setNewRuleTarget] = useState("");
+  const [importDuplicates, setImportDuplicates] = useState<{ index: number; existingId: number; date: string; operationName: string }[]>([]);
+  const [skipDuplicatesOnImport, setSkipDuplicatesOnImport] = useState(true);
+  const [importChecking, setImportChecking] = useState(false);
+
+  type SaldoRule = { pattern: string; category?: string; targetKey?: string };
+  const RULES_KEY = "saldo-categorization-rules";
+  const loadRules = (): SaldoRule[] => {
+    try { return JSON.parse(localStorage.getItem(RULES_KEY) || "[]"); } catch { return []; }
+  };
+  const saveRules = (rules: SaldoRule[]) => { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); };
+  const [rules, setRules] = useState<SaldoRule[]>(() => loadRules());
 
   const [newEntry, setNewEntry] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -437,11 +453,42 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     },
   });
 
+  const addRule = (pattern: string, category?: string, targetKey?: string) => {
+    if (!pattern.trim()) return;
+    const existing = rules.find(r => r.pattern.toLowerCase() === pattern.toLowerCase());
+    if (existing) return;
+    const updated = [...rules, { pattern: pattern.trim(), category, targetKey }];
+    setRules(updated);
+    saveRules(updated);
+  };
+
+  const removeRule = (idx: number) => {
+    const updated = rules.filter((_, i) => i !== idx);
+    setRules(updated);
+    saveRules(updated);
+  };
+
+  const applyRulesToEntry = (entry: SaldoEntry) => {
+    const text = (entry.operationName || "").toLowerCase();
+    for (const rule of rules) {
+      if (text.includes(rule.pattern.toLowerCase())) {
+        return rule;
+      }
+    }
+    return null;
+  };
+
   const handleAssignCost = async (entryId: number) => {
     const targetKey = selectedTargets[entryId];
     if (!targetKey) return;
     const opt = targetOptions.find(o => o.key === targetKey);
     if (!opt) return;
+
+    const entry = entries.find(e => e.id === entryId);
+    const cat = selectedCategories[entryId];
+    if (cat && entry) {
+      await apiRequest("PUT", `/api/saldo/${entryId}`, { category: cat });
+    }
 
     const assignment: any = { entryId, targetType: opt.targetType };
     if (opt.targetType === "operational") {
@@ -452,6 +499,13 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       assignment.category = opt.category;
     } else if (opt.targetType === "sublease") {
       assignment.subleasePaymentId = opt.subleasePaymentId;
+    }
+
+    if (entry) {
+      const rulePattern = (entry.operationName || "").trim();
+      if (rulePattern.length >= 3) {
+        addRule(rulePattern, cat || undefined, targetKey);
+      }
     }
 
     try {
@@ -675,6 +729,52 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     return { totalCash, totalCard, lastSaldo: currentSaldo, count: filtered.length, pendingCount, assignedCount };
   }, [filtered, entries, currentSaldo]);
 
+  const handleCheckDuplicatesBeforeImport = async () => {
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) return;
+    setImportChecking(true);
+    setImportDuplicates([]);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const saldoSheet = wb.SheetNames.find((n: string) => n.toLowerCase().includes("saldo")) || wb.SheetNames[0];
+      const ws = wb.Sheets[saldoSheet];
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const checkEntries = rows.slice(0, 200).map((row: any) => {
+        const dateRaw = row["Data"] || row["data"] || "";
+        let date = "";
+        if (typeof dateRaw === "number") {
+          const d = XLSX.SSF.parse_date_code(dateRaw);
+          date = `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+        } else if (typeof dateRaw === "string" && dateRaw.includes("-")) {
+          date = dateRaw.split("T")[0];
+        }
+        return {
+          date,
+          operationName: row["Nazwa operacji"] || row["operationName"] || "",
+          cashAmount: String(row["Suma (got.)"] || row["cashAmount"] || "0"),
+        };
+      }).filter((e: any) => e.date && e.operationName);
+
+      if (checkEntries.length > 0) {
+        const dupRes = await apiRequest("POST", "/api/saldo/check-duplicates", {
+          personName,
+          entries: checkEntries,
+        });
+        const dupData = await dupRes.json();
+        setImportDuplicates(dupData.duplicates || []);
+        if (!dupData.duplicates?.length) {
+          toast({ title: "Brak duplikatów" });
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Błąd odczytu pliku", description: err.message, variant: "destructive" });
+    } finally {
+      setImportChecking(false);
+    }
+  };
+
   const handleImport = async () => {
     const file = fileInputRef.current?.files?.[0];
     if (!file) return;
@@ -682,7 +782,8 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`/api/saldo/import-xlsx?replace=true&personName=${encodeURIComponent(personName)}`, {
+      const skipParam = skipDuplicatesOnImport && importDuplicates.length > 0 ? "&skipDuplicates=true" : "";
+      const res = await fetch(`/api/saldo/import-xlsx?replace=true&personName=${encodeURIComponent(personName)}${skipParam}`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -692,6 +793,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: `Zaimportowano ${result.imported} wpisów z arkusza "${result.sheetName}"` });
       setShowImportDialog(false);
+      setImportDuplicates([]);
     } catch (err: any) {
       toast({ title: "Błąd importu", description: err.message, variant: "destructive" });
     } finally {
@@ -738,6 +840,13 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
               data-testid="tab-saldo-kategorie"
             >
               <Tag className="h-3.5 w-3.5 inline mr-1" />Kategorie
+            </button>
+            <button
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${activeTab === "reguly" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setActiveTab("reguly")}
+              data-testid="tab-saldo-reguly"
+            >
+              Reguły ({rules.length})
             </button>
           </div>
           {activeTab === "wpisy" && (
@@ -945,6 +1054,91 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                   </div>
                 );
               })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "reguly" && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Reguły automatycznie sugerują kategorię i pozycję kosztową na podstawie nazwy operacji. Reguły są zapisywane lokalnie w przeglądarce.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Input
+                  placeholder="Wzorzec (np. Czynsz, Prąd...)"
+                  value={newRulePattern}
+                  onChange={e => setNewRulePattern(e.target.value)}
+                  className="max-w-[200px]"
+                  data-testid="input-new-rule-pattern"
+                />
+                <Select value={newRuleCategory || "none"} onValueChange={v => setNewRuleCategory(v === "none" ? "" : v)}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-new-rule-category">
+                    <SelectValue placeholder="Kategoria..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— brak —</SelectItem>
+                    {categories.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={newRuleTarget || "none"} onValueChange={v => setNewRuleTarget(v === "none" ? "" : v)}>
+                  <SelectTrigger className="w-[280px]" data-testid="select-new-rule-target">
+                    <SelectValue placeholder="Pozycja kosztowa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— brak —</SelectItem>
+                    {targetOptions.map(opt => (
+                      <SelectItem key={opt.key} value={opt.key} className="text-xs">
+                        <span className="text-muted-foreground text-[10px]">[{opt.group}]</span> {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (newRulePattern.trim()) {
+                      addRule(newRulePattern.trim(), newRuleCategory || undefined, newRuleTarget || undefined);
+                      setNewRulePattern("");
+                      setNewRuleCategory("");
+                      setNewRuleTarget("");
+                    }
+                  }}
+                  disabled={!newRulePattern.trim()}
+                  data-testid="button-add-rule"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Dodaj regułę
+                </Button>
+              </div>
+              {rules.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-3">Brak reguł. Reguły są tworzone automatycznie po przypisaniu wpisu lub możesz dodać je ręcznie powyżej.</p>
+              ) : (
+                <div className="border rounded-md divide-y">
+                  {rules.map((rule, idx) => (
+                    <div key={idx} className="flex items-center gap-3 px-3 py-2 text-sm">
+                      <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded" data-testid={`text-rule-pattern-${idx}`}>{rule.pattern}</span>
+                      {rule.category && <Badge variant="outline" className="text-[10px]">{rule.category}</Badge>}
+                      {rule.targetKey && (
+                        <span className="text-xs text-muted-foreground">
+                          → {targetOptions.find(o => o.key === rule.targetKey)?.label || rule.targetKey}
+                        </span>
+                      )}
+                      <button
+                        className="ml-auto text-muted-foreground hover:text-destructive"
+                        onClick={() => removeRule(idx)}
+                        data-testid={`button-remove-rule-${idx}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1242,13 +1436,34 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                       </div>
                     </td>
                   </tr>
-                  {isExpanded && isCostPending && (
+                  {isExpanded && isCostPending && (() => {
+                    const matchedRule = applyRulesToEntry(entry);
+                    const suggestedCat = entry.aiCategory || matchedRule?.category || "";
+                    const suggestedTarget = matchedRule?.targetKey || "";
+                    if (!selectedCategories[entry.id] && suggestedCat) {
+                      setTimeout(() => setSelectedCategories(prev => ({ ...prev, [entry.id]: suggestedCat })), 0);
+                    }
+                    if (!selectedTargets[entry.id] && suggestedTarget) {
+                      setTimeout(() => setSelectedTargets(prev => ({ ...prev, [entry.id]: suggestedTarget })), 0);
+                    }
+                    return (
                     <tr className="bg-muted/20 border-b border-border/30">
                       <td colSpan={16} className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2">
+                          <Select value={selectedCategories[entry.id] || ""} onValueChange={v => setSelectedCategories(prev => ({ ...prev, [entry.id]: v }))}>
+                            <SelectTrigger className="h-7 text-xs w-[180px]" data-testid={`select-category-${entry.id}`}>
+                              <SelectValue placeholder="Kategoria saldo..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none" className="text-xs">— brak —</SelectItem>
+                              {categories.map(c => (
+                                <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <Select value={selectedTargets[entry.id] || ""} onValueChange={v => setSelectedTargets(prev => ({ ...prev, [entry.id]: v }))}>
                             <SelectTrigger className="h-7 text-xs w-[300px]" data-testid={`select-target-${entry.id}`}>
-                              <SelectValue placeholder="Wybierz pozycję kosztową..." />
+                              <SelectValue placeholder="Pozycja kosztowa..." />
                             </SelectTrigger>
                             <SelectContent>
                               {targetOptions.map(opt => (
@@ -1276,15 +1491,18 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                           >
                             Pomiń
                           </Button>
-                          {entry.aiCategory && (
+                          {(entry.aiCategory || matchedRule) && (
                             <span className="text-[10px] text-purple-500 ml-2">
-                              <Sparkles className="h-3 w-3 inline mr-0.5" />Sugestia AI: {entry.aiCategory}
+                              <Sparkles className="h-3 w-3 inline mr-0.5" />
+                              {entry.aiCategory ? `AI: ${entry.aiCategory}` : ""}
+                              {matchedRule ? ` Reguła: "${matchedRule.pattern}"` : ""}
                             </span>
                           )}
                         </div>
                       </td>
                     </tr>
-                  )}
+                    );
+                  })()}
                   </React.Fragment>
                 );
               })}
@@ -1468,8 +1686,8 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={showImportDialog} onOpenChange={(open) => { setShowImportDialog(open); if (!open) { setImportDuplicates([]); setImportChecking(false); } }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Import salda z Excela</DialogTitle>
           </DialogHeader>
@@ -1481,11 +1699,46 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
               ref={fileInputRef}
               type="file"
               accept=".xlsx,.xls"
+              onChange={() => { setImportDuplicates([]); }}
               data-testid="input-saldo-file"
             />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCheckDuplicatesBeforeImport}
+              disabled={importChecking}
+              data-testid="button-check-duplicates"
+            >
+              {importChecking ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Search className="h-3.5 w-3.5 mr-1" />}
+              Sprawdź duplikaty
+            </Button>
+            {importDuplicates.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-amber-600 dark:text-amber-400" data-testid="text-duplicates-found">
+                  Znaleziono {importDuplicates.length} potencjalnych duplikatów:
+                </p>
+                <div className="max-h-32 overflow-y-auto border rounded-md divide-y text-xs">
+                  {importDuplicates.map((d, i) => (
+                    <div key={i} className="px-2 py-1 bg-amber-50 dark:bg-amber-950/20">
+                      {formatDate(d.date)} — {d.operationName}
+                    </div>
+                  ))}
+                </div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={skipDuplicatesOnImport}
+                    onChange={e => setSkipDuplicatesOnImport(e.target.checked)}
+                    className="h-4 w-4 rounded border-border"
+                    data-testid="checkbox-skip-duplicates"
+                  />
+                  Pomiń duplikaty przy imporcie
+                </label>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowImportDialog(false)} data-testid="button-cancel-saldo-import">
+            <Button variant="outline" onClick={() => { setShowImportDialog(false); setImportDuplicates([]); }} data-testid="button-cancel-saldo-import">
               Anuluj
             </Button>
             <Button onClick={handleImport} disabled={importing} data-testid="button-confirm-saldo-import">
