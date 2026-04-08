@@ -654,6 +654,11 @@ export default function CompanyAccounts() {
     queryKey: ["/api/accounts"],
   });
 
+  const { data: statements = [] } = useQuery<{ id: number; accountId: number | null }[]>({
+    queryKey: ["/api/bank-statements"],
+    enabled: !!importId,
+  });
+
   const bankAccounts = useMemo(
     () => accounts.filter(a => a.type === "BANK" && a.category === "KONTA_BANKOWE"),
     [accounts]
@@ -663,9 +668,19 @@ export default function CompanyAccounts() {
 
   useEffect(() => {
     if (bankAccounts.length > 0 && !activeAccountId) {
+      if (importId && statements.length > 0) {
+        const stmt = statements.find(s => s.id === importId);
+        if (stmt?.accountId) {
+          const matchingAccount = bankAccounts.find(a => a.id === stmt.accountId);
+          if (matchingAccount) {
+            setActiveAccountId(String(matchingAccount.id));
+            return;
+          }
+        }
+      }
       setActiveAccountId(String(bankAccounts[0].id));
     }
-  }, [bankAccounts, activeAccountId]);
+  }, [bankAccounts, activeAccountId, importId, statements]);
 
   const activeAccount = bankAccounts.find(a => String(a.id) === activeAccountId);
 

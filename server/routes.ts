@@ -11373,22 +11373,11 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const accountStatements = statements.filter(s => s.accountId === accountId);
       const lastImport = accountStatements[0];
 
-      const allTxResult = await storage.getBankTransactionHistory({
+      const summary = await storage.getBankTransactionSummary(
         accountId,
-        dateFrom: req.query.dateFrom as string | undefined,
-        dateTo: req.query.dateTo as string | undefined,
-        offset: 0,
-        limit: 999999,
-      });
-      let totalIncome = 0;
-      let totalExpense = 0;
-      let pendingCount = 0;
-      for (const tx of allTxResult.transactions) {
-        const amt = Number(tx.amount);
-        if (amt >= 0) totalIncome += amt;
-        else totalExpense += amt;
-        if (!tx.costImported && !tx.costSkipped) pendingCount++;
-      }
+        req.query.dateFrom as string | undefined,
+        req.query.dateTo as string | undefined,
+      );
 
       res.json({
         ...result,
@@ -11396,9 +11385,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           currentBalance: latestSnapshot?.balance || "0",
           lastImportDate: lastImport?.importDate || null,
           lastImportFileName: lastImport?.fileName || null,
-          totalIncome: totalIncome.toFixed(2),
-          totalExpense: totalExpense.toFixed(2),
-          pendingCount,
+          totalIncome: summary.totalIncome.toFixed(2),
+          totalExpense: summary.totalExpense.toFixed(2),
+          pendingCount: summary.pendingCount,
         },
       });
     } catch (err: any) {

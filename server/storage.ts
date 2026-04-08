@@ -496,6 +496,7 @@ export interface IStorage {
     offset?: number;
     limit?: number;
   }): Promise<{ transactions: (BankTransaction & { statementFileName?: string })[]; total: number }>;
+  getBankTransactionSummary(accountId: number, dateFrom?: string, dateTo?: string): Promise<{ totalIncome: number; totalExpense: number; pendingCount: number }>;
 
   // Bank Mapping Rules
   getBankMappingRules(): Promise<BankMappingRule[]>;
@@ -780,7 +781,7 @@ export class DatabaseStorage implements IStorage {
 
   async getCompanyBalance(): Promise<{ accounts: { id: number; name: string; type: string | null; category: string | null; balanceSource: string | null; latestBalance: string }[]; totalBalance: string }> {
     const allAccounts = await db.select().from(accounts);
-    const allSnapshots = await db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.date));
+    const allSnapshots = await db.select().from(accountSnapshots).orderBy(desc(accountSnapshots.date), desc(accountSnapshots.id));
 
     const accountBalances = allAccounts.map(acc => {
       const latestSnapshot = allSnapshots.find(s => s.accountId === acc.id);
@@ -2489,6 +2490,27 @@ export class DatabaseStorage implements IStorage {
     }));
 
     return { transactions, total: countResult?.count || 0 };
+  }
+
+  async getBankTransactionSummary(accountId: number, dateFrom?: string, dateTo?: string): Promise<{ totalIncome: number; totalExpense: number; pendingCount: number }> {
+    const conditions: SQL[] = [eq(bankTransactions.accountId, accountId)];
+    if (dateFrom) conditions.push(gte(bankTransactions.date, dateFrom));
+    if (dateTo) conditions.push(lte(bankTransactions.date, dateTo));
+    const whereClause = and(...conditions)!;
+
+    const [result] = await db.select({
+      totalIncome: sql<number>`coalesce(sum(case when ${bankTransactions.amount} >= 0 then ${bankTransactions.amount} else 0 end), 0)::float`,
+      totalExpense: sql<number>`coalesce(sum(case when ${bankTransactions.amount} < 0 then ${bankTransactions.amount} else 0 end), 0)::float`,
+      pendingCount: sql<number>`count(*) filter (where (${bankTransactions.costImported} is null or ${bankTransactions.costImported} = false) and (${bankTransactions.costSkipped} is null or ${bankTransactions.costSkipped} = false))::int`,
+    })
+      .from(bankTransactions)
+      .where(whereClause);
+
+    return {
+      totalIncome: result?.totalIncome || 0,
+      totalExpense: result?.totalExpense || 0,
+      pendingCount: result?.pendingCount || 0,
+    };
   }
 
   // Bank Mapping Rules
