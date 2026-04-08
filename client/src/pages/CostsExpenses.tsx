@@ -1152,7 +1152,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                     key={mi}
                     className={`transition-colors duration-300 hover:bg-muted/20 dark:hover:bg-muted/10
                       ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}`}
-                    style={isCurrentMo ? { outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' } : undefined}
+                    style={{ height: '32px', ...(isCurrentMo ? { outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' } : {}) }}
                     data-testid={`row-cat-month-${cat.id}-${mi}`}
                   >
                     <td className="border-b border-r border-border px-2 py-1 font-semibold text-[10px]">
@@ -1310,7 +1310,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
                       ${isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
                       ${payStatus === "overdue" ? "bg-red-50/50 dark:bg-red-950/10" : ""}
                       ${payStatus === "paid" ? "bg-emerald-50/30 dark:bg-emerald-950/10" : ""}`}
-                    style={isCurrentMo ? { outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' } : undefined}
+                    style={{ height: '32px', ...(isCurrentMo ? { outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' } : {}) }}
                     data-testid={`row-item-month-${cat.id}-${idx}-${mi}`}
                   >
                     <td className="border-b border-r border-border px-2 py-1 font-semibold text-[10px]">

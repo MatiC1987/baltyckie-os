@@ -1306,9 +1306,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                         ${isSummary ? "" : isCurrentMo ? "bg-primary/[0.06] dark:bg-primary/[0.08]" : ""}
                         ${isSummary ? "" : isHighlighted ? "bg-yellow-100/60 dark:bg-yellow-800/20" : ""}
                         ${isSummary ? "hover:bg-white/5" : "hover:bg-muted/20 dark:hover:bg-muted/10"}`}
-                      style={isCurrentMo
+                      style={{ height: '32px', ...(isCurrentMo
                         ? { ...(isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : {}), outline: `1.5px solid ${headerBg}`, outlineOffset: '-1.5px' }
-                        : (isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : undefined)}
+                        : (isSummary ? { color: 'hsl(var(--sidebar-foreground))' } : {})) }}
                       data-testid={isSummary ? `row-summary-month-${mi}` : `row-month-${cat}-${mi}`}
                     >
                       <td className={`border-b border-r px-2 py-1 font-semibold text-[10px]
