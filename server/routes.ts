@@ -3938,6 +3938,221 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.post('/api/saldo/import-to-targets', isAuthenticated, async (req, res) => {
+    try {
+      const { assignments } = req.body;
+      if (!assignments || !Array.isArray(assignments)) {
+        return res.status(400).json({ message: "Brak przypisań" });
+      }
+
+      const seenIds = new Set<number>();
+      const results: any[] = [];
+
+      for (const a of assignments) {
+        if (!a.entryId || !a.targetType) continue;
+        if (seenIds.has(a.entryId)) continue;
+        seenIds.add(a.entryId);
+
+        const allEntries = await storage.getSaldoEntries({});
+        const entry = allEntries.find(e => e.id === a.entryId);
+        if (!entry) continue;
+        if (entry.costImported || entry.costSkipped) {
+          results.push({ entryId: a.entryId, skipped: true, message: "Wpis już przypisany lub pominięty" });
+          continue;
+        }
+
+        const absAmount = Math.abs(parseFloat(entry.cashAmount || "0"));
+        const txMonth = new Date(entry.date).getMonth();
+        const txYear = new Date(entry.date).getFullYear();
+
+        if (a.targetType === "operational") {
+          const opRows = await storage.getOpCostData(txYear);
+          const existing = opRows.find(r => r.catId === a.catId && r.itemIdx === a.itemIdx && r.month === txMonth);
+          const currentRealized = Number(existing?.realized) || 0;
+
+          if (Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
+            results.push({
+              entryId: a.entryId, duplicateWarning: true, currentRealized, importAmount: absAmount,
+              message: `Pozycja ma już realizację ${currentRealized.toFixed(2)} zł — identyczna kwota.`,
+            });
+            continue;
+          }
+
+          const newRealized = currentRealized + absAmount;
+          await storage.upsertOpCostCells([{
+            year: txYear, catId: a.catId, itemIdx: a.itemIdx, month: txMonth,
+            prognoza: existing?.prognoza ? Number(existing.prognoza) : undefined,
+            realized: newRealized,
+          }]);
+
+          await storage.updateSaldoEntry(a.entryId, {
+            costImported: true, costTargetType: "operational",
+            costTargetCatId: a.catId, costTargetItemIdx: a.itemIdx,
+          });
+          results.push({ entryId: a.entryId, success: true, newRealized });
+
+        } else if (a.targetType === "apartment") {
+          const aptRows = await storage.getAptCostData(txYear);
+          const existing = aptRows.find(r => r.entryId === a.aptEntryId && r.category === a.category && r.month === txMonth);
+          const currentRealized = Number(existing?.realized) || 0;
+
+          if (Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
+            results.push({
+              entryId: a.entryId, duplicateWarning: true, currentRealized, importAmount: absAmount,
+              message: `Pozycja ma już realizację ${currentRealized.toFixed(2)} zł — identyczna kwota.`,
+            });
+            continue;
+          }
+
+          const newRealized = currentRealized + absAmount;
+          const currentPrognoza = Number(existing?.prognoza) || 0;
+          await storage.upsertAptCostCells([{
+            year: txYear, entryId: a.aptEntryId, category: a.category, month: txMonth,
+            prognoza: String(currentPrognoza), realized: String(newRealized),
+          }]);
+
+          await storage.updateSaldoEntry(a.entryId, {
+            costImported: true, costTargetType: "apartment",
+            costTargetEntryId: a.aptEntryId, costTargetCategory: a.category,
+          });
+          results.push({ entryId: a.entryId, success: true, newRealized });
+
+        } else if (a.targetType === "sublease") {
+          const paymentId = a.subleasePaymentId;
+          if (!paymentId) continue;
+
+          if (!a.forceAmount) {
+            const allSubleases = await storage.getSubleases();
+            let targetPayment: { id: number; amount: string; status: string } | null = null;
+            for (const sub of allSubleases) {
+              const payments = await storage.getSubleasePayments(sub.id);
+              const found = payments.find(p => p.id === paymentId);
+              if (found) { targetPayment = found; break; }
+            }
+
+            if (targetPayment) {
+              const paymentAmount = parseFloat(targetPayment.amount);
+              if (Math.abs(paymentAmount - absAmount) > 0.01) {
+                results.push({
+                  entryId: a.entryId, amountMismatch: true,
+                  paymentAmount, transactionAmount: absAmount, paymentId,
+                  message: `Kwota wpisu (${absAmount.toFixed(2)} zł) różni się od kwoty płatności (${paymentAmount.toFixed(2)} zł).`,
+                });
+                continue;
+              }
+            }
+          }
+
+          await storage.updateSubleasePayment(paymentId, { status: "oplacona" });
+          await storage.updateSaldoEntry(a.entryId, {
+            costImported: true, costTargetType: "sublease",
+            costTargetSubleasePaymentId: paymentId,
+          });
+          results.push({ entryId: a.entryId, success: true });
+        }
+      }
+
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/saldo/:id/skip', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.updateSaldoEntry(id, { costSkipped: true });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/saldo/:id/unskip', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.updateSaldoEntry(id, { costSkipped: false });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/saldo/ai-categorize', isAuthenticated, async (req, res) => {
+    try {
+      const { entries: entryList, personCategories } = req.body;
+      if (!entryList || !Array.isArray(entryList)) {
+        return res.status(400).json({ message: "Brak wpisów" });
+      }
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const categoryList = personCategories && Array.isArray(personCategories)
+        ? personCategories.map((c: any) => `- ${c.name} (${c.type === 'PRZYCHOD' ? 'przychód' : 'koszt'})`).join("\n")
+        : "";
+
+      const prompt = `Jesteś asystentem finansowym zarządzającym wynajmem apartamentów. Kategoryzuj poniższe wpisy z salda osobowego. ${categoryList ? `Dostępne kategorie:\n${categoryList}` : `Dostępne kategorie:\n- CZYNSZ (opłaty czynszowe)\n- MEDIA (prąd, gaz, woda, internet)\n- WYNAGRODZENIA (pensje, zlecenia)\n- PODATKI (PIT, ZUS, składki)\n- NAPRAWY (konserwacja, remonty)\n- PRZYCHOD_REZERWACJA (wpływy od gości)\n- PRZYCHOD_PODNAJEM (wpływy od podnajemców)\n- UBEZPIECZENIE (polisy)\n- ADMINISTRACJA (opłaty biurowe)\n- INNE (pozostałe)`}
+
+Wpisy do kategoryzacji:
+${entryList.map((e: any, i: number) => `${i + 1}. ${e.date} | ${e.cashAmount || 0} PLN | ${e.operationName} | ${e.guestName || ""} | ${e.type || ""}`).join("\n")}
+
+Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": string, "confidence": number (0-1) }. Bez dodatkowego tekstu.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        max_tokens: 2000,
+      });
+
+      const text = response.choices[0]?.message?.content || "[]";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      const categories = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+
+      for (const cat of categories) {
+        const idx = cat.index - 1;
+        if (idx >= 0 && idx < entryList.length && entryList[idx].id) {
+          await storage.updateSaldoEntry(entryList[idx].id, { aiCategory: cat.category });
+        }
+      }
+
+      res.json({ categories });
+    } catch (err: any) {
+      console.error("Saldo AI categorization error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/saldo/check-duplicates', isAuthenticated, async (req, res) => {
+    try {
+      const { personName, entries: checkEntries } = req.body;
+      if (!checkEntries || !Array.isArray(checkEntries)) {
+        return res.status(400).json({ message: "Brak wpisów do sprawdzenia" });
+      }
+
+      const existing = await storage.getSaldoEntries({ personName });
+      const duplicates: { index: number; existingId: number; date: string; operationName: string }[] = [];
+
+      checkEntries.forEach((entry: any, idx: number) => {
+        const match = existing.find(e =>
+          e.date === entry.date &&
+          e.operationName === entry.operationName &&
+          Math.abs(parseFloat(e.cashAmount || "0") - parseFloat(entry.cashAmount || "0")) < 0.01
+        );
+        if (match) {
+          duplicates.push({ index: idx, existingId: match.id, date: entry.date, operationName: entry.operationName });
+        }
+      });
+
+      res.json({ duplicates });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete('/api/saldo/all', isAuthenticated, async (req, res) => {
     await storage.deleteAllSaldoEntries();
     res.status(204).send();

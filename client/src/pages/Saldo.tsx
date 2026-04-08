@@ -1,11 +1,11 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp, CheckCircle2, Ban, Minus, Loader2, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -30,6 +30,87 @@ function formatNum(v: string | null | undefined): string {
   const n = parseFloat(v);
   if (isNaN(n)) return "";
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+type CostStatus = "all" | "pending" | "assigned" | "skipped";
+
+interface AssignmentTargets {
+  operational: {
+    catId: string;
+    title: string;
+    items: { catId: string; itemIdx: number; name: string; subLabel: string | null; realizedByMonth: Record<number, number> }[];
+  }[];
+  apartment: {
+    entryId: string;
+    name: string;
+    categories: { category: string; realizedByMonth: Record<number, number> }[];
+  }[];
+  sublease: {
+    subleaseId: number;
+    tenantName: string;
+    apartmentNames: string;
+    unpaidPayments: { id: number; title: string; category: string; amount: string; dueDate: string }[];
+  }[];
+}
+
+interface TargetOption {
+  key: string;
+  label: string;
+  group: string;
+  targetType: "operational" | "apartment" | "sublease";
+  catId?: string;
+  itemIdx?: number;
+  entryId?: string;
+  category?: string;
+  subleasePaymentId?: number;
+}
+
+function formatPLN(val: string | number | null | undefined): string {
+  if (val === null || val === undefined) return "-";
+  const num = typeof val === "string" ? parseFloat(val) : val;
+  if (isNaN(num)) return "-";
+  return num.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " zł";
+}
+
+function buildTargetOptions(targets: AssignmentTargets | undefined): TargetOption[] {
+  if (!targets) return [];
+  const opts: TargetOption[] = [];
+  for (const cat of targets.operational) {
+    for (const item of cat.items) {
+      opts.push({
+        key: `op__${item.catId}__${item.itemIdx}`,
+        label: `${cat.title} → ${item.name}${item.subLabel ? ` (${item.subLabel})` : ""}`,
+        group: "Koszty operacyjne",
+        targetType: "operational",
+        catId: item.catId,
+        itemIdx: item.itemIdx,
+      });
+    }
+  }
+  for (const apt of targets.apartment) {
+    for (const catEntry of apt.categories) {
+      opts.push({
+        key: `apt__${apt.entryId}__${catEntry.category}`,
+        label: `${apt.name} → ${catEntry.category}`,
+        group: "Koszty apartamentów",
+        targetType: "apartment",
+        entryId: apt.entryId,
+        category: catEntry.category,
+      });
+    }
+  }
+  for (const sub of targets.sublease) {
+    for (const pay of sub.unpaidPayments) {
+      opts.push({
+        key: `sub__${pay.id}`,
+        label: `${sub.tenantName} → ${pay.title} (${formatPLN(pay.amount)})`,
+        group: "Podnajem",
+        targetType: "sublease",
+        subleasePaymentId: pay.id,
+      });
+    }
+  }
+  return opts;
 }
 
 const SALDO_PERSONS = [
@@ -185,6 +266,9 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     setPage(0);
     setPreviewEntry(null);
     setEditEntry(null);
+    setCostStatusFilter("all");
+    setExpandedEntryId(null);
+    setSelectedTargets({});
   }, [personName]);
   const [editForm, setEditForm] = useState({
     date: "", operationName: "", reservationNumber: "", guestName: "",
@@ -198,6 +282,10 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
   const [editingInitialBalance, setEditingInitialBalance] = useState(false);
   const [initialBalanceInput, setInitialBalanceInput] = useState("");
+  const [costStatusFilter, setCostStatusFilter] = useState<CostStatus>("all");
+  const [expandedEntryId, setExpandedEntryId] = useState<number | null>(null);
+  const [selectedTargets, setSelectedTargets] = useState<Record<number, string>>({});
+  const [aiCategorizing, setAiCategorizing] = useState(false);
 
   const [newEntry, setNewEntry] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -265,6 +353,17 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
 
   const incomeCategories = useMemo(() => categoriesWithType.filter(c => c.type === 'PRZYCHOD').map(c => c.name), [categoriesWithType]);
   const costCategories = useMemo(() => categoriesWithType.filter(c => c.type === 'KOSZT').map(c => c.name), [categoriesWithType]);
+
+  const now = new Date();
+  const { data: targets } = useQuery<AssignmentTargets>({
+    queryKey: ["/api/assignment-targets", now.getFullYear(), now.getMonth() + 1],
+    queryFn: async () => {
+      const res = await fetch(`/api/assignment-targets?year=${now.getFullYear()}&month=${now.getMonth() + 1}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load targets");
+      return res.json();
+    },
+  });
+  const targetOptions = useMemo(() => buildTargetOptions(targets), [targets]);
 
   const renameCategoryMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
@@ -338,6 +437,93 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     },
   });
 
+  const handleAssignCost = async (entryId: number) => {
+    const targetKey = selectedTargets[entryId];
+    if (!targetKey) return;
+    const opt = targetOptions.find(o => o.key === targetKey);
+    if (!opt) return;
+
+    const assignment: any = { entryId, targetType: opt.targetType };
+    if (opt.targetType === "operational") {
+      assignment.catId = opt.catId;
+      assignment.itemIdx = opt.itemIdx;
+    } else if (opt.targetType === "apartment") {
+      assignment.aptEntryId = opt.entryId;
+      assignment.category = opt.category;
+    } else if (opt.targetType === "sublease") {
+      assignment.subleasePaymentId = opt.subleasePaymentId;
+    }
+
+    try {
+      const res = await apiRequest("POST", "/api/saldo/import-to-targets", { assignments: [assignment] });
+      const data = await res.json();
+      const r = data.results?.[0];
+      if (r?.amountMismatch) {
+        if (window.confirm(`${r.message}\n\nCzy mimo to przypisać?`)) {
+          await apiRequest("POST", "/api/saldo/import-to-targets", { assignments: [{ ...assignment, forceAmount: true }] });
+        } else return;
+      } else if (r?.duplicateWarning) {
+        toast({ title: "Ostrzeżenie", description: r.message, variant: "destructive" });
+        return;
+      } else if (r?.skipped) {
+        toast({ title: "Pominięto", description: r.message });
+        return;
+      } else if (!r?.success) {
+        toast({ title: "Nie przypisano", description: "Brak wyniku z serwera", variant: "destructive" });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+      toast({ title: "Przypisano do kosztów" });
+      setExpandedEntryId(null);
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleSkip = async (entryId: number) => {
+    try {
+      await apiRequest("POST", `/api/saldo/${entryId}/skip`);
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+      toast({ title: "Wpis pominięty" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleUnskip = async (entryId: number) => {
+    try {
+      await apiRequest("POST", `/api/saldo/${entryId}/unskip`);
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+      toast({ title: "Wpis przywrócony" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleAiCategorize = async () => {
+    const pendingEntries = entries.filter(e => !e.costImported && !e.costSkipped);
+    if (pendingEntries.length === 0) {
+      toast({ title: "Brak wpisów do kategoryzacji" });
+      return;
+    }
+    const batch = pendingEntries.slice(0, 50);
+    setAiCategorizing(true);
+    try {
+      const res = await apiRequest("POST", "/api/saldo/ai-categorize", {
+        entries: batch.map(e => ({ id: e.id, date: e.date, cashAmount: e.cashAmount, operationName: e.operationName, guestName: e.guestName, type: e.type })),
+        personCategories: categoriesWithType,
+      });
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+      toast({ title: `AI skategoryzowało ${data.categories?.length || 0} wpisów` });
+    } catch (err: any) {
+      toast({ title: "Błąd AI", description: err.message, variant: "destructive" });
+    } finally {
+      setAiCategorizing(false);
+    }
+  };
+
   const openEdit = (entry: SaldoEntry) => {
     setEditForm({
       date: entry.date || "",
@@ -399,7 +585,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     return [...cats].sort();
   }, [entries]);
 
-  const hasActiveFilters = searchQuery || dateFrom || dateTo || paymentFilter !== "all" || typeFilter !== "all" || entryKindFilter !== "ALL" || categoryFilter !== "all";
+  const hasActiveFilters = searchQuery || dateFrom || dateTo || paymentFilter !== "all" || typeFilter !== "all" || entryKindFilter !== "ALL" || categoryFilter !== "all" || costStatusFilter !== "all";
 
   const clearAllFilters = () => {
     setSearchQuery("");
@@ -409,6 +595,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     setTypeFilter("all");
     setEntryKindFilter("ALL");
     setCategoryFilter("all");
+    setCostStatusFilter("all");
     setPage(0);
   };
 
@@ -434,6 +621,9 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     if (typeFilter !== "all") result = result.filter(e => e.type === typeFilter);
     if (entryKindFilter !== "ALL") result = result.filter(e => e.entryKind === entryKindFilter);
     if (categoryFilter !== "all") result = result.filter(e => (e.category || e.type) === categoryFilter);
+    if (costStatusFilter === "pending") result = result.filter(e => !e.costImported && !e.costSkipped);
+    else if (costStatusFilter === "assigned") result = result.filter(e => e.costImported);
+    else if (costStatusFilter === "skipped") result = result.filter(e => e.costSkipped);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(e =>
@@ -456,7 +646,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       return sortDir === "asc" ? cmp : -cmp;
     });
     return result;
-  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, entryKindFilter, categoryFilter, searchQuery, sortField, sortDir]);
+  }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, entryKindFilter, categoryFilter, costStatusFilter, searchQuery, sortField, sortDir]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -480,8 +670,10 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       if (e.cashAmount) totalCash += parseFloat(e.cashAmount);
       if (e.cardAmount) totalCard += parseFloat(e.cardAmount);
     });
-    return { totalCash, totalCard, lastSaldo: currentSaldo, count: filtered.length };
-  }, [filtered, currentSaldo]);
+    const pendingCount = entries.filter(e => !e.costImported && !e.costSkipped).length;
+    const assignedCount = entries.filter(e => e.costImported).length;
+    return { totalCash, totalCard, lastSaldo: currentSaldo, count: filtered.length, pendingCount, assignedCount };
+  }, [filtered, entries, currentSaldo]);
 
   const handleImport = async () => {
     const file = fileInputRef.current?.files?.[0];
@@ -769,6 +961,28 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                 <span>{summary.count} wpisów</span>
                 <span>Got.: {summary.totalCash.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</span>
                 <span>Karta: {summary.totalCard.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</span>
+                {summary.pendingCount > 0 && (
+                  <span className="text-amber-600 dark:text-amber-400 font-medium" data-testid="text-pending-count">
+                    {summary.pendingCount} oczekuje
+                  </span>
+                )}
+                {summary.assignedCount > 0 && (
+                  <span className="text-green-600 dark:text-green-400 font-medium" data-testid="text-assigned-count">
+                    {summary.assignedCount} przypisanych
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-2 justify-center md:justify-start">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAiCategorize}
+                  disabled={aiCategorizing || summary.pendingCount === 0}
+                  data-testid="button-ai-categorize"
+                >
+                  {aiCategorizing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                  Kategoryzuj AI
+                </Button>
               </div>
             </div>
             <div className="flex-1 w-full min-w-0" data-testid="chart-saldo-trend">
@@ -874,6 +1088,20 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Status kosztu</Label>
+              <Select value={costStatusFilter} onValueChange={(v: any) => { setCostStatusFilter(v); setPage(0); }}>
+                <SelectTrigger data-testid="select-saldo-cost-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Wszystkie</SelectItem>
+                  <SelectItem value="pending">Oczekujące</SelectItem>
+                  <SelectItem value="assigned">Przypisane</SelectItem>
+                  <SelectItem value="skipped">Pominięte</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
       </Card>
@@ -888,7 +1116,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
           </div>
         )}
         <div className="rounded-md border border-border bg-card overflow-x-auto table-scroll-container" onScroll={(e) => { const el = e.currentTarget; const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10; if (atEnd) el.classList.add('scrolled-end'); else el.classList.remove('scrolled-end'); }}>
-          <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1200px" }}>
+          <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1300px" }}>
             <thead className="sticky top-0 z-20">
               <tr className="bg-muted/80 dark:bg-muted/50">
                 <th className="border-b border-border border-r px-2 py-2 font-bold select-none sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 w-[90px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("date")} data-testid="header-saldo-date">
@@ -915,16 +1143,30 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                 </th>
                 <th className="border-b border-border border-r px-2 py-2 font-bold select-none text-left" data-testid="header-saldo-notes">Uwagi</th>
                 <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[100px] text-left" data-testid="header-saldo-createdBy">Wprowadził</th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[80px] text-center" data-testid="header-saldo-cost-status">Koszty</th>
                 <th className="border-b border-border px-2 py-2 text-center font-bold w-[65px]"></th>
               </tr>
             </thead>
             <tbody>
               {paginated.map((entry, idx) => {
                 const cashVal = entry.cashAmount ? parseFloat(entry.cashAmount) : null;
+                const isCostAssigned = !!entry.costImported;
+                const isCostSkipped = !!entry.costSkipped;
+                const isCostPending = !isCostAssigned && !isCostSkipped;
+                const isExpanded = expandedEntryId === entry.id;
+                const rowBg = isCostAssigned
+                  ? "bg-green-50/60 dark:bg-green-950/20"
+                  : isCostSkipped
+                    ? "opacity-50"
+                    : entry.operationName === "SALDO POCZĄTKOWE"
+                      ? "bg-blue-50 dark:bg-blue-950/30 font-semibold"
+                      : entry.entryKind === "KOSZT" || (cashVal !== null && cashVal < 0)
+                        ? "bg-red-50 dark:bg-red-950/20"
+                        : idx % 2 === 0 ? "" : "bg-muted/20 dark:bg-muted/10";
                 return (
+                  <React.Fragment key={entry.id}>
                   <tr
-                    key={entry.id}
-                    className={`group hover:bg-accent/30 cursor-pointer ${entry.operationName === "SALDO POCZĄTKOWE" ? "bg-blue-50 dark:bg-blue-950/30 font-semibold" : entry.entryKind === "KOSZT" || (cashVal !== null && cashVal < 0) ? "bg-red-50 dark:bg-red-950/20" : idx % 2 === 0 ? "" : "bg-muted/20 dark:bg-muted/10"}`}
+                    className={`group hover:bg-accent/30 cursor-pointer ${rowBg}`}
                     onClick={() => setPreviewEntry(entry)}
                     data-testid={`row-saldo-${entry.id}`}
                   >
@@ -932,7 +1174,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                     <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-resnum-${entry.id}`}>{entry.reservationNumber || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-guest-${entry.id}`}>{entry.guestName || ""}</td>
-                    <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-type-${entry.id}`}>{entry.category || entry.type || ""}</td>
+                    <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-type-${entry.id}`}>{entry.category || entry.type || ""}{entry.aiCategory && !entry.category ? <span className="text-purple-500 text-[9px] ml-1" title="Sugestia AI">AI: {entry.aiCategory}</span> : null}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-payment-${entry.id}`}>{entry.paymentMethod || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-center" data-testid={`cell-kf-${entry.id}`}>{entry.kasaFiskalna || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-center" data-testid={`cell-fv-${entry.id}`}>{entry.faktura || ""}</td>
@@ -942,6 +1184,33 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                     <td className="border-b border-r border-border px-2 py-1.5 text-right tabular-nums" data-testid={`cell-card-${entry.id}`}>{formatNum(entry.cardAmount)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground truncate" data-testid={`cell-notes-${entry.id}`}>{entry.notes || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground text-[10px]" data-testid={`cell-createdby-${entry.id}`}>{entry.createdBy || "-"}</td>
+                    <td className="border-b border-r border-border px-1 py-1.5 text-center" data-testid={`cell-cost-status-${entry.id}`}>
+                      {isCostAssigned ? (
+                        <Badge variant="outline" className="text-[9px] border-green-500 text-green-600 dark:text-green-400 gap-0.5 px-1 py-0 cursor-default" title={`Przypisane: ${entry.costTargetType || ""}`}>
+                          <CheckCircle2 className="h-2.5 w-2.5" />
+                        </Badge>
+                      ) : isCostSkipped ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleUnskip(entry.id); }}
+                          title="Pominięte — kliknij aby przywrócić"
+                          data-testid={`button-unskip-${entry.id}`}
+                        >
+                          <Badge variant="outline" className="text-[9px] border-muted-foreground/30 text-muted-foreground gap-0.5 px-1 py-0 cursor-pointer hover:border-primary">
+                            <Ban className="h-2.5 w-2.5" />
+                          </Badge>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedEntryId(isExpanded ? null : entry.id); }}
+                          title="Oczekuje — kliknij aby przypisać"
+                          data-testid={`button-expand-cost-${entry.id}`}
+                        >
+                          <Badge variant="outline" className="text-[9px] border-amber-500 text-amber-600 dark:text-amber-400 gap-0.5 px-1 py-0 cursor-pointer hover:border-primary">
+                            <Minus className="h-2.5 w-2.5" />
+                          </Badge>
+                        </button>
+                      )}
+                    </td>
                     <td className="border-b border-border px-1 py-1.5 text-center">
                       <div className="flex items-center gap-0.5 justify-center">
                         <button
@@ -973,6 +1242,50 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                       </div>
                     </td>
                   </tr>
+                  {isExpanded && isCostPending && (
+                    <tr className="bg-muted/20 border-b border-border/30">
+                      <td colSpan={16} className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Select value={selectedTargets[entry.id] || ""} onValueChange={v => setSelectedTargets(prev => ({ ...prev, [entry.id]: v }))}>
+                            <SelectTrigger className="h-7 text-xs w-[300px]" data-testid={`select-target-${entry.id}`}>
+                              <SelectValue placeholder="Wybierz pozycję kosztową..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {targetOptions.map(opt => (
+                                <SelectItem key={opt.key} value={opt.key} className="text-xs">
+                                  <span className="text-muted-foreground text-[10px]">[{opt.group}]</span> {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs"
+                            disabled={!selectedTargets[entry.id]}
+                            onClick={(e) => { e.stopPropagation(); handleAssignCost(entry.id); }}
+                            data-testid={`button-assign-${entry.id}`}
+                          >
+                            Przypisz
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-muted-foreground"
+                            onClick={(e) => { e.stopPropagation(); handleSkip(entry.id); }}
+                            data-testid={`button-skip-${entry.id}`}
+                          >
+                            Pomiń
+                          </Button>
+                          {entry.aiCategory && (
+                            <span className="text-[10px] text-purple-500 ml-2">
+                              <Sparkles className="h-3 w-3 inline mr-0.5" />Sugestia AI: {entry.aiCategory}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

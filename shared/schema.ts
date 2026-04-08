@@ -410,6 +410,15 @@ export const saldoEntries = pgTable("saldo_entries", {
   category: text("category"),
   personName: text("person_name"),
   createdBy: text("created_by"),
+  aiCategory: text("ai_category"),
+  costImported: boolean("cost_imported").default(false),
+  costSkipped: boolean("cost_skipped").default(false),
+  costTargetType: text("cost_target_type"),
+  costTargetCatId: text("cost_target_cat_id"),
+  costTargetItemIdx: integer("cost_target_item_idx"),
+  costTargetEntryId: text("cost_target_entry_id"),
+  costTargetCategory: text("cost_target_category"),
+  costTargetSubleasePaymentId: integer("cost_target_sublease_payment_id"),
 });
 
 export const insertSaldoEntrySchema = createInsertSchema(saldoEntries).omit({ id: true, createdBy: true });
