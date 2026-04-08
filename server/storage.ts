@@ -68,6 +68,7 @@ import {
   leaveRequests, LeaveRequest, InsertLeaveRequest,
   bankStatements, BankStatement, InsertBankStatement,
   bankTransactions, BankTransaction, InsertBankTransaction,
+  bankMappingRules, BankMappingRule, InsertBankMappingRule,
   payrollPeriods, PayrollPeriod, InsertPayrollPeriod,
   payrollEntries, PayrollEntry, InsertPayrollEntry,
   checkoutSettlements, CheckoutSettlement, InsertCheckoutSettlement,
@@ -482,9 +483,15 @@ export interface IStorage {
   createBankStatement(data: InsertBankStatement): Promise<BankStatement>;
   deleteBankStatement(id: number): Promise<void>;
   getBankTransactions(statementId?: number): Promise<BankTransaction[]>;
+  getBankTransactionById(id: number): Promise<BankTransaction | undefined>;
   createBankTransactionsBulk(data: InsertBankTransaction[]): Promise<BankTransaction[]>;
   updateBankTransaction(id: number, data: Partial<InsertBankTransaction>): Promise<BankTransaction>;
   checkDuplicateTransactions(accountId: number, items: { date: string; amount: string; description: string }[]): Promise<{ date: string; amount: string; description: string; existingId: number }[]>;
+
+  // Bank Mapping Rules
+  getBankMappingRules(): Promise<BankMappingRule[]>;
+  createBankMappingRule(data: InsertBankMappingRule): Promise<BankMappingRule>;
+  deleteBankMappingRule(id: number): Promise<void>;
 
   // Payroll
   getPayrollPeriods(): Promise<PayrollPeriod[]>;
@@ -2383,6 +2390,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(bankTransactions).orderBy(desc(bankTransactions.date));
   }
 
+  async getBankTransactionById(id: number): Promise<BankTransaction | undefined> {
+    const [tx] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, id));
+    return tx;
+  }
+
   async createBankTransactionsBulk(data: InsertBankTransaction[]): Promise<BankTransaction[]> {
     if (data.length === 0) return [];
     return db.insert(bankTransactions).values(data).returning();
@@ -2409,6 +2421,20 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return duplicates;
+  }
+
+  // Bank Mapping Rules
+  async getBankMappingRules(): Promise<BankMappingRule[]> {
+    return db.select().from(bankMappingRules).orderBy(desc(bankMappingRules.createdAt));
+  }
+
+  async createBankMappingRule(data: InsertBankMappingRule): Promise<BankMappingRule> {
+    const [rule] = await db.insert(bankMappingRules).values(data).returning();
+    return rule;
+  }
+
+  async deleteBankMappingRule(id: number): Promise<void> {
+    await db.delete(bankMappingRules).where(eq(bankMappingRules.id, id));
   }
 
   // Payroll

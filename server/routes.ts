@@ -11606,6 +11606,358 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  // ==================== BANK ASSIGNMENT TARGETS ====================
+  app.get("/api/assignment-targets", async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const month = parseInt(req.query.month as string);
+
+      const opRows = await storage.getOpCostData(year);
+      const aptRows = await storage.getAptCostData(year);
+      const allSubleases = await storage.getSubleases();
+      const apartments = await storage.getApartments();
+      const catConfigStr = await storage.getAppConfig("op-cost-categories");
+      let opCategories: { id: string; title: string; items: { name: string; subLabel?: string; archived?: boolean }[] }[] = [];
+      if (catConfigStr) {
+        try { opCategories = JSON.parse(catConfigStr); } catch {}
+      }
+      if (opCategories.length === 0) {
+        const { DEFAULT_OPLATY_CATEGORIES } = await import("../shared/oplaty-defaults");
+        opCategories = DEFAULT_OPLATY_CATEGORIES;
+      }
+
+      const operational: any[] = [];
+      for (const cat of opCategories) {
+        const items: any[] = [];
+        for (let itemIdx = 0; itemIdx < cat.items.length; itemIdx++) {
+          const item = cat.items[itemIdx];
+          if (item.archived) continue;
+          const realizedByMonth: Record<number, number> = {};
+          for (const row of opRows) {
+            if (row.catId === cat.id && row.itemIdx === itemIdx) {
+              realizedByMonth[row.month] = Number(row.realized) || 0;
+            }
+          }
+          items.push({
+            catId: cat.id,
+            itemIdx,
+            name: item.name,
+            subLabel: item.subLabel || null,
+            realizedByMonth,
+          });
+        }
+        if (items.length > 0) {
+          operational.push({ catId: cat.id, title: cat.title, items });
+        }
+      }
+
+      const aptSettingsRows = await storage.getAptCostSettings();
+      const apartment_: any[] = [];
+      const aptSettingsMap: Record<string, any> = {};
+      for (const s of aptSettingsRows) {
+        aptSettingsMap[s.entryId] = s;
+      }
+      const aptEntryIds = new Set<string>();
+      for (const r of aptRows) { aptEntryIds.add(r.entryId); }
+      for (const eid of Object.keys(aptSettingsMap)) { aptEntryIds.add(eid); }
+
+      for (const entryId of aptEntryIds) {
+        const settings = aptSettingsMap[entryId];
+        const cats: string[] = settings?.categories || ["RATA DLA WŁAŚCICIELA", "CZYNSZ DO WSPÓLNOTY", "ENERGIA - ENERGA"];
+        const catItems: any[] = [];
+        for (const cat of cats) {
+          const realizedByMonth: Record<number, number> = {};
+          for (const row of aptRows) {
+            if (row.entryId === entryId && row.category === cat) {
+              realizedByMonth[row.month] = Number(row.realized) || 0;
+            }
+          }
+          catItems.push({ category: cat, realizedByMonth });
+        }
+        const apt = apartments.find(a => a.name === entryId || a.id.toString() === entryId);
+        apartment_.push({
+          entryId,
+          name: apt?.name || entryId,
+          categories: catItems,
+        });
+      }
+
+      const subleaseTargets: any[] = [];
+      for (const sub of allSubleases) {
+        if (sub.status !== "AKTYWNA") continue;
+        const payments = await storage.getSubleasePayments(sub.id);
+        const unpaid = payments
+          .filter(p => p.status === "do_oplacenia")
+          .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+        if (unpaid.length === 0) continue;
+        const tenantName = sub.tenantType === "firma"
+          ? (sub.companyName || "Firma")
+          : `${sub.firstName || ""} ${sub.lastName || ""}`.trim();
+        const aptNames = (sub.apartmentIds || [sub.apartmentId])
+          .filter(Boolean)
+          .map(id => apartments.find(a => a.id === id)?.name || `#${id}`)
+          .join(", ");
+        subleaseTargets.push({
+          subleaseId: sub.id,
+          tenantName,
+          apartmentNames: aptNames,
+          unpaidPayments: unpaid.map(p => ({
+            id: p.id,
+            title: p.title,
+            category: p.category,
+            amount: p.amount,
+            dueDate: p.dueDate,
+          })),
+        });
+      }
+
+      res.json({ operational, apartment: apartment_, sublease: subleaseTargets });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/import-to-targets", async (req, res) => {
+    try {
+      const { assignments } = req.body;
+      if (!assignments || !Array.isArray(assignments)) {
+        return res.status(400).json({ message: "Brak przypisań" });
+      }
+
+      const seenTxIds = new Set<number>();
+      const results: any[] = [];
+
+      for (const a of assignments) {
+        if (!a.transactionId || !a.targetType) continue;
+        if (seenTxIds.has(a.transactionId)) continue;
+        seenTxIds.add(a.transactionId);
+
+        const transaction = await storage.getBankTransactionById(a.transactionId);
+        if (!transaction) continue;
+        if (transaction.costImported || transaction.costSkipped) {
+          results.push({ transactionId: a.transactionId, skipped: true, message: "Transakcja już przypisana lub pominięta" });
+          continue;
+        }
+
+        const absAmount = Math.abs(parseFloat(transaction.amount));
+        const txMonth = new Date(transaction.date).getMonth();
+        const txYear = new Date(transaction.date).getFullYear();
+
+        if (a.targetType === "operational") {
+          const opRows = await storage.getOpCostData(txYear);
+          const existing = opRows.find(r => r.catId === a.catId && r.itemIdx === a.itemIdx && r.month === txMonth);
+          const currentRealized = Number(existing?.realized) || 0;
+
+          if (Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
+            results.push({
+              transactionId: a.transactionId,
+              duplicateWarning: true,
+              currentRealized,
+              importAmount: absAmount,
+              message: `Pozycja ma już realizację ${currentRealized.toFixed(2)} zł — identyczna kwota.`,
+            });
+            continue;
+          }
+
+          const newRealized = currentRealized + absAmount;
+          await storage.upsertOpCostCells([{
+            year: txYear,
+            catId: a.catId,
+            itemIdx: a.itemIdx,
+            month: txMonth,
+            prognoza: existing?.prognoza ? Number(existing.prognoza) : undefined,
+            realized: newRealized,
+          }]);
+
+          await storage.updateBankTransaction(a.transactionId, {
+            costImported: true,
+            costTargetType: "operational",
+            costTargetCatId: a.catId,
+            costTargetItemIdx: a.itemIdx,
+          } as any);
+
+          results.push({ transactionId: a.transactionId, success: true, newRealized });
+
+        } else if (a.targetType === "apartment") {
+          const aptRows = await storage.getAptCostData(txYear);
+          const existing = aptRows.find(r => r.entryId === a.entryId && r.category === a.category && r.month === txMonth);
+          const currentRealized = Number(existing?.realized) || 0;
+
+          if (Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
+            results.push({
+              transactionId: a.transactionId,
+              duplicateWarning: true,
+              currentRealized,
+              importAmount: absAmount,
+              message: `Pozycja ma już realizację ${currentRealized.toFixed(2)} zł — identyczna kwota.`,
+            });
+            continue;
+          }
+
+          const newRealized = currentRealized + absAmount;
+          const currentPrognoza = Number(existing?.prognoza) || 0;
+          await storage.upsertAptCostCells([{
+            year: txYear,
+            entryId: a.entryId,
+            category: a.category,
+            month: txMonth,
+            prognoza: String(currentPrognoza),
+            realized: String(newRealized),
+          }]);
+
+          await storage.updateBankTransaction(a.transactionId, {
+            costImported: true,
+            costTargetType: "apartment",
+            costTargetEntryId: a.entryId,
+            costTargetCategory: a.category,
+          } as any);
+
+          results.push({ transactionId: a.transactionId, success: true, newRealized });
+
+        } else if (a.targetType === "sublease") {
+          const paymentId = a.subleasePaymentId;
+          if (!paymentId) continue;
+
+          await storage.updateSubleasePayment(paymentId, { status: "oplacona" });
+
+          await storage.updateBankTransaction(a.transactionId, {
+            costImported: true,
+            costTargetType: "sublease",
+            costTargetSubleasePaymentId: paymentId,
+          } as any);
+
+          results.push({ transactionId: a.transactionId, success: true });
+        }
+
+        if (a.saveRule && a.rulePattern) {
+          try {
+            await storage.createBankMappingRule({
+              pattern: a.rulePattern,
+              matchField: a.ruleField || "counterparty",
+              targetType: a.targetType,
+              targetCatId: a.catId || null,
+              targetItemIdx: a.itemIdx ?? null,
+              targetEntryId: a.entryId || null,
+              targetCategory: a.category || null,
+              targetSubleaseId: a.subleaseId || null,
+            });
+          } catch (e) {}
+        }
+      }
+
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/confirm-duplicate-import", async (req, res) => {
+    try {
+      const { assignments } = req.body;
+      if (!assignments || !Array.isArray(assignments)) {
+        return res.status(400).json({ message: "Brak przypisań" });
+      }
+
+      const results: any[] = [];
+
+      for (const a of assignments) {
+        if (!a.transactionId || !a.targetType) continue;
+        const transaction = await storage.getBankTransactionById(a.transactionId);
+        if (!transaction) continue;
+
+        const absAmount = Math.abs(parseFloat(transaction.amount));
+        const txMonth = new Date(transaction.date).getMonth();
+        const txYear = new Date(transaction.date).getFullYear();
+
+        if (a.targetType === "operational") {
+          const opRows = await storage.getOpCostData(txYear);
+          const existing = opRows.find(r => r.catId === a.catId && r.itemIdx === a.itemIdx && r.month === txMonth);
+          const currentRealized = Number(existing?.realized) || 0;
+          const newRealized = currentRealized + absAmount;
+
+          await storage.upsertOpCostCells([{
+            year: txYear, catId: a.catId, itemIdx: a.itemIdx, month: txMonth,
+            prognoza: existing?.prognoza ? Number(existing.prognoza) : undefined,
+            realized: newRealized,
+          }]);
+
+          await storage.updateBankTransaction(a.transactionId, {
+            costImported: true, costTargetType: "operational",
+            costTargetCatId: a.catId, costTargetItemIdx: a.itemIdx,
+          } as any);
+
+          results.push({ transactionId: a.transactionId, success: true, newRealized });
+
+        } else if (a.targetType === "apartment") {
+          const aptRows = await storage.getAptCostData(txYear);
+          const existing = aptRows.find(r => r.entryId === a.entryId && r.category === a.category && r.month === txMonth);
+          const currentRealized = Number(existing?.realized) || 0;
+          const newRealized = currentRealized + absAmount;
+          const currentPrognoza = Number(existing?.prognoza) || 0;
+
+          await storage.upsertAptCostCells([{
+            year: txYear, entryId: a.entryId, category: a.category, month: txMonth,
+            prognoza: String(currentPrognoza), realized: String(newRealized),
+          }]);
+
+          await storage.updateBankTransaction(a.transactionId, {
+            costImported: true, costTargetType: "apartment",
+            costTargetEntryId: a.entryId, costTargetCategory: a.category,
+          } as any);
+
+          results.push({ transactionId: a.transactionId, success: true, newRealized });
+        }
+      }
+
+      res.json({ results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/skip", async (req, res) => {
+    try {
+      const { transactionIds } = req.body;
+      if (!transactionIds || !Array.isArray(transactionIds)) {
+        return res.status(400).json({ message: "Brak ID transakcji" });
+      }
+      for (const id of transactionIds) {
+        await storage.updateBankTransaction(id, { costSkipped: true } as any);
+      }
+      res.json({ success: true, count: transactionIds.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Bank Mapping Rules
+  app.get("/api/bank-mapping-rules", async (_req, res) => {
+    try {
+      const rules = await storage.getBankMappingRules();
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-mapping-rules", async (req, res) => {
+    try {
+      const rule = await storage.createBankMappingRule(req.body);
+      res.json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bank-mapping-rules/:id", async (req, res) => {
+    try {
+      await storage.deleteBankMappingRule(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== PAYROLL ====================
   app.get("/api/payroll-periods", async (_req, res) => {
     try {

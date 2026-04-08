@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/PageHeader";
@@ -65,9 +65,42 @@ import {
   Building2,
   RefreshCw,
   Loader2,
+  Link2,
+  Ban,
+  CheckCircle2,
 } from "lucide-react";
 import { Link } from "wouter";
-import type { Account, BankStatement, BankTransaction, GocardlessConnection } from "@shared/schema";
+import type { Account, BankStatement, BankTransaction, BankMappingRule, GocardlessConnection } from "@shared/schema";
+
+interface AssignmentTarget {
+  targetType: "operational" | "apartment" | "sublease";
+  label: string;
+  catId?: string;
+  itemIdx?: number;
+  entryId?: string;
+  category?: string;
+  subleaseId?: number;
+  subleasePaymentId?: number;
+}
+
+interface AssignmentTargets {
+  operational: {
+    catId: string;
+    title: string;
+    items: { catId: string; itemIdx: number; name: string; subLabel: string | null; realizedByMonth: Record<number, number> }[];
+  }[];
+  apartment: {
+    entryId: string;
+    name: string;
+    categories: { category: string; realizedByMonth: Record<number, number> }[];
+  }[];
+  sublease: {
+    subleaseId: number;
+    tenantName: string;
+    apartmentNames: string;
+    unpaidPayments: { id: number; title: string; category: string; amount: string; dueDate: string }[];
+  }[];
+}
 
 function AutoSyncBanner() {
   const { toast } = useToast();
@@ -848,6 +881,68 @@ export default function BankStatementImport() {
   );
 }
 
+function buildTargetOptions(targets: AssignmentTargets | undefined): AssignmentTarget[] {
+  if (!targets) return [];
+  const options: AssignmentTarget[] = [];
+  for (const cat of targets.operational) {
+    for (const item of cat.items) {
+      options.push({
+        targetType: "operational",
+        label: `[Opłaty] ${cat.title} → ${item.name}${item.subLabel ? ` (${item.subLabel})` : ""}`,
+        catId: item.catId,
+        itemIdx: item.itemIdx,
+      });
+    }
+  }
+  for (const apt of targets.apartment) {
+    for (const c of apt.categories) {
+      options.push({
+        targetType: "apartment",
+        label: `[Mieszkanie] ${apt.name} → ${c.category}`,
+        entryId: apt.entryId,
+        category: c.category,
+      });
+    }
+  }
+  for (const sub of targets.sublease) {
+    for (const p of sub.unpaidPayments) {
+      options.push({
+        targetType: "sublease",
+        label: `[Podnajem] ${sub.tenantName} (${sub.apartmentNames}) — ${p.title} ${parseFloat(p.amount).toFixed(2)} zł`,
+        subleaseId: sub.subleaseId,
+        subleasePaymentId: p.id,
+        category: p.category,
+      });
+    }
+  }
+  return options;
+}
+
+function findMatchingRule(tx: BankTransaction, rules: BankMappingRule[]): AssignmentTarget | null {
+  for (const rule of rules) {
+    const field = rule.matchField === "description" ? tx.description : (tx.counterparty || "");
+    if (field && field.toLowerCase().includes(rule.pattern.toLowerCase())) {
+      return {
+        targetType: rule.targetType as "operational" | "apartment" | "sublease",
+        label: "",
+        catId: rule.targetCatId || undefined,
+        itemIdx: rule.targetItemIdx ?? undefined,
+        entryId: rule.targetEntryId || undefined,
+        category: rule.targetCategory || undefined,
+        subleaseId: rule.targetSubleaseId ?? undefined,
+      };
+    }
+  }
+  return null;
+}
+
+function targetToKey(t: AssignmentTarget): string {
+  if (t.targetType === "operational") return `op__${t.catId}__${t.itemIdx}`;
+  if (t.targetType === "apartment") return `apt__${t.entryId}__${t.category}`;
+  if (t.targetType === "sublease") return `sub__${t.subleasePaymentId}`;
+  return "";
+}
+
 function StatementRow({
   statement,
   expanded,
@@ -861,7 +956,13 @@ function StatementRow({
   onDelete: () => void;
   accounts: Account[];
 }) {
+  const { toast } = useToast();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<number>>(new Set());
+  const [assignments, setAssignments] = useState<Record<number, AssignmentTarget>>({});
+  const [duplicateWarnings, setDuplicateWarnings] = useState<any[]>([]);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+
   const { data: transactions = [], isLoading } = useQuery<BankTransaction[]>({
     queryKey: ["/api/bank-transactions", statement.id],
     queryFn: async () => {
@@ -872,6 +973,176 @@ function StatementRow({
     enabled: expanded,
   });
 
+  const { data: targets } = useQuery<AssignmentTargets>({
+    queryKey: ["/api/assignment-targets"],
+    queryFn: async () => {
+      const res = await fetch("/api/assignment-targets");
+      if (!res.ok) throw new Error("Błąd");
+      return res.json();
+    },
+    enabled: expanded,
+  });
+
+  const { data: mappingRules = [] } = useQuery<BankMappingRule[]>({
+    queryKey: ["/api/bank-mapping-rules"],
+    enabled: expanded,
+  });
+
+  const targetOptions = useMemo(() => buildTargetOptions(targets), [targets]);
+
+  const unassignedTxs = useMemo(() =>
+    transactions.filter(tx => !tx.costImported && !tx.costSkipped),
+    [transactions]
+  );
+
+  useEffect(() => {
+    if (unassignedTxs.length > 0 && mappingRules.length > 0 && targetOptions.length > 0) {
+      const autoAssignments: Record<number, AssignmentTarget> = {};
+      for (const tx of unassignedTxs) {
+        if (assignments[tx.id]) continue;
+        const match = findMatchingRule(tx, mappingRules);
+        if (match) {
+          const opt = targetOptions.find(o => targetToKey(o) === targetToKey(match));
+          if (opt) autoAssignments[tx.id] = opt;
+        }
+      }
+      if (Object.keys(autoAssignments).length > 0) {
+        setAssignments(prev => ({ ...prev, ...autoAssignments }));
+      }
+    }
+  }, [unassignedTxs, mappingRules, targetOptions]);
+
+  const importMutation = useMutation({
+    mutationFn: async (data: { assignments: any[] }) => {
+      const res = await apiRequest("POST", "/api/bank-transactions/import-to-targets", data);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const warnings = data.results.filter((r: any) => r.duplicateWarning);
+      const successes = data.results.filter((r: any) => r.success);
+      if (warnings.length > 0) {
+        setDuplicateWarnings(warnings);
+        setShowDuplicateDialog(true);
+      }
+      if (successes.length > 0) {
+        toast({ title: "Zaimportowano", description: `${successes.length} transakcji przypisano do kosztów` });
+        setSelectedTxIds(new Set());
+        setAssignments(prev => {
+          const next = { ...prev };
+          for (const s of successes) delete next[s.transactionId];
+          return next;
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const confirmDuplicateMutation = useMutation({
+    mutationFn: async (data: { assignments: any[] }) => {
+      const res = await apiRequest("POST", "/api/bank-transactions/confirm-duplicate-import", data);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const count = data.results.filter((r: any) => r.success).length;
+      toast({ title: "Zaimportowano", description: `${count} transakcji przypisano mimo duplikatów` });
+      setDuplicateWarnings([]);
+      setShowDuplicateDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const skipMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const res = await apiRequest("POST", "/api/bank-transactions/skip", { transactionIds: ids });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Pominięto", description: `${data.count} transakcji oznaczono jako pominięte` });
+      setSelectedTxIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleAssign = (txId: number, key: string) => {
+    if (key === "__clear__") {
+      setAssignments(prev => { const n = { ...prev }; delete n[txId]; return n; });
+      return;
+    }
+    const opt = targetOptions.find(o => targetToKey(o) === key);
+    if (opt) setAssignments(prev => ({ ...prev, [txId]: opt }));
+  };
+
+  const handleImportSelected = () => {
+    const toImport = Array.from(selectedTxIds)
+      .filter(id => assignments[id])
+      .map(id => {
+        const a = assignments[id];
+        return {
+          transactionId: id,
+          targetType: a.targetType,
+          catId: a.catId,
+          itemIdx: a.itemIdx,
+          entryId: a.entryId,
+          category: a.category,
+          subleasePaymentId: a.subleasePaymentId,
+          subleaseId: a.subleaseId,
+        };
+      });
+    if (toImport.length === 0) {
+      toast({ title: "Brak przypisań", description: "Zaznacz transakcje i przypisz je do pozycji kosztów", variant: "destructive" });
+      return;
+    }
+    importMutation.mutate({ assignments: toImport });
+  };
+
+  const handleSkipSelected = () => {
+    const ids = Array.from(selectedTxIds);
+    if (ids.length === 0) return;
+    skipMutation.mutate(ids);
+  };
+
+  const handleConfirmDuplicates = () => {
+    const toConfirm = duplicateWarnings.map(w => {
+      const a = assignments[w.transactionId];
+      return {
+        transactionId: w.transactionId,
+        targetType: a?.targetType,
+        catId: a?.catId,
+        itemIdx: a?.itemIdx,
+        entryId: a?.entryId,
+        category: a?.category,
+      };
+    });
+    confirmDuplicateMutation.mutate({ assignments: toConfirm });
+  };
+
+  const toggleTx = (id: number) => {
+    setSelectedTxIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const toggleAllUnassigned = () => {
+    if (selectedTxIds.size === unassignedTxs.length) {
+      setSelectedTxIds(new Set());
+    } else {
+      setSelectedTxIds(new Set(unassignedTxs.map(t => t.id)));
+    }
+  };
+
   const accountName = accounts.find((a) => a.id === statement.accountId)?.name || "-";
 
   const formatAmount = (val: string | null | undefined) => {
@@ -879,6 +1150,10 @@ function StatementRow({
     const num = parseFloat(val);
     return num.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " PLN";
   };
+
+  const assignedCount = unassignedTxs.filter(tx => assignments[tx.id]).length;
+  const importedCount = transactions.filter(tx => tx.costImported).length;
+  const skippedCount = transactions.filter(tx => tx.costSkipped).length;
 
   return (
     <Collapsible open={expanded} onOpenChange={onToggle}>
@@ -901,6 +1176,16 @@ function StatementRow({
                 <span className="text-sm text-muted-foreground">
                   Okres: {statement.startDate} - {statement.endDate}
                 </span>
+              )}
+              {importedCount > 0 && (
+                <Badge className="text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" data-testid={`badge-imported-count-${statement.id}`}>
+                  <CheckCircle2 className="h-3 w-3 mr-1" />{importedCount} przypisanych
+                </Badge>
+              )}
+              {skippedCount > 0 && (
+                <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-skipped-count-${statement.id}`}>
+                  <Ban className="h-3 w-3 mr-1" />{skippedCount} pominiętych
+                </Badge>
               )}
             </div>
             <Button
@@ -937,6 +1222,31 @@ function StatementRow({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Ostrzeżenie o duplikatach</AlertDialogTitle>
+              <AlertDialogDescription>
+                {duplicateWarnings.length} transakcji ma identyczną kwotę jak istniejąca realizacja. Czy chcesz dodać te kwoty mimo to?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="max-h-[200px] overflow-y-auto space-y-2 my-2">
+              {duplicateWarnings.map((w: any) => (
+                <div key={w.transactionId} className="text-sm p-2 rounded bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
+                  {w.message}
+                </div>
+              ))}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-duplicate">Anuluj</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmDuplicates} data-testid="button-confirm-duplicate">
+                Dodaj mimo to
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <CollapsibleContent>
           <div className="border-t p-3">
             {isLoading ? (
@@ -947,40 +1257,186 @@ function StatementRow({
             ) : transactions.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">Brak transakcji</p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Opis</TableHead>
-                      <TableHead>Kontrahent</TableHead>
-                      <TableHead className="text-right">Kwota</TableHead>
-                      <TableHead className="text-right">Saldo</TableHead>
-                      <TableHead>Kategoria</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {transactions.map((tx) => (
-                      <TableRow key={tx.id} data-testid={`row-transaction-${tx.id}`}>
-                        <TableCell className="whitespace-nowrap">{tx.date}</TableCell>
-                        <TableCell className="max-w-[300px] truncate">{tx.description}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{tx.counterparty || "-"}</TableCell>
-                        <TableCell
-                          className={`text-right whitespace-nowrap font-medium ${parseFloat(tx.amount) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
-                        >
-                          {formatAmount(tx.amount)}
-                        </TableCell>
-                        <TableCell className="text-right whitespace-nowrap">{formatAmount(tx.balance)}</TableCell>
-                        <TableCell>
-                          {(tx.category || tx.aiCategory) && (
-                            <Badge variant="secondary">{tx.category || tx.aiCategory}</Badge>
+              <>
+                {unassignedTxs.length > 0 && (
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <Button
+                      size="sm"
+                      onClick={handleImportSelected}
+                      disabled={selectedTxIds.size === 0 || importMutation.isPending}
+                      data-testid={`button-import-to-costs-${statement.id}`}
+                    >
+                      {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Link2 className="h-4 w-4 mr-1" />}
+                      Przypisz do kosztów ({Array.from(selectedTxIds).filter(id => assignments[id]).length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSkipSelected}
+                      disabled={selectedTxIds.size === 0 || skipMutation.isPending}
+                      data-testid={`button-skip-selected-${statement.id}`}
+                    >
+                      {skipMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Ban className="h-4 w-4 mr-1" />}
+                      Pomiń ({selectedTxIds.size})
+                    </Button>
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {unassignedTxs.length} nieprzypisanych
+                      {assignedCount > 0 && ` • ${assignedCount} z przypisaną pozycją`}
+                    </span>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[30px]">
+                          {unassignedTxs.length > 0 && (
+                            <Checkbox
+                              checked={selectedTxIds.size === unassignedTxs.length && unassignedTxs.length > 0}
+                              onCheckedChange={toggleAllUnassigned}
+                              data-testid={`checkbox-select-all-${statement.id}`}
+                            />
                           )}
-                        </TableCell>
+                        </TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Opis</TableHead>
+                        <TableHead>Kontrahent</TableHead>
+                        <TableHead className="text-right">Kwota</TableHead>
+                        <TableHead>Kategoria</TableHead>
+                        <TableHead className="min-w-[280px]">Przypisanie do kosztów</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {transactions.map((tx) => {
+                        const isImported = !!tx.costImported;
+                        const isSkipped = !!tx.costSkipped;
+                        const isDone = isImported || isSkipped;
+                        const currentAssignment = assignments[tx.id];
+
+                        return (
+                          <TableRow
+                            key={tx.id}
+                            className={isImported ? "bg-green-50/50 dark:bg-green-950/10" : isSkipped ? "bg-muted/30" : ""}
+                            data-testid={`row-transaction-${tx.id}`}
+                          >
+                            <TableCell>
+                              {!isDone && (
+                                <Checkbox
+                                  checked={selectedTxIds.has(tx.id)}
+                                  onCheckedChange={() => toggleTx(tx.id)}
+                                  data-testid={`checkbox-tx-${tx.id}`}
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">{tx.date}</TableCell>
+                            <TableCell className="max-w-[250px] truncate" title={tx.description}>{tx.description}</TableCell>
+                            <TableCell className="max-w-[150px] truncate">{tx.counterparty || "-"}</TableCell>
+                            <TableCell
+                              className={`text-right whitespace-nowrap font-medium ${parseFloat(tx.amount) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+                            >
+                              {formatAmount(tx.amount)}
+                            </TableCell>
+                            <TableCell>
+                              {(tx.category || tx.aiCategory) && (
+                                <Badge variant="secondary" className="text-xs">{tx.category || tx.aiCategory}</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {isDone ? (
+                                isImported && tx.costTargetType ? (
+                                  <span className="text-xs text-green-700 dark:text-green-400">
+                                    {tx.costTargetType === "operational" && `Opłaty: ${tx.costTargetCatId}[${tx.costTargetItemIdx}]`}
+                                    {tx.costTargetType === "apartment" && `Mieszkanie: ${tx.costTargetEntryId} → ${tx.costTargetCategory}`}
+                                    {tx.costTargetType === "sublease" && `Podnajem: płatność #${tx.costTargetSubleasePaymentId}`}
+                                  </span>
+                                ) : null
+                              ) : (
+                                <Select
+                                  value={currentAssignment ? targetToKey(currentAssignment) : ""}
+                                  onValueChange={(v) => handleAssign(tx.id, v)}
+                                >
+                                  <SelectTrigger className="w-full text-xs h-8" data-testid={`select-assign-${tx.id}`}>
+                                    <SelectValue placeholder="Wybierz pozycję..." />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-[300px]">
+                                    <SelectItem value="__clear__">— Wyczyść —</SelectItem>
+                                    {targets?.operational && targets.operational.length > 0 && (
+                                      <>
+                                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Opłaty operacyjne</div>
+                                        {targets.operational.map(cat =>
+                                          cat.items.map(item => (
+                                            <SelectItem
+                                              key={`op__${item.catId}__${item.itemIdx}`}
+                                              value={`op__${item.catId}__${item.itemIdx}`}
+                                              data-testid={`option-op-${item.catId}-${item.itemIdx}`}
+                                            >
+                                              {cat.title} → {item.name}{item.subLabel ? ` (${item.subLabel})` : ""}
+                                            </SelectItem>
+                                          ))
+                                        )}
+                                      </>
+                                    )}
+                                    {targets?.apartment && targets.apartment.length > 0 && (
+                                      <>
+                                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Koszty mieszkań</div>
+                                        {targets.apartment.map(apt =>
+                                          apt.categories.map(c => (
+                                            <SelectItem
+                                              key={`apt__${apt.entryId}__${c.category}`}
+                                              value={`apt__${apt.entryId}__${c.category}`}
+                                              data-testid={`option-apt-${apt.entryId}-${c.category}`}
+                                            >
+                                              {apt.name} → {c.category}
+                                            </SelectItem>
+                                          ))
+                                        )}
+                                      </>
+                                    )}
+                                    {targets?.sublease && targets.sublease.length > 0 && (
+                                      <>
+                                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Podnajmy — nieopłacone</div>
+                                        {targets.sublease.map(sub =>
+                                          sub.unpaidPayments.map(p => (
+                                            <SelectItem
+                                              key={`sub__${p.id}`}
+                                              value={`sub__${p.id}`}
+                                              data-testid={`option-sub-${p.id}`}
+                                            >
+                                              {sub.tenantName} — {p.title} ({parseFloat(p.amount).toFixed(2)} zł, termin {p.dueDate})
+                                            </SelectItem>
+                                          ))
+                                        )}
+                                      </>
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {isImported && (
+                                <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-xs" data-testid={`badge-imported-${tx.id}`}>
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />Przypisana
+                                </Badge>
+                              )}
+                              {isSkipped && (
+                                <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-skipped-${tx.id}`}>
+                                  <Ban className="h-3 w-3 mr-1" />Pominięta
+                                </Badge>
+                              )}
+                              {!isDone && currentAssignment && (
+                                <Badge variant="secondary" className="text-xs" data-testid={`badge-ready-${tx.id}`}>
+                                  Gotowa
+                                </Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </div>
         </CollapsibleContent>

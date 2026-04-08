@@ -1488,6 +1488,27 @@ export const bankTransactions = pgTable("bank_transactions", {
   aiCategory: text("ai_category"),
   matched: boolean("matched").default(false),
   matchedExpenseId: integer("matched_expense_id"),
+  costImported: boolean("cost_imported").default(false),
+  costSkipped: boolean("cost_skipped").default(false),
+  costTargetType: text("cost_target_type"),
+  costTargetCatId: text("cost_target_cat_id"),
+  costTargetItemIdx: integer("cost_target_item_idx"),
+  costTargetEntryId: text("cost_target_entry_id"),
+  costTargetCategory: text("cost_target_category"),
+  costTargetSubleasePaymentId: integer("cost_target_sublease_payment_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const bankMappingRules = pgTable("bank_mapping_rules", {
+  id: serial("id").primaryKey(),
+  pattern: text("pattern").notNull(),
+  matchField: text("match_field").notNull(),
+  targetType: text("target_type").notNull(),
+  targetCatId: text("target_cat_id"),
+  targetItemIdx: integer("target_item_idx"),
+  targetEntryId: text("target_entry_id"),
+  targetCategory: text("target_category"),
+  targetSubleaseId: integer("target_sublease_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1498,6 +1519,10 @@ export type InsertBankStatement = z.infer<typeof insertBankStatementSchema>;
 export const insertBankTransactionSchema = createInsertSchema(bankTransactions).omit({ id: true, createdAt: true });
 export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
+
+export const insertBankMappingRuleSchema = createInsertSchema(bankMappingRules).omit({ id: true, createdAt: true });
+export type BankMappingRule = typeof bankMappingRules.$inferSelect;
+export type InsertBankMappingRule = z.infer<typeof insertBankMappingRuleSchema>;
 
 // ==================== PAYROLL ====================
 export const payrollPeriods = pgTable("payroll_periods", {
