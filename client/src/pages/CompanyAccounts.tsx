@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { Label } from "@/components/ui/label";
 import {
   Landmark,
   Search,
@@ -27,6 +28,7 @@ import {
   Loader2,
   Upload,
   AlertCircle,
+  Calendar,
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import type { Account, BankTransaction } from "@shared/schema";
@@ -87,6 +89,7 @@ const QUICK_FILTERS = [
   { label: "Kwartał", value: "quarter" },
   { label: "Ten rok", value: "year" },
   { label: "Wszystko", value: "all" },
+  { label: "Zakres...", value: "custom" },
 ] as const;
 
 function getDateRange(filter: string): { dateFrom?: string; dateTo?: string } {
@@ -179,11 +182,13 @@ function TransactionRow({
   targetOptions,
   onAssigned,
   onSkipped,
+  isNewlyImported,
 }: {
   tx: TransactionWithMeta;
   targetOptions: TargetOption[];
   onAssigned: () => void;
   onSkipped: () => void;
+  isNewlyImported?: boolean;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -261,7 +266,7 @@ function TransactionRow({
   return (
     <>
       <tr
-        className={`border-b border-border/30 transition-colors hover:bg-muted/40 cursor-pointer h-[34px] ${isSkipped ? "opacity-50" : ""}`}
+        className={`border-b border-border/30 transition-colors hover:bg-muted/40 cursor-pointer h-[34px] ${isSkipped ? "opacity-50" : ""} ${isNewlyImported ? "bg-blue-50/60 dark:bg-blue-950/20" : ""}`}
         onClick={() => setExpanded(!expanded)}
         data-testid={`row-tx-${tx.id}`}
       >
@@ -271,7 +276,7 @@ function TransactionRow({
         <td className="px-2 py-1 text-xs truncate max-w-[120px] sm:max-w-[180px]" title={tx.counterparty || ""}>
           {tx.counterparty || "-"}
         </td>
-        <td className="hidden sm:table-cell px-2 py-1 text-xs truncate max-w-[200px] lg:max-w-[300px]" title={tx.description}>
+        <td className="hidden md:table-cell px-2 py-1 text-xs truncate max-w-[200px] lg:max-w-[300px]" title={tx.description}>
           {tx.description}
         </td>
         <td className={`px-2 py-1 text-xs tabular-nums font-semibold text-right whitespace-nowrap ${isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
@@ -280,7 +285,7 @@ function TransactionRow({
         <td className="hidden md:table-cell px-2 py-1 text-xs tabular-nums text-right text-muted-foreground whitespace-nowrap">
           {tx.balance ? formatPLN(tx.balance) : "-"}
         </td>
-        <td className="hidden sm:table-cell px-2 py-1 text-center">
+        <td className="hidden md:table-cell px-2 py-1 text-center">
           {statusBadge}
         </td>
       </tr>
@@ -288,11 +293,11 @@ function TransactionRow({
         <tr className="bg-muted/20 border-b border-border/30">
           <td colSpan={6} className="px-3 py-2">
             <div className="space-y-2 text-xs">
-              <div className="sm:hidden">
+              <div className="md:hidden">
                 <span className="text-muted-foreground">Opis: </span>
                 <span>{tx.description}</span>
               </div>
-              <div className="sm:hidden flex items-center gap-2">
+              <div className="md:hidden flex items-center gap-2">
                 <span className="text-muted-foreground">Status: </span>
                 {statusBadge}
               </div>
@@ -360,14 +365,18 @@ function TransactionRow({
 function AccountTab({
   account,
   initialStatus,
+  highlightStatementId,
 }: {
   account: Account;
   initialStatus?: CostStatus;
+  highlightStatementId?: number;
 }) {
   const [quickFilter, setQuickFilter] = useState("this-month");
   const [search, setSearch] = useState("");
   const [costStatus, setCostStatus] = useState<CostStatus>(initialStatus || "all");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -376,7 +385,15 @@ function AccountTab({
     return () => clearTimeout(t);
   }, [search]);
 
-  const dateRange = useMemo(() => getDateRange(quickFilter), [quickFilter]);
+  const dateRange = useMemo(() => {
+    if (quickFilter === "custom") {
+      return {
+        dateFrom: customDateFrom || undefined,
+        dateTo: customDateTo || undefined,
+      };
+    }
+    return getDateRange(quickFilter);
+  }, [quickFilter, customDateFrom, customDateTo]);
 
   const now = new Date();
   const { data: targets } = useQuery<AssignmentTargets>({
@@ -503,44 +520,67 @@ function AccountTab({
         </Card>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-        <div className="flex items-center gap-1 flex-wrap">
-          {QUICK_FILTERS.map(f => (
-            <Button
-              key={f.value}
-              size="sm"
-              variant={quickFilter === f.value ? "default" : "outline"}
-              className="h-7 text-xs px-2.5"
-              onClick={() => setQuickFilter(f.value)}
-              data-testid={`button-filter-${f.value}`}
-            >
-              {f.label}
-            </Button>
-          ))}
+      <div className="space-y-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex items-center gap-1 flex-wrap">
+            {QUICK_FILTERS.map(f => (
+              <Button
+                key={f.value}
+                size="sm"
+                variant={quickFilter === f.value ? "default" : "outline"}
+                className="h-7 text-xs px-2.5"
+                onClick={() => setQuickFilter(f.value)}
+                data-testid={`button-filter-${f.value}`}
+              >
+                {f.value === "custom" && <Calendar className="h-3 w-3 mr-1" />}
+                {f.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 flex-1">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Szukaj kontrahenta lub opis..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-7 text-xs pl-7"
+                data-testid="input-search"
+              />
+            </div>
+            <Select value={costStatus} onValueChange={(v) => setCostStatus(v as CostStatus)}>
+              <SelectTrigger className="h-7 text-xs w-[150px]" data-testid="select-cost-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Wszystkie</SelectItem>
+                <SelectItem value="pending">Do skategoryzowania</SelectItem>
+                <SelectItem value="categorized">Skategoryzowane</SelectItem>
+                <SelectItem value="skipped">Pominięte</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-1">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        {quickFilter === "custom" && (
+          <div className="flex items-center gap-2 pl-1">
+            <Label className="text-xs text-muted-foreground">Od:</Label>
             <Input
-              placeholder="Szukaj kontrahenta lub opis..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-7 text-xs pl-7"
-              data-testid="input-search"
+              type="date"
+              value={customDateFrom}
+              onChange={(e) => setCustomDateFrom(e.target.value)}
+              className="h-7 text-xs w-[140px]"
+              data-testid="input-date-from"
+            />
+            <Label className="text-xs text-muted-foreground">Do:</Label>
+            <Input
+              type="date"
+              value={customDateTo}
+              onChange={(e) => setCustomDateTo(e.target.value)}
+              className="h-7 text-xs w-[140px]"
+              data-testid="input-date-to"
             />
           </div>
-          <Select value={costStatus} onValueChange={(v) => setCostStatus(v as CostStatus)}>
-            <SelectTrigger className="h-7 text-xs w-[150px]" data-testid="select-cost-status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Wszystkie</SelectItem>
-              <SelectItem value="pending">Do skategoryzowania</SelectItem>
-              <SelectItem value="categorized">Skategoryzowane</SelectItem>
-              <SelectItem value="skipped">Pominięte</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        )}
       </div>
 
       <Card className="overflow-hidden">
@@ -550,10 +590,10 @@ function AccountTab({
               <tr className="border-b border-border">
                 <th className="text-left px-2 py-2 font-semibold text-muted-foreground w-[90px]">Data</th>
                 <th className="text-left px-2 py-2 font-semibold text-muted-foreground">Kontrahent</th>
-                <th className="hidden sm:table-cell text-left px-2 py-2 font-semibold text-muted-foreground">Tytuł przelewu</th>
+                <th className="hidden md:table-cell text-left px-2 py-2 font-semibold text-muted-foreground">Tytuł przelewu</th>
                 <th className="text-right px-2 py-2 font-semibold text-muted-foreground w-[110px]">Kwota</th>
                 <th className="hidden md:table-cell text-right px-2 py-2 font-semibold text-muted-foreground w-[110px]">Saldo</th>
-                <th className="hidden sm:table-cell text-center px-2 py-2 font-semibold text-muted-foreground w-[100px]">Status</th>
+                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold text-muted-foreground w-[100px]">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -582,6 +622,7 @@ function AccountTab({
                     targetOptions={targetOptions}
                     onAssigned={handleRefresh}
                     onSkipped={handleRefresh}
+                    isNewlyImported={highlightStatementId ? tx.statementId === highlightStatementId : false}
                   />
                 ))
               )}
@@ -606,7 +647,8 @@ function AccountTab({
 export default function CompanyAccounts() {
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
-  const initialStatus = params.get("status") as CostStatus | null;
+  const initialStatus = (["all", "categorized", "skipped", "pending"].includes(params.get("status") || "") ? params.get("status") : null) as CostStatus | null;
+  const importId = params.get("importId") ? parseInt(params.get("importId")!) : undefined;
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
@@ -693,6 +735,7 @@ export default function CompanyAccounts() {
           key={activeAccount.id}
           account={activeAccount}
           initialStatus={initialStatus || undefined}
+          highlightStatementId={importId}
         />
       )}
     </div>

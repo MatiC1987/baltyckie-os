@@ -362,7 +362,7 @@ export default function BankStatementImport() {
       await apiRequest("POST", "/api/bank-transactions/bulk", bulkData);
       return statement;
     },
-    onSuccess: () => {
+    onSuccess: (statement) => {
       const imported = skipDuplicates
         ? parsedTransactions.filter((t) => !t.isDuplicate).length
         : parsedTransactions.length;
@@ -372,7 +372,7 @@ export default function BankStatementImport() {
       queryClient.invalidateQueries({ queryKey: ["/api/bank-statements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions/history"] });
-      navigate("/konta-firmowe?status=pending");
+      navigate(`/konta-firmowe?status=pending&importId=${statement.id}`);
     },
     onError: (err: Error) => {
       toast({ title: "Błąd importu", description: err.message, variant: "destructive" });

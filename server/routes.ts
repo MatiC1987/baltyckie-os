@@ -11362,7 +11362,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         search: req.query.search as string | undefined,
-        costStatus: (req.query.costStatus as any) || "all",
+        costStatus: (["all", "categorized", "skipped", "pending"].includes(req.query.costStatus as string) ? req.query.costStatus as "all" | "categorized" | "skipped" | "pending" : "all"),
         offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 30,
       });
@@ -11426,7 +11426,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
               balance: lastTx.balance,
               notes: "Import bankowy",
             });
-          } catch {}
+          } catch (snapErr: any) {
+            console.warn("Auto-snapshot po imporcie nie powiódł się:", snapErr?.message || snapErr);
+          }
         }
       }
 
