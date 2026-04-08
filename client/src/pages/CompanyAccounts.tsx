@@ -204,11 +204,8 @@ function TransactionRow({
     mutationFn: async () => {
       const opt = targetOptions.find(o => o.key === selectedTarget);
       if (!opt) throw new Error("Wybierz pozycję kosztową");
-      const now = new Date();
       await apiRequest("POST", "/api/bank-transactions/import-to-targets", {
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
-        transactions: [{
+        assignments: [{
           transactionId: tx.id,
           targetType: opt.targetType,
           catId: opt.catId,
