@@ -29,6 +29,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -151,14 +161,15 @@ interface CategorizationRule {
   field: "description" | "counterparty";
 }
 
-type BankFormat = "generic" | "mbank" | "pko" | "ing" | "santander";
+type BankFormat = "generic" | "mbank" | "pko" | "ing" | "santander" | "pekao";
 
 const BANK_FORMATS: { value: BankFormat; label: string }[] = [
-  { value: "generic", label: "Uniwersalny (CSV)" },
+  { value: "pekao", label: "Pekao SA" },
+  { value: "santander", label: "Santander" },
   { value: "mbank", label: "mBank" },
   { value: "pko", label: "PKO BP" },
   { value: "ing", label: "ING Bank" },
-  { value: "santander", label: "Santander" },
+  { value: "generic", label: "Uniwersalny (CSV)" },
 ];
 
 const RULES_STORAGE_KEY = "bank-import-categorization-rules";
@@ -183,7 +194,7 @@ export default function BankStatementImport() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [showPreview, setShowPreview] = useState(false);
   const [expandedStatements, setExpandedStatements] = useState<Set<number>>(new Set());
-  const [bankFormat, setBankFormat] = useState<BankFormat>("generic");
+  const [bankFormat, setBankFormat] = useState<BankFormat>("pekao");
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [rules, setRules] = useState<CategorizationRule[]>(loadRules);
@@ -850,6 +861,7 @@ function StatementRow({
   onDelete: () => void;
   accounts: Account[];
 }) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { data: transactions = [], isLoading } = useQuery<BankTransaction[]>({
     queryKey: ["/api/bank-transactions", statement.id],
     queryFn: async () => {
@@ -891,7 +903,7 @@ function StatementRow({
               variant="ghost"
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete();
+                setShowDeleteConfirm(true);
               }}
               data-testid={`button-delete-statement-${statement.id}`}
             >
@@ -899,6 +911,27 @@ function StatementRow({
             </Button>
           </div>
         </CollapsibleTrigger>
+
+        <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Usuń wyciąg</AlertDialogTitle>
+              <AlertDialogDescription>
+                Czy na pewno chcesz usunąć wyciąg "{statement.fileName}" i wszystkie powiązane transakcje ({statement.transactionCount})? Tej operacji nie można cofnąć.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid={`button-cancel-delete-${statement.id}`}>Anuluj</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={onDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                data-testid={`button-confirm-delete-${statement.id}`}
+              >
+                Usuń
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <CollapsibleContent>
           <div className="border-t p-3">
             {isLoading ? (

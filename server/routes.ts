@@ -11390,7 +11390,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const lines = content.split("\n").filter(l => l.trim());
       const transactions: any[] = [];
 
-      const cleanNum = (s: string) => s?.replace(/\s/g, "").replace(",", ".") || "0";
+      const cleanNum = (s: string) => s?.replace(/\s/g, "").replace(/,/g, ".") || "0";
       const cleanStr = (s: string) => s?.replace(/"/g, "").trim() || "";
 
       if (bankFormat === "mbank") {
@@ -11455,6 +11455,62 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
             });
           }
         }
+      } else if (bankFormat === "pekao") {
+        let headerIdx = -1;
+        let colDate = -1, colAmount = -1, colBalance = -1, colDesc = -1, colCounterparty = -1;
+        for (let i = 0; i < Math.min(lines.length, 10); i++) {
+          const lower = lines[i].toLowerCase();
+          if (lower.includes("data") && (lower.includes("kwota") || lower.includes("operacj"))) {
+            headerIdx = i;
+            const cols = lines[i].split(";").map(cleanStr);
+            for (let c = 0; c < cols.length; c++) {
+              const cl = cols[c].toLowerCase();
+              if (cl.includes("data") && cl.includes("operacj")) colDate = c;
+              else if (cl.includes("data") && cl.includes("ksieg")) { if (colDate < 0) colDate = c; }
+              else if (cl.includes("data") && colDate < 0) colDate = c;
+              else if (cl.includes("kwota")) colAmount = c;
+              else if (cl.includes("saldo")) colBalance = c;
+              else if (cl.includes("tytuł") || cl.includes("tytul") || cl.includes("opis")) { if (colDesc < 0) colDesc = c; }
+              else if (cl.includes("nadawca") || cl.includes("odbiorca") || cl.includes("kontrahent") || cl.includes("nazwa")) { if (colCounterparty < 0) colCounterparty = c; }
+            }
+            break;
+          }
+        }
+        if (headerIdx < 0) headerIdx = 0;
+        if (colDate < 0) colDate = 0;
+        if (colAmount < 0) colAmount = 3;
+        if (colDesc < 0) colDesc = 2;
+
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+          const parts = lines[i].split(";").map(cleanStr);
+          if (parts.length < 3) continue;
+          const rawDate = parts[colDate] || "";
+          let dateStr = rawDate;
+          const dotMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+          if (dotMatch) {
+            dateStr = `${dotMatch[3]}-${dotMatch[2]}-${dotMatch[1]}`;
+          }
+          const dashMatch = rawDate.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+          if (dashMatch) {
+            dateStr = `${dashMatch[3]}-${dashMatch[2]}-${dashMatch[1]}`;
+          }
+          if (!dateStr.match(/\d{4}-\d{2}-\d{2}/)) continue;
+
+          const amount = colAmount >= 0 && parts[colAmount] ? cleanNum(parts[colAmount]) : "0";
+          const balance = colBalance >= 0 && parts[colBalance] ? cleanNum(parts[colBalance]) : null;
+          const description = colDesc >= 0 ? (parts[colDesc] || "Transakcja") : "Transakcja";
+          const counterparty = colCounterparty >= 0 ? (parts[colCounterparty] || null) : null;
+
+          if (amount === "0" && !parts[colAmount]) continue;
+
+          transactions.push({
+            date: dateStr,
+            description,
+            amount,
+            balance,
+            counterparty: counterparty || description,
+          });
+        }
       } else if (bankFormat === "santander") {
         for (let i = 1; i < lines.length; i++) {
           const parts = lines[i].split(",").map(cleanStr);
@@ -11492,8 +11548,8 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
             transactions.push({
               date: parts[0] || new Date().toISOString().split("T")[0],
               description: parts[1] || parts[2] || "Transakcja",
-              amount: parts[3]?.replace(",", ".") || "0",
-              balance: parts[4]?.replace(",", ".") || null,
+              amount: parts[3]?.replace(/,/g, ".") || "0",
+              balance: parts[4]?.replace(/,/g, ".") || null,
               counterparty: parts[2] || null,
             });
           }
