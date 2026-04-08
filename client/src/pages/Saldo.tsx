@@ -505,7 +505,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       const rule = applyRulesToEntry(entry);
       if (rule) {
         let didApply = false;
-        if (rule.category) {
+        if (rule.category && rule.category !== "none") {
           try {
             await apiRequest("PUT", `/api/saldo/${entry.id}`, { category: rule.category });
             newCats[entry.id] = rule.category;
@@ -541,7 +541,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
 
     const entry = entries.find(e => e.id === entryId);
     const cat = selectedCategories[entryId];
-    if (cat && entry) {
+    if (cat && cat !== "none" && entry) {
       await apiRequest("PUT", `/api/saldo/${entryId}`, { category: cat });
     }
 
