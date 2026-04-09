@@ -468,6 +468,11 @@ function AccountTab({
     return getDateRange(quickFilter);
   }, [quickFilter, customDateFrom, customDateTo]);
 
+  useEffect(() => {
+    setSelectedTxIds(new Set());
+    setBulkWizardSelection(null);
+  }, [quickFilter, customDateFrom, customDateTo, debouncedSearch, costStatus]);
+
   const now = new Date();
   const { data: targets } = useQuery<AssignmentTargets>({
     queryKey: ["/api/assignment-targets", now.getFullYear(), now.getMonth() + 1],

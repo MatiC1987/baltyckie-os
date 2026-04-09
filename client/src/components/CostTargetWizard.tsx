@@ -246,7 +246,7 @@ export function CostTargetWizard({
         grouped[r.group].push(r);
       }
       return (
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {Object.entries(grouped).map(([group, items]) => (
             <div key={group}>
               <div className="px-3 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">{group}</div>
@@ -267,7 +267,7 @@ export function CostTargetWizard({
     switch (step.type) {
       case "root":
         return (
-          <div className="space-y-1 p-1">
+          <div className="space-y-0.5 p-1">
             {targets.operational.length > 0 && (
               <Tile
                 label="Operacyjne"
@@ -297,7 +297,7 @@ export function CostTargetWizard({
 
       case "op-categories":
         return (
-          <div className="space-y-1 p-1">
+          <div className="space-y-0.5 p-1">
             {targets.operational.map(cat => (
               <Tile
                 key={cat.catId}
@@ -336,7 +336,7 @@ export function CostTargetWizard({
 
       case "apt-locations":
         return (
-          <div className="space-y-1 p-1">
+          <div className="space-y-0.5 p-1">
             {locations.map(([loc, count]) => (
               <Tile
                 key={loc}
@@ -354,7 +354,7 @@ export function CostTargetWizard({
           .filter(a => (a.location || "Inne") === step.location)
           .sort((a, b) => a.name.localeCompare(b.name));
         return (
-          <div className="space-y-1 p-1">
+          <div className="space-y-0.5 p-1">
             {apts.map(apt => (
               <Tile
                 key={apt.entryId}
@@ -394,7 +394,7 @@ export function CostTargetWizard({
 
       case "subleases":
         return (
-          <div className="space-y-1 p-1">
+          <div className="space-y-0.5 p-1">
             {targets.sublease.map(sub => (
               <Tile
                 key={sub.subleaseId}
