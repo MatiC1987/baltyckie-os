@@ -12096,15 +12096,15 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         return res.json({ updated: 0 });
       }
       let totalUpdated = 0;
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
       for (const stmt of accountStmts) {
         const allTx = await db.select().from(bankTransactions).where(eq(bankTransactions.statementId, stmt.id));
         const uncategorized = allTx.filter(t => !t.category && !t.aiCategory);
         if (uncategorized.length === 0) continue;
-        const OpenAI = (await import("openai")).default;
-        const openai = new OpenAI({
-          apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-          baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-        });
         const prompt = `Jesteś asystentem finansowym zarządzającym wynajmem apartamentów. Kategoryzuj poniższe transakcje bankowe. Dostępne kategorie:
 - CZYNSZ (opłaty czynszowe, wynajem)
 - MEDIA (prąd, gaz, woda, ogrzewanie, internet)
