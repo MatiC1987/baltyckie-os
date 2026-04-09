@@ -466,6 +466,7 @@ export function CostTargetWizard({
         className={cn("p-0", className)}
         align="start"
         style={{ width: "var(--radix-popover-trigger-width)", minWidth: 340 }}
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex items-center border-b px-3 py-2 gap-2">
           {step.type !== "root" && !search.trim() && (
