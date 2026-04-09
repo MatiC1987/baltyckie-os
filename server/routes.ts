@@ -9698,9 +9698,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       for (const targetYear of uniqueTargets) {
         const existingRows = await storage.getAptCostData(targetYear);
         const existingSet = new Set(
-          existingRows
-            .filter(r => parseFloat(r.prognoza ?? '0') > 0)
-            .map(r => `${r.entryId}__${r.category}__${r.month}`)
+          existingRows.map(r => `${r.entryId}__${r.category}__${r.month}`)
         );
         const cellsToInsert = forecastRows.filter(r => {
           const key = `${r.entryId}__${r.category}__${r.month}`;
