@@ -11695,6 +11695,46 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     }
   });
 
+  app.get("/api/bank-transactions/counterparty-suggestions", async (req, res) => {
+    try {
+      const accountId = parseInt(req.query.accountId as string);
+      if (!accountId) return res.status(400).json({ message: "Brak accountId" });
+
+      const result = await db.execute(sql`
+        SELECT DISTINCT ON (counterparty)
+          counterparty,
+          cost_target_type,
+          cost_target_cat_id,
+          cost_target_item_idx,
+          cost_target_entry_id,
+          cost_target_category,
+          cost_target_sublease_payment_id
+        FROM bank_transactions
+        WHERE account_id = ${accountId}
+          AND cost_imported = true
+          AND counterparty IS NOT NULL
+          AND counterparty != ''
+        ORDER BY counterparty, date DESC, id DESC
+      `);
+
+      const suggestions = (result.rows || []).map((row: any) => ({
+        counterparty: row.counterparty,
+        lastTarget: {
+          targetType: row.cost_target_type,
+          catId: row.cost_target_cat_id,
+          itemIdx: row.cost_target_item_idx,
+          entryId: row.cost_target_entry_id,
+          category: row.cost_target_category,
+          subleasePaymentId: row.cost_target_sublease_payment_id,
+        },
+      }));
+
+      res.json(suggestions);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/bank-transactions/history", async (req, res) => {
     try {
       const accountId = parseInt(req.query.accountId as string);

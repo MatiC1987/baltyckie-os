@@ -33,6 +33,10 @@ import {
   Undo2,
   Sparkles,
   X,
+  Users,
+  ChevronDown,
+  ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import type { Account, BankTransaction } from "@shared/schema";
@@ -54,6 +58,18 @@ interface HistoryResponse {
     totalIncome: string;
     totalExpense: string;
     pendingCount: number;
+  };
+}
+
+interface CounterpartySuggestion {
+  counterparty: string;
+  lastTarget: {
+    targetType: string | null;
+    catId: string | null;
+    itemIdx: number | null;
+    entryId: string | null;
+    category: string | null;
+    subleasePaymentId: number | null;
   };
 }
 
@@ -168,6 +184,7 @@ function TransactionRow({
   isNewlyImported,
   isSelected,
   onToggleSelect,
+  suggestion,
 }: {
   tx: TransactionWithMeta;
   targets: AssignmentTargets | undefined;
@@ -177,6 +194,7 @@ function TransactionRow({
   isNewlyImported?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: number) => void;
+  suggestion?: CounterpartySuggestion;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -256,6 +274,54 @@ function TransactionRow({
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
     },
   });
+
+  const quickAssignMutation = useMutation({
+    mutationFn: async () => {
+      if (!suggestion) throw new Error("Brak sugestii");
+      await apiRequest("POST", "/api/bank-transactions/import-to-targets", {
+        assignments: [{
+          transactionId: tx.id,
+          targetType: suggestion.lastTarget.targetType,
+          catId: suggestion.lastTarget.catId,
+          itemIdx: suggestion.lastTarget.itemIdx,
+          entryId: suggestion.lastTarget.entryId,
+          category: suggestion.lastTarget.category,
+          subleasePaymentId: suggestion.lastTarget.subleasePaymentId,
+          forceAmount: true,
+        }],
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Przypisano", description: "Przypisano jak ostatnio" });
+      onAssigned();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const suggestionLabel = useMemo(() => {
+    if (!suggestion || !targets) return null;
+    const t = suggestion.lastTarget;
+    if (t.targetType === "operational") {
+      const cat = targets.operational.find(c =>
+        c.items.some(i => i.catId === t.catId && i.itemIdx === t.itemIdx)
+      );
+      const item = cat?.items.find(i => i.catId === t.catId && i.itemIdx === t.itemIdx);
+      return cat && item ? `${cat.title} → ${item.name}` : null;
+    }
+    if (t.targetType === "apartment") {
+      const apt = targets.apartment.find(a => a.entryId === t.entryId);
+      return apt ? `${apt.name} → ${t.category}` : null;
+    }
+    if (t.targetType === "sublease") {
+      for (const sub of targets.sublease) {
+        const pay = sub.unpaidPayments.find(p => p.id === t.subleasePaymentId);
+        if (pay) return `${sub.tenantName} → ${pay.title}`;
+      }
+    }
+    return null;
+  }, [suggestion, targets]);
 
   const targetLabel = isCategorized ? resolveTargetLabel(tx, targets) : null;
 
@@ -389,6 +455,21 @@ function TransactionRow({
                   <span className="text-green-700 dark:text-green-400">{targetLabel}</span>
                 </div>
               )}
+              {isPending && suggestion && suggestionLabel && (
+                <div className="pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1 border-green-300 text-green-700 dark:border-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+                    disabled={quickAssignMutation.isPending}
+                    onClick={(e) => { e.stopPropagation(); quickAssignMutation.mutate(); }}
+                    data-testid={`button-quick-assign-${tx.id}`}
+                  >
+                    {quickAssignMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                    Jak ostatnio: {suggestionLabel}
+                  </Button>
+                </div>
+              )}
               {isPending && (
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <CostTargetWizard
@@ -450,6 +531,8 @@ function AccountTab({
   const [customDateTo, setCustomDateTo] = useState("");
   const [selectedTxIds, setSelectedTxIds] = useState<Set<number>>(new Set());
   const [bulkWizardSelection, setBulkWizardSelection] = useState<WizardSelection | null>(null);
+  const [groupByCounterparty, setGroupByCounterparty] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -482,6 +565,23 @@ function AccountTab({
       return res.json();
     },
   });
+
+  const { data: counterpartySuggestions = [] } = useQuery<CounterpartySuggestion[]>({
+    queryKey: ["/api/bank-transactions/counterparty-suggestions", account.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/bank-transactions/counterparty-suggestions?accountId=${account.id}`);
+      if (!res.ok) throw new Error("Failed to load suggestions");
+      return res.json();
+    },
+  });
+
+  const suggestionMap = useMemo(() => {
+    const map = new Map<string, CounterpartySuggestion>();
+    for (const s of counterpartySuggestions) {
+      if (s.counterparty) map.set(s.counterparty, s);
+    }
+    return map;
+  }, [counterpartySuggestions]);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -569,6 +669,69 @@ function AccountTab({
     () => allTransactions.filter(tx => !tx.costImported && !tx.costSkipped),
     [allTransactions]
   );
+
+  const counterpartyGroups = useMemo(() => {
+    if (!groupByCounterparty) return [];
+    const map = new Map<string, TransactionWithMeta[]>();
+    for (const tx of allTransactions) {
+      const key = tx.counterparty || "(brak kontrahenta)";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(tx);
+    }
+    return Array.from(map.entries())
+      .map(([name, txs]) => ({
+        name,
+        transactions: txs,
+        total: txs.reduce((s, t) => s + parseFloat(t.amount || "0"), 0),
+        pendingCount: txs.filter(t => !t.costImported && !t.costSkipped).length,
+      }))
+      .sort((a, b) => b.transactions.length - a.transactions.length);
+  }, [allTransactions, groupByCounterparty]);
+
+  const selectedSum = useMemo(() => {
+    if (selectedTxIds.size === 0) return 0;
+    return allTransactions
+      .filter(tx => selectedTxIds.has(tx.id))
+      .reduce((s, tx) => s + parseFloat(tx.amount || "0"), 0);
+  }, [allTransactions, selectedTxIds]);
+
+  const footerStats = useMemo(() => {
+    const income = allTransactions.reduce((s, tx) => {
+      const a = parseFloat(tx.amount || "0");
+      return a > 0 ? s + a : s;
+    }, 0);
+    const expense = allTransactions.reduce((s, tx) => {
+      const a = parseFloat(tx.amount || "0");
+      return a < 0 ? s + a : s;
+    }, 0);
+    const categorized = allTransactions.filter(tx => tx.costImported || tx.costSkipped).length;
+    const pct = allTransactions.length > 0 ? Math.round((categorized / allTransactions.length) * 100) : 0;
+    return { income, expense, categorized, pct };
+  }, [allTransactions]);
+
+  const toggleGroup = useCallback((name: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const toggleGroupSelect = useCallback((txs: TransactionWithMeta[]) => {
+    const pendingIds = txs.filter(t => !t.costImported && !t.costSkipped).map(t => t.id);
+    if (pendingIds.length === 0) return;
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      const allSelected = pendingIds.every(id => next.has(id));
+      if (allSelected) {
+        pendingIds.forEach(id => next.delete(id));
+      } else {
+        pendingIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  }, []);
 
   const toggleSelect = useCallback((id: number) => {
     setSelectedTxIds(prev => {
@@ -683,6 +846,20 @@ function AccountTab({
         </Card>
       </div>
 
+      {summary && total > 0 && (
+        <div className="flex items-center gap-2 text-xs" data-testid="progress-bar">
+          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-green-500 rounded-full transition-all duration-500"
+              style={{ width: `${total > 0 ? Math.round(((total - summary.pendingCount) / total) * 100) : 0}%` }}
+            />
+          </div>
+          <span className="text-muted-foreground whitespace-nowrap tabular-nums">
+            {total - summary.pendingCount} z {total} ({total > 0 ? Math.round(((total - summary.pendingCount) / total) * 100) : 0}%)
+          </span>
+        </div>
+      )}
+
       <div className="space-y-2">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1 flex-wrap">
@@ -735,6 +912,16 @@ function AccountTab({
                 Kategoryzuj AI ({uncategorizedCount})
               </Button>
             )}
+            <Button
+              size="sm"
+              variant={groupByCounterparty ? "default" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => { setGroupByCounterparty(!groupByCounterparty); setExpandedGroups(new Set()); }}
+              data-testid="button-group-counterparty"
+            >
+              <Users className="h-3 w-3 mr-1" />
+              Grupuj
+            </Button>
           </div>
         </div>
         {quickFilter === "custom" && (
@@ -760,9 +947,9 @@ function AccountTab({
       </div>
 
       {selectedTxIds.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg" data-testid="bulk-action-bar">
+        <div className="flex flex-wrap items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg sticky top-0 z-20" data-testid="bulk-action-bar">
           <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
-            Zaznaczono {selectedTxIds.size}
+            Zaznaczono {selectedTxIds.size} • Suma: {formatPLN(selectedSum)}
           </span>
           <button
             onClick={() => { setSelectedTxIds(new Set()); setBulkWizardSelection(null); }}
@@ -835,9 +1022,9 @@ function AccountTab({
                 <th className="hidden md:table-cell text-center px-2 py-2 font-semibold text-muted-foreground w-[130px]">Status</th>
               </tr>
             </thead>
-            <tbody>
-              {isLoading ? (
-                Array.from({ length: 10 }).map((_, i) => (
+            {isLoading ? (
+              <tbody>
+                {Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/20">
                     <td className="px-1.5 py-1.5 w-[32px]"></td>
                     <td className="px-2 py-1.5"><Skeleton className="h-4 w-16" /></td>
@@ -849,15 +1036,73 @@ function AccountTab({
                     <td className="hidden lg:table-cell px-2 py-1.5"><Skeleton className="h-4 w-24" /></td>
                     <td className="hidden sm:table-cell px-2 py-1.5"><Skeleton className="h-4 w-16 mx-auto" /></td>
                   </tr>
-                ))
-              ) : allTransactions.length === 0 ? (
+                ))}
+              </tbody>
+            ) : allTransactions.length === 0 ? (
+              <tbody>
                 <tr>
                   <td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">
                     Brak transakcji dla wybranych filtrów
                   </td>
                 </tr>
-              ) : (
-                allTransactions.map(tx => (
+              </tbody>
+            ) : groupByCounterparty ? (
+              counterpartyGroups.map(group => {
+                const isGroupExpanded = expandedGroups.has(group.name);
+                const groupPendingIds = group.transactions.filter(t => !t.costImported && !t.costSkipped).map(t => t.id);
+                const allGroupSelected = groupPendingIds.length > 0 && groupPendingIds.every(id => selectedTxIds.has(id));
+                return (
+                  <tbody key={`group-${group.name}`}>
+                    <tr
+                      className="border-b border-border bg-muted/50 cursor-pointer hover:bg-muted/70"
+                      onClick={() => toggleGroup(group.name)}
+                      data-testid={`group-row-${group.name}`}
+                    >
+                      <td className="px-1.5 py-1.5 text-center w-[32px]" onClick={(e) => e.stopPropagation()}>
+                        {groupPendingIds.length > 0 && (
+                          <Checkbox
+                            checked={allGroupSelected}
+                            onCheckedChange={() => toggleGroupSelect(group.transactions)}
+                            className="h-3.5 w-3.5"
+                            data-testid={`checkbox-group-${group.name}`}
+                          />
+                        )}
+                      </td>
+                      <td colSpan={4} className="px-2 py-1.5 text-xs font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {isGroupExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                          <span className="truncate max-w-[200px]">{group.name}</span>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{group.transactions.length} tr.</Badge>
+                          {group.pendingCount > 0 && (
+                            <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600 px-1.5 py-0">{group.pendingCount} oczek.</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className={`px-2 py-1.5 text-xs tabular-nums font-semibold text-right whitespace-nowrap ${group.total >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        {group.total >= 0 ? "+" : ""}{formatPLN(group.total)}
+                      </td>
+                      <td colSpan={3} className="hidden md:table-cell"></td>
+                    </tr>
+                    {isGroupExpanded && group.transactions.map(tx => (
+                      <TransactionRow
+                        key={tx.id}
+                        tx={tx}
+                        targets={targets}
+                        onAssigned={handleRefresh}
+                        onSkipped={handleRefresh}
+                        onUnassigned={handleRefresh}
+                        isNewlyImported={highlightStatementId ? tx.statementId === highlightStatementId : false}
+                        isSelected={selectedTxIds.has(tx.id)}
+                        onToggleSelect={toggleSelect}
+                        suggestion={tx.counterparty ? suggestionMap.get(tx.counterparty) : undefined}
+                      />
+                    ))}
+                  </tbody>
+                );
+              })
+            ) : (
+              <tbody>
+                {allTransactions.map(tx => (
                   <TransactionRow
                     key={tx.id}
                     tx={tx}
@@ -868,10 +1113,11 @@ function AccountTab({
                     isNewlyImported={highlightStatementId ? tx.statementId === highlightStatementId : false}
                     isSelected={selectedTxIds.has(tx.id)}
                     onToggleSelect={toggleSelect}
+                    suggestion={tx.counterparty ? suggestionMap.get(tx.counterparty) : undefined}
                   />
-                ))
-              )}
-            </tbody>
+                ))}
+              </tbody>
+            )}
           </table>
           <div ref={loadMoreRef} className="h-8 flex items-center justify-center">
             {isFetchingNextPage && (
@@ -880,8 +1126,11 @@ function AccountTab({
           </div>
         </div>
         {total > 0 && (
-          <div className="border-t px-3 py-1.5 text-xs text-muted-foreground bg-muted/30">
-            Wyświetlono {allTransactions.length} z {total} transakcji
+          <div className="border-t px-3 py-1.5 text-xs text-muted-foreground bg-muted/30 flex flex-wrap items-center gap-x-4 gap-y-1" data-testid="table-footer">
+            <span>Wyświetlono {allTransactions.length} z {total}</span>
+            <span className="text-green-600 dark:text-green-400">+{formatPLN(footerStats.income)}</span>
+            <span className="text-red-600 dark:text-red-400">{formatPLN(footerStats.expense)}</span>
+            <span>{footerStats.pct}% skategoryzowanych</span>
           </div>
         )}
       </Card>
