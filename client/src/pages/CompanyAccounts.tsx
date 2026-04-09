@@ -385,12 +385,12 @@ function TransactionRow({
         onClick={() => setExpanded(!expanded)}
         data-testid={`row-tx-${tx.id}`}
       >
-        <td className="px-1.5 py-1 text-center w-[32px]" onClick={(e) => e.stopPropagation()}>
+        <td className="px-1 py-1 text-center w-[28px]" onClick={(e) => e.stopPropagation()}>
           {isPending && onToggleSelect && (
             <Checkbox
               checked={isSelected}
               onCheckedChange={() => onToggleSelect(tx.id)}
-              className="h-3.5 w-3.5"
+              className="h-3 w-3"
               data-testid={`checkbox-tx-${tx.id}`}
             />
           )}
@@ -1003,12 +1003,12 @@ function AccountTab({
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
               <tr className="border-b border-border">
-                <th className="px-1.5 py-2 w-[32px] text-center">
+                <th className="px-1 py-2 w-[28px] text-center">
                   {pendingTransactions.length > 0 && (
                     <Checkbox
                       checked={selectedTxIds.size === pendingTransactions.length && pendingTransactions.length > 0}
                       onCheckedChange={toggleSelectAll}
-                      className="h-3.5 w-3.5"
+                      className="h-3 w-3"
                       data-testid="checkbox-select-all"
                     />
                   )}
@@ -1027,7 +1027,7 @@ function AccountTab({
               <tbody>
                 {Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/20">
-                    <td className="px-1.5 py-1.5 w-[32px]"></td>
+                    <td className="px-1 py-1.5 w-[28px]"></td>
                     <td className="px-2 py-1.5"><Skeleton className="h-4 w-16" /></td>
                     <td className="px-2 py-1.5"><Skeleton className="h-4 w-28" /></td>
                     <td className="hidden sm:table-cell px-2 py-1.5"><Skeleton className="h-4 w-40" /></td>
@@ -1059,12 +1059,12 @@ function AccountTab({
                       onClick={() => toggleGroup(group.name)}
                       data-testid={`group-row-${group.name}`}
                     >
-                      <td className="px-1.5 py-1.5 text-center w-[32px]" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-1 py-1.5 text-center w-[28px]" onClick={(e) => e.stopPropagation()}>
                         {groupPendingIds.length > 0 && (
                           <Checkbox
                             checked={allGroupSelected}
                             onCheckedChange={() => toggleGroupSelect(group.transactions)}
-                            className="h-3.5 w-3.5"
+                            className="h-3 w-3"
                             data-testid={`checkbox-group-${group.name}`}
                           />
                         )}
