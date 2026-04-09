@@ -708,7 +708,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       queryClient.invalidateQueries({ queryKey: ['/api/balance-forecast'] });
       setShowCopyToNextYear(false);
       setCopyMultipleYears(false);
-      toast({ title: "Skopiowano", description: `Prognoza z ${year} skopiowana na lata ${targetYears[0]}–${targetYears[targetYears.length - 1]} (${result.copied} wpisów)` });
+      const skippedInfo = result.skipped > 0 ? `, pominięto ${result.skipped} istniejących` : '';
+      toast({ title: "Skopiowano", description: `Prognoza z ${year} skopiowana na lata ${targetYears[0]}–${targetYears[targetYears.length - 1]} (${result.copied} wpisów${skippedInfo})` });
     } catch (err: any) {
       console.error('Błąd kopiowania prognozy na wiele lat:', err);
       toast({ title: "Błąd", description: err.message || "Nie udało się skopiować prognoz", variant: "destructive" });
@@ -2020,7 +2021,7 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Wszystkie wartości prognozowane (P) z roku {year} zostaną skopiowane. Istniejące dane zostaną nadpisane.
+              Wartości prognozowane (P) z roku {year} zostaną skopiowane. Istniejące ręczne edycje nie zostaną nadpisane.
             </p>
             <label className="flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="copy-option-single">
               <input type="radio" name="copyMode" checked={!copyMultipleYears} onChange={() => setCopyMultipleYears(false)} />

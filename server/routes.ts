@@ -9689,12 +9689,23 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         return res.status(400).json({ message: 'Lata docelowe muszą być większe od źródłowego' });
       }
       const sourceRows = await storage.getAptCostData(sourceYear);
-      if (sourceRows.length === 0) {
-        return res.json({ copied: 0, message: 'Brak danych źródłowych' });
+      const forecastRows = sourceRows.filter(r => parseFloat(r.prognoza ?? '0') > 0);
+      if (forecastRows.length === 0) {
+        return res.json({ copied: 0, skipped: 0, message: 'Brak prognoz do skopiowania' });
       }
       let totalCopied = 0;
+      let totalSkipped = 0;
       for (const targetYear of uniqueTargets) {
-        const cells = sourceRows.map(r => ({
+        const existingRows = await storage.getAptCostData(targetYear);
+        const existingSet = new Set(
+          existingRows
+            .filter(r => parseFloat(r.prognoza ?? '0') > 0)
+            .map(r => `${r.entryId}__${r.category}__${r.month}`)
+        );
+        const cellsToInsert = forecastRows.filter(r => {
+          const key = `${r.entryId}__${r.category}__${r.month}`;
+          return !existingSet.has(key);
+        }).map(r => ({
           year: targetYear,
           entryId: r.entryId,
           category: r.category,
@@ -9702,10 +9713,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           prognoza: r.prognoza ?? '0',
           realized: '0',
         }));
-        await storage.upsertAptCostCells(cells);
-        totalCopied += cells.length;
+        if (cellsToInsert.length > 0) {
+          await storage.upsertAptCostCells(cellsToInsert);
+        }
+        totalCopied += cellsToInsert.length;
+        totalSkipped += forecastRows.length - cellsToInsert.length;
       }
-      res.json({ copied: totalCopied, years: uniqueTargets });
+      res.json({ copied: totalCopied, skipped: totalSkipped, years: uniqueTargets });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
