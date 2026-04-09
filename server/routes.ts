@@ -12238,7 +12238,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         apartment_.push({
           entryId,
           name: entryId === "gb-all" ? "Grand Baltic (wszystkie)" : (apt?.name || entryId),
-          location: apt?.location || null,
+          location: entryId === "gb-all" ? "GRAND BALTIC" : (apt?.location || null),
           categories: catItems,
         });
       }
