@@ -4094,6 +4094,101 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.post('/api/saldo/:id/unassign-cost', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const allEntries = await storage.getSaldoEntries({});
+      const entry = allEntries.find(e => e.id === id);
+      if (!entry) return res.status(404).json({ message: "Wpis nie znaleziony" });
+      if (!entry.costImported) return res.status(400).json({ message: "Wpis nie jest przypisany" });
+
+      const absAmount = Math.abs(parseFloat(entry.cashAmount || "0"));
+      const txMonth = new Date(entry.date).getMonth();
+      const txYear = new Date(entry.date).getFullYear();
+
+      if (entry.costTargetType === "operational" && entry.costTargetCatId != null && entry.costTargetItemIdx != null) {
+        const opRows = await storage.getOpCostData(txYear);
+        const existing = opRows.find(r => r.catId === entry.costTargetCatId && r.itemIdx === entry.costTargetItemIdx && r.month === txMonth);
+        if (existing) {
+          const newRealized = Math.max(0, (Number(existing.realized) || 0) - absAmount);
+          await storage.upsertOpCostCells([{
+            year: txYear, catId: entry.costTargetCatId, itemIdx: entry.costTargetItemIdx!, month: txMonth,
+            prognoza: existing.prognoza ? Number(existing.prognoza) : undefined,
+            realized: newRealized,
+          }]);
+        }
+      } else if (entry.costTargetType === "apartment" && entry.costTargetEntryId && entry.costTargetCategory) {
+        const aptRows = await storage.getAptCostData(txYear);
+        const existing = aptRows.find(r => r.entryId === entry.costTargetEntryId && r.category === entry.costTargetCategory && r.month === txMonth);
+        if (existing) {
+          const newRealized = Math.max(0, (Number(existing.realized) || 0) - absAmount);
+          await storage.upsertAptCostCells([{
+            year: txYear, entryId: entry.costTargetEntryId!, category: entry.costTargetCategory!, month: txMonth,
+            prognoza: String(Number(existing.prognoza) || 0), realized: String(newRealized),
+          }]);
+        }
+      } else if (entry.costTargetType === "sublease" && entry.costTargetSubleasePaymentId) {
+        await storage.updateSubleasePayment(entry.costTargetSubleasePaymentId, { status: "do_oplacenia" });
+      }
+
+      await storage.updateSaldoEntry(id, {
+        costImported: false, costTargetType: null, costTargetCatId: null,
+        costTargetItemIdx: null, costTargetEntryId: null, costTargetCategory: null,
+        costTargetSubleasePaymentId: null,
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/bank-transactions/:id/unassign-cost', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const tx = await storage.getBankTransactionById(id);
+      if (!tx) return res.status(404).json({ message: "Transakcja nie znaleziona" });
+      if (!tx.costImported) return res.status(400).json({ message: "Transakcja nie jest przypisana" });
+
+      const absAmount = Math.abs(parseFloat(tx.amount));
+      const txMonth = new Date(tx.date).getMonth();
+      const txYear = new Date(tx.date).getFullYear();
+
+      if (tx.costTargetType === "operational" && tx.costTargetCatId != null && tx.costTargetItemIdx != null) {
+        const opRows = await storage.getOpCostData(txYear);
+        const existing = opRows.find(r => r.catId === tx.costTargetCatId && r.itemIdx === tx.costTargetItemIdx && r.month === txMonth);
+        if (existing) {
+          const newRealized = Math.max(0, (Number(existing.realized) || 0) - absAmount);
+          await storage.upsertOpCostCells([{
+            year: txYear, catId: tx.costTargetCatId!, itemIdx: tx.costTargetItemIdx!, month: txMonth,
+            prognoza: existing.prognoza ? Number(existing.prognoza) : undefined,
+            realized: newRealized,
+          }]);
+        }
+      } else if (tx.costTargetType === "apartment" && tx.costTargetEntryId && tx.costTargetCategory) {
+        const aptRows = await storage.getAptCostData(txYear);
+        const existing = aptRows.find(r => r.entryId === tx.costTargetEntryId && r.category === tx.costTargetCategory && r.month === txMonth);
+        if (existing) {
+          const newRealized = Math.max(0, (Number(existing.realized) || 0) - absAmount);
+          await storage.upsertAptCostCells([{
+            year: txYear, entryId: tx.costTargetEntryId!, category: tx.costTargetCategory!, month: txMonth,
+            prognoza: String(Number(existing.prognoza) || 0), realized: String(newRealized),
+          }]);
+        }
+      } else if (tx.costTargetType === "sublease" && tx.costTargetSubleasePaymentId) {
+        await storage.updateSubleasePayment(tx.costTargetSubleasePaymentId, { status: "do_oplacenia" });
+      }
+
+      await storage.updateBankTransaction(id, {
+        costImported: false, costTargetType: null, costTargetCatId: null,
+        costTargetItemIdx: null, costTargetEntryId: null, costTargetCategory: null,
+        costTargetSubleasePaymentId: null,
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/saldo/ai-categorize', isAuthenticated, async (req, res) => {
     try {
       const { entries: entryList, personCategories } = req.body;
@@ -12018,6 +12113,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         apartment_.push({
           entryId,
           name: entryId === "gb-all" ? "Grand Baltic (wszystkie)" : (apt?.name || entryId),
+          location: apt?.location || null,
           categories: catItems,
         });
       }

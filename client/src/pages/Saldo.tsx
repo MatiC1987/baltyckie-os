@@ -5,8 +5,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CostTargetWizard, type WizardSelection } from "@/components/CostTargetWizard";
 import { SearchableTargetSelect } from "@/components/SearchableTargetSelect";
-import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp, CheckCircle2, Ban, Minus, Loader2, Sparkles, ListFilter } from "lucide-react";
+import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp, CheckCircle2, Ban, Minus, Loader2, Sparkles, ListFilter, Undo2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -44,6 +45,7 @@ interface AssignmentTargets {
   apartment: {
     entryId: string;
     name: string;
+    location?: string | null;
     categories: { category: string; realizedByMonth: Record<number, number> }[];
   }[];
   sublease: {
@@ -64,6 +66,18 @@ interface TargetOption {
   entryId?: string;
   category?: string;
   subleasePaymentId?: number;
+}
+
+function targetOptionToWizardSelection(opt: TargetOption): WizardSelection {
+  return {
+    targetType: opt.targetType,
+    catId: opt.catId,
+    itemIdx: opt.itemIdx,
+    entryId: opt.entryId,
+    category: opt.category,
+    subleasePaymentId: opt.subleasePaymentId,
+    label: opt.label,
+  };
 }
 
 function formatPLN(val: string | number | null | undefined): string {
@@ -285,7 +299,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
   const [initialBalanceInput, setInitialBalanceInput] = useState("");
   const [costStatusFilter, setCostStatusFilter] = useState<CostStatus>("all");
   const [expandedEntryId, setExpandedEntryId] = useState<number | null>(null);
-  const [selectedTargets, setSelectedTargets] = useState<Record<number, string>>({});
+  const [selectedTargets, setSelectedTargets] = useState<Record<number, WizardSelection>>({});
   const [selectedCategories, setSelectedCategories] = useState<Record<number, string>>({});
   const [aiCategorizing, setAiCategorizing] = useState(false);
   const [showRulesPanel, setShowRulesPanel] = useState(false);
@@ -489,7 +503,10 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
         setSelectedCategories(prev => ({ ...prev, [expandedEntryId]: rule.category! }));
       }
       if (rule.targetKey && !selectedTargets[expandedEntryId]) {
-        setSelectedTargets(prev => ({ ...prev, [expandedEntryId]: rule.targetKey! }));
+        const opt = targetOptions.find(o => o.key === rule.targetKey);
+        if (opt) {
+          setSelectedTargets(prev => ({ ...prev, [expandedEntryId]: targetOptionToWizardSelection(opt) }));
+        }
       }
     }
     if (entry.aiCategory && !selectedCategories[expandedEntryId] && !rule?.category) {
@@ -501,7 +518,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     const pending = entries.filter(e => !e.costImported && !e.costSkipped);
     let applied = 0;
     const newCats: Record<number, string> = {};
-    const newTargets: Record<number, string> = {};
+    const newTargets: Record<number, WizardSelection> = {};
     for (const entry of pending) {
       const rule = applyRulesToEntry(entry);
       if (rule) {
@@ -514,8 +531,11 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
           } catch {}
         }
         if (rule.targetKey) {
-          newTargets[entry.id] = rule.targetKey;
-          didApply = true;
+          const opt = targetOptions.find(o => o.key === rule.targetKey);
+          if (opt) {
+            newTargets[entry.id] = targetOptionToWizardSelection(opt);
+            didApply = true;
+          }
         }
         if (didApply) applied++;
       }
@@ -534,11 +554,20 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     }
   };
 
+  const handleUnassignCost = async (entryId: number) => {
+    try {
+      await apiRequest("POST", `/api/saldo/${entryId}/unassign-cost`);
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+      toast({ title: "Cofnięto przypisanie" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    }
+  };
+
   const handleAssignCost = async (entryId: number) => {
-    const targetKey = selectedTargets[entryId];
-    if (!targetKey) return;
-    const opt = targetOptions.find(o => o.key === targetKey);
-    if (!opt) return;
+    const sel = selectedTargets[entryId];
+    if (!sel) return;
 
     const entry = entries.find(e => e.id === entryId);
     const cat = selectedCategories[entryId];
@@ -546,17 +575,20 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       await apiRequest("PUT", `/api/saldo/${entryId}`, { category: cat });
     }
 
-    const assignment: any = { entryId, targetType: opt.targetType };
-    if (opt.targetType === "operational") {
-      assignment.catId = opt.catId;
-      assignment.itemIdx = opt.itemIdx;
-    } else if (opt.targetType === "apartment") {
-      assignment.aptEntryId = opt.entryId;
-      assignment.category = opt.category;
-    } else if (opt.targetType === "sublease") {
-      assignment.subleasePaymentId = opt.subleasePaymentId;
+    const assignment: any = { entryId, targetType: sel.targetType };
+    if (sel.targetType === "operational") {
+      assignment.catId = sel.catId;
+      assignment.itemIdx = sel.itemIdx;
+    } else if (sel.targetType === "apartment") {
+      assignment.aptEntryId = sel.entryId;
+      assignment.category = sel.category;
+    } else if (sel.targetType === "sublease") {
+      assignment.subleasePaymentId = sel.subleasePaymentId;
     }
 
+    const targetKey = sel.targetType === "operational" ? `op__${sel.catId}__${sel.itemIdx}` :
+                      sel.targetType === "apartment" ? `apt__${sel.entryId}__${sel.category}` :
+                      sel.targetType === "sublease" ? `sub__${sel.subleasePaymentId}` : "";
     if (entry) {
       const rulePattern = (entry.operationName || "").trim();
       if (rulePattern.length >= 3) {
@@ -627,14 +659,17 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       });
       const data = await res.json();
       if (data.categories && Array.isArray(data.categories)) {
-        const newTargets: Record<number, string> = {};
+        const newTargets: Record<number, WizardSelection> = {};
         const newCats: Record<number, string> = {};
         for (const cat of data.categories) {
           const idx = cat.index - 1;
           if (idx >= 0 && idx < batch.length) {
             const entryId = batch[idx].id;
             if (cat.category) newCats[entryId] = cat.category;
-            if (cat.targetKey) newTargets[entryId] = cat.targetKey;
+            if (cat.targetKey) {
+              const opt = targetOptions.find(o => o.key === cat.targetKey);
+              if (opt) newTargets[entryId] = targetOptionToWizardSelection(opt);
+            }
           }
         }
         setSelectedCategories(prev => ({ ...prev, ...newCats }));
@@ -1485,11 +1520,48 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                     <td className="border-b border-r border-border px-2 py-1.5 text-right tabular-nums" data-testid={`cell-card-${entry.id}`}>{formatNum(entry.cardAmount)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground truncate" data-testid={`cell-notes-${entry.id}`}>{entry.notes || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-muted-foreground text-[10px]" data-testid={`cell-createdby-${entry.id}`}>{entry.createdBy || "-"}</td>
-                    <td className="border-b border-r border-border px-1 py-1.5 text-center" data-testid={`cell-cost-status-${entry.id}`}>
+                    <td className="border-b border-r border-border px-1 py-1.5" data-testid={`cell-cost-status-${entry.id}`}>
                       {isCostAssigned ? (
-                        <Badge variant="outline" className="text-[9px] border-green-500 text-green-600 dark:text-green-400 gap-0.5 px-1 py-0 cursor-default" title={`Przypisane: ${entry.costTargetType || ""}`}>
-                          <CheckCircle2 className="h-2.5 w-2.5" />
-                        </Badge>
+                        <div className="flex items-center gap-0.5">
+                          <Badge variant="outline" className="text-[9px] border-green-500 text-green-600 dark:text-green-400 gap-0.5 px-1 py-0 cursor-default max-w-[140px]" title={(() => {
+                            if (entry.costTargetType === "operational") {
+                              const cat = targets?.operational?.find(c => c.items.some(i => i.catId === entry.costTargetCatId && i.itemIdx === entry.costTargetItemIdx));
+                              const item = cat?.items.find(i => i.catId === entry.costTargetCatId && i.itemIdx === entry.costTargetItemIdx);
+                              return cat && item ? `${cat.title} → ${item.name}` : `Opłaty: ${entry.costTargetCatId}`;
+                            }
+                            if (entry.costTargetType === "apartment") {
+                              const apt = targets?.apartment?.find(a => a.entryId === entry.costTargetEntryId);
+                              return `${apt?.name || entry.costTargetEntryId} → ${entry.costTargetCategory}`;
+                            }
+                            if (entry.costTargetType === "sublease") return `Podnajem #${entry.costTargetSubleasePaymentId}`;
+                            return "Przypisane";
+                          })()}>
+                            <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">
+                              {(() => {
+                                if (entry.costTargetType === "operational") {
+                                  const cat = targets?.operational?.find(c => c.items.some(i => i.catId === entry.costTargetCatId && i.itemIdx === entry.costTargetItemIdx));
+                                  const item = cat?.items.find(i => i.catId === entry.costTargetCatId && i.itemIdx === entry.costTargetItemIdx);
+                                  return item?.name || entry.costTargetCatId || "Operacyjne";
+                                }
+                                if (entry.costTargetType === "apartment") {
+                                  const apt = targets?.apartment?.find(a => a.entryId === entry.costTargetEntryId);
+                                  return apt?.name || entry.costTargetEntryId || "Apartament";
+                                }
+                                if (entry.costTargetType === "sublease") return "Podnajem";
+                                return "✓";
+                              })()}
+                            </span>
+                          </Badge>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleUnassignCost(entry.id); }}
+                            className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                            title="Cofnij przypisanie"
+                            data-testid={`button-unassign-${entry.id}`}
+                          >
+                            <Undo2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       ) : isCostSkipped ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleUnskip(entry.id); }}
@@ -1558,19 +1630,14 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                               ))}
                             </SelectContent>
                           </Select>
-                          <SearchableTargetSelect
-                            items={targetOptions}
-                            value={selectedTargets[entry.id] || ""}
-                            onValueChange={v => {
-                              if (v === "__clear__") {
-                                setSelectedTargets(prev => { const n = { ...prev }; delete n[entry.id]; return n; });
-                              } else {
-                                setSelectedTargets(prev => ({ ...prev, [entry.id]: v }));
-                              }
-                            }}
+                          <CostTargetWizard
+                            targets={targets}
+                            onSelect={(sel) => setSelectedTargets(prev => ({ ...prev, [entry.id]: sel }))}
+                            value={selectedTargets[entry.id]?.label || ""}
+                            onClear={selectedTargets[entry.id] ? () => setSelectedTargets(prev => { const n = { ...prev }; delete n[entry.id]; return n; }) : undefined}
                             placeholder="Pozycja kosztowa..."
-                            clearLabel="— wyczyść —"
                             triggerClassName="h-7 text-xs w-[300px]"
+                            txMonth={new Date(entry.date).getMonth()}
                             data-testid={`select-target-${entry.id}`}
                           />
                           <Button

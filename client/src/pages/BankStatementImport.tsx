@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { SearchableTargetSelect } from "@/components/SearchableTargetSelect";
+import { CostTargetWizard, type WizardSelection } from "@/components/CostTargetWizard";
 import {
   Table,
   TableBody,
@@ -69,6 +69,7 @@ import {
   Link2,
   Ban,
   CheckCircle2,
+  Undo2,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import type { Account, BankStatement, BankTransaction, BankMappingRule, GocardlessConnection } from "@shared/schema";
@@ -93,6 +94,7 @@ interface AssignmentTargets {
   apartment: {
     entryId: string;
     name: string;
+    location?: string | null;
     categories: { category: string; realizedByMonth: Record<number, number> }[];
   }[];
   sublease: {
@@ -1100,14 +1102,38 @@ function StatementRow({
     },
   });
 
-  const handleAssign = (txId: number, key: string) => {
-    if (key === "__clear__") {
-      setAssignments(prev => { const n = { ...prev }; delete n[txId]; return n; });
-      return;
-    }
-    const opt = targetOptions.find(o => targetToKey(o) === key);
-    if (opt) setAssignments(prev => ({ ...prev, [txId]: opt }));
+  const handleAssign = (txId: number, selection: WizardSelection) => {
+    const opt: AssignmentTarget = {
+      targetType: selection.targetType,
+      label: selection.label,
+      catId: selection.catId,
+      itemIdx: selection.itemIdx,
+      entryId: selection.entryId,
+      category: selection.category,
+      subleasePaymentId: selection.subleasePaymentId,
+      subleaseId: selection.subleaseId,
+    };
+    setAssignments(prev => ({ ...prev, [txId]: opt }));
   };
+
+  const handleClearAssign = (txId: number) => {
+    setAssignments(prev => { const n = { ...prev }; delete n[txId]; return n; });
+  };
+
+  const unassignMutation = useMutation({
+    mutationFn: async (txId: number) => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${txId}/unassign-cost`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Cofnięto", description: "Przypisanie zostało cofnięte" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
 
   const handleImportSelected = () => {
     const toImport = Array.from(selectedTxIds)
@@ -1428,63 +1454,36 @@ function StatementRow({
                             <TableCell>
                               {isDone ? (
                                 isImported && tx.costTargetType ? (
-                                  <span className="text-xs text-green-700 dark:text-green-400">
-                                    {tx.costTargetType === "operational" && `Opłaty: ${tx.costTargetCatId}[${tx.costTargetItemIdx}]`}
-                                    {tx.costTargetType === "apartment" && `Mieszkanie: ${targets?.apartment?.find(a => a.entryId === tx.costTargetEntryId)?.name || tx.costTargetEntryId} → ${tx.costTargetCategory}`}
-                                    {tx.costTargetType === "sublease" && `Podnajem: płatność #${tx.costTargetSubleasePaymentId}`}
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-green-700 dark:text-green-400">
+                                      {tx.costTargetType === "operational" && (() => {
+                                        const cat = targets?.operational?.find(c => c.items.some(i => i.catId === tx.costTargetCatId && i.itemIdx === tx.costTargetItemIdx));
+                                        const item = cat?.items.find(i => i.catId === tx.costTargetCatId && i.itemIdx === tx.costTargetItemIdx);
+                                        return cat && item ? `${cat.title} → ${item.name}` : `Opłaty: ${tx.costTargetCatId}`;
+                                      })()}
+                                      {tx.costTargetType === "apartment" && `${targets?.apartment?.find(a => a.entryId === tx.costTargetEntryId)?.name || tx.costTargetEntryId} → ${tx.costTargetCategory}`}
+                                      {tx.costTargetType === "sublease" && `Podnajem: płatność #${tx.costTargetSubleasePaymentId}`}
+                                    </span>
+                                    <button
+                                      onClick={() => unassignMutation.mutate(tx.id)}
+                                      disabled={unassignMutation.isPending}
+                                      className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                                      title="Cofnij przypisanie"
+                                      data-testid={`button-unassign-${tx.id}`}
+                                    >
+                                      <Undo2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
                                 ) : null
                               ) : (
-                                <SearchableTargetSelect
-                                  items={(() => {
-                                    const items: { key: string; label: string; group: string; searchText?: string }[] = [];
-                                    if (targets?.operational) {
-                                      const txMonth = new Date(tx.date).getMonth();
-                                      for (const cat of targets.operational) {
-                                        for (const item of cat.items) {
-                                          const realized = item.realizedByMonth[txMonth] || 0;
-                                          items.push({
-                                            key: `op__${item.catId}__${item.itemIdx}`,
-                                            label: `${cat.title} → ${item.name}${item.subLabel ? ` (${item.subLabel})` : ""}${realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}`,
-                                            group: "Opłaty operacyjne",
-                                            searchText: `${cat.title} ${item.name} ${item.subLabel || ""}`,
-                                          });
-                                        }
-                                      }
-                                    }
-                                    if (targets?.apartment) {
-                                      const txMonth = new Date(tx.date).getMonth();
-                                      for (const apt of targets.apartment) {
-                                        for (const c of apt.categories) {
-                                          const realized = c.realizedByMonth[txMonth] || 0;
-                                          items.push({
-                                            key: `apt__${apt.entryId}__${c.category}`,
-                                            label: `${apt.name} → ${c.category}${realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}`,
-                                            group: "Koszty mieszkań",
-                                            searchText: `${apt.name} ${apt.entryId} ${c.category}`,
-                                          });
-                                        }
-                                      }
-                                    }
-                                    if (targets?.sublease) {
-                                      for (const sub of targets.sublease) {
-                                        for (const p of sub.unpaidPayments) {
-                                          items.push({
-                                            key: `sub__${p.id}`,
-                                            label: `${sub.tenantName} — ${p.title} (${parseFloat(p.amount).toFixed(2)} zł, termin ${p.dueDate})`,
-                                            group: "Podnajmy — nieopłacone",
-                                            searchText: `${sub.tenantName} ${sub.apartmentNames} ${p.title}`,
-                                          });
-                                        }
-                                      }
-                                    }
-                                    return items;
-                                  })()}
-                                  value={currentAssignment ? targetToKey(currentAssignment) : ""}
-                                  onValueChange={(v) => handleAssign(tx.id, v)}
+                                <CostTargetWizard
+                                  targets={targets}
+                                  onSelect={(sel) => handleAssign(tx.id, sel)}
+                                  value={currentAssignment?.label || ""}
+                                  onClear={currentAssignment ? () => handleClearAssign(tx.id) : undefined}
                                   placeholder="Wybierz pozycję..."
-                                  clearLabel="— wyczyść —"
                                   triggerClassName="w-full text-xs h-8"
+                                  txMonth={new Date(tx.date).getMonth()}
                                   data-testid={`select-assign-${tx.id}`}
                                 />
                               )}
