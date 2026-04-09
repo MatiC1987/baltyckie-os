@@ -1554,7 +1554,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                             </span>
                           </Badge>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleUnassignCost(entry.id); }}
+                            onClick={(e) => { e.stopPropagation(); if (window.confirm("Czy na pewno chcesz cofnąć przypisanie kosztów?")) handleUnassignCost(entry.id); }}
                             className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
                             title="Cofnij przypisanie"
                             data-testid={`button-unassign-${entry.id}`}

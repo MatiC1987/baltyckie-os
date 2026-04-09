@@ -70,7 +70,6 @@ import {
   Ban,
   CheckCircle2,
   Undo2,
-  Sparkles,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import type { Account, BankStatement, BankTransaction, BankMappingRule, GocardlessConnection } from "@shared/schema";
@@ -1503,7 +1502,7 @@ function StatementRow({
                                       {tx.costTargetType === "sublease" && `Podnajem: płatność #${tx.costTargetSubleasePaymentId}`}
                                     </span>
                                     <button
-                                      onClick={() => unassignMutation.mutate(tx.id)}
+                                      onClick={() => { if (window.confirm("Czy na pewno chcesz cofnąć przypisanie tej transakcji?")) unassignMutation.mutate(tx.id); }}
                                       disabled={unassignMutation.isPending}
                                       className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
                                       title="Cofnij przypisanie"
