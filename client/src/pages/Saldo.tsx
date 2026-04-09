@@ -814,7 +814,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
   }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, entryKindFilter, categoryFilter, costStatusFilter, searchQuery, sortField, sortDir]);
 
   const pendingEntries = useMemo(() =>
-    filtered.filter(e => !e.costImported && !e.costSkipped),
+    filtered.filter(e => !e.costImported && !e.costSkipped && e.entryKind === "KOSZT"),
     [filtered]
   );
 
@@ -842,30 +842,48 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     }
   }, [pendingEntries, selectedEntryIds.size]);
 
+  interface SaldoAssignment {
+    entryId: number;
+    targetType: "operational" | "apartment" | "sublease";
+    forceAmount: boolean;
+    catId?: string;
+    itemIdx?: number;
+    aptEntryId?: string;
+    category?: string;
+    subleasePaymentId?: number;
+  }
+
+  interface ImportResult {
+    success?: boolean;
+    skipped?: boolean;
+    duplicateWarning?: boolean;
+    message?: string;
+  }
+
   const bulkAssignMutation = useMutation({
     mutationFn: async () => {
       if (!bulkWizardSelection) throw new Error("Wybierz pozycję kosztową");
       const ids = Array.from(selectedEntryIds);
-      const assignments = ids.map(entryId => {
-        const assignment: any = { entryId, targetType: bulkWizardSelection.targetType, forceAmount: true };
+      const assignments: SaldoAssignment[] = ids.map(entryId => {
+        const base: SaldoAssignment = { entryId, targetType: bulkWizardSelection.targetType, forceAmount: true };
         if (bulkWizardSelection.targetType === "operational") {
-          assignment.catId = bulkWizardSelection.catId;
-          assignment.itemIdx = bulkWizardSelection.itemIdx;
+          base.catId = bulkWizardSelection.catId;
+          base.itemIdx = bulkWizardSelection.itemIdx;
         } else if (bulkWizardSelection.targetType === "apartment") {
-          assignment.aptEntryId = bulkWizardSelection.entryId;
-          assignment.category = bulkWizardSelection.category;
+          base.aptEntryId = bulkWizardSelection.entryId;
+          base.category = bulkWizardSelection.category;
         } else if (bulkWizardSelection.targetType === "sublease") {
-          assignment.subleasePaymentId = bulkWizardSelection.subleasePaymentId;
+          base.subleasePaymentId = bulkWizardSelection.subleasePaymentId;
         }
-        return assignment;
+        return base;
       });
       const res = await apiRequest("POST", "/api/saldo/import-to-targets", { assignments });
-      return res.json();
+      return res.json() as Promise<{ results: ImportResult[] }>;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       const results = data?.results || [];
-      const successCount = results.filter((r: any) => r?.success).length;
-      const skippedCount = results.filter((r: any) => r?.skipped || r?.duplicateWarning).length;
+      const successCount = results.filter((r) => r?.success).length;
+      const skippedCount = results.filter((r) => r?.skipped || r?.duplicateWarning).length;
       const failCount = selectedEntryIds.size - successCount - skippedCount;
       let desc = `Przypisano ${successCount} wpisów`;
       if (skippedCount > 0) desc += `, pominięto ${skippedCount}`;
@@ -1658,7 +1676,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                     data-testid={`row-saldo-${entry.id}`}
                   >
                     <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-1 py-1.5 text-center w-[28px]" onClick={(e) => e.stopPropagation()}>
-                      {isCostPending && (
+                      {isCostPending && entry.entryKind === "KOSZT" && (
                         <Checkbox
                           checked={selectedEntryIds.has(entry.id)}
                           onCheckedChange={() => handleToggleSelect(entry.id)}
