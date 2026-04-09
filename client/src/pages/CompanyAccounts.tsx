@@ -29,9 +29,12 @@ import {
   Upload,
   AlertCircle,
   Calendar,
+  Undo2,
+  Sparkles,
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import type { Account, BankTransaction } from "@shared/schema";
+import { CostTargetWizard, type WizardSelection } from "@/components/CostTargetWizard";
 
 type CostStatus = "all" | "categorized" | "skipped" | "pending";
 
@@ -61,6 +64,7 @@ interface AssignmentTargets {
   apartment: {
     entryId: string;
     name: string;
+    location?: string | null;
     categories: { category: string; realizedByMonth: Record<number, number> }[];
   }[];
   sublease: {
@@ -69,18 +73,6 @@ interface AssignmentTargets {
     apartmentNames: string;
     unpaidPayments: { id: number; title: string; category: string; amount: string; dueDate: string }[];
   }[];
-}
-
-interface TargetOption {
-  key: string;
-  label: string;
-  group: string;
-  targetType: "operational" | "apartment" | "sublease";
-  catId?: string;
-  itemIdx?: number;
-  entryId?: string;
-  category?: string;
-  subleasePaymentId?: number;
 }
 
 const QUICK_FILTERS = [
@@ -136,63 +128,52 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function buildTargetOptions(targets: AssignmentTargets | undefined): TargetOption[] {
-  if (!targets) return [];
-  const opts: TargetOption[] = [];
-  for (const cat of targets.operational) {
-    for (const item of cat.items) {
-      opts.push({
-        key: `op__${item.catId}__${item.itemIdx}`,
-        label: `${cat.title} → ${item.name}${item.subLabel ? ` (${item.subLabel})` : ""}`,
-        group: "Koszty operacyjne",
-        targetType: "operational",
-        catId: item.catId,
-        itemIdx: item.itemIdx,
-      });
-    }
+function resolveTargetLabel(
+  tx: BankTransaction,
+  targets: AssignmentTargets | undefined
+): string | null {
+  if (!tx.costTargetType || !targets) return null;
+  if (tx.costTargetType === "operational") {
+    const cat = targets.operational.find(c =>
+      c.items.some(i => i.catId === tx.costTargetCatId && i.itemIdx === tx.costTargetItemIdx)
+    );
+    const item = cat?.items.find(i => i.catId === tx.costTargetCatId && i.itemIdx === tx.costTargetItemIdx);
+    return cat && item ? `${cat.title} → ${item.name}` : `Operacyjne: ${tx.costTargetCatId}`;
   }
-  for (const apt of targets.apartment) {
-    for (const catEntry of apt.categories) {
-      opts.push({
-        key: `apt__${apt.entryId}__${catEntry.category}`,
-        label: `${apt.name} → ${catEntry.category}`,
-        group: "Koszty apartamentów",
-        targetType: "apartment",
-        entryId: apt.entryId,
-        category: catEntry.category,
-      });
-    }
+  if (tx.costTargetType === "apartment") {
+    const apt = targets.apartment.find(a => a.entryId === tx.costTargetEntryId);
+    return `${apt?.name || tx.costTargetEntryId} → ${tx.costTargetCategory}`;
   }
-  for (const sub of targets.sublease) {
-    for (const pay of sub.unpaidPayments) {
-      opts.push({
-        key: `sub__${pay.id}`,
-        label: `${sub.tenantName} → ${pay.title} (${formatPLN(pay.amount)})`,
-        group: "Podnajem",
-        targetType: "sublease",
-        subleasePaymentId: pay.id,
-      });
+  if (tx.costTargetType === "sublease") {
+    for (const sub of targets.sublease) {
+      const pay = sub.unpaidPayments.find(p => p.id === tx.costTargetSubleasePaymentId);
+      if (pay) return `${sub.tenantName} → ${pay.title}`;
     }
+    const matchingSub = targets.sublease.find(s => s.subleaseId === (tx as any).costTargetSubleaseId);
+    if (matchingSub) return `${matchingSub.tenantName} → płatność #${tx.costTargetSubleasePaymentId}`;
+    return `Podnajem: płatność #${tx.costTargetSubleasePaymentId}`;
   }
-  return opts;
+  return null;
 }
 
 function TransactionRow({
   tx,
-  targetOptions,
+  targets,
   onAssigned,
   onSkipped,
+  onUnassigned,
   isNewlyImported,
 }: {
   tx: TransactionWithMeta;
-  targetOptions: TargetOption[];
+  targets: AssignmentTargets | undefined;
   onAssigned: () => void;
   onSkipped: () => void;
+  onUnassigned: () => void;
   isNewlyImported?: boolean;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
-  const [selectedTarget, setSelectedTarget] = useState<string>("");
+  const [wizardSelection, setWizardSelection] = useState<WizardSelection | null>(null);
   const amount = parseFloat(tx.amount || "0");
   const isPositive = amount >= 0;
 
@@ -202,24 +183,23 @@ function TransactionRow({
 
   const assignMutation = useMutation({
     mutationFn: async () => {
-      const opt = targetOptions.find(o => o.key === selectedTarget);
-      if (!opt) throw new Error("Wybierz pozycję kosztową");
+      if (!wizardSelection) throw new Error("Wybierz pozycję kosztową");
       await apiRequest("POST", "/api/bank-transactions/import-to-targets", {
         assignments: [{
           transactionId: tx.id,
-          targetType: opt.targetType,
-          catId: opt.catId,
-          itemIdx: opt.itemIdx,
-          entryId: opt.entryId,
-          category: opt.category,
-          subleasePaymentId: opt.subleasePaymentId,
+          targetType: wizardSelection.targetType,
+          catId: wizardSelection.catId,
+          itemIdx: wizardSelection.itemIdx,
+          entryId: wizardSelection.entryId,
+          category: wizardSelection.category,
+          subleasePaymentId: wizardSelection.subleasePaymentId,
           forceAmount: true,
         }],
       });
     },
     onSuccess: () => {
       toast({ title: "Przypisano", description: "Transakcja przypisana do kosztów" });
-      setSelectedTarget("");
+      setWizardSelection(null);
       onAssigned();
     },
     onError: (err: Error) => {
@@ -242,10 +222,48 @@ function TransactionRow({
     },
   });
 
+  const unassignMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${tx.id}/unassign-cost`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Cofnięto", description: "Przypisanie zostało cofnięte" });
+      onUnassigned();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const targetLabel = isCategorized ? resolveTargetLabel(tx, targets) : null;
+
+  const categoryBadge = tx.category ? (
+    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{tx.category}</Badge>
+  ) : tx.aiCategory ? (
+    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-400">AI: {tx.aiCategory}</Badge>
+  ) : null;
+
   const statusBadge = isCategorized ? (
-    <Badge variant="outline" className="text-[10px] border-green-500 text-green-600 dark:text-green-400 gap-0.5 px-1.5 py-0" data-testid={`badge-status-${tx.id}`}>
-      <CheckCircle2 className="h-3 w-3" /> Przypisane
-    </Badge>
+    <div className="flex items-center gap-1">
+      <Badge variant="outline" className="text-[10px] border-green-500 text-green-600 dark:text-green-400 gap-0.5 px-1.5 py-0" data-testid={`badge-status-${tx.id}`}>
+        <CheckCircle2 className="h-3 w-3" /> Przypisane
+      </Badge>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (window.confirm("Czy na pewno chcesz cofnąć przypisanie tej transakcji?")) {
+            unassignMutation.mutate();
+          }
+        }}
+        disabled={unassignMutation.isPending}
+        className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+        title="Cofnij przypisanie"
+        data-testid={`button-unassign-${tx.id}`}
+      >
+        {unassignMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+      </button>
+    </div>
   ) : isSkipped ? (
     <Badge variant="outline" className="text-[10px] border-muted-foreground/30 text-muted-foreground gap-0.5 px-1.5 py-0" data-testid={`badge-status-${tx.id}`}>
       <Ban className="h-3 w-3" /> Pominięte
@@ -255,10 +273,6 @@ function TransactionRow({
       <Minus className="h-3 w-3" /> Oczekuje
     </Badge>
   );
-
-  const targetLabel = isCategorized && tx.costTargetType
-    ? `${tx.costTargetType === "operational" ? "Operacyjne" : tx.costTargetType === "apartment" ? "Mieszkanie" : "Podnajem"}: ${tx.costTargetCatId || tx.costTargetEntryId || tx.costTargetSubleasePaymentId || ""}`
-    : null;
 
   return (
     <>
@@ -282,13 +296,23 @@ function TransactionRow({
         <td className="hidden md:table-cell px-2 py-1 text-xs tabular-nums text-right text-muted-foreground whitespace-nowrap">
           {tx.balance ? formatPLN(tx.balance) : "-"}
         </td>
+        <td className="hidden lg:table-cell px-2 py-1 text-center">
+          {categoryBadge}
+        </td>
+        <td className="hidden lg:table-cell px-2 py-1 text-xs truncate max-w-[180px]" title={targetLabel || ""}>
+          {targetLabel ? (
+            <span className="text-green-700 dark:text-green-400">{targetLabel}</span>
+          ) : isCategorized ? (
+            <span className="text-muted-foreground">-</span>
+          ) : null}
+        </td>
         <td className="hidden md:table-cell px-2 py-1 text-center">
           {statusBadge}
         </td>
       </tr>
       {expanded && (
         <tr className="bg-muted/20 border-b border-border/30">
-          <td colSpan={6} className="px-3 py-2">
+          <td colSpan={8} className="px-3 py-2">
             <div className="space-y-2 text-xs">
               <div className="md:hidden">
                 <span className="text-muted-foreground">Opis: </span>
@@ -302,6 +326,10 @@ function TransactionRow({
                 <span className="text-muted-foreground">Saldo: </span>
                 <span className="tabular-nums">{tx.balance ? formatPLN(tx.balance) : "-"}</span>
               </div>
+              <div className="lg:hidden flex items-center gap-2">
+                <span className="text-muted-foreground">Kategoria: </span>
+                {categoryBadge || <span className="text-muted-foreground">-</span>}
+              </div>
               {tx.statementFileName && (
                 <div>
                   <span className="text-muted-foreground">Źródło: </span>
@@ -309,29 +337,27 @@ function TransactionRow({
                 </div>
               )}
               {targetLabel && (
-                <div>
+                <div className="lg:hidden">
                   <span className="text-muted-foreground">Przypisano: </span>
-                  <span>{targetLabel}</span>
+                  <span className="text-green-700 dark:text-green-400">{targetLabel}</span>
                 </div>
               )}
               {isPending && (
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <Select value={selectedTarget} onValueChange={setSelectedTarget}>
-                    <SelectTrigger className="h-7 text-xs w-[280px]" data-testid={`select-target-${tx.id}`}>
-                      <SelectValue placeholder="Wybierz pozycję kosztową..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {targetOptions.map(opt => (
-                        <SelectItem key={opt.key} value={opt.key} className="text-xs">
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <CostTargetWizard
+                    targets={targets}
+                    onSelect={(sel) => setWizardSelection(sel)}
+                    value={wizardSelection?.label || ""}
+                    onClear={wizardSelection ? () => setWizardSelection(null) : undefined}
+                    placeholder="Pozycja kosztowa..."
+                    triggerClassName="w-[280px] text-xs h-7"
+                    txMonth={new Date(tx.date).getMonth()}
+                    data-testid={`select-target-${tx.id}`}
+                  />
                   <Button
                     size="sm"
                     className="h-7 text-xs"
-                    disabled={!selectedTarget || assignMutation.isPending}
+                    disabled={!wizardSelection || assignMutation.isPending}
                     onClick={(e) => { e.stopPropagation(); assignMutation.mutate(); }}
                     data-testid={`button-assign-${tx.id}`}
                   >
@@ -368,6 +394,7 @@ function AccountTab({
   initialStatus?: CostStatus;
   highlightStatementId?: number;
 }) {
+  const { toast } = useToast();
   const [quickFilter, setQuickFilter] = useState("this-month");
   const [search, setSearch] = useState("");
   const [costStatus, setCostStatus] = useState<CostStatus>(initialStatus || "all");
@@ -401,8 +428,6 @@ function AccountTab({
       return res.json();
     },
   });
-
-  const targetOptions = useMemo(() => buildTargetOptions(targets), [targets]);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -460,6 +485,31 @@ function AccountTab({
 
   const summary = data?.pages[0]?.summary;
   const total = data?.pages[0]?.total || 0;
+
+  const uncategorizedCount = useMemo(() =>
+    allTransactions.filter(tx => !tx.category && !tx.aiCategory && !tx.costSkipped).length,
+    [allTransactions]
+  );
+
+  const aiCategorizeMutation = useMutation({
+    mutationFn: async () => {
+      const stmtIds = Array.from(new Set(allTransactions.filter(tx => tx.statementId).map(tx => tx.statementId!)));
+      let totalUpdated = 0;
+      for (const sid of stmtIds) {
+        const res = await apiRequest("POST", `/api/bank-statements/${sid}/ai-categorize`);
+        const data = await res.json();
+        totalUpdated += data.updated || 0;
+      }
+      return totalUpdated;
+    },
+    onSuccess: (updated) => {
+      toast({ title: "Kategoryzacja AI", description: `Skategoryzowano ${updated} transakcji` });
+      refetch();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd AI", description: err.message, variant: "destructive" });
+    },
+  });
 
   const handleRefresh = useCallback(() => {
     refetch();
@@ -556,6 +606,19 @@ function AccountTab({
                 <SelectItem value="skipped">Pominięte</SelectItem>
               </SelectContent>
             </Select>
+            {uncategorizedCount > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => aiCategorizeMutation.mutate()}
+                disabled={aiCategorizeMutation.isPending}
+                data-testid="button-ai-categorize"
+              >
+                {aiCategorizeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                Kategoryzuj AI ({uncategorizedCount})
+              </Button>
+            )}
           </div>
         </div>
         {quickFilter === "custom" && (
@@ -590,7 +653,9 @@ function AccountTab({
                 <th className="hidden md:table-cell text-left px-2 py-2 font-semibold text-muted-foreground">Tytuł przelewu</th>
                 <th className="text-right px-2 py-2 font-semibold text-muted-foreground w-[110px]">Kwota</th>
                 <th className="hidden md:table-cell text-right px-2 py-2 font-semibold text-muted-foreground w-[110px]">Saldo</th>
-                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold text-muted-foreground w-[100px]">Status</th>
+                <th className="hidden lg:table-cell text-center px-2 py-2 font-semibold text-muted-foreground w-[100px]">Kategoria</th>
+                <th className="hidden lg:table-cell text-left px-2 py-2 font-semibold text-muted-foreground w-[180px]">Przypisano do</th>
+                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold text-muted-foreground w-[130px]">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -602,12 +667,14 @@ function AccountTab({
                     <td className="hidden sm:table-cell px-2 py-1.5"><Skeleton className="h-4 w-40" /></td>
                     <td className="px-2 py-1.5"><Skeleton className="h-4 w-16 ml-auto" /></td>
                     <td className="hidden md:table-cell px-2 py-1.5"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                    <td className="hidden lg:table-cell px-2 py-1.5"><Skeleton className="h-4 w-16 mx-auto" /></td>
+                    <td className="hidden lg:table-cell px-2 py-1.5"><Skeleton className="h-4 w-24" /></td>
                     <td className="hidden sm:table-cell px-2 py-1.5"><Skeleton className="h-4 w-16 mx-auto" /></td>
                   </tr>
                 ))
               ) : allTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
+                  <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
                     Brak transakcji dla wybranych filtrów
                   </td>
                 </tr>
@@ -616,9 +683,10 @@ function AccountTab({
                   <TransactionRow
                     key={tx.id}
                     tx={tx}
-                    targetOptions={targetOptions}
+                    targets={targets}
                     onAssigned={handleRefresh}
                     onSkipped={handleRefresh}
+                    onUnassigned={handleRefresh}
                     isNewlyImported={highlightStatementId ? tx.statementId === highlightStatementId : false}
                   />
                 ))
