@@ -70,6 +70,7 @@ import {
   Ban,
   CheckCircle2,
   Undo2,
+  Sparkles,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import type { Account, BankStatement, BankTransaction, BankMappingRule, GocardlessConnection } from "@shared/schema";
@@ -1102,6 +1103,25 @@ function StatementRow({
     },
   });
 
+  const uncategorizedCount = useMemo(() =>
+    transactions.filter(tx => !tx.category && !tx.aiCategory).length,
+    [transactions]
+  );
+
+  const aiCategorizeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bank-statements/${statement.id}/ai-categorize`);
+      return res.json() as Promise<{ updated: number }>;
+    },
+    onSuccess: (data) => {
+      toast({ title: "Kategoryzacja AI", description: `Skategoryzowano ${data.updated} transakcji` });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd AI", description: err.message, variant: "destructive" });
+    },
+  });
+
   const handleAssign = (txId: number, selection: WizardSelection) => {
     const opt: AssignmentTarget = {
       targetType: selection.targetType,
@@ -1388,6 +1408,18 @@ function StatementRow({
                       {skipMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Ban className="h-4 w-4 mr-1" />}
                       Pomiń ({selectedTxIds.size})
                     </Button>
+                    {uncategorizedCount > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => aiCategorizeMutation.mutate()}
+                        disabled={aiCategorizeMutation.isPending}
+                        data-testid={`button-ai-categorize-${statement.id}`}
+                      >
+                        {aiCategorizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                        Kategoryzuj AI ({uncategorizedCount})
+                      </Button>
+                    )}
                     <span className="text-xs text-muted-foreground ml-auto">
                       {unassignedTxs.length} nieprzypisanych
                       {assignedCount > 0 && ` • ${assignedCount} z przypisaną pozycją`}
@@ -1411,6 +1443,7 @@ function StatementRow({
                         <TableHead>Opis</TableHead>
                         <TableHead>Kontrahent</TableHead>
                         <TableHead className="text-right">Kwota</TableHead>
+                        <TableHead className="text-right">Saldo</TableHead>
                         <TableHead>Kategoria</TableHead>
                         <TableHead className="min-w-[280px]">Przypisanie do kosztów</TableHead>
                         <TableHead>Status</TableHead>
@@ -1446,10 +1479,15 @@ function StatementRow({
                             >
                               {formatAmount(tx.amount)}
                             </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {tx.balance ? formatAmount(tx.balance) : "-"}
+                            </TableCell>
                             <TableCell>
-                              {(tx.category || tx.aiCategory) && (
-                                <Badge variant="secondary" className="text-xs">{tx.category || tx.aiCategory}</Badge>
-                              )}
+                              {tx.category ? (
+                                <Badge variant="secondary" className="text-xs">{tx.category}</Badge>
+                              ) : tx.aiCategory ? (
+                                <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-400">AI: {tx.aiCategory}</Badge>
+                              ) : null}
                             </TableCell>
                             <TableCell>
                               {isDone ? (

@@ -12033,6 +12033,60 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post("/api/bank-statements/:id/ai-categorize", isAuthenticated, async (req, res) => {
+    try {
+      const statementId = parseInt(req.params.id);
+      const allTx = await db.select().from(bankTransactions).where(eq(bankTransactions.statementId, statementId));
+      const uncategorized = allTx.filter(t => !t.category && !t.aiCategory);
+      if (uncategorized.length === 0) {
+        return res.json({ updated: 0 });
+      }
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+      const prompt = `Jesteś asystentem finansowym zarządzającym wynajmem apartamentów. Kategoryzuj poniższe transakcje bankowe. Dostępne kategorie:
+- CZYNSZ (opłaty czynszowe, wynajem)
+- MEDIA (prąd, gaz, woda, ogrzewanie, internet)
+- WYNAGRODZENIA (pensje, zlecenia)
+- PODATKI (PIT, CIT, ZUS, składki)
+- NAPRAWY (konserwacja, remonty, materiały)
+- PRZYCHOD_REZERWACJA (wpływy od gości, Booking, Airbnb)
+- PRZYCHOD_PODNAJEM (wpływy od podnajemców)
+- UBEZPIECZENIE (polisy)
+- ADMINISTRACJA (opłaty administracyjne, biuro, materiały biurowe)
+- INNE (pozostałe)
+
+Transakcje do kategoryzacji:
+${uncategorized.map((t, i) => `${i + 1}. ${t.date} | ${t.amount} PLN | ${t.description} | ${t.counterparty || ""}`).join("\n")}
+
+Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": string, "confidence": number (0-1) }. Bez dodatkowego tekstu.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        max_tokens: 2000,
+      });
+      const text = response.choices[0]?.message?.content || "[]";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      const categories: { index: number; category: string; confidence: number }[] = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      let updated = 0;
+      for (const cat of categories) {
+        const idx = cat.index - 1;
+        if (idx >= 0 && idx < uncategorized.length) {
+          await db.update(bankTransactions).set({ aiCategory: cat.category }).where(eq(bankTransactions.id, uncategorized[idx].id));
+          updated++;
+        }
+      }
+      res.json({ updated });
+    } catch (err: any) {
+      console.error("AI categorization error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== BANK ASSIGNMENT TARGETS ====================
   app.get("/api/assignment-targets", async (req, res) => {
     try {

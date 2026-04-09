@@ -70,7 +70,7 @@ type WizardStep =
   | { type: "op-items"; catId: string; catTitle: string }
   | { type: "apt-locations" }
   | { type: "apt-list"; location: string }
-  | { type: "apt-categories"; entryId: string; aptName: string }
+  | { type: "apt-categories"; entryId: string; aptName: string; location: string }
   | { type: "subleases" }
   | { type: "sublease-payments"; subleaseId: number; tenantName: string };
 
@@ -124,7 +124,8 @@ export function CostTargetWizard({
         break;
       case "apt-categories":
         parts.push({ label: "Apartamenty", step: { type: "root" } });
-        parts.push({ label: step.aptName, step: { type: "apt-locations" } });
+        parts.push({ label: step.location, step: { type: "apt-locations" } });
+        parts.push({ label: step.aptName, step: { type: "apt-list", location: step.location } });
         break;
       case "subleases":
         parts.push({ label: "Podnajmy", step: { type: "root" } });
@@ -359,7 +360,7 @@ export function CostTargetWizard({
                 key={apt.entryId}
                 label={apt.name}
                 subtitle={`${apt.categories.length} kategorii kosztowych`}
-                onClick={() => { setStep({ type: "apt-categories", entryId: apt.entryId, aptName: apt.name }); }}
+                onClick={() => { setStep({ type: "apt-categories", entryId: apt.entryId, aptName: apt.name, location: step.location }); }}
                 testId={dataTestId ? `${dataTestId}-tile-apt-${apt.entryId}` : undefined}
               />
             ))}
