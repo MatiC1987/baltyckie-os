@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CostTargetWizard, type WizardSelection } from "@/components/CostTargetWizard";
 import { SearchableTargetSelect } from "@/components/SearchableTargetSelect";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp, CheckCircle2, Ban, Minus, Loader2, Sparkles, ListFilter, Undo2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
@@ -284,6 +285,8 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     setCostStatusFilter("all");
     setExpandedEntryId(null);
     setSelectedTargets({});
+    setSelectedEntryIds(new Set());
+    setBulkWizardSelection(null);
   }, [personName]);
   const [editForm, setEditForm] = useState({
     date: "", operationName: "", reservationNumber: "", guestName: "",
@@ -309,6 +312,8 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
   const [importDuplicates, setImportDuplicates] = useState<{ index: number; existingId: number; date: string; operationName: string }[]>([]);
   const [skipDuplicatesOnImport, setSkipDuplicatesOnImport] = useState(true);
   const [importChecking, setImportChecking] = useState(false);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<number>>(new Set());
+  const [bulkWizardSelection, setBulkWizardSelection] = useState<WizardSelection | null>(null);
 
   type SaldoRule = { pattern: string; category?: string; targetKey?: string };
   const RULES_KEY = "saldo-categorization-rules";
@@ -807,6 +812,91 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
     });
     return result;
   }, [entries, dateFrom, dateTo, paymentFilter, typeFilter, entryKindFilter, categoryFilter, costStatusFilter, searchQuery, sortField, sortDir]);
+
+  const pendingEntries = useMemo(() =>
+    filtered.filter(e => !e.costImported && !e.costSkipped),
+    [filtered]
+  );
+
+  const selectedSum = useMemo(() => {
+    if (selectedEntryIds.size === 0) return 0;
+    return entries
+      .filter(e => selectedEntryIds.has(e.id))
+      .reduce((sum, e) => sum + Math.abs(parseFloat(e.cashAmount || "0")), 0);
+  }, [entries, selectedEntryIds]);
+
+  const handleToggleSelect = useCallback((id: number) => {
+    setSelectedEntryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAll = useCallback(() => {
+    if (selectedEntryIds.size === pendingEntries.length && pendingEntries.length > 0) {
+      setSelectedEntryIds(new Set());
+    } else {
+      setSelectedEntryIds(new Set(pendingEntries.map(e => e.id)));
+    }
+  }, [pendingEntries, selectedEntryIds.size]);
+
+  const bulkAssignMutation = useMutation({
+    mutationFn: async () => {
+      if (!bulkWizardSelection) throw new Error("Wybierz pozycję kosztową");
+      const ids = Array.from(selectedEntryIds);
+      const assignments = ids.map(entryId => {
+        const assignment: any = { entryId, targetType: bulkWizardSelection.targetType, forceAmount: true };
+        if (bulkWizardSelection.targetType === "operational") {
+          assignment.catId = bulkWizardSelection.catId;
+          assignment.itemIdx = bulkWizardSelection.itemIdx;
+        } else if (bulkWizardSelection.targetType === "apartment") {
+          assignment.aptEntryId = bulkWizardSelection.entryId;
+          assignment.category = bulkWizardSelection.category;
+        } else if (bulkWizardSelection.targetType === "sublease") {
+          assignment.subleasePaymentId = bulkWizardSelection.subleasePaymentId;
+        }
+        return assignment;
+      });
+      const res = await apiRequest("POST", "/api/saldo/import-to-targets", { assignments });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const results = data?.results || [];
+      const successCount = results.filter((r: any) => r?.success).length;
+      const skippedCount = results.filter((r: any) => r?.skipped || r?.duplicateWarning).length;
+      const failCount = selectedEntryIds.size - successCount - skippedCount;
+      let desc = `Przypisano ${successCount} wpisów`;
+      if (skippedCount > 0) desc += `, pominięto ${skippedCount}`;
+      if (failCount > 0) desc += `, błędów: ${failCount}`;
+      toast({ title: "Grupowe przypisanie", description: desc });
+      setSelectedEntryIds(new Set());
+      setBulkWizardSelection(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkSkipMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/saldo/bulk-skip", {
+        entryIds: Array.from(selectedEntryIds),
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Pominięto", description: `Pominięto ${selectedEntryIds.size} wpisów` });
+      setSelectedEntryIds(new Set());
+      setBulkWizardSelection(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -1442,6 +1532,57 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
         )}
       </Card>
 
+      {selectedEntryIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg sticky top-0 z-20" data-testid="bulk-action-bar">
+          <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+            Zaznaczono {selectedEntryIds.size} • Suma: {formatPLN(selectedSum)}
+          </span>
+          <button
+            onClick={() => { setSelectedEntryIds(new Set()); setBulkWizardSelection(null); }}
+            className="p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-400"
+            data-testid="button-clear-selection"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <div className="h-4 w-px bg-blue-200 dark:bg-blue-700 mx-1" />
+          <CostTargetWizard
+            targets={targets}
+            onSelect={(sel) => setBulkWizardSelection(sel)}
+            value={bulkWizardSelection?.label || ""}
+            onClear={bulkWizardSelection ? () => setBulkWizardSelection(null) : undefined}
+            placeholder="Pozycja kosztowa..."
+            triggerClassName="w-[260px] text-xs h-7"
+            txMonth={new Date().getMonth()}
+            data-testid="bulk-select-target"
+          />
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            disabled={!bulkWizardSelection || bulkAssignMutation.isPending}
+            onClick={() => bulkAssignMutation.mutate()}
+            data-testid="button-bulk-assign"
+          >
+            {bulkAssignMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+            Przypisz {selectedEntryIds.size}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-muted-foreground"
+            disabled={bulkSkipMutation.isPending}
+            onClick={() => {
+              if (window.confirm(`Czy na pewno chcesz pominąć ${selectedEntryIds.size} wpisów?`)) {
+                bulkSkipMutation.mutate();
+              }
+            }}
+            data-testid="button-bulk-skip"
+          >
+            {bulkSkipMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+            Pomiń {selectedEntryIds.size}
+          </Button>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">Ładowanie danych...</div>
       ) : (
@@ -1455,7 +1596,17 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
           <table className="w-full text-[10px] sm:text-xs border-collapse" style={{ minWidth: "1300px" }}>
             <thead className="sticky top-0 z-20">
               <tr className="bg-muted/80 dark:bg-muted/50">
-                <th className="border-b border-border border-r px-2 py-2 font-bold select-none sticky left-0 z-30 bg-muted/80 dark:bg-muted/50 w-[90px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("date")} data-testid="header-saldo-date">
+                <th className="border-b border-border border-r px-1 py-2 w-[28px] text-center sticky left-0 z-30 bg-muted/80 dark:bg-muted/50" data-testid="header-saldo-checkbox">
+                  {pendingEntries.length > 0 && (
+                    <Checkbox
+                      checked={selectedEntryIds.size === pendingEntries.length && pendingEntries.length > 0}
+                      onCheckedChange={handleToggleSelectAll}
+                      className="h-[11px] w-[11px]"
+                      data-testid="checkbox-select-all"
+                    />
+                  )}
+                </th>
+                <th className="border-b border-border border-r px-2 py-2 font-bold select-none sticky left-[28px] z-30 bg-muted/80 dark:bg-muted/50 w-[90px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("date")} data-testid="header-saldo-date">
                   <div className="flex items-center">Data<SortIcon field="date" /></div>
                 </th>
                 <th className="border-b border-border border-r px-2 py-2 font-bold select-none w-[200px] text-left cursor-pointer hover:bg-muted/90" onClick={() => toggleSort("operationName")} data-testid="header-saldo-operationName">
@@ -1502,11 +1653,21 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                 return (
                   <React.Fragment key={entry.id}>
                   <tr
-                    className={`group hover:bg-accent/30 cursor-pointer ${rowBg}`}
+                    className={`group hover:bg-accent/30 cursor-pointer ${rowBg} ${selectedEntryIds.has(entry.id) ? "!bg-blue-50/80 dark:!bg-blue-950/30" : ""}`}
                     onClick={() => { if (isCostPending) { setExpandedEntryId(isExpanded ? null : entry.id); } else { setPreviewEntry(entry); } }}
                     data-testid={`row-saldo-${entry.id}`}
                   >
-                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
+                    <td className="sticky left-0 z-[5] bg-inherit border-b border-r border-border px-1 py-1.5 text-center w-[28px]" onClick={(e) => e.stopPropagation()}>
+                      {isCostPending && (
+                        <Checkbox
+                          checked={selectedEntryIds.has(entry.id)}
+                          onCheckedChange={() => handleToggleSelect(entry.id)}
+                          className="h-[11px] w-[11px]"
+                          data-testid={`checkbox-entry-${entry.id}`}
+                        />
+                      )}
+                    </td>
+                    <td className="sticky left-[28px] z-[5] bg-inherit border-b border-r border-border px-2 py-1.5 tabular-nums" data-testid={`cell-date-${entry.id}`}>{formatDate(entry.date)}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate font-semibold" data-testid={`cell-op-${entry.id}`}>{entry.operationName}</td>
                     <td className="border-b border-r border-border px-2 py-1.5" data-testid={`cell-resnum-${entry.id}`}>{entry.reservationNumber || ""}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 truncate" data-testid={`cell-guest-${entry.id}`}>{entry.guestName || ""}</td>
@@ -1617,7 +1778,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                   </tr>
                   {isExpanded && isCostPending && (
                     <tr className="bg-muted/20 border-b border-border/30">
-                      <td colSpan={16} className="px-3 py-2">
+                      <td colSpan={17} className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <Select value={selectedCategories[entry.id] || ""} onValueChange={v => setSelectedCategories(prev => ({ ...prev, [entry.id]: v }))}>
                             <SelectTrigger className="h-7 text-xs w-[180px]" data-testid={`select-category-${entry.id}`}>

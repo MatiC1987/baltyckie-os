@@ -4074,6 +4074,32 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.post('/api/saldo/bulk-skip', isAuthenticated, async (req, res) => {
+    try {
+      const { entryIds } = req.body;
+      if (!entryIds || !Array.isArray(entryIds) || entryIds.length === 0) {
+        return res.status(400).json({ message: "Brak ID wpisów" });
+      }
+      const allEntries = await storage.getSaldoEntries({});
+      let skipped = 0;
+      let alreadyProcessed = 0;
+      for (const id of entryIds) {
+        const numId = typeof id === "string" ? parseInt(id) : id;
+        if (isNaN(numId)) continue;
+        const entry = allEntries.find(e => e.id === numId);
+        if (!entry || entry.costImported || entry.costSkipped) {
+          alreadyProcessed++;
+          continue;
+        }
+        await storage.updateSaldoEntry(numId, { costSkipped: true });
+        skipped++;
+      }
+      res.json({ success: true, skipped, alreadyProcessed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/saldo/:id/skip', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
