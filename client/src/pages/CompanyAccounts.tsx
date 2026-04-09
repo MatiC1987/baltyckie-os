@@ -624,6 +624,7 @@ function AccountTab({
     onSuccess: () => {
       toast({ title: "Pominięto", description: `Pominięto ${selectedTxIds.size} transakcji` });
       setSelectedTxIds(new Set());
+      setBulkWizardSelection(null);
       handleRefresh();
     },
     onError: (err: Error) => {
