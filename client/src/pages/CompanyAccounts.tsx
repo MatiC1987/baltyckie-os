@@ -308,7 +308,7 @@ function TransactionRow({
   return (
     <>
       <tr
-        className={`border-b border-border/30 transition-colors hover:bg-muted/40 cursor-pointer h-[34px] ${isSkipped ? "opacity-50" : ""} ${isNewlyImported ? "bg-blue-50/60 dark:bg-blue-950/20" : ""}`}
+        className={`border-b border-border/30 transition-colors hover:bg-muted/40 cursor-pointer h-[34px] ${isCategorized ? "bg-green-50/60 dark:bg-green-950/15" : ""} ${isSkipped ? "bg-muted/40 opacity-60" : ""} ${isNewlyImported && !isCategorized && !isSkipped ? "bg-blue-50/60 dark:bg-blue-950/20" : ""}`}
         onClick={() => setExpanded(!expanded)}
         data-testid={`row-tx-${tx.id}`}
       >
