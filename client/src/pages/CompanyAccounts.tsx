@@ -149,9 +149,10 @@ function resolveTargetLabel(
       const pay = sub.unpaidPayments.find(p => p.id === tx.costTargetSubleasePaymentId);
       if (pay) return `${sub.tenantName} → ${pay.title}`;
     }
-    const matchingSub = targets.sublease.find(s => s.subleaseId === (tx as any).costTargetSubleaseId);
-    if (matchingSub) return `${matchingSub.tenantName} → płatność #${tx.costTargetSubleasePaymentId}`;
-    return `Podnajem: płatność #${tx.costTargetSubleasePaymentId}`;
+    if (targets.sublease.length === 1) {
+      return `${targets.sublease[0].tenantName} → płatność #${tx.costTargetSubleasePaymentId}`;
+    }
+    return `Podnajem → płatność #${tx.costTargetSubleasePaymentId}`;
   }
   return null;
 }
@@ -493,14 +494,9 @@ function AccountTab({
 
   const aiCategorizeMutation = useMutation({
     mutationFn: async () => {
-      const stmtIds = Array.from(new Set(allTransactions.filter(tx => tx.statementId).map(tx => tx.statementId!)));
-      let totalUpdated = 0;
-      for (const sid of stmtIds) {
-        const res = await apiRequest("POST", `/api/bank-statements/${sid}/ai-categorize`);
-        const data = await res.json();
-        totalUpdated += data.updated || 0;
-      }
-      return totalUpdated;
+      const res = await apiRequest("POST", `/api/accounts/${account.id}/ai-categorize`);
+      const data = await res.json();
+      return data.updated || 0;
     },
     onSuccess: (updated) => {
       toast({ title: "Kategoryzacja AI", description: `Skategoryzowano ${updated} transakcji` });
