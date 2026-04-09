@@ -684,20 +684,21 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       const val = parseFloat(editValue) || 0;
       if (editingCell.endsWith("__prognoza") && editingCell in serverForecastLookup) {
         const { catId, itemIdx, month } = parseCellKey(editingCell);
-        queryClient.setQueryData<any[]>(
+        queryClient.setQueryData<OperationalCostForecast[]>(
           ["/api/operational-cost-forecasts", selectedYear],
-          (old: any[] | undefined) => {
+          (old) => {
             if (!old) return old;
+            const match = (f: OperationalCostForecast) => f.categoryId === catId && f.itemIndex === itemIdx && f.month === month && f.year === selectedYear;
             if (val === 0) {
-              return old.filter((f: any) => !(f.categoryId === catId && f.itemIndex === itemIdx && f.month === month && f.year === selectedYear));
+              return old.filter(f => !match(f));
             }
-            const idx = old.findIndex((f: any) => f.categoryId === catId && f.itemIndex === itemIdx && f.month === month && f.year === selectedYear);
+            const idx = old.findIndex(match);
             if (idx >= 0) {
               const updated = [...old];
               updated[idx] = { ...updated[idx], forecast: String(val) };
               return updated;
             }
-            return [...old, { year: selectedYear, month, categoryId: catId, itemIndex: itemIdx, forecast: String(val) }];
+            return [...old, { id: 0, year: selectedYear, month, categoryId: catId, itemIndex: itemIdx, forecast: String(val), actual: "0" } as OperationalCostForecast];
           }
         );
         if (val === 0) {
