@@ -293,6 +293,7 @@ function TransactionRow({
     },
     onSuccess: () => {
       toast({ title: "Przypisano", description: "Przypisano jak ostatnio" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions/counterparty-suggestions"] });
       onAssigned();
     },
     onError: (err: Error) => {
@@ -920,7 +921,7 @@ function AccountTab({
               data-testid="button-group-counterparty"
             >
               <Users className="h-3 w-3 mr-1" />
-              Grupuj
+              Grupuj po kontrahencie
             </Button>
           </div>
         </div>
