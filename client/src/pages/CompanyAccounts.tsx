@@ -17,6 +17,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Landmark,
   Search,
@@ -31,6 +32,7 @@ import {
   Calendar,
   Undo2,
   Sparkles,
+  X,
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import type { Account, BankTransaction } from "@shared/schema";
@@ -164,6 +166,8 @@ function TransactionRow({
   onSkipped,
   onUnassigned,
   isNewlyImported,
+  isSelected,
+  onToggleSelect,
 }: {
   tx: TransactionWithMeta;
   targets: AssignmentTargets | undefined;
@@ -171,6 +175,8 @@ function TransactionRow({
   onSkipped: () => void;
   onUnassigned: () => void;
   isNewlyImported?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: number) => void;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -308,10 +314,20 @@ function TransactionRow({
   return (
     <>
       <tr
-        className={`border-b border-border/30 transition-colors hover:bg-muted/40 cursor-pointer h-[34px] ${isCategorized ? "bg-green-50/60 dark:bg-green-950/15" : ""} ${isSkipped ? "bg-muted/40 opacity-60" : ""} ${isNewlyImported && !isCategorized && !isSkipped ? "bg-blue-50/60 dark:bg-blue-950/20" : ""}`}
+        className={`border-b border-border/30 transition-colors hover:bg-muted/40 cursor-pointer h-[34px] ${isSelected ? "bg-blue-50/80 dark:bg-blue-950/30" : ""} ${isCategorized && !isSelected ? "bg-green-50/60 dark:bg-green-950/15" : ""} ${isSkipped ? "bg-muted/40 opacity-60" : ""} ${isNewlyImported && !isCategorized && !isSkipped && !isSelected ? "bg-blue-50/60 dark:bg-blue-950/20" : ""}`}
         onClick={() => setExpanded(!expanded)}
         data-testid={`row-tx-${tx.id}`}
       >
+        <td className="px-1.5 py-1 text-center w-[32px]" onClick={(e) => e.stopPropagation()}>
+          {isPending && onToggleSelect && (
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggleSelect(tx.id)}
+              className="h-3.5 w-3.5"
+              data-testid={`checkbox-tx-${tx.id}`}
+            />
+          )}
+        </td>
         <td className="px-2 py-1 text-xs tabular-nums text-muted-foreground whitespace-nowrap">
           {formatDate(tx.date)}
         </td>
@@ -343,7 +359,7 @@ function TransactionRow({
       </tr>
       {expanded && (
         <tr className="bg-muted/20 border-b border-border/30">
-          <td colSpan={8} className="px-3 py-2">
+          <td colSpan={9} className="px-3 py-2">
             <div className="space-y-2 text-xs">
               <div className="md:hidden">
                 <span className="text-muted-foreground">Opis: </span>
@@ -432,6 +448,8 @@ function AccountTab({
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [customDateFrom, setCustomDateFrom] = useState("");
   const [customDateTo, setCustomDateTo] = useState("");
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<number>>(new Set());
+  const [bulkWizardSelection, setBulkWizardSelection] = useState<WizardSelection | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -541,6 +559,72 @@ function AccountTab({
     refetch();
     queryClient.invalidateQueries({ queryKey: ["/api/assignment-targets"] });
   }, [refetch]);
+
+  const pendingTransactions = useMemo(
+    () => allTransactions.filter(tx => !tx.costImported && !tx.costSkipped),
+    [allTransactions]
+  );
+
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedTxIds.size === pendingTransactions.length && pendingTransactions.length > 0) {
+      setSelectedTxIds(new Set());
+    } else {
+      setSelectedTxIds(new Set(pendingTransactions.map(tx => tx.id)));
+    }
+  }, [pendingTransactions, selectedTxIds.size]);
+
+  const bulkAssignMutation = useMutation({
+    mutationFn: async () => {
+      if (!bulkWizardSelection) throw new Error("Wybierz pozycję kosztową");
+      const ids = Array.from(selectedTxIds);
+      await apiRequest("POST", "/api/bank-transactions/import-to-targets", {
+        assignments: ids.map(id => ({
+          transactionId: id,
+          targetType: bulkWizardSelection.targetType,
+          catId: bulkWizardSelection.catId,
+          itemIdx: bulkWizardSelection.itemIdx,
+          entryId: bulkWizardSelection.entryId,
+          category: bulkWizardSelection.category,
+          subleasePaymentId: bulkWizardSelection.subleasePaymentId,
+          forceAmount: true,
+        })),
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Przypisano", description: `Przypisano ${selectedTxIds.size} transakcji do kosztów` });
+      setSelectedTxIds(new Set());
+      setBulkWizardSelection(null);
+      handleRefresh();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkSkipMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/bank-transactions/skip", {
+        transactionIds: Array.from(selectedTxIds),
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Pominięto", description: `Pominięto ${selectedTxIds.size} transakcji` });
+      setSelectedTxIds(new Set());
+      handleRefresh();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
 
   return (
     <div className="space-y-3">
@@ -669,11 +753,72 @@ function AccountTab({
         )}
       </div>
 
+      {selectedTxIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg" data-testid="bulk-action-bar">
+          <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+            Zaznaczono {selectedTxIds.size}
+          </span>
+          <button
+            onClick={() => { setSelectedTxIds(new Set()); setBulkWizardSelection(null); }}
+            className="p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-400"
+            data-testid="button-clear-selection"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <div className="h-4 w-px bg-blue-200 dark:bg-blue-700 mx-1" />
+          <CostTargetWizard
+            targets={targets}
+            onSelect={(sel) => setBulkWizardSelection(sel)}
+            value={bulkWizardSelection?.label || ""}
+            onClear={bulkWizardSelection ? () => setBulkWizardSelection(null) : undefined}
+            placeholder="Pozycja kosztowa..."
+            triggerClassName="w-[260px] text-xs h-7"
+            txMonth={new Date().getMonth()}
+            data-testid="bulk-select-target"
+          />
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            disabled={!bulkWizardSelection || bulkAssignMutation.isPending}
+            onClick={() => bulkAssignMutation.mutate()}
+            data-testid="button-bulk-assign"
+          >
+            {bulkAssignMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+            Przypisz {selectedTxIds.size}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-muted-foreground"
+            disabled={bulkSkipMutation.isPending}
+            onClick={() => {
+              if (window.confirm(`Czy na pewno chcesz pominąć ${selectedTxIds.size} transakcji?`)) {
+                bulkSkipMutation.mutate();
+              }
+            }}
+            data-testid="button-bulk-skip"
+          >
+            {bulkSkipMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+            Pomiń {selectedTxIds.size}
+          </Button>
+        </div>
+      )}
+
       <Card className="overflow-hidden">
         <div ref={scrollContainerRef} className="overflow-auto max-h-[calc(100vh-380px)]">
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
               <tr className="border-b border-border">
+                <th className="px-1.5 py-2 w-[32px] text-center">
+                  {pendingTransactions.length > 0 && (
+                    <Checkbox
+                      checked={selectedTxIds.size === pendingTransactions.length && pendingTransactions.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                      className="h-3.5 w-3.5"
+                      data-testid="checkbox-select-all"
+                    />
+                  )}
+                </th>
                 <th className="text-left px-2 py-2 font-semibold text-muted-foreground w-[90px]">Data</th>
                 <th className="text-left px-2 py-2 font-semibold text-muted-foreground">Kontrahent</th>
                 <th className="hidden md:table-cell text-left px-2 py-2 font-semibold text-muted-foreground">Tytuł przelewu</th>
@@ -688,6 +833,7 @@ function AccountTab({
               {isLoading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/20">
+                    <td className="px-1.5 py-1.5 w-[32px]"></td>
                     <td className="px-2 py-1.5"><Skeleton className="h-4 w-16" /></td>
                     <td className="px-2 py-1.5"><Skeleton className="h-4 w-28" /></td>
                     <td className="hidden sm:table-cell px-2 py-1.5"><Skeleton className="h-4 w-40" /></td>
@@ -700,7 +846,7 @@ function AccountTab({
                 ))
               ) : allTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                  <td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">
                     Brak transakcji dla wybranych filtrów
                   </td>
                 </tr>
@@ -714,6 +860,8 @@ function AccountTab({
                     onSkipped={handleRefresh}
                     onUnassigned={handleRefresh}
                     isNewlyImported={highlightStatementId ? tx.statementId === highlightStatementId : false}
+                    isSelected={selectedTxIds.has(tx.id)}
+                    onToggleSelect={toggleSelect}
                   />
                 ))
               )}

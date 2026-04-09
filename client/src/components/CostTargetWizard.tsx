@@ -208,27 +208,27 @@ export function CostTargetWizard({
 
   const Tile = ({ label, subtitle, onClick, testId }: { label: string; subtitle?: string; onClick: () => void; testId?: string }) => (
     <button
-      className="flex items-center justify-between w-full px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground rounded-md cursor-pointer transition-colors border border-transparent hover:border-border"
+      className="flex items-center justify-between w-full px-2.5 py-1 text-left text-[13px] hover:bg-accent hover:text-accent-foreground rounded cursor-pointer transition-colors"
       onClick={onClick}
       data-testid={testId}
     >
       <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{label}</div>
-        {subtitle && <div className="text-xs text-muted-foreground truncate">{subtitle}</div>}
+        <div className="font-medium truncate leading-tight">{label}</div>
+        {subtitle && <div className="text-[11px] text-muted-foreground truncate leading-tight">{subtitle}</div>}
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 ml-2 text-muted-foreground" />
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 ml-2 text-muted-foreground" />
     </button>
   );
 
   const LeafItem = ({ label, subtitle, onClick, testId }: { label: string; subtitle?: string; onClick: () => void; testId?: string }) => (
     <button
-      className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground rounded-md cursor-pointer transition-colors"
+      className="flex items-center w-full px-2.5 py-1 text-left text-[13px] hover:bg-accent hover:text-accent-foreground rounded cursor-pointer transition-colors"
       onClick={onClick}
       data-testid={testId}
     >
       <div className="flex-1 min-w-0">
-        <div className="truncate">{label}</div>
-        {subtitle && <div className="text-xs text-muted-foreground truncate">{subtitle}</div>}
+        <div className="truncate leading-tight">{label}</div>
+        {subtitle && <div className="text-[11px] text-muted-foreground truncate leading-tight">{subtitle}</div>}
       </div>
     </button>
   );
@@ -468,7 +468,7 @@ export function CostTargetWizard({
         style={{ width: "var(--radix-popover-trigger-width)", minWidth: 340 }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex items-center border-b px-3 py-2 gap-2">
+        <div className="flex items-center border-b px-2.5 py-1.5 gap-2">
           {step.type !== "root" && !search.trim() && (
             <button
               onClick={() => {
