@@ -237,6 +237,20 @@ function TransactionRow({
     },
   });
 
+  const unskipMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${tx.id}/unskip`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Cofnięto", description: "Pominięcie zostało cofnięte" });
+      onUnassigned();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
   const targetLabel = isCategorized ? resolveTargetLabel(tx, targets) : null;
 
   const categoryBadge = tx.category ? (
@@ -266,9 +280,25 @@ function TransactionRow({
       </button>
     </div>
   ) : isSkipped ? (
-    <Badge variant="outline" className="text-[10px] border-muted-foreground/30 text-muted-foreground gap-0.5 px-1.5 py-0" data-testid={`badge-status-${tx.id}`}>
-      <Ban className="h-3 w-3" /> Pominięte
-    </Badge>
+    <div className="flex items-center gap-1">
+      <Badge variant="outline" className="text-[10px] border-muted-foreground/30 text-muted-foreground gap-0.5 px-1.5 py-0" data-testid={`badge-status-${tx.id}`}>
+        <Ban className="h-3 w-3" /> Pominięte
+      </Badge>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (window.confirm("Czy na pewno chcesz cofnąć pominięcie tej transakcji?")) {
+            unskipMutation.mutate();
+          }
+        }}
+        disabled={unskipMutation.isPending}
+        className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+        title="Cofnij pominięcie"
+        data-testid={`button-unskip-${tx.id}`}
+      >
+        {unskipMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+      </button>
+    </div>
   ) : (
     <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600 dark:text-amber-400 gap-0.5 px-1.5 py-0" data-testid={`badge-status-${tx.id}`}>
       <Minus className="h-3 w-3" /> Oczekuje

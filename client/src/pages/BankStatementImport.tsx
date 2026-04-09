@@ -1154,6 +1154,20 @@ function StatementRow({
     },
   });
 
+  const unskipMutation = useMutation({
+    mutationFn: async (txId: number) => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${txId}/unskip`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Cofnięto", description: "Pominięcie zostało cofnięte" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", statement.id] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
   const handleImportSelected = () => {
     const toImport = Array.from(selectedTxIds)
       .filter(id => assignments[id])
@@ -1532,9 +1546,20 @@ function StatementRow({
                                 </Badge>
                               )}
                               {isSkipped && (
-                                <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-skipped-${tx.id}`}>
-                                  <Ban className="h-3 w-3 mr-1" />Pominięta
-                                </Badge>
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-skipped-${tx.id}`}>
+                                    <Ban className="h-3 w-3 mr-1" />Pominięta
+                                  </Badge>
+                                  <button
+                                    onClick={() => { if (window.confirm("Czy na pewno chcesz cofnąć pominięcie tej transakcji?")) unskipMutation.mutate(tx.id); }}
+                                    disabled={unskipMutation.isPending}
+                                    className="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                                    title="Cofnij pominięcie"
+                                    data-testid={`button-unskip-${tx.id}`}
+                                  >
+                                    {unskipMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                                  </button>
+                                </div>
                               )}
                               {!isDone && currentAssignment && (
                                 <Badge variant="secondary" className="text-xs" data-testid={`badge-ready-${tx.id}`}>

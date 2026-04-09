@@ -4142,6 +4142,18 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     }
   });
 
+  app.post('/api/bank-transactions/:id/unskip', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const tx = await storage.getBankTransactionById(id);
+      if (!tx) return res.status(404).json({ message: "Transakcja nie znaleziona" });
+      await storage.updateBankTransaction(id, { costSkipped: false });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/bank-transactions/:id/unassign-cost', isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
