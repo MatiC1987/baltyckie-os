@@ -12005,10 +12005,19 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           }
           catItems.push({ category: cat, realizedByMonth });
         }
-        const apt = apartments.find(a => a.name === entryId || a.id.toString() === entryId);
+        let apt = apartments.find(a => a.name === entryId || a.id.toString() === entryId);
+        if (!apt && entryId.startsWith("apt-")) {
+          const numId = parseInt(entryId.replace("apt-", ""), 10);
+          if (!isNaN(numId)) {
+            apt = apartments.find(a => a.id === numId);
+          }
+        }
+        if (!apt && entryId === "gb-all") {
+          apt = undefined;
+        }
         apartment_.push({
           entryId,
-          name: apt?.name || entryId,
+          name: entryId === "gb-all" ? "Grand Baltic (wszystkie)" : (apt?.name || entryId),
           categories: catItems,
         });
       }

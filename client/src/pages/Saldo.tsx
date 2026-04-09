@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableTargetSelect } from "@/components/SearchableTargetSelect";
 import { Upload, Search, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, X, Pencil, Tag, Check, Scale, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ArrowUp, ArrowDown, Filter, ChevronDown, ChevronUp, CheckCircle2, Ban, Minus, Loader2, Sparkles, ListFilter } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
@@ -1185,19 +1186,15 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={newRuleTarget || "none"} onValueChange={v => setNewRuleTarget(v === "none" ? "" : v)}>
-                  <SelectTrigger className="w-[280px]" data-testid="select-new-rule-target">
-                    <SelectValue placeholder="Pozycja kosztowa..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— brak —</SelectItem>
-                    {targetOptions.map(opt => (
-                      <SelectItem key={opt.key} value={opt.key} className="text-xs">
-                        <span className="text-muted-foreground text-[10px]">[{opt.group}]</span> {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableTargetSelect
+                  items={targetOptions}
+                  value={newRuleTarget || ""}
+                  onValueChange={v => setNewRuleTarget(v === "__clear__" ? "" : v)}
+                  placeholder="Pozycja kosztowa..."
+                  clearLabel="— brak —"
+                  triggerClassName="w-[280px]"
+                  data-testid="select-new-rule-target"
+                />
                 <Button
                   size="sm"
                   onClick={() => {
@@ -1561,18 +1558,21 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
                               ))}
                             </SelectContent>
                           </Select>
-                          <Select value={selectedTargets[entry.id] || ""} onValueChange={v => setSelectedTargets(prev => ({ ...prev, [entry.id]: v }))}>
-                            <SelectTrigger className="h-7 text-xs w-[300px]" data-testid={`select-target-${entry.id}`}>
-                              <SelectValue placeholder="Pozycja kosztowa..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {targetOptions.map(opt => (
-                                <SelectItem key={opt.key} value={opt.key} className="text-xs">
-                                  <span className="text-muted-foreground text-[10px]">[{opt.group}]</span> {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <SearchableTargetSelect
+                            items={targetOptions}
+                            value={selectedTargets[entry.id] || ""}
+                            onValueChange={v => {
+                              if (v === "__clear__") {
+                                setSelectedTargets(prev => { const n = { ...prev }; delete n[entry.id]; return n; });
+                              } else {
+                                setSelectedTargets(prev => ({ ...prev, [entry.id]: v }));
+                              }
+                            }}
+                            placeholder="Pozycja kosztowa..."
+                            clearLabel="— wyczyść —"
+                            triggerClassName="h-7 text-xs w-[300px]"
+                            data-testid={`select-target-${entry.id}`}
+                          />
                           <Button
                             size="sm"
                             className="h-7 text-xs"

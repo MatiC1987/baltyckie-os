@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { SearchableTargetSelect } from "@/components/SearchableTargetSelect";
 import {
   Table,
   TableBody,
@@ -1429,82 +1430,63 @@ function StatementRow({
                                 isImported && tx.costTargetType ? (
                                   <span className="text-xs text-green-700 dark:text-green-400">
                                     {tx.costTargetType === "operational" && `Opłaty: ${tx.costTargetCatId}[${tx.costTargetItemIdx}]`}
-                                    {tx.costTargetType === "apartment" && `Mieszkanie: ${tx.costTargetEntryId} → ${tx.costTargetCategory}`}
+                                    {tx.costTargetType === "apartment" && `Mieszkanie: ${targets?.apartment?.find(a => a.entryId === tx.costTargetEntryId)?.name || tx.costTargetEntryId} → ${tx.costTargetCategory}`}
                                     {tx.costTargetType === "sublease" && `Podnajem: płatność #${tx.costTargetSubleasePaymentId}`}
                                   </span>
                                 ) : null
                               ) : (
-                                <Select
+                                <SearchableTargetSelect
+                                  items={(() => {
+                                    const items: { key: string; label: string; group: string; searchText?: string }[] = [];
+                                    if (targets?.operational) {
+                                      const txMonth = new Date(tx.date).getMonth();
+                                      for (const cat of targets.operational) {
+                                        for (const item of cat.items) {
+                                          const realized = item.realizedByMonth[txMonth] || 0;
+                                          items.push({
+                                            key: `op__${item.catId}__${item.itemIdx}`,
+                                            label: `${cat.title} → ${item.name}${item.subLabel ? ` (${item.subLabel})` : ""}${realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}`,
+                                            group: "Opłaty operacyjne",
+                                            searchText: `${cat.title} ${item.name} ${item.subLabel || ""}`,
+                                          });
+                                        }
+                                      }
+                                    }
+                                    if (targets?.apartment) {
+                                      const txMonth = new Date(tx.date).getMonth();
+                                      for (const apt of targets.apartment) {
+                                        for (const c of apt.categories) {
+                                          const realized = c.realizedByMonth[txMonth] || 0;
+                                          items.push({
+                                            key: `apt__${apt.entryId}__${c.category}`,
+                                            label: `${apt.name} → ${c.category}${realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}`,
+                                            group: "Koszty mieszkań",
+                                            searchText: `${apt.name} ${apt.entryId} ${c.category}`,
+                                          });
+                                        }
+                                      }
+                                    }
+                                    if (targets?.sublease) {
+                                      for (const sub of targets.sublease) {
+                                        for (const p of sub.unpaidPayments) {
+                                          items.push({
+                                            key: `sub__${p.id}`,
+                                            label: `${sub.tenantName} — ${p.title} (${parseFloat(p.amount).toFixed(2)} zł, termin ${p.dueDate})`,
+                                            group: "Podnajmy — nieopłacone",
+                                            searchText: `${sub.tenantName} ${sub.apartmentNames} ${p.title}`,
+                                          });
+                                        }
+                                      }
+                                    }
+                                    return items;
+                                  })()}
                                   value={currentAssignment ? targetToKey(currentAssignment) : ""}
                                   onValueChange={(v) => handleAssign(tx.id, v)}
-                                >
-                                  <SelectTrigger className="w-full text-xs h-8" data-testid={`select-assign-${tx.id}`}>
-                                    <SelectValue placeholder="Wybierz pozycję..." />
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-[300px]">
-                                    <SelectItem value="__clear__">— Wyczyść —</SelectItem>
-                                    {targets?.operational && targets.operational.length > 0 && (() => {
-                                      const txMonth = new Date(tx.date).getMonth();
-                                      return (
-                                        <>
-                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Opłaty operacyjne</div>
-                                          {targets.operational.map(cat =>
-                                            cat.items.map(item => {
-                                              const realized = item.realizedByMonth[txMonth] || 0;
-                                              return (
-                                                <SelectItem
-                                                  key={`op__${item.catId}__${item.itemIdx}`}
-                                                  value={`op__${item.catId}__${item.itemIdx}`}
-                                                  data-testid={`option-op-${item.catId}-${item.itemIdx}`}
-                                                >
-                                                  {cat.title} → {item.name}{item.subLabel ? ` (${item.subLabel})` : ""}{realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}
-                                                </SelectItem>
-                                              );
-                                            })
-                                          )}
-                                        </>
-                                      );
-                                    })()}
-                                    {targets?.apartment && targets.apartment.length > 0 && (() => {
-                                      const txMonth = new Date(tx.date).getMonth();
-                                      return (
-                                        <>
-                                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Koszty mieszkań</div>
-                                          {targets.apartment.map(apt =>
-                                            apt.categories.map(c => {
-                                              const realized = c.realizedByMonth[txMonth] || 0;
-                                              return (
-                                                <SelectItem
-                                                  key={`apt__${apt.entryId}__${c.category}`}
-                                                  value={`apt__${apt.entryId}__${c.category}`}
-                                                  data-testid={`option-apt-${apt.entryId}-${c.category}`}
-                                                >
-                                                  {apt.name} → {c.category}{realized > 0 ? ` [${realized.toFixed(2)} zł]` : ""}
-                                                </SelectItem>
-                                              );
-                                            })
-                                          )}
-                                        </>
-                                      );
-                                    })()}
-                                    {targets?.sublease && targets.sublease.length > 0 && (
-                                      <>
-                                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted/50">Podnajmy — nieopłacone</div>
-                                        {targets.sublease.map(sub =>
-                                          sub.unpaidPayments.map(p => (
-                                            <SelectItem
-                                              key={`sub__${p.id}`}
-                                              value={`sub__${p.id}`}
-                                              data-testid={`option-sub-${p.id}`}
-                                            >
-                                              {sub.tenantName} — {p.title} ({parseFloat(p.amount).toFixed(2)} zł, termin {p.dueDate})
-                                            </SelectItem>
-                                          ))
-                                        )}
-                                      </>
-                                    )}
-                                  </SelectContent>
-                                </Select>
+                                  placeholder="Wybierz pozycję..."
+                                  clearLabel="— wyczyść —"
+                                  triggerClassName="w-full text-xs h-8"
+                                  data-testid={`select-assign-${tx.id}`}
+                                />
                               )}
                             </TableCell>
                             <TableCell>
