@@ -9673,6 +9673,44 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     }
   });
 
+  app.post('/api/apt-cost-data/copy-forecast-to-future', isAuthenticated, async (req, res) => {
+    try {
+      const { sourceYear, targetYears } = req.body;
+      if (!sourceYear || typeof sourceYear !== 'number' || sourceYear < 2020 || sourceYear > 2050) {
+        return res.status(400).json({ message: 'Nieprawidłowy sourceYear' });
+      }
+      if (!Array.isArray(targetYears) || targetYears.length === 0 || targetYears.length > 10) {
+        return res.status(400).json({ message: 'targetYears musi być tablicą 1-10 lat' });
+      }
+      const uniqueTargets = [...new Set(targetYears as number[])].filter(
+        y => typeof y === 'number' && y > sourceYear && y <= sourceYear + 10
+      );
+      if (uniqueTargets.length === 0) {
+        return res.status(400).json({ message: 'Lata docelowe muszą być większe od źródłowego' });
+      }
+      const sourceRows = await storage.getAptCostData(sourceYear);
+      if (sourceRows.length === 0) {
+        return res.json({ copied: 0, message: 'Brak danych źródłowych' });
+      }
+      let totalCopied = 0;
+      for (const targetYear of uniqueTargets) {
+        const cells = sourceRows.map(r => ({
+          year: targetYear,
+          entryId: r.entryId,
+          category: r.category,
+          month: r.month,
+          prognoza: r.prognoza ?? '0',
+          realized: '0',
+        }));
+        await storage.upsertAptCostCells(cells);
+        totalCopied += cells.length;
+      }
+      res.json({ copied: totalCopied, years: uniqueTargets });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/apt-cost-data/seed', isAuthenticated, async (_req, res) => {
     try {
       const existing = await storage.getAptCostData(2024);

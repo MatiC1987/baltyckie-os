@@ -434,6 +434,8 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
   const [editCatColor, setEditCatColor] = useState("");
 
   const [showCopyToNextYear, setShowCopyToNextYear] = useState(false);
+  const [copyMultipleYears, setCopyMultipleYears] = useState(false);
+  const [isCopyingFuture, setIsCopyingFuture] = useState(false);
 
   const [editEntryColorDialog, setEditEntryColorDialog] = useState<string | null>(null);
   const [editEntryColor, setEditEntryColor] = useState("");
@@ -671,12 +673,49 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
       });
     });
     if (cells.length > 0) {
-      try { await dbBulkSaveCells(cells); queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', nextYear] }); }
-      catch (err) { console.error('Błąd kopiowania prognozy:', err); }
+      try {
+        await dbBulkSaveCells(cells);
+        queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', nextYear] });
+        queryClient.invalidateQueries({ queryKey: ['/api/balance-forecast'] });
+        toast({ title: "Skopiowano", description: `Prognoza skopiowana na rok ${nextYear}` });
+      } catch (err) {
+        console.error('Błąd kopiowania prognozy:', err);
+        toast({ title: "Błąd", description: "Nie udało się skopiować prognoz", variant: "destructive" });
+      }
+    } else {
+      toast({ title: "Brak danych", description: "Nie znaleziono prognoz do skopiowania" });
     }
     setShowCopyToNextYear(false);
-    toast({ title: "Skopiowano", description: `Prognoza skopiowana na rok ${nextYear}` });
+    setCopyMultipleYears(false);
   }, [year, costEntries, data, toast, queryClient]);
+
+  const handleCopyForecastToMultipleYears = useCallback(async () => {
+    setIsCopyingFuture(true);
+    try {
+      const targetYears = [];
+      for (let y = year + 1; y <= year + 5; y++) targetYears.push(y);
+      const res = await fetch('/api/apt-cost-data/copy-forecast-to-future', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        credentials: 'include',
+        body: JSON.stringify({ sourceYear: year, targetYears }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || 'Błąd kopiowania');
+      for (const y of targetYears) {
+        queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', y] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/balance-forecast'] });
+      setShowCopyToNextYear(false);
+      setCopyMultipleYears(false);
+      toast({ title: "Skopiowano", description: `Prognoza z ${year} skopiowana na lata ${targetYears[0]}–${targetYears[targetYears.length - 1]} (${result.copied} wpisów)` });
+    } catch (err: any) {
+      console.error('Błąd kopiowania prognozy na wiele lat:', err);
+      toast({ title: "Błąd", description: err.message || "Nie udało się skopiować prognoz", variant: "destructive" });
+    } finally {
+      setIsCopyingFuture(false);
+    }
+  }, [year, toast, queryClient]);
 
   const handleYearChange = (y: string) => {
     const newYear = Number(y);
@@ -1974,17 +2013,39 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCopyToNextYear} onOpenChange={setShowCopyToNextYear}>
-        <DialogContent className="sm:max-w-[400px]">
+      <Dialog open={showCopyToNextYear} onOpenChange={(open) => { setShowCopyToNextYear(open); if (!open) setCopyMultipleYears(false); }}>
+        <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Kopiuj prognozę na {year + 1}</DialogTitle>
+            <DialogTitle>Kopiuj prognozę z roku {year}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Wszystkie wartości prognozowane (P) z roku {year} zostaną skopiowane na rok {year + 1}.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Wszystkie wartości prognozowane (P) z roku {year} zostaną skopiowane. Istniejące dane zostaną nadpisane.
+            </p>
+            <label className="flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="copy-option-single">
+              <input type="radio" name="copyMode" checked={!copyMultipleYears} onChange={() => setCopyMultipleYears(false)} />
+              <div>
+                <p className="text-sm font-medium">Na rok {year + 1}</p>
+                <p className="text-[11px] text-muted-foreground">Kopiuj tylko na następny rok</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer hover:bg-muted/30" data-testid="copy-option-multi">
+              <input type="radio" name="copyMode" checked={copyMultipleYears} onChange={() => setCopyMultipleYears(true)} />
+              <div>
+                <p className="text-sm font-medium">Na lata {year + 1}–{year + 5}</p>
+                <p className="text-[11px] text-muted-foreground">Kopiuj na 5 lat w przód (do ręcznej korekty)</p>
+              </div>
+            </label>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCopyToNextYear(false)}>Anuluj</Button>
-            <Button onClick={handleCopyForecastToNextYear} data-testid="button-confirm-copy">Kopiuj</Button>
+            <Button variant="outline" onClick={() => { setShowCopyToNextYear(false); setCopyMultipleYears(false); }}>Anuluj</Button>
+            <Button
+              onClick={copyMultipleYears ? handleCopyForecastToMultipleYears : handleCopyForecastToNextYear}
+              disabled={isCopyingFuture}
+              data-testid="button-confirm-copy"
+            >
+              {isCopyingFuture ? "Kopiowanie..." : "Kopiuj"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
