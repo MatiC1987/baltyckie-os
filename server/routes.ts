@@ -11748,7 +11748,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
       } else if (bankFormat === "pko") {
         for (let i = 1; i < lines.length; i++) {
-          const parts = lines[i].split(",").map(cleanStr);
+          const parts = parseCsvLine(lines[i], ",").map(cleanStr);
           if (parts.length < 4) {
             const semiParts = parseCsvLine(lines[i], ";").map(cleanStr);
             if (semiParts.length >= 4 && semiParts[0].match(/\d{4}-?\d{2}-?\d{2}/)) {
@@ -11845,7 +11845,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
       } else if (bankFormat === "santander") {
         for (let i = 1; i < lines.length; i++) {
-          const parts = lines[i].split(",").map(cleanStr);
+          const parts = parseCsvLine(lines[i], ",").map(cleanStr);
           if (parts.length < 4) {
             const semiParts = parseCsvLine(lines[i], ";").map(cleanStr);
             if (semiParts.length >= 4 && semiParts[0].match(/\d{2}-\d{2}-\d{4}/)) {
