@@ -658,6 +658,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     if (key.endsWith("__prognoza") && key in serverForecastLookup) {
       return serverForecastLookup[key];
     }
+    if (key in cellData && cellData[key] !== 0) return cellData[key];
     if (key in scheduleOverlay) return scheduleOverlay[key];
     return cellData[key] || 0;
   }, [cellData, scheduleOverlay, serverForecastLookup]);
@@ -674,14 +675,31 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       return;
     }
     setEditingCell(key);
-    setEditValue(cellData[key]?.toString() || "");
-  }, [cellData, serverForecastLookup]);
+    const currentValue = cellData[key] || scheduleOverlay[key] || 0;
+    setEditValue(currentValue ? currentValue.toString() : "");
+  }, [cellData, serverForecastLookup, scheduleOverlay]);
 
   const commitEdit = useCallback(() => {
     if (editingCell) {
       const val = parseFloat(editValue) || 0;
       if (editingCell.endsWith("__prognoza") && editingCell in serverForecastLookup) {
         const { catId, itemIdx, month } = parseCellKey(editingCell);
+        queryClient.setQueryData<any[]>(
+          ["/api/operational-cost-forecasts", selectedYear],
+          (old: any[] | undefined) => {
+            if (!old) return old;
+            if (val === 0) {
+              return old.filter((f: any) => !(f.categoryId === catId && f.itemIndex === itemIdx && f.month === month && f.year === selectedYear));
+            }
+            const idx = old.findIndex((f: any) => f.categoryId === catId && f.itemIndex === itemIdx && f.month === month && f.year === selectedYear);
+            if (idx >= 0) {
+              const updated = [...old];
+              updated[idx] = { ...updated[idx], forecast: String(val) };
+              return updated;
+            }
+            return [...old, { year: selectedYear, month, categoryId: catId, itemIndex: itemIdx, forecast: String(val) }];
+          }
+        );
         if (val === 0) {
           fetch("/api/operational-cost-forecasts/delete", {
             method: "POST",
