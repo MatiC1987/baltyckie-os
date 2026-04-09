@@ -11693,6 +11693,38 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const cleanNum = (s: string) => s?.replace(/\s/g, "").replace(/,/g, ".") || "0";
       const cleanStr = (s: string) => s?.replace(/"/g, "").trim() || "";
 
+      function parseCsvLine(line: string, delimiter: string): string[] {
+        const fields: string[] = [];
+        let current = "";
+        let inQuotes = false;
+        for (let j = 0; j < line.length; j++) {
+          const ch = line[j];
+          if (inQuotes) {
+            if (ch === '"') {
+              if (j + 1 < line.length && line[j + 1] === '"') {
+                current += '"';
+                j++;
+              } else {
+                inQuotes = false;
+              }
+            } else {
+              current += ch;
+            }
+          } else {
+            if (ch === '"') {
+              inQuotes = true;
+            } else if (ch === delimiter) {
+              fields.push(current);
+              current = "";
+            } else {
+              current += ch;
+            }
+          }
+        }
+        fields.push(current);
+        return fields;
+      }
+
       if (bankFormat === "mbank") {
         let dataStart = 0;
         for (let i = 0; i < lines.length; i++) {
@@ -11703,7 +11735,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
         if (dataStart === 0) dataStart = 1;
         for (let i = dataStart; i < lines.length; i++) {
-          const parts = lines[i].split(";").map(cleanStr);
+          const parts = parseCsvLine(lines[i], ";").map(cleanStr);
           if (parts.length >= 6 && parts[0].match(/\d{4}-\d{2}-\d{2}/)) {
             transactions.push({
               date: parts[0],
@@ -11718,7 +11750,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         for (let i = 1; i < lines.length; i++) {
           const parts = lines[i].split(",").map(cleanStr);
           if (parts.length < 4) {
-            const semiParts = lines[i].split(";").map(cleanStr);
+            const semiParts = parseCsvLine(lines[i], ";").map(cleanStr);
             if (semiParts.length >= 4 && semiParts[0].match(/\d{4}-?\d{2}-?\d{2}/)) {
               const dateStr = semiParts[0].replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
               transactions.push({
@@ -11744,7 +11776,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
       } else if (bankFormat === "ing") {
         for (let i = 1; i < lines.length; i++) {
-          const parts = lines[i].split(";").map(cleanStr);
+          const parts = parseCsvLine(lines[i], ";").map(cleanStr);
           if (parts.length >= 5 && parts[0].match(/\d{4}-\d{2}-\d{2}/)) {
             transactions.push({
               date: parts[0],
@@ -11762,7 +11794,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           const lower = lines[i].toLowerCase();
           if (lower.includes("data") && (lower.includes("kwota") || lower.includes("operacj"))) {
             headerIdx = i;
-            const cols = lines[i].split(";").map(cleanStr);
+            const cols = parseCsvLine(lines[i], ";").map(cleanStr);
             for (let c = 0; c < cols.length; c++) {
               const cl = cols[c].toLowerCase();
               if (cl.includes("data") && cl.includes("operacj")) colDate = c;
@@ -11782,7 +11814,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         if (colDesc < 0) colDesc = 2;
 
         for (let i = headerIdx + 1; i < lines.length; i++) {
-          const parts = lines[i].split(";").map(cleanStr);
+          const parts = parseCsvLine(lines[i], ";").map(cleanStr);
           if (parts.length < 3) continue;
           const rawDate = parts[colDate] || "";
           let dateStr = rawDate;
@@ -11815,7 +11847,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         for (let i = 1; i < lines.length; i++) {
           const parts = lines[i].split(",").map(cleanStr);
           if (parts.length < 4) {
-            const semiParts = lines[i].split(";").map(cleanStr);
+            const semiParts = parseCsvLine(lines[i], ";").map(cleanStr);
             if (semiParts.length >= 4 && semiParts[0].match(/\d{2}-\d{2}-\d{4}/)) {
               const dp = semiParts[0].split("-");
               const dateStr = `${dp[2]}-${dp[1]}-${dp[0]}`;
@@ -11843,7 +11875,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
       } else {
         for (let i = 1; i < lines.length; i++) {
-          const parts = lines[i].split(";").map(p => p.replace(/"/g, "").trim());
+          const parts = parseCsvLine(lines[i], ";").map(p => p.replace(/"/g, "").trim());
           if (parts.length >= 4) {
             transactions.push({
               date: parts[0] || new Date().toISOString().split("T")[0],
