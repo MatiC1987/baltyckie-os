@@ -17,7 +17,7 @@ import {
   Gauge, ClipboardList, FolderOpen, Search, CalendarDays, Hotel,
   Phone, Clock, LogOut, Sun, Moon, Menu, X,
   PanelLeftClose, PanelLeft, ChevronDown, FileBarChart, AlertTriangle,
-  Bell, Check, CheckCheck, Plus,
+  Bell, Check, CheckCheck, Plus, ListTodo,
   type LucideIcon,
 } from "lucide-react";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
@@ -82,6 +82,7 @@ const NAV_SECTIONS: NavSection[] = [
     color: "text-blue-400",
     items: [
       { label: "RCP", path: "/recepcja/rcp", icon: Clock },
+      { label: "Zadania", path: "/recepcja/zadania", icon: ListTodo },
       { label: "Kontakty najemców", path: "/recepcja/kontakty", icon: Phone },
       { label: "Raport dzienny", path: "/recepcja/raport-dzienny", icon: FileBarChart },
     ],
@@ -90,9 +91,9 @@ const NAV_SECTIONS: NavSection[] = [
 
 const MOBILE_NAV: NavItem[] = [
   { label: "Pulpit", path: "/recepcja/dashboard", icon: LayoutDashboard },
-  { label: "Saldo", path: "/recepcja/saldo", icon: Wallet },
+  { label: "Zadania", path: "/recepcja/zadania", icon: ListTodo },
   { label: "RCP", path: "/recepcja/rcp", icon: Clock },
-  { label: "Podnajem", path: "/recepcja/podnajem/umowy", icon: FileText },
+  { label: "Saldo", path: "/recepcja/saldo", icon: Wallet },
 ];
 
 function NavItemLink({ item, isActive, onClick, compact }: {
@@ -298,6 +299,7 @@ function RecepcjaFAB() {
   const [, navigate] = useLocation();
 
   const actions = [
+    { label: "Nowe zadanie", icon: ListTodo, path: "/recepcja/zadania", color: "bg-violet-600" },
     { label: "Nowy odczyt", icon: Gauge, path: "/recepcja/liczniki", color: "bg-emerald-600" },
     { label: "Zgłoś usterkę", icon: AlertTriangle, path: "/recepcja/usterki", color: "bg-amber-600" },
     { label: "Raport dzienny", icon: FileBarChart, path: "/recepcja/raport-dzienny", color: "bg-blue-600" },
@@ -584,7 +586,7 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
         <RecepcjaFAB />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-slate-900 border-t border-white/10 lg:hidden" data-testid="nav-recepcja-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-slate-900/95 backdrop-blur-sm border-t border-white/10 lg:hidden safe-area-bottom" data-testid="nav-recepcja-bottom">
         <div className="flex items-center justify-around h-14">
           {filteredMobileNav.map(item => {
             const Icon = item.icon;

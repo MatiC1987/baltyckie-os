@@ -19,6 +19,7 @@ import RecepcjaKontakty from "./RecepcjaKontakty";
 import RecepcjaHistoriaUmow from "./RecepcjaHistoriaUmow";
 import RecepcjaRaportDzienny from "./RecepcjaRaportDzienny";
 import RecepcjaUsterki from "./RecepcjaUsterki";
+import RecepcjaZadania from "./RecepcjaZadania";
 
 type RecepcjaUser = {
   id: number;
@@ -45,6 +46,7 @@ const CACHEABLE_URLS = [
   '/api/recepcja/accounting-notes',
   '/api/recepcja/rcp/employees',
   '/api/recepcja/notifications/unread-count',
+  '/api/recepcja/tasks',
 ];
 
 export async function recepcjaFetch(method: string, url: string, data?: any): Promise<Response> {
@@ -167,6 +169,7 @@ export default function RecepcjaApp() {
             <Route path="/recepcja/kontakty" component={RecepcjaKontakty} />
             <Route path="/recepcja/raport-dzienny" component={RecepcjaRaportDzienny} />
             <Route path="/recepcja/usterki" component={RecepcjaUsterki} />
+            <Route path="/recepcja/zadania" component={RecepcjaZadania} />
             <Route>{() => <Redirect to="/recepcja" />}</Route>
           </Switch>
         </RecepcjaLayout>
