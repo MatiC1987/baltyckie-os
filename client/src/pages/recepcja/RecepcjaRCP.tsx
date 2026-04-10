@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Slider } from "@/components/ui/slider";
 import GrafikEnhanced from "@/components/GrafikEnhanced";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp, Pencil, Navigation, CheckCircle, AlertTriangle } from "lucide-react";
+import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp, Pencil, Navigation, CheckCircle, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -1006,6 +1006,8 @@ function RCPGpsTracking() {
 
 function RCPPiny() {
   const { toast } = useToast();
+  const [visiblePinId, setVisiblePinId] = useState<number | null>(null);
+  const [revealedPin, setRevealedPin] = useState<string | null>(null);
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ["/api/recepcja/rcp/employees-pins"],
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees-pins"); return r.json(); },
@@ -1019,8 +1021,26 @@ function RCPPiny() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recepcja/rcp/employees-pins"] });
       toast({ title: "PIN ustawiony" });
+      setVisiblePinId(null);
+      setRevealedPin(null);
     },
   });
+
+  const togglePinVisibility = async (empId: number) => {
+    if (visiblePinId === empId) {
+      setVisiblePinId(null);
+      setRevealedPin(null);
+      return;
+    }
+    try {
+      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/employees/${empId}/pin`);
+      const data = await r.json();
+      setVisiblePinId(empId);
+      setRevealedPin(data.pin);
+    } catch {
+      toast({ title: "Błąd pobierania PINu", variant: "destructive" });
+    }
+  };
 
   const generatePin = () => String(Math.floor(100000 + Math.random() * 900000));
 
@@ -1036,9 +1056,18 @@ function RCPPiny() {
           {employees.map((e: any) => (
             <tr key={e.id} className="border-b">
               <td className="p-2 font-medium">{e.firstName} {e.lastName}</td>
-              <td className="p-2 text-center font-mono">{e.pin || '-'}</td>
+              <td className="p-2 text-center font-mono">
+                <div className="flex items-center justify-center gap-1">
+                  <span data-testid={`text-pin-${e.id}`}>{visiblePinId === e.id ? (revealedPin || '-') : (e.pin || '-')}</span>
+                  {e.pin && (
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => togglePinVisibility(e.id)} data-testid={`button-toggle-pin-${e.id}`}>
+                      {visiblePinId === e.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </Button>
+                  )}
+                </div>
+              </td>
               <td className="p-2 text-center">
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => setPinMutation.mutate({ id: e.id, pin: generatePin() })}>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => setPinMutation.mutate({ id: e.id, pin: generatePin() })} data-testid={`button-generate-pin-${e.id}`}>
                   Generuj PIN
                 </Button>
               </td>

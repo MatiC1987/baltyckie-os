@@ -822,6 +822,14 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.get('/api/recepcja/rcp/employees/:id/pin', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const emp = await storage.getEmployee(Number(req.params.id));
+      if (!emp) return res.status(404).json({ message: "Nie znaleziono pracownika" });
+      res.json({ pin: emp.pin || null });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.put('/api/recepcja/rcp/employees/:id/pin', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const { pin } = req.body;
