@@ -738,7 +738,12 @@ function EmployeeDashboard({
       ? "text-green-600 dark:text-green-400"
       : "text-muted-foreground";
 
-  type TaskItem = { id: number; title: string; description: string | null; date: string; startTime: string | null; endTime: string | null; status: string; priority: string; apartmentId: number | null; actualStartTime: string | null; actualEndTime: string | null; mileageKm: string | null; notes: string | null };
+  type TaskItem = { id: number; title: string; description: string | null; date: string; startTime: string | null; endTime: string | null; status: string; priority: string; apartmentId: number | null; actualStartTime: string | null; actualEndTime: string | null; mileageKm: string | null; notes: string | null; source?: string };
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDesc, setTaskDesc] = useState("");
+  const [taskAptId, setTaskAptId] = useState("");
+
   const tasksQuery = useQuery<TaskItem[]>({
     queryKey: ["/api/time-clock/my-tasks", taskDate],
     enabled: activeTab === "tasks",
@@ -746,6 +751,41 @@ function EmployeeDashboard({
       const res = await rcpFetch("GET", `/api/time-clock/my-tasks?date=${taskDate}`);
       return await res.json();
     },
+  });
+
+  type AptOption = { id: number; name: string; location: string | null };
+  const workerAptsQuery = useQuery<AptOption[]>({
+    queryKey: ["/api/time-clock/apartments"],
+    enabled: activeTab === "tasks",
+    queryFn: async () => {
+      const res = await rcpFetch("GET", "/api/time-clock/apartments");
+      return await res.json();
+    },
+  });
+
+  const addTaskMutation = useMutation({
+    mutationFn: async (data: { title: string; description: string | null; apartmentId: number | null }) => {
+      const res = await rcpFetch("POST", "/api/time-clock/tasks", data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-tasks"] });
+      setShowTaskForm(false);
+      setTaskTitle(""); setTaskDesc(""); setTaskAptId("");
+      toast({ title: "Wpis dodany" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteOwnTaskMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await rcpFetch("DELETE", `/api/time-clock/tasks/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-tasks"] });
+      toast({ title: "Wpis usunięty" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
   });
 
   type MileageItem = { id: number; date: string; fromLocation: string; toLocation: string; distanceKm: string; purpose: string | null };
@@ -950,6 +990,12 @@ function EmployeeDashboard({
             </Button>
           </div>
 
+          {isToday && (
+            <Button size="sm" className="rounded-xl self-end" onClick={() => setShowTaskForm(true)} data-testid="button-add-own-task">
+              <Plus className="h-4 w-4 mr-1" /> Dodaj wpis
+            </Button>
+          )}
+
           {tasksQuery.isLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
           ) : !tasksQuery.data?.length ? (
@@ -959,39 +1005,82 @@ function EmployeeDashboard({
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {tasksQuery.data.map((task) => (
-                <Card key={task.id} className="p-4 rounded-2xl" data-testid={`card-task-${task.id}`}>
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5">{taskStatusIcon(task.status)}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{task.title}</p>
-                      {task.startTime && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {task.startTime}{task.endTime ? ` - ${task.endTime}` : ""}
-                        </p>
-                      )}
-                      {task.description && <p className="text-xs text-muted-foreground mt-1">{task.description}</p>}
+              {tasksQuery.data.map((task) => {
+                const isOwnEntry = task.source === "PRACOWNIK";
+                return (
+                  <Card key={task.id} className="p-4 rounded-2xl" data-testid={`card-task-${task.id}`}>
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">{taskStatusIcon(task.status)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-sm truncate">{task.title}</p>
+                          {isOwnEntry && (
+                            <Badge variant="outline" className="text-[10px] rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 shrink-0" data-testid={`badge-own-task-${task.id}`}>Własne</Badge>
+                          )}
+                        </div>
+                        {task.startTime && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {task.startTime}{task.endTime ? ` - ${task.endTime}` : ""}
+                          </p>
+                        )}
+                        {task.description && <p className="text-xs text-muted-foreground mt-1">{task.description}</p>}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-3">
-                    {task.status === "ZAPLANOWANE" && (
-                      <Button size="sm" className="rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs" onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: "W_TRAKCIE", actualStartTime: new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }) })} data-testid={`button-start-task-${task.id}`}>
-                        <Play className="h-3 w-3 mr-1" /> Rozpocznij
-                      </Button>
-                    )}
-                    {task.status === "W_TRAKCIE" && (
-                      <Button size="sm" className="rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs" onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: "ZAKONCZONE", actualEndTime: new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }) })} data-testid={`button-finish-task-${task.id}`}>
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> Zakończ
-                      </Button>
-                    )}
-                    {task.status === "ZAKONCZONE" && (
-                      <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-xl">Zakończone</Badge>
-                    )}
-                  </div>
-                </Card>
-              ))}
+                    <div className="flex items-center gap-2 mt-3">
+                      {task.status === "ZAPLANOWANE" && (
+                        <Button size="sm" className="rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs" onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: "W_TRAKCIE", actualStartTime: new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }) })} data-testid={`button-start-task-${task.id}`}>
+                          <Play className="h-3 w-3 mr-1" /> Rozpocznij
+                        </Button>
+                      )}
+                      {task.status === "W_TRAKCIE" && (
+                        <Button size="sm" className="rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs" onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: "ZAKONCZONE", actualEndTime: new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }) })} data-testid={`button-finish-task-${task.id}`}>
+                          <CheckCircle2 className="h-3 w-3 mr-1" /> Zakończ
+                        </Button>
+                      )}
+                      {task.status === "ZAKONCZONE" && (
+                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-xl">Zakończone</Badge>
+                      )}
+                      {isOwnEntry && (
+                        <Button size="sm" variant="ghost" className="rounded-xl text-xs text-destructive hover:text-destructive ml-auto" onClick={() => { if (window.confirm("Usunąć wpis?")) deleteOwnTaskMutation.mutate(task.id); }} data-testid={`button-delete-own-task-${task.id}`}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
+
+          <Dialog open={showTaskForm} onOpenChange={(v) => { if (!v) { setShowTaskForm(false); setTaskTitle(""); setTaskDesc(""); setTaskAptId(""); } }}>
+            <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Dodaj wpis</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={(e) => { e.preventDefault(); if (!taskTitle.trim()) return; addTaskMutation.mutate({ title: taskTitle.trim(), description: taskDesc.trim() || null, apartmentId: taskAptId && taskAptId !== "none" ? Number(taskAptId) : null }); }} className="flex flex-col gap-3">
+                <div><Label>Co robiłeś/aś?</Label><Input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="np. Wymiana żarówki w 305" data-testid="input-own-task-title" /></div>
+                <div><Label>Opis (opcjonalnie)</Label><Textarea value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} className="resize-none" rows={2} data-testid="input-own-task-desc" /></div>
+                <div>
+                  <Label>Apartament (opcjonalnie)</Label>
+                  <Select value={taskAptId} onValueChange={setTaskAptId}>
+                    <SelectTrigger data-testid="select-own-task-apartment"><SelectValue placeholder="Wybierz..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— Brak —</SelectItem>
+                      {(workerAptsQuery.data || []).map(a => (
+                        <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => { setShowTaskForm(false); setTaskTitle(""); setTaskDesc(""); setTaskAptId(""); }}>Anuluj</Button>
+                  <Button type="submit" disabled={!taskTitle.trim() || addTaskMutation.isPending} data-testid="button-submit-own-task">
+                    {addTaskMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Dodaj"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       );
     }

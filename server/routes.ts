@@ -14187,6 +14187,55 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post('/api/time-clock/tasks', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const { title, description, apartmentId } = req.body;
+      if (!title || !title.trim()) return res.status(400).json({ message: 'Tytuł jest wymagany' });
+      const today = new Date().toISOString().slice(0, 10);
+      const [task] = await db.insert(employeeTasks).values({
+        employeeId,
+        assignedById: employeeId,
+        title: title.trim(),
+        description: description || null,
+        apartmentId: apartmentId ? Number(apartmentId) : null,
+        date: today,
+        status: "ZAKONCZONE",
+        priority: "NORMALNY",
+        source: "PRACOWNIK",
+      }).returning();
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/time-clock/tasks/:id', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const [task] = await db.select().from(employeeTasks).where(and(eq(employeeTasks.id, Number(req.params.id)), eq(employeeTasks.employeeId, employeeId)));
+      if (!task) return res.status(404).json({ message: 'Nie znaleziono zadania' });
+      if (task.source !== "PRACOWNIK") return res.status(403).json({ message: 'Nie można usunąć zadania zleconego przez recepcję' });
+      await db.delete(employeeTasks).where(eq(employeeTasks.id, task.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-clock/apartments', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const allApts = await storage.getApartments();
+      res.json(allApts.filter(a => a.active).map(a => ({ id: a.id, name: a.name, location: a.location })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/time-clock/mileage', async (req, res) => {
     try {
       const employeeId = getRcpEmployeeId(req);

@@ -1911,6 +1911,7 @@ export const employeeTasks = pgTable("employee_tasks", {
   actualEndTime: text("actual_end_time"),
   mileageKm: decimal("mileage_km", { precision: 10, scale: 1 }),
   notes: text("notes"),
+  source: text("source").notNull().default("RECEPCJA"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

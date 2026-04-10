@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Loader2, ChevronLeft, ChevronRight,
   ClipboardList, CheckCircle2, CircleDot, Clock, AlertTriangle,
-  Trash2, Edit, MessageSquare, Send, User, Filter,
+  Trash2, Edit, MessageSquare, Send, User, Filter, Building2,
 } from "lucide-react";
 import type { Employee } from "@shared/schema";
 
@@ -24,9 +24,12 @@ type TaskItem = {
   employeeId: number; apartmentId: number | null;
   actualStartTime: string | null; actualEndTime: string | null;
   mileageKm: string | null; notes: string | null; assignedById: number | null;
+  source?: string;
 };
 
 type CommentItem = { id: number; taskId: number; authorId: number; authorName: string; content: string; createdAt: string };
+
+type ApartmentItem = { id: number; name: string; location: string | null; active: boolean };
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   ZAPLANOWANE: { label: "Zaplanowane", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
@@ -64,6 +67,7 @@ export default function RecepcjaZadania() {
   const [formStart, setFormStart] = useState("");
   const [formEnd, setFormEnd] = useState("");
   const [formPriority, setFormPriority] = useState("NORMALNY");
+  const [formApartment, setFormApartment] = useState("");
 
   const employeesQuery = useQuery<Employee[]>({
     queryKey: ["/api/recepcja/rcp/employees"],
@@ -73,9 +77,22 @@ export default function RecepcjaZadania() {
     },
   });
 
+  const apartmentsQuery = useQuery<ApartmentItem[]>({
+    queryKey: ["/api/recepcja/apartments"],
+    queryFn: async () => {
+      const res = await recepcjaFetch("GET", "/api/recepcja/apartments");
+      return res.json();
+    },
+  });
+
   const activeEmployees = useMemo(() =>
-    (employeesQuery.data || []).filter(e => e.isActive && e.pin),
+    (employeesQuery.data || []).filter(e => e.status === "AKTYWNY"),
     [employeesQuery.data]
+  );
+
+  const activeApartments = useMemo(() =>
+    (apartmentsQuery.data || []).filter(a => a.active).sort((a, b) => a.name.localeCompare(b.name)),
+    [apartmentsQuery.data]
   );
 
   const tasksQuery = useQuery<TaskItem[]>({
@@ -151,12 +168,12 @@ export default function RecepcjaZadania() {
 
   const closeForm = () => {
     setShowForm(false); setEditingTask(null);
-    setFormTitle(""); setFormDesc(""); setFormEmployee(""); setFormStart(""); setFormEnd(""); setFormPriority("NORMALNY");
+    setFormTitle(""); setFormDesc(""); setFormEmployee(""); setFormStart(""); setFormEnd(""); setFormPriority("NORMALNY"); setFormApartment("");
   };
 
   const openCreateForm = () => {
     setEditingTask(null); setFormDate(date);
-    setFormTitle(""); setFormDesc(""); setFormEmployee(""); setFormStart(""); setFormEnd(""); setFormPriority("NORMALNY");
+    setFormTitle(""); setFormDesc(""); setFormEmployee(""); setFormStart(""); setFormEnd(""); setFormPriority("NORMALNY"); setFormApartment("");
     setShowForm(true);
   };
 
@@ -164,7 +181,14 @@ export default function RecepcjaZadania() {
     setEditingTask(task);
     setFormTitle(task.title); setFormDesc(task.description || ""); setFormEmployee(String(task.employeeId));
     setFormDate(task.date); setFormStart(task.startTime || ""); setFormEnd(task.endTime || ""); setFormPriority(task.priority);
+    setFormApartment(task.apartmentId ? String(task.apartmentId) : "");
     setShowForm(true);
+  };
+
+  const applyPreset = (apt: ApartmentItem) => {
+    setFormTitle(`Sprzątanie ${apt.name}`);
+    setFormApartment(String(apt.id));
+    setFormPriority("NORMALNY");
   };
 
   const handleSubmitForm = (e: React.FormEvent) => {
@@ -179,6 +203,8 @@ export default function RecepcjaZadania() {
       endTime: formEnd || null,
       priority: formPriority,
       status: editingTask?.status || "ZAPLANOWANE",
+      apartmentId: formApartment && formApartment !== "none" ? Number(formApartment) : null,
+      source: "RECEPCJA",
     };
     if (editingTask) {
       updateTaskMutation.mutate({ id: editingTask.id, ...payload });
@@ -209,6 +235,12 @@ export default function RecepcjaZadania() {
     return emp ? `${emp.firstName} ${emp.lastName}` : `#${empId}`;
   };
 
+  const getApartmentName = (aptId: number | null) => {
+    if (!aptId) return null;
+    const apt = activeApartments.find(a => a.id === aptId);
+    return apt?.name || null;
+  };
+
   const statusCounts = useMemo(() => {
     const tasks = tasksQuery.data || [];
     return {
@@ -227,8 +259,8 @@ export default function RecepcjaZadania() {
     return groups;
   }, [filteredTasks]);
 
-  const etatEmployees = activeEmployees.filter(e => e.employmentType === "ETAT");
-  const hourlyEmployees = activeEmployees.filter(e => e.employmentType === "PRACA_NA_H");
+  const etatEmployees = activeEmployees.filter(e => e.cooperationType === "ETAT");
+  const hourlyEmployees = activeEmployees.filter(e => e.cooperationType === "PRACA_NA_H");
 
   return (
     <div>
@@ -315,7 +347,7 @@ export default function RecepcjaZadania() {
         <div className="flex flex-col gap-4">
           {Object.entries(groupedByEmployee).map(([empId, tasks]) => {
             const emp = activeEmployees.find(e => e.id === Number(empId));
-            const isEtat = emp?.employmentType === "ETAT";
+            const isEtat = emp?.cooperationType === "ETAT";
             return (
               <div key={empId}>
                 <div className="flex items-center gap-2 mb-2">
@@ -332,6 +364,8 @@ export default function RecepcjaZadania() {
                   {tasks.map(task => {
                     const st = STATUS_MAP[task.status] || STATUS_MAP.ZAPLANOWANE;
                     const pr = PRIORITY_MAP[task.priority] || PRIORITY_MAP.NORMALNY;
+                    const aptName = getApartmentName(task.apartmentId);
+                    const isWorkerEntry = task.source === "PRACOWNIK";
                     return (
                       <Card
                         key={task.id}
@@ -350,12 +384,22 @@ export default function RecepcjaZadania() {
                             )}
                             <div className="min-w-0">
                               <p className="font-medium text-sm truncate">{task.title}</p>
-                              {task.startTime && (
-                                <p className="text-xs text-muted-foreground">{task.startTime}{task.endTime ? ` - ${task.endTime}` : ""}</p>
-                              )}
+                              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                {aptName && (
+                                  <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                                    <Building2 className="h-3 w-3" />{aptName}
+                                  </span>
+                                )}
+                                {task.startTime && (
+                                  <span className="text-[10px] text-muted-foreground">{task.startTime}{task.endTime ? ` - ${task.endTime}` : ""}</span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
+                            {isWorkerEntry && (
+                              <Badge variant="outline" className="text-[10px] rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" data-testid={`badge-source-worker-${task.id}`}>Zgłoszone</Badge>
+                            )}
                             {task.priority === "PILNY" && <AlertTriangle className={`h-3.5 w-3.5 ${pr.color}`} />}
                             <Badge variant="outline" className={`text-[10px] rounded-full ${st.color}`}>{st.label}</Badge>
                           </div>
@@ -371,13 +415,49 @@ export default function RecepcjaZadania() {
       )}
 
       <Dialog open={showForm} onOpenChange={(v) => { if (!v) closeForm(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingTask ? "Edytuj zadanie" : "Nowe zadanie"}</DialogTitle>
           </DialogHeader>
+
+          {!editingTask && activeApartments.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">Szybkie presety sprzątania:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {activeApartments.slice(0, 12).map(apt => (
+                  <button
+                    key={apt.id}
+                    type="button"
+                    className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${
+                      formApartment === String(apt.id) && formTitle.startsWith("Sprzątanie")
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted/50 hover:bg-muted border-border"
+                    }`}
+                    onClick={() => applyPreset(apt)}
+                    data-testid={`button-preset-${apt.id}`}
+                  >
+                    {apt.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmitForm} className="flex flex-col gap-3">
             <div><Label>Tytuł</Label><Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="np. Sprzątanie 204" data-testid="input-task-title" /></div>
             <div><Label>Opis (opcjonalnie)</Label><Textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} className="resize-none" rows={2} data-testid="input-task-desc" /></div>
+            <div>
+              <Label>Apartament (opcjonalnie)</Label>
+              <Select value={formApartment} onValueChange={setFormApartment}>
+                <SelectTrigger data-testid="select-task-apartment"><SelectValue placeholder="Wybierz apartament..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Brak —</SelectItem>
+                  {activeApartments.map(a => (
+                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>Pracownik</Label>
               <Select value={formEmployee} onValueChange={setFormEmployee}>
@@ -426,7 +506,7 @@ export default function RecepcjaZadania() {
       </Dialog>
 
       <Dialog open={!!detailTask} onOpenChange={(v) => { if (!v) setDetailTask(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           {detailTask && (
             <>
               <DialogHeader>
@@ -440,7 +520,16 @@ export default function RecepcjaZadania() {
                   <Badge variant="outline" className={`rounded-full ${STATUS_MAP[detailTask.status]?.color || ""}`}>{STATUS_MAP[detailTask.status]?.label || detailTask.status}</Badge>
                   <Badge variant="outline" className={`rounded-full ${PRIORITY_MAP[detailTask.priority]?.color || ""}`}>{PRIORITY_MAP[detailTask.priority]?.label || detailTask.priority}</Badge>
                   <span className="text-xs text-muted-foreground">{getEmployeeName(detailTask.employeeId)}</span>
+                  {detailTask.source === "PRACOWNIK" && (
+                    <Badge variant="outline" className="text-[10px] rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">Zgłoszone przez pracownika</Badge>
+                  )}
                 </div>
+                {getApartmentName(detailTask.apartmentId) && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Building2 className="h-4 w-4" />
+                    {getApartmentName(detailTask.apartmentId)}
+                  </div>
+                )}
                 {detailTask.description && <p className="text-sm text-muted-foreground">{detailTask.description}</p>}
                 {detailTask.startTime && <p className="text-xs text-muted-foreground">Planowany: {detailTask.startTime}{detailTask.endTime ? ` - ${detailTask.endTime}` : ""}</p>}
                 {detailTask.actualStartTime && <p className="text-xs text-muted-foreground">Rozpoczęto: {detailTask.actualStartTime}{detailTask.actualEndTime ? ` / Zakończono: ${detailTask.actualEndTime}` : ""}</p>}
