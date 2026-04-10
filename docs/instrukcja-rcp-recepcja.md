@@ -1,288 +1,345 @@
-# INSTRUKCJA OBSŁUGI MODUŁU RCP — RECEPCJA
+# Instrukcja RCP — Panel Recepcji
 
-**System: Baltyckie Finanse**
 **Dla: Recepcja / Małgorzata Latasiewicz**
 **Data: Kwiecień 2026**
+**System: Bałtyckie — Rejestrator Czasu Pracy**
 
 ---
 
-## SPIS TREŚCI
+## Spis treści
 
-1. Logowanie do Panelu Recepcja
-2. Nawigacja do modułu RCP
-3. Panel główny RCP (Dashboard)
-4. Obecności — przeglądanie i edycja
-5. Grafik pracy
-6. Zarządzanie zadaniami pracowników
-7. Urlopy
-8. Raporty
-9. Lokalizacje GPS
-10. Zarządzanie PIN-ami
-11. Najczęstsze problemy i rozwiązania
-
----
-
-## 1. LOGOWANIE DO PANELU RECEPCJA
-
-1. Otwórz przeglądarkę na telefonie lub komputerze
-2. Wejdź na adres aplikacji, dodaj `/recepcja` na końcu adresu
-3. Wpisz swój **login** i **hasło** w formularzu
-4. Kliknij przycisk **Zaloguj się**
-5. Po zalogowaniu zobaczysz Panel Recepcji z menu bocznym
+1. [Logowanie do panelu Recepcji](#1-logowanie-do-panelu-recepcji)
+2. [Nawigacja do modułu RCP](#2-nawigacja-do-modułu-rcp)
+3. [Dashboard — podgląd bieżący](#3-dashboard--podgląd-bieżący)
+4. [Obecności — przeglądanie i edycja wpisów](#4-obecności--przeglądanie-i-edycja-wpisów)
+5. [Grafik — zarządzanie zmianami](#5-grafik--zarządzanie-zmianami)
+6. [Urlopy — zatwierdzanie i odrzucanie wniosków](#6-urlopy--zatwierdzanie-i-odrzucanie-wniosków)
+7. [Raporty miesięczne](#7-raporty-miesięczne)
+8. [Lokalizacje GPS](#8-lokalizacje-gps)
+9. [PINy pracowników](#9-piny-pracowników)
+10. [Zadania pracowników](#10-zadania-pracowników)
+11. [Najczęstsze problemy i rozwiązania](#11-najczęstsze-problemy-i-rozwiązania)
 
 ---
 
-## 2. NAWIGACJA DO MODUŁU RCP
+## 1. Logowanie do panelu Recepcji
 
-1. W menu bocznym (po lewej stronie) znajdź sekcję **ZARZĄDZANIE**
-2. Kliknij **RCP** (ikona zegara)
-3. Na telefonie: użyj dolnego paska nawigacji — kliknij ikonę **RCP**
-4. Otworzy się moduł RCP z zakładkami u góry
-
-**Dostępne zakładki:**
-- **Dashboard** — podgląd kto teraz pracuje
-- **Obecności** — dzienne wpisy wejść/wyjść
-- **Grafik** — planowanie zmian
-- **Urlopy** — zarządzanie wnioskami
-- **Raporty** — podsumowania miesięczne
-- **Lokalizacje** — strefy GPS
-- **PINy** — zarządzanie kodami PIN pracowników
-- **Śledzenie GPS** — podgląd tras pracowników
+1. Otwórz przeglądarkę na komputerze lub telefonie.
+2. Wejdź na adres aplikacji Bałtyckie.
+3. Na ekranie logowania wpisz swoje dane (login i hasło) przypisane do konta Recepcji.
+4. Po zalogowaniu zobaczysz panel główny Recepcji z menu bocznym po lewej stronie.
 
 ---
 
-## 3. PANEL GŁÓWNY RCP (DASHBOARD)
+## 2. Nawigacja do modułu RCP
 
-Po wejściu w RCP widzisz:
-
-- **Karty ze statystykami:**
-  - Ile osób teraz pracuje
-  - Ile osób jest na przerwie
-  - Ile osób było dziś obecnych
-
-- **Lista dzisiejszych wpisów** — kto wszedł, o której, czy już wyszedł
-
-- **Status każdego pracownika** — kolorowe oznaczenia:
-  - 🟢 Zielony = pracuje
-  - 🟡 Żółty = na przerwie
-  - ⚪ Szary = nie pracuje
+1. W menu bocznym po lewej stronie znajdź sekcję **ZARZĄDZANIE**.
+2. Kliknij pozycję **RCP** (ikona zegara).
+3. Otworzy się moduł RCP z paskiem zakładek u góry:
+   - **Dashboard** — podgląd na żywo
+   - **Obecności** — wpisy czasu pracy
+   - **Grafik** — planowanie zmian
+   - **Urlopy** — wnioski urlopowe
+   - **Raporty** — raporty miesięczne
+   - **Lokalizacje** — strefy GPS
+   - **PINy** — zarządzanie PIN-ami
 
 ---
 
-## 4. OBECNOŚCI — PRZEGLĄDANIE I EDYCJA
+## 3. Dashboard — podgląd bieżący
 
-### Przeglądanie obecności:
-1. Kliknij zakładkę **Obecności**
-2. Domyślnie wyświetlany jest dzisiejszy dzień
-3. Użyj strzałek ◀ ▶ lub wybierz datę, żeby zobaczyć inny dzień
-4. Każdy wpis pokazuje:
-   - Imię i nazwisko pracownika
-   - Godzinę wejścia i wyjścia
-   - Czas pracy i przerw
-   - Status (Aktywna / Zakończona / Warunkowa)
+Po wejściu w moduł RCP od razu widzisz zakładkę **Dashboard**.
 
-### Edycja wpisu:
-1. Kliknij na wpis, który chcesz poprawić
-2. Zmień godzinę wejścia lub wyjścia
-3. Kliknij **Zapisz**
+**Co widzisz na ekranie:**
 
-### Usuwanie wpisu:
-1. Kliknij na wpis
-2. Kliknij czerwony przycisk **Usuń**
-3. Potwierdź usunięcie
+- **Trzy kafelki podsumowujące:**
+  - Liczba osób aktualnie pracujących (kolor zielony)
+  - Liczba osób na przerwie (kolor pomarańczowy)
+  - Łączna liczba pracowników w systemie
 
-### Wpisy warunkowe (poza strefą):
-- Wpisy oznaczone jako **Warunkowa** oznaczają, że pracownik zarejestrował się poza wyznaczoną strefą GPS
-- Możesz je zaakceptować lub odrzucić
+- **Tabela „Dzisiejsze wpisy"** — lista wszystkich wpisów z dzisiejszego dnia z kolumnami:
+  - Pracownik (imię i nazwisko)
+  - Wejście (godzina rozpoczęcia pracy)
+  - Wyjście (godzina zakończenia pracy lub puste, jeśli jeszcze pracuje)
+  - Status: „Pracuje", „Przerwa" lub „Zakończone"
 
 ---
 
-## 5. GRAFIK PRACY
+## 4. Obecności — przeglądanie i edycja wpisów
 
-### Widok grafiku:
-1. Kliknij zakładkę **Grafik**
-2. Widzisz dwie zakładki:
-   - **Grafik** — tabela z planem zmian
-   - **Dziś pracują** — kto ma dziś zaplanowaną zmianę
+Kliknij zakładkę **Obecności** na pasku u góry.
 
-### Dodawanie zmiany (Tap & Pick):
-1. Kliknij pustą komórkę w tabeli (skrzyżowanie pracownika i dnia)
-2. Pojawią się kolorowe przyciski z gotowymi zmianami:
-   - **8-16** (8 godzin, niebieski)
-   - **8-15** (7 godzin, zielony)
-   - **9-17** (8 godzin, fioletowy)
-   - **9-16** (7 godzin, pomarańczowy)
-   - **Inne…** — własne godziny
-3. Kliknij wybraną zmianę — zostanie natychmiast przypisana
+### Przeglądanie wpisów
 
-### Własne godziny (Inne…):
-1. Kliknij **Inne…** w menu presetów
-2. Wybierz godzinę rozpoczęcia (Od)
-3. Wybierz godzinę zakończenia (Do)
-4. System pokaże czas trwania zmiany
-5. Kliknij **Dodaj**
+1. Domyślnie pokazywana jest dzisiejsza data.
+2. Aby zmienić dzień, użyj strzałek **◀ ▶** obok pola daty lub kliknij w pole daty i wybierz dowolny dzień z kalendarza.
+3. Tabela pokazuje wszystkie wpisy z wybranego dnia:
+   - **Pracownik** — imię i nazwisko
+   - **Wejście** — godzina rozpoczęcia
+   - **Wyjście** — godzina zakończenia
+   - **Przerwa** — czas przerwy w minutach
+   - **Poza strefą** — czerwona etykieta „Tak", jeśli pracownik zarejestrował się poza wyznaczoną strefą GPS
+   - **Status** — aktualny status wpisu (np. ZAAKCEPTOWANA, ZAKONCZONA, WARUNKOWA, ODRZUCONA)
 
-### Edycja istniejącej zmiany:
-1. Kliknij na kolorowy blok zmiany w tabeli
-2. Otworzy się formularz edycji
-3. Zmień godziny, lokalizację lub kolor
-4. Kliknij **Zapisz** lub **Usuń** żeby skasować zmianę
+### Edycja wpisu
 
-### Przeciąganie zmian:
-- Chwyć zmianę i przeciągnij na inny dzień lub innego pracownika
+1. Kliknij wiersz z wpisem, który chcesz edytować.
+2. Otworzy się panel boczny **„Szczegóły wpisu"** z prawej strony ekranu.
+3. Panel pokazuje dane: pracownik, data, status, godziny wejścia/wyjścia.
+4. Kliknij przycisk **Edytuj godziny**.
+5. Pojawią się pola do edycji:
+   - **Wejście** — wpisz nową godzinę (np. 08:00)
+   - **Wyjście** — wpisz nową godzinę (np. 16:00)
+6. Kliknij **Zapisz**, aby zachować zmiany, lub **Anuluj**, aby cofnąć.
 
-### Pracownicy w grafiku — dwie sekcje:
-- **Pracownicy etatowi** (niebieska etykieta) — na górze
-- **Pracownicy godzinowi** (pomarańczowa etykieta) — poniżej
+### Usuwanie wpisu
 
-### Paski normy godzin:
-- Po prawej stronie każdego pracownika widoczny jest pasek postępu:
-  - 🟢 Zielony = w normie (ok. 168h/miesiąc)
-  - 🟡 Żółty = poniżej normy
-  - 🔴 Czerwony = powyżej normy (nadgodziny)
-
-### Szablon tygodniowy:
-1. Kliknij przycisk **Szablon tygodniowy**
-2. Wybierz pracownika z listy
-3. Dla każdego dnia tygodnia (Poniedziałek–Niedziela) kliknij preset zmiany lub zostaw "Wolne"
-4. Kliknij **Zastosuj szablon** — system wypełni cały miesiąc
-
-### Masowe przypisanie:
-1. Kliknij przycisk **Masowe przypisanie**
-2. Zaznacz pracowników (po lewej)
-3. Zaznacz dni miesiąca (po prawej)
-4. Wybierz zmianę do przypisania
-5. Kliknij **Przypisz**
-
-### Kopiowanie z poprzedniego miesiąca:
-1. Kliknij **Kopiuj z poprz. miesiąca**
-2. Potwierdź — wszystkie zmiany z poprzedniego miesiąca zostaną skopiowane
-
-### Eksport do PDF:
-1. Kliknij **PDF**
-2. Grafik zostanie pobrany jako plik PDF do wydruku
-
-### Widok "Dziś pracują":
-1. Kliknij zakładkę **Dziś pracują** (u góry)
-2. Zobaczysz karty pracowników, którzy mają zaplanowaną zmianę na dzisiaj
-3. Każda karta pokazuje: imię, typ umowy (etat/godziny), godziny zmiany
+1. W panelu bocznym kliknij czerwony przycisk **Usuń**.
+2. Wpis zostanie trwale usunięty.
 
 ---
 
-## 6. ZARZĄDZANIE ZADANIAMI PRACOWNIKÓW
+## 5. Grafik — zarządzanie zmianami
 
-1. W menu bocznym kliknij **Zadania** (sekcja ZARZĄDZANIE)
-2. Zobaczysz panel zadań z widokiem dziennym:
-   - Karty statusów: łącznie / zaplanowane / w trakcie / zakończone
-   - Zadania pogrupowane według pracowników
+Kliknij zakładkę **Grafik** na pasku u góry.
 
-### Tworzenie nowego zadania:
-1. Kliknij przycisk **Nowe zadanie**
-2. Wypełnij:
-   - **Tytuł** — krótki opis zadania
-   - **Opis** — szczegóły (opcjonalnie)
-   - **Pracownik** — komu przypisać
-   - **Data** — kiedy wykonać
-   - **Godziny** — od-do (opcjonalnie)
-   - **Priorytet** — niski / normalny / wysoki / pilny
-3. Kliknij **Utwórz**
+### Widoki
 
-### Zmiana statusu zadania:
-- Kliknij na zadanie → zmień status:
-  - **Do zrobienia** → **W trakcie** → **Gotowe**
+- **Widok miesiąca** — siatka z dniami miesiąca i pracownikami
+- **Widok tygodnia** — szczegółowy widok na 7 dni
+- **Widok „Dziś pracują"** — lista osób, które mają zaplanowaną zmianę na dzisiejszy dzień
 
-### Komentarze do zadania:
-1. Kliknij na zadanie żeby otworzyć szczegóły
-2. Wpisz komentarz w polu tekstowym
-3. Kliknij **Wyślij**
+Przełączaj widoki przyciskami u góry siatki.
 
----
+### Nawigacja po miesiącach/tygodniach
 
-## 7. URLOPY
+- Używaj strzałek **◀ ▶** obok nazwy miesiąca lub zakresu tygodnia.
 
-1. Kliknij zakładkę **Urlopy**
-2. Widzisz listę wniosków urlopowych od pracowników
-3. Każdy wniosek ma status:
-   - ⏳ Oczekujący
-   - ✅ Zatwierdzony
-   - ❌ Odrzucony
+### Filtrowanie po lokalizacji
 
-### Zatwierdzanie/odrzucanie:
-1. Kliknij na wniosek
-2. Kliknij **Zatwierdź** lub **Odrzuć**
-3. Pracownik zobaczy zmianę statusu w swojej aplikacji
+- Wybierz lokalizację z listy rozwijanej, aby zobaczyć zmiany tylko dla wybranego miejsca.
 
----
+### Szybkie przypisanie zmiany (Tap & Pick)
 
-## 8. RAPORTY
+1. Kliknij pustą komórkę w siatce grafiku (na przecięciu pracownika i dnia).
+2. Pojawi się podręczne menu z presetami zmian:
+   - **8-16** (8 godzin, kolor niebieski)
+   - **8-15** (7 godzin, kolor zielony)
+   - **9-17** (8 godzin, kolor fioletowy)
+   - **9-16** (7 godzin, kolor pomarańczowy)
+   - **Inne...** — własne godziny
+3. Kliknij wybrany preset — zmiana zostanie natychmiast przypisana.
+4. Jeśli wybierzesz **Inne...**, otworzy się okno z polami „Od" i „Do", gdzie wpiszesz własne godziny, a następnie klikniesz **Dodaj**.
 
-1. Kliknij zakładkę **Raporty**
-2. Wybierz miesiąc i rok
-3. Zobaczysz podsumowanie dla każdego pracownika:
-   - Łączna liczba godzin
-   - Liczba dni pracy
-   - Spóźnienia
-   - Nadgodziny
+### Edycja istniejącej zmiany
 
-### Eksport:
-- Kliknij **Eksport CSV** żeby pobrać raport do Excela
-- Kliknij **PDF** w zakładce Grafik żeby pobrać grafik do wydruku
+1. Kliknij kolorowy kafelek zmiany w siatce grafiku.
+2. Otworzy się okno edycji z polami: pracownik, data, lokalizacja, godziny, nazwa zmiany, kolor.
+3. Możesz użyć presetów zmian jako skrótów.
+4. Kliknij **Zapisz** lub **Usuń**.
 
----
+### Przeciąganie zmian
 
-## 9. LOKALIZACJE GPS
+- Na komputerze możesz chwycić zmianę i przeciągnąć ją na inny dzień lub do innego pracownika.
 
-1. Kliknij zakładkę **Lokalizacje**
-2. Widzisz listę zdefiniowanych stref pracy
-3. Każda lokalizacja ma:
-   - Nazwę (np. "Biuro główne")
-   - Współrzędne GPS
-   - Promień strefy (w metrach)
+### Szablon tygodniowy
 
-### Dodawanie nowej lokalizacji:
-1. Kliknij **Dodaj lokalizację**
-2. Wpisz nazwę
-3. Wpisz współrzędne GPS (szerokość i długość geograficzną)
-4. Ustaw promień strefy (np. 200 metrów)
-5. Kliknij **Zapisz**
+1. Kliknij przycisk **Szablon tygodniowy** (ikona kalendarza z szablonem).
+2. Wybierz pracownika z listy.
+3. Dla każdego dnia tygodnia (Poniedziałek–Niedziela) ustaw zmianę lub pozostaw puste.
+4. Kliknij **Zastosuj** — szablon zostanie nałożony na cały wybrany miesiąc.
+
+### Masowe przypisanie zmian
+
+1. Kliknij przycisk **Masowe przypisanie** (ikona wielu osób).
+2. Zaznacz pracowników, których chcesz uwzględnić.
+3. Zaznacz dni w kalendarzu.
+4. Ustaw godziny zmiany.
+5. Kliknij **Przypisz** — wybrana zmiana zostanie dodana do wszystkich zaznaczonych osób na zaznaczone dni.
+
+### Kopiowanie grafiku z poprzedniego miesiąca
+
+1. Kliknij przycisk **Kopiuj z poprzedniego miesiąca** (ikona kopiowania).
+2. Potwierdź operację.
+3. Wszystkie zmiany z poprzedniego miesiąca zostaną skopiowane do aktualnego miesiąca (z zachowaniem dni tygodnia).
+
+### Eksport grafiku do PDF
+
+- Kliknij przycisk **Eksport PDF** (ikona pobierania), aby wygenerować plik PDF z grafikiem do wydruku.
 
 ---
 
-## 10. ZARZĄDZANIE PIN-AMI
+## 6. Urlopy — zatwierdzanie i odrzucanie wniosków
 
-1. Kliknij zakładkę **PINy**
-2. Widzisz listę pracowników z ich PIN-ami
+Kliknij zakładkę **Urlopy** na pasku u góry.
 
-### Generowanie nowego PIN-u:
-1. Znajdź pracownika na liście
-2. Kliknij przycisk **Generuj PIN** obok nazwiska
-3. System automatycznie wygeneruje nowy 6-cyfrowy PIN
-4. Poinformuj pracownika o nowym PIN-ie
+**Co widzisz na ekranie:**
 
-### Ręczne ustawienie PIN-u:
-1. Kliknij **Ustaw PIN** obok nazwiska
-2. Wpisz 6-cyfrowy PIN ręcznie lub kliknij **Generuj**
-3. Kliknij **Zapisz**
+Tabela z listą wniosków urlopowych zawierająca kolumny:
+- **Pracownik** — kto złożył wniosek
+- **Typ** — rodzaj urlopu (np. Wypoczynkowy, Na żądanie)
+- **Od / Do** — daty urlopu
+- **Dni** — liczba dni
+- **Status** — OCZEKUJĄCY, ZAAKCEPTOWANY lub ODRZUCONY
 
-### Usuwanie PIN-u:
-1. Kliknij **Ustaw PIN** obok nazwiska
-2. Kliknij czerwony przycisk **Usuń PIN**
-3. Pracownik nie będzie mógł się logować do aplikacji TimeClock
+### Zatwierdzanie wniosku
 
----
+1. Znajdź wniosek ze statusem **OCZEKUJĄCY**.
+2. W kolumnie **Akcje** kliknij zielony przycisk z ptaszkiem ✓.
+3. Status zmieni się na **ZAAKCEPTOWANY**.
 
-## 11. NAJCZĘSTSZE PROBLEMY I ROZWIĄZANIA
+### Odrzucanie wniosku
 
-| Problem | Rozwiązanie |
-|---------|-------------|
-| Pracownik nie może się zalogować PIN-em | Sprawdź w zakładce PINy, czy ma przypisany PIN. Jeśli nie — wygeneruj nowy. |
-| Wpis oznaczony jako "Warunkowa" | Pracownik zarejestrował się poza strefą GPS. Możesz go zaakceptować w zakładce Obecności. |
-| Pracownik nie widzi swojego grafiku | Sprawdź, czy zmiana jest przypisana w zakładce Grafik na odpowiedni dzień. |
-| Grafik nie kopiuje się z poprzedniego miesiąca | Upewnij się, że w poprzednim miesiącu były jakieś zmiany. |
-| Przycisk "Generuj PIN" nie reaguje | Odśwież stronę (F5) i spróbuj ponownie. Jeśli problem się powtarza — poinformuj administratora. |
-| Pracownik zakończył pracę i nie może ponownie rozpocząć | System teraz na to pozwala — pracownik może rozpocząć nową zmianę po zakończeniu poprzedniej. |
-| Nie widzę zadań pracowników | Kliknij "Zadania" w menu bocznym (sekcja ZARZĄDZANIE). |
+1. Znajdź wniosek ze statusem **OCZEKUJĄCY**.
+2. W kolumnie **Akcje** kliknij czerwony przycisk z krzyżykiem ✗.
+3. Status zmieni się na **ODRZUCONY**.
 
 ---
 
-*Instrukcja wygenerowana automatycznie przez system Baltyckie Finanse.*
+## 7. Raporty miesięczne
+
+Kliknij zakładkę **Raporty** na pasku u góry.
+
+### Nawigacja
+
+- Używaj strzałek **◀ ▶** obok nazwy miesiąca, aby przejść do innego okresu.
+
+### Kafelki podsumowujące
+
+U góry widać cztery kafelki:
+- **Łączne godziny** — suma przepracowanych godzin wszystkich pracowników
+- **Dni pracy** — łączna liczba dni roboczych
+- **Spóźnienia** — łączna liczba spóźnień
+- **Nadgodziny** — łączna liczba nadgodzin
+
+### Tabela raportu
+
+Tabela z kolumnami:
+- Pracownik
+- Dni pracy (faktycznie przepracowane)
+- Zaplanowane (dni wg grafiku)
+- Godziny (łączne przepracowane)
+- Spóźnienia (liczba)
+- Nadgodziny (w godzinach)
+
+### Eksport do CSV
+
+1. Kliknij przycisk **Eksport CSV** w prawym górnym rogu.
+2. Plik zostanie pobrany na Twój komputer.
+3. Plik można otworzyć w programie Excel lub podobnym.
+
+**Uwaga:** Eksport do PDF jest dostępny w zakładce **Grafik** (nie w Raportach) — pozwala wyeksportować grafik zmian do pliku PDF.
+
+---
+
+## 8. Lokalizacje GPS
+
+Kliknij zakładkę **Lokalizacje** na pasku u góry.
+
+### Co widzisz na ekranie
+
+- **Mapa** — interaktywna mapa z zaznaczonymi lokalizacjami i okręgami stref GPS.
+- **Tabela lokalizacji** — lista wszystkich lokalizacji z kolumnami: Nazwa, Adres, Szerokość, Długość, Promień (m), Akcje.
+
+### Edycja lokalizacji GPS
+
+1. W tabeli kliknij ikonę ołówka (przycisk edycji) przy wybranej lokalizacji.
+2. Pojawią się pola do edycji:
+   - **Szerokość** — współrzędna GPS (np. 54.4400000)
+   - **Długość** — współrzędna GPS (np. 17.0300000)
+   - **Promień** — suwak od 50m do 2000m (domyślnie 200m)
+3. Możesz też kliknąć na mapie — współrzędne zostaną automatycznie wpisane.
+4. Czerwony okrąg na mapie pokazuje podgląd nowej strefy.
+5. Kliknij ptaszek ✓, aby zapisać, lub krzyżyk ✗, aby anulować.
+
+---
+
+## 9. PINy pracowników
+
+Kliknij zakładkę **PINy** na pasku u góry.
+
+### Co widzisz na ekranie
+
+Tabela z kolumnami:
+- **Pracownik** — imię i nazwisko
+- **PIN** — aktualny 6-cyfrowy PIN (lub „-" jeśli brak)
+- **Akcje** — przycisk do generowania nowego PINu
+
+### Generowanie nowego PINu
+
+1. Znajdź pracownika w tabeli.
+2. Kliknij przycisk **Generuj PIN**.
+3. System automatycznie wygeneruje losowy 6-cyfrowy PIN.
+4. Przekaż nowy PIN pracownikowi — będzie go używać do logowania w aplikacji TimeClock.
+
+---
+
+## 10. Zadania pracowników
+
+Moduł Zadań jest dostępny z menu bocznego — kliknij **Zadania** w sekcji **ZARZĄDZANIE**.
+
+### Przeglądanie zadań
+
+1. Domyślnie pokazywane są zadania na dzisiejszy dzień.
+2. Używaj strzałek **◀ ▶**, aby przeglądać inne dni.
+3. U góry widoczne są kafelki ze statystykami: Łącznie, Zaplanowane, W trakcie, Zakończone.
+
+### Filtrowanie
+
+- **Filtr pracownika** — wybierz konkretną osobę lub „Wszyscy".
+- **Filtr statusu** — wybierz: Wszystkie, Zaplanowane, W trakcie, Zakończone, Anulowane.
+
+### Tworzenie nowego zadania
+
+1. Kliknij przycisk **Nowe zadanie** w prawym górnym rogu.
+2. Wypełnij formularz:
+   - **Tytuł** — np. „Sprzątanie 204"
+   - **Opis** (opcjonalnie)
+   - **Pracownik** — wybierz z listy (pracownicy podzieleni na Etat i Godziny)
+   - **Data** — domyślnie dzisiejsza
+   - **Od / Do** — godziny (opcjonalnie)
+   - **Priorytet** — Niski, Normalny, Wysoki, Pilny
+3. Kliknij **Utwórz**.
+
+### Edycja i usuwanie zadania
+
+1. Kliknij kafelek zadania na liście.
+2. Otworzy się okno ze szczegółami.
+3. Możesz:
+   - Zmienić status zadania (lista rozwijana)
+   - Kliknąć **Edytuj** — otworzy formularz edycji
+   - Kliknąć **Usuń** (czerwony przycisk) — zadanie zostanie usunięte po potwierdzeniu
+
+### Komentarze do zadań
+
+1. W oknie szczegółów zadania na dole znajduje się sekcja komentarzy.
+2. Wpisz treść komentarza i kliknij przycisk wysyłania.
+3. Komentarze są widoczne dla wszystkich osób z dostępem do zadania.
+
+---
+
+## 11. Najczęstsze problemy i rozwiązania
+
+### Problem: Pracownik nie może się zalogować PIN-em
+**Rozwiązanie:** Wejdź w zakładkę **PINy** i kliknij **Generuj PIN** przy nazwisku tego pracownika. Przekaż mu nowy PIN.
+
+### Problem: Wpis pracownika pokazuje „Poza strefą"
+**Rozwiązanie:** Pracownik zarejestrował się poza wyznaczoną strefą GPS. Sprawdź w zakładce **Lokalizacje**, czy promień strefy jest wystarczająco duży. Możesz go zwiększyć suwakiem. Wpis ze statusem WARUNKOWA wymaga ręcznej akceptacji.
+
+### Problem: Grafik nie wyświetla zmian
+**Rozwiązanie:** Upewnij się, że wybrany jest właściwy miesiąc (strzałki ◀ ▶). Sprawdź filtr lokalizacji — jeśli wybrałeś konkretną lokalizację, a zmiany są przypisane do innej, nie będą widoczne. Ustaw filtr na „Wszystkie".
+
+### Problem: Raport miesięczny jest pusty
+**Rozwiązanie:** Sprawdź, czy w wybranym miesiącu są jakiekolwiek wpisy czasu pracy. Jeśli pracownicy nie rejestrowali obecności, raport będzie pusty.
+
+### Problem: Wniosek urlopowy nie zmienia statusu po kliknięciu
+**Rozwiązanie:** Poczekaj chwilę — zmiana może potrwać kilka sekund. Odśwież stronę, jeśli status nadal się nie zmienił. Jeśli problem się powtarza, sprawdź połączenie internetowe.
+
+### Problem: Eksport CSV generuje pusty plik
+**Rozwiązanie:** Upewnij się, że raport zawiera dane (tabela nie jest pusta). Eksport CSV pobiera dokładnie te dane, które widać w tabeli.
+
+### Problem: Mapa lokalizacji nie ładuje się
+**Rozwiązanie:** Sprawdź połączenie internetowe. Mapa wymaga dostępu do serwisu OpenStreetMap. Jeśli używasz sieci firmowej, upewnij się, że dostęp do map nie jest blokowany.
+
+### Problem: Po skopiowaniu grafiku z poprzedniego miesiąca brakuje niektórych zmian
+**Rozwiązanie:** Kopiowanie przenosi zmiany z zachowaniem numerów dni. Jeśli poprzedni miesiąc miał 31 dni, a aktualny 30, zmiana z 31. dnia nie zostanie skopiowana.
