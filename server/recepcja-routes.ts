@@ -759,6 +759,62 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.get('/api/recepcja/rcp/location-logs', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { employeeId, date } = req.query;
+      if (!employeeId || !date) return res.status(400).json({ message: 'Wymagane employeeId i date' });
+      const empId = Number(employeeId);
+      if (!Number.isInteger(empId) || empId <= 0) return res.status(400).json({ message: 'Nieprawidłowe employeeId' });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ message: 'Nieprawidłowy format daty (YYYY-MM-DD)' });
+
+      const dayStart = new Date(`${date}T00:00:00`);
+      const dayEnd = new Date(`${date}T23:59:59`);
+      if (isNaN(dayStart.getTime())) return res.status(400).json({ message: 'Nieprawidłowa data' });
+
+      const logs = await db.select({
+        log: locationLogs,
+        locationName: locations.name,
+      }).from(locationLogs)
+        .leftJoin(locations, eq(locationLogs.locationId, locations.id))
+        .where(and(
+          eq(locationLogs.employeeId, empId),
+          gte(locationLogs.timestamp, dayStart),
+          lte(locationLogs.timestamp, dayEnd),
+        ))
+        .orderBy(locationLogs.timestamp);
+
+      res.json(logs.map(r => ({ ...r.log, locationName: r.locationName })));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get('/api/recepcja/rcp/location-logs/summary', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { date } = req.query;
+      if (!date) return res.status(400).json({ message: 'Wymagane date' });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ message: 'Nieprawidłowy format daty (YYYY-MM-DD)' });
+
+      const dayStart = new Date(`${date}T00:00:00`);
+      const dayEnd = new Date(`${date}T23:59:59`);
+      if (isNaN(dayStart.getTime())) return res.status(400).json({ message: 'Nieprawidłowa data' });
+
+      const allLogs = await db.select()
+        .from(locationLogs)
+        .where(and(
+          gte(locationLogs.timestamp, dayStart),
+          lte(locationLogs.timestamp, dayEnd),
+        ));
+
+      const uniqueEmployees = new Set(allLogs.map(l => l.employeeId));
+      const outsideZone = allLogs.filter(l => l.distanceFromZone && parseFloat(l.distanceFromZone) > 0).length;
+
+      res.json({
+        totalEmployees: uniqueEmployees.size,
+        totalLogs: allLogs.length,
+        outsideZone,
+      });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get('/api/recepcja/rcp/employees-pins', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const emps = await storage.getEmployees();

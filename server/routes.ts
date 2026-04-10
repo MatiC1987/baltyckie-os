@@ -11229,6 +11229,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
 
       let nearestLocationId: number | null = null;
       let minDistance = Infinity;
+      let nearestRadius = 200;
       for (const loc of allLocations) {
         if (!loc.latitude || !loc.longitude) continue;
         const dist = haversineDistance(
@@ -11238,8 +11239,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         if (dist < minDistance) {
           minDistance = dist;
           nearestLocationId = loc.id;
+          nearestRadius = loc.gpsRadius || 200;
         }
       }
+
+      const distFromZone = nearestLocationId !== null
+        ? Math.round((minDistance - nearestRadius) * 100) / 100
+        : null;
 
       const [log] = await db.insert(locationLogs).values({
         employeeId,
@@ -11249,7 +11255,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         accuracy: accuracy ? String(accuracy) : null,
         timestamp: new Date(),
         locationId: nearestLocationId,
-        distanceFromZone: String(Math.round(minDistance * 100) / 100),
+        distanceFromZone: distFromZone !== null ? String(distFromZone) : null,
       }).returning();
 
       res.json(log);
