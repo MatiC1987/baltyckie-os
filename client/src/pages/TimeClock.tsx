@@ -405,7 +405,9 @@ function EmployeeDashboard({
   const [showSchedule, setShowSchedule] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
-  const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const lastSentRef = useRef<number>(0);
+  const pendingBufferRef = useRef<{ latitude: number; longitude: number; accuracy: number }[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -437,43 +439,96 @@ function EmployeeDashboard({
   useEffect(() => {
     const isActive = activeEntry && (activeEntry.status === "AKTYWNA" || activeEntry.status === "WARUNKOWA" || activeEntry.status === "PRZERWA");
 
-    if (isActive && navigator.geolocation) {
-      const sendLocation = () => {
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            try {
-              await rcpFetch("POST", "/api/time-clock/location-log", {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-              });
-              setGpsTrackingActive(true);
-            } catch {
-              setGpsTrackingActive(false);
-            }
-          },
-          () => { setGpsTrackingActive(false); },
-          { enableHighAccuracy: true, timeout: 15000 }
-        );
-      };
-
-      sendLocation();
-      gpsIntervalRef.current = setInterval(sendLocation, 30 * 1000);
-
-      return () => {
-        if (gpsIntervalRef.current) {
-          clearInterval(gpsIntervalRef.current);
-          gpsIntervalRef.current = null;
-        }
-        setGpsTrackingActive(false);
-      };
-    } else {
-      if (gpsIntervalRef.current) {
-        clearInterval(gpsIntervalRef.current);
-        gpsIntervalRef.current = null;
+    if (!isActive || !navigator.geolocation) {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
       setGpsTrackingActive(false);
+      return;
     }
+
+    const sendToServer = async (lat: number, lng: number, accuracy: number) => {
+      try {
+        await rcpFetch("POST", "/api/time-clock/location-log", {
+          latitude: lat,
+          longitude: lng,
+          accuracy,
+        });
+        setGpsTrackingActive(true);
+        lastSentRef.current = Date.now();
+        return true;
+      } catch {
+        setGpsTrackingActive(false);
+        return false;
+      }
+    };
+
+    const flushBuffer = async () => {
+      while (pendingBufferRef.current.length > 0) {
+        const entry = pendingBufferRef.current[0];
+        const ok = await sendToServer(entry.latitude, entry.longitude, entry.accuracy);
+        if (ok) {
+          pendingBufferRef.current.shift();
+        } else {
+          break;
+        }
+      }
+    };
+
+    const MIN_INTERVAL_MS = 25000;
+
+    const startWatch = () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          const now = Date.now();
+          const entry = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          };
+          setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          if (now - lastSentRef.current >= MIN_INTERVAL_MS) {
+            sendToServer(entry.latitude, entry.longitude, entry.accuracy);
+          } else {
+            if (pendingBufferRef.current.length < 20) {
+              pendingBufferRef.current.push(entry);
+            } else {
+              pendingBufferRef.current[pendingBufferRef.current.length - 1] = entry;
+            }
+          }
+        },
+        () => {
+          setGpsTrackingActive(false);
+        },
+        { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+      );
+    };
+
+    startWatch();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        flushBuffer();
+        startWatch();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    const flushInterval = setInterval(flushBuffer, 30000);
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(flushInterval);
+      setGpsTrackingActive(false);
+    };
   }, [activeEntry?.id, activeEntry?.status]);
 
   const teamStatusQuery = useQuery<TeamStatus>({

@@ -2677,6 +2677,25 @@ export async function registerRoutes(
     }
   });
 
+  app.put('/api/employees/:id/pin', isAuthenticated, async (req, res) => {
+    try {
+      const { pin } = req.body;
+      if (!pin || typeof pin !== 'string' || pin.length < 4) {
+        return res.status(400).json({ message: "PIN musi mieć minimum 4 znaki" });
+      }
+      const existing = await storage.getEmployees();
+      const duplicate = existing.find(e => e.pin === pin && e.id !== Number(req.params.id));
+      if (duplicate) {
+        return res.status(400).json({ message: `PIN jest już używany przez ${duplicate.firstName} ${duplicate.lastName}` });
+      }
+      const emp = await storage.updateEmployee(Number(req.params.id), { pin });
+      if (!emp) return res.status(404).json({ message: "Nie znaleziono pracownika" });
+      res.json(emp);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Błąd aktualizacji PIN" });
+    }
+  });
+
   app.put('/api/employees/:id', isAuthenticated, async (req, res) => {
     try {
       const data = api.employees.update.input.parse(req.body);
