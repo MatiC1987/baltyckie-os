@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useRef } from "react";
+import { lazy, Suspense, useState, useRef, useMemo, useCallback } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,25 @@ import {
   Monitor, Shield, Bell, BellOff, BellRing, Loader2,
   Download, Upload, Mail, CalendarClock, CreditCard,
   Clock, Fingerprint, Smartphone, Trash2, Plus, ShieldCheck,
+  GripVertical,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 
 const MenuCustomizationPanel = lazy(() => import("@/components/MenuCustomizationPanel"));
@@ -176,7 +194,19 @@ function CollapsibleSection({ title, icon: Icon, defaultOpen = false, children, 
   );
 }
 
-const RECEPCJA_NAV_SECTIONS = [
+interface RecepcjaNavItem {
+  id: string;
+  label: string;
+  path: string;
+}
+
+interface RecepcjaNavSection {
+  id: string;
+  label: string;
+  items: RecepcjaNavItem[];
+}
+
+const RECEPCJA_NAV_SECTIONS: RecepcjaNavSection[] = [
   {
     id: "main",
     label: "Główne",
@@ -225,34 +255,255 @@ const RECEPCJA_NAV_SECTIONS = [
   },
 ];
 
+interface RecepcjaSidebarConfigData {
+  hiddenItems: string[];
+  sectionOrder: string[];
+  itemOrder: Record<string, string[]>;
+}
+
+function SortableRecepcjaItem({
+  item,
+  isVisible,
+  onToggle,
+  isPending,
+}: {
+  item: RecepcjaNavItem;
+  isVisible: boolean;
+  onToggle: () => void;
+  isPending: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.path });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center justify-between gap-3 py-1.5 px-2 rounded-md",
+        isDragging && "opacity-50 bg-accent/50"
+      )}
+      data-testid={`toggle-recepcja-item-${item.id}`}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-muted-foreground shrink-0 touch-none"
+          data-testid={`drag-handle-recepcja-item-${item.id}`}
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+        <span className={cn("text-sm", !isVisible && "text-muted-foreground")}>{item.label}</span>
+      </div>
+      <Switch
+        checked={isVisible}
+        onCheckedChange={onToggle}
+        disabled={isPending}
+        data-testid={`switch-recepcja-item-${item.id}`}
+      />
+    </div>
+  );
+}
+
+function SortableRecepcjaSection({
+  section,
+  orderedItems,
+  hiddenItems,
+  onToggleItem,
+  isPending,
+  onItemDragEnd,
+}: {
+  section: RecepcjaNavSection;
+  orderedItems: RecepcjaNavItem[];
+  hiddenItems: string[];
+  onToggleItem: (path: string) => void;
+  isPending: boolean;
+  onItemDragEnd: (sectionId: string, event: DragEndEvent) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `section-${section.id}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const itemIds = useMemo(() => orderedItems.map(i => i.path), [orderedItems]);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(isDragging && "opacity-50 bg-accent/30 rounded-lg")}
+      data-testid={`section-recepcja-${section.id}`}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-muted-foreground shrink-0 touch-none"
+          data-testid={`drag-handle-section-${section.id}`}
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+        <p className="text-xs font-bold tracking-wide text-muted-foreground uppercase">{section.label}</p>
+      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={(event) => onItemDragEnd(section.id, event)}
+      >
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1">
+            {orderedItems.map(item => (
+              <SortableRecepcjaItem
+                key={item.path}
+                item={item}
+                isVisible={!hiddenItems.includes(item.path)}
+                onToggle={() => onToggleItem(item.path)}
+                isPending={isPending}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}
+
 function RecepcjaSidebarConfig() {
   const { toast } = useToast();
 
-  const { data: config, isLoading } = useQuery<{ hiddenItems: string[] }>({
+  const { data: config, isLoading } = useQuery<RecepcjaSidebarConfigData>({
     queryKey: ["/api/recepcja-sidebar-config"],
   });
 
   const mutation = useMutation({
-    mutationFn: async (hiddenItems: string[]) => {
-      await apiRequest("PUT", "/api/recepcja-sidebar-config", { hiddenItems });
+    mutationFn: async (data: RecepcjaSidebarConfigData) => {
+      await apiRequest("PUT", "/api/recepcja-sidebar-config", data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/recepcja-sidebar-config"] });
-      toast({ title: "Zapisano", description: "Konfiguracja menu recepcji została zaktualizowana" });
+    onMutate: async (newData: RecepcjaSidebarConfigData) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/recepcja-sidebar-config"] });
+      const previous = queryClient.getQueryData<RecepcjaSidebarConfigData>(["/api/recepcja-sidebar-config"]);
+      queryClient.setQueryData(["/api/recepcja-sidebar-config"], newData);
+      return { previous };
     },
-    onError: () => {
+    onError: (_err, _data, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/recepcja-sidebar-config"], context.previous);
+      }
       toast({ title: "Błąd", description: "Nie udało się zapisać konfiguracji", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja-sidebar-config"] });
     },
   });
 
   const hiddenItems = config?.hiddenItems || [];
+  const sectionOrder = config?.sectionOrder || [];
+  const itemOrder = config?.itemOrder || {};
 
-  const toggleItem = (path: string) => {
+  const orderedSections = useMemo(() => {
+    const result: RecepcjaNavSection[] = [];
+    const sectionMap = new Map(RECEPCJA_NAV_SECTIONS.map(s => [s.id, s]));
+
+    for (const id of sectionOrder) {
+      const s = sectionMap.get(id);
+      if (s) {
+        result.push(s);
+        sectionMap.delete(id);
+      }
+    }
+    for (const s of sectionMap.values()) {
+      result.push(s);
+    }
+    return result;
+  }, [sectionOrder]);
+
+  const getOrderedItems = useCallback((section: RecepcjaNavSection): RecepcjaNavItem[] => {
+    const order = itemOrder[section.id];
+    if (!order || order.length === 0) return section.items;
+
+    const itemMap = new Map(section.items.map(i => [i.path, i]));
+    const result: RecepcjaNavItem[] = [];
+
+    for (const path of order) {
+      const item = itemMap.get(path);
+      if (item) {
+        result.push(item);
+        itemMap.delete(path);
+      }
+    }
+    for (const item of itemMap.values()) {
+      result.push(item);
+    }
+    return result;
+  }, [itemOrder]);
+
+  const toggleItem = useCallback((path: string) => {
     const next = hiddenItems.includes(path)
       ? hiddenItems.filter(p => p !== path)
       : [...hiddenItems, path];
-    mutation.mutate(next);
-  };
+    mutation.mutate({ hiddenItems: next, sectionOrder, itemOrder });
+  }, [hiddenItems, sectionOrder, itemOrder, mutation]);
+
+  const sectionSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const sectionIds = useMemo(() => orderedSections.map(s => `section-${s.id}`), [orderedSections]);
+
+  const handleSectionDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeIdx = orderedSections.findIndex(s => `section-${s.id}` === active.id);
+    const overIdx = orderedSections.findIndex(s => `section-${s.id}` === over.id);
+    if (activeIdx < 0 || overIdx < 0) return;
+
+    const newOrder = arrayMove(orderedSections.map(s => s.id), activeIdx, overIdx);
+    mutation.mutate({ hiddenItems, sectionOrder: newOrder, itemOrder });
+  }, [orderedSections, hiddenItems, itemOrder, mutation]);
+
+  const handleItemDragEnd = useCallback((sectionId: string, event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const section = RECEPCJA_NAV_SECTIONS.find(s => s.id === sectionId);
+    if (!section) return;
+
+    const currentItems = getOrderedItems(section);
+    const oldIndex = currentItems.findIndex(i => i.path === active.id);
+    const newIndex = currentItems.findIndex(i => i.path === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const newItemOrder = { ...itemOrder, [sectionId]: arrayMove(currentItems.map(i => i.path), oldIndex, newIndex) };
+    mutation.mutate({ hiddenItems, sectionOrder, itemOrder: newItemOrder });
+  }, [getOrderedItems, hiddenItems, sectionOrder, itemOrder, mutation]);
 
   if (isLoading) {
     return <div className="py-4 text-center text-sm text-muted-foreground">Ładowanie konfiguracji...</div>;
@@ -267,36 +518,30 @@ function RecepcjaSidebarConfig() {
           </div>
           <div className="min-w-0">
             <p className="font-medium text-sm">Menu panelu Recepcja</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Włącz lub wyłącz pozycje widoczne w menu bocznym panelu recepcji</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Przeciągnij elementy aby zmienić kolejność, użyj przełączników aby ukryć/pokazać</p>
           </div>
         </div>
-        <div className="space-y-4">
-          {RECEPCJA_NAV_SECTIONS.map(section => (
-            <div key={section.id} data-testid={`section-recepcja-${section.id}`}>
-              <p className="text-xs font-bold tracking-wide text-muted-foreground uppercase mb-2">{section.label}</p>
-              <div className="space-y-1">
-                {section.items.map(item => {
-                  const isVisible = !hiddenItems.includes(item.path);
-                  return (
-                    <div
-                      key={item.path}
-                      className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md"
-                      data-testid={`toggle-recepcja-item-${item.id}`}
-                    >
-                      <span className={cn("text-sm", !isVisible && "text-muted-foreground")}>{item.label}</span>
-                      <Switch
-                        checked={isVisible}
-                        onCheckedChange={() => toggleItem(item.path)}
-                        disabled={mutation.isPending}
-                        data-testid={`switch-recepcja-item-${item.id}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+        <DndContext
+          sensors={sectionSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleSectionDragEnd}
+        >
+          <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
+            <div className="space-y-4">
+              {orderedSections.map(section => (
+                <SortableRecepcjaSection
+                  key={section.id}
+                  section={section}
+                  orderedItems={getOrderedItems(section)}
+                  hiddenItems={hiddenItems}
+                  onToggleItem={toggleItem}
+                  isPending={mutation.isPending}
+                  onItemDragEnd={handleItemDragEnd}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       </CardContent>
     </Card>
   );

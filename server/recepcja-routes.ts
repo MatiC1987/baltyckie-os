@@ -1223,7 +1223,12 @@ export function registerRecepcjaRoutes(app: Express) {
   app.get('/api/recepcja/sidebar-config', isRecepcjaAuth as any, async (_req: any, res) => {
     try {
       const raw = await storage.getAppConfig('recepcja-sidebar-visibility');
-      res.json(raw ? JSON.parse(raw) : { hiddenItems: [] });
+      const config = raw ? JSON.parse(raw) : {};
+      res.json({
+        hiddenItems: config.hiddenItems || [],
+        sectionOrder: config.sectionOrder || [],
+        itemOrder: config.itemOrder || {},
+      });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 

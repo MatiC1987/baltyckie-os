@@ -11365,7 +11365,12 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
   app.get('/api/recepcja-sidebar-config', isAuthenticated, async (_req, res) => {
     try {
       const raw = await storage.getAppConfig('recepcja-sidebar-visibility');
-      res.json(raw ? JSON.parse(raw) : { hiddenItems: [] });
+      const config = raw ? JSON.parse(raw) : {};
+      res.json({
+        hiddenItems: config.hiddenItems || [],
+        sectionOrder: config.sectionOrder || [],
+        itemOrder: config.itemOrder || {},
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -11373,7 +11378,12 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
 
   app.put('/api/recepcja-sidebar-config', isAuthenticated, async (req, res) => {
     try {
-      await storage.setAppConfig('recepcja-sidebar-visibility', JSON.stringify(req.body));
+      const { hiddenItems, sectionOrder, itemOrder } = req.body;
+      const config: any = {};
+      if (Array.isArray(hiddenItems)) config.hiddenItems = hiddenItems;
+      if (Array.isArray(sectionOrder)) config.sectionOrder = sectionOrder;
+      if (itemOrder && typeof itemOrder === 'object') config.itemOrder = itemOrder;
+      await storage.setAppConfig('recepcja-sidebar-visibility', JSON.stringify(config));
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

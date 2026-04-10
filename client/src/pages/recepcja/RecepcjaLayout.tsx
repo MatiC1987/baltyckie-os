@@ -347,11 +347,11 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
   const [compact, setCompact] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
-  const { data: sidebarConfig } = useQuery<{ hiddenItems: string[] }>({
+  const { data: sidebarConfig } = useQuery<{ hiddenItems: string[]; sectionOrder: string[]; itemOrder: Record<string, string[]> }>({
     queryKey: ["/api/recepcja/sidebar-config"],
     queryFn: async () => {
       const res = await recepcjaFetch("GET", "/api/recepcja/sidebar-config");
-      if (!res.ok) return { hiddenItems: [] };
+      if (!res.ok) return { hiddenItems: [], sectionOrder: [], itemOrder: {} };
       return res.json();
     },
     staleTime: 60000,
@@ -360,11 +360,47 @@ export default function RecepcjaLayout({ children }: { children: React.ReactNode
   const hiddenItems = useMemo(() => new Set(sidebarConfig?.hiddenItems || []), [sidebarConfig]);
 
   const filteredNavSections = useMemo(() => {
-    return NAV_SECTIONS.map(section => ({
-      ...section,
-      items: section.items.filter(item => !hiddenItems.has(item.path)),
-    })).filter(section => section.items.length > 0);
-  }, [hiddenItems]);
+    const sectionOrder = sidebarConfig?.sectionOrder || [];
+    const itemOrder = sidebarConfig?.itemOrder || {};
+
+    const orderedSections: NavSection[] = [];
+    const sectionMap = new Map(NAV_SECTIONS.map(s => [s.id, s]));
+
+    for (const id of sectionOrder) {
+      const s = sectionMap.get(id);
+      if (s) {
+        orderedSections.push(s);
+        sectionMap.delete(id);
+      }
+    }
+    for (const s of sectionMap.values()) {
+      orderedSections.push(s);
+    }
+
+    return orderedSections.map(section => {
+      const order = itemOrder[section.id];
+      let items = section.items;
+      if (order && order.length > 0) {
+        const itemMap = new Map(section.items.map(i => [i.path, i]));
+        const sorted: NavItem[] = [];
+        for (const path of order) {
+          const item = itemMap.get(path);
+          if (item) {
+            sorted.push(item);
+            itemMap.delete(path);
+          }
+        }
+        for (const item of itemMap.values()) {
+          sorted.push(item);
+        }
+        items = sorted;
+      }
+      return {
+        ...section,
+        items: items.filter(item => !hiddenItems.has(item.path)),
+      };
+    }).filter(section => section.items.length > 0);
+  }, [hiddenItems, sidebarConfig]);
 
   const filteredMobileNav = useMemo(() => {
     return MOBILE_NAV.filter(item => !hiddenItems.has(item.path));
