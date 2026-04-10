@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
+
+const LazyInstrukcjaWorker = lazy(() => import("@/components/InstrukcjaWorker"));
 import { haptic } from "@/lib/haptics";
 import { useOrientationLock } from "@/hooks/use-orientation-lock";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -43,6 +45,7 @@ import {
   CircleDot,
   MessageSquare,
   Navigation,
+  BookOpen,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -409,7 +412,7 @@ function EmployeeDashboard({
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsTrackingActive, setGpsTrackingActive] = useState(false);
   const [activeTab, setActiveTab] = useState<"today" | "tasks" | "km" | "history" | "more">("today");
-  const [moreSubView, setMoreSubView] = useState<"menu" | "schedule" | "summary" | "leaves">("menu");
+  const [moreSubView, setMoreSubView] = useState<"menu" | "schedule" | "summary" | "leaves" | "instrukcja">("menu");
   const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
   const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
   const [showMileageForm, setShowMileageForm] = useState(false);
@@ -1305,6 +1308,20 @@ function EmployeeDashboard({
         );
       }
 
+      if (moreSubView === "instrukcja") {
+        return (
+          <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => setMoreSubView("menu")} data-testid="button-back-from-instrukcja"><ChevronLeft /></Button>
+              <h2 className="text-lg font-bold">Instrukcja</h2>
+            </div>
+            <Suspense fallback={<div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}>
+              <LazyInstrukcjaWorker cooperationType={employee.cooperationType} />
+            </Suspense>
+          </div>
+        );
+      }
+
       return (
         <div className="max-w-lg mx-auto p-4 flex flex-col gap-3">
           <h2 className="text-lg font-bold mb-2">Więcej</h2>
@@ -1312,6 +1329,7 @@ function EmployeeDashboard({
             { key: "schedule" as const, label: "Mój grafik", desc: "Zaplanowane zmiany", icon: Calendar },
             { key: "summary" as const, label: "Podsumowanie", desc: "Godziny i urlopy", icon: BarChart3 },
             { key: "leaves" as const, label: "Wnioski urlopowe", desc: "Złóż lub sprawdź wniosek", icon: CalendarDays },
+            { key: "instrukcja" as const, label: "Instrukcja", desc: "Jak korzystać z aplikacji", icon: BookOpen },
           ].map((item) => {
             const Icon = item.icon;
             return (

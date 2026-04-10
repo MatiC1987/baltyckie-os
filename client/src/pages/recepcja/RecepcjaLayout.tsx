@@ -17,7 +17,7 @@ import {
   Gauge, ClipboardList, FolderOpen, Search, CalendarDays, Hotel,
   Phone, Clock, LogOut, Sun, Moon, Menu, X,
   PanelLeftClose, PanelLeft, ChevronDown, FileBarChart, AlertTriangle,
-  Bell, Check, CheckCheck, Plus, ListTodo,
+  Bell, Check, CheckCheck, Plus, ListTodo, BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import logoSrc from "@assets/logobaltyckie_1770719337266.png";
@@ -85,6 +85,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Zadania", path: "/recepcja/zadania", icon: ListTodo },
       { label: "Kontakty najemców", path: "/recepcja/kontakty", icon: Phone },
       { label: "Raport dzienny", path: "/recepcja/raport-dzienny", icon: FileBarChart },
+      { label: "Instrukcja", path: "/recepcja/instrukcja", icon: BookOpen },
     ],
   },
 ];

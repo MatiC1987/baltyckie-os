@@ -20,6 +20,7 @@ import RecepcjaHistoriaUmow from "./RecepcjaHistoriaUmow";
 import RecepcjaRaportDzienny from "./RecepcjaRaportDzienny";
 import RecepcjaUsterki from "./RecepcjaUsterki";
 import RecepcjaZadania from "./RecepcjaZadania";
+import RecepcjaInstrukcja from "./RecepcjaInstrukcja";
 
 type RecepcjaUser = {
   id: number;
@@ -170,6 +171,7 @@ export default function RecepcjaApp() {
             <Route path="/recepcja/raport-dzienny" component={RecepcjaRaportDzienny} />
             <Route path="/recepcja/usterki" component={RecepcjaUsterki} />
             <Route path="/recepcja/zadania" component={RecepcjaZadania} />
+            <Route path="/recepcja/instrukcja" component={RecepcjaInstrukcja} />
             <Route>{() => <Redirect to="/recepcja" />}</Route>
           </Switch>
         </RecepcjaLayout>
