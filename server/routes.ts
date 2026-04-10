@@ -2680,7 +2680,12 @@ export async function registerRoutes(
   app.put('/api/employees/:id/pin', isAuthenticated, async (req, res) => {
     try {
       const { pin } = req.body;
-      if (!pin || typeof pin !== 'string' || pin.length < 4) {
+      if (pin === null || pin === "") {
+        const emp = await storage.updateEmployee(Number(req.params.id), { pin: null });
+        if (!emp) return res.status(404).json({ message: "Nie znaleziono pracownika" });
+        return res.json(emp);
+      }
+      if (typeof pin !== 'string' || pin.length < 4) {
         return res.status(400).json({ message: "PIN musi mieć minimum 4 znaki" });
       }
       const existing = await storage.getEmployees();
@@ -10501,13 +10506,12 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       }
 
       const now = new Date();
-      const finalStatus = active.isOutsideZone ? 'WARUNKOWA' : 'ZAKONCZONA';
       const entry = await storage.updateTimeEntry(active.id, {
         clockOut: now,
         clockOutLat: lat ? String(lat) : null,
         clockOutLng: lng ? String(lng) : null,
         clockOutLocationId,
-        status: finalStatus,
+        status: 'ZAKONCZONA',
       });
       res.json({ entry });
     } catch (err: any) {

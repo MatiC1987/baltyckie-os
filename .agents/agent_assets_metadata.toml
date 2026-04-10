@@ -1,0 +1,20 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "oLrz3bySAHozdXrAEkEHK"
+uri = "file://docs/instrukcja-rcp-recepcja.md"
+type = "text"
+title = "Instrukcja RCP — Recepcja / Małgorzata Latasiewicz"
+
+[[outputs]]
+id = "TVtmcMrnE1YJqyqLEeFRS"
+uri = "file://docs/instrukcja-rcp-pracownik-etat.md"
+type = "text"
+title = "Instrukcja RCP — Pracownik etatowy"
+
+[[outputs]]
+id = "cy38oSWE17NNrGzeH3Yhd"
+uri = "file://docs/instrukcja-rcp-pracownik-godzinowy.md"
+type = "text"
+title = "Instrukcja RCP — Pracownik godzinowy"
