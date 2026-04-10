@@ -18,6 +18,8 @@ import {
   insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema,
   insertTenantDataSubmissionSchema,
   insertWorkScheduleSchema, insertLeaveRequestSchema,
+  employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema,
+  mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -1174,6 +1176,118 @@ export function registerRecepcjaRoutes(app: Express) {
     try {
       const logs = await db.select().from(recepcjaAuditLog).orderBy(desc(recepcjaAuditLog.createdAt)).limit(500);
       res.json(logs);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== RECEPCJA EMPLOYEE TASKS ====================
+  app.get('/api/recepcja/tasks', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { employeeId, date, from, to, status } = req.query;
+      const conditions: any[] = [];
+      if (employeeId) conditions.push(eq(employeeTasks.employeeId, Number(employeeId)));
+      if (date) conditions.push(eq(employeeTasks.date, String(date)));
+      if (from && to) conditions.push(and(gte(employeeTasks.date, String(from)), lte(employeeTasks.date, String(to))));
+      if (status) conditions.push(eq(employeeTasks.status, String(status)));
+      const result = conditions.length > 0
+        ? await db.select().from(employeeTasks).where(and(...conditions)).orderBy(sql`date ASC, start_time ASC`)
+        : await db.select().from(employeeTasks).orderBy(sql`date ASC, start_time ASC`);
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/tasks', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const data = insertEmployeeTaskSchema.parse({ ...req.body, assignedById: req.recepcjaUser?.id });
+      const [task] = await db.insert(employeeTasks).values(data).returning();
+      res.status(201).json(task);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/tasks/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const [task] = await db.update(employeeTasks)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(employeeTasks.id, Number(req.params.id)))
+        .returning();
+      if (!task) return res.status(404).json({ message: "Nie znaleziono zadania" });
+      res.json(task);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.delete('/api/recepcja/tasks/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      await db.delete(employeeTasks).where(eq(employeeTasks.id, Number(req.params.id)));
+      res.status(204).send();
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get('/api/recepcja/tasks/:taskId/comments', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const result = await db.select().from(taskComments)
+        .where(eq(taskComments.taskId, Number(req.params.taskId)))
+        .orderBy(sql`created_at ASC`);
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/tasks/:taskId/comments', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const data = insertTaskCommentSchema.parse({
+        taskId: Number(req.params.taskId),
+        authorId: req.recepcjaUser?.id,
+        authorName: req.recepcjaUser?.name || 'Recepcja',
+        content: req.body.content,
+      });
+      const [comment] = await db.insert(taskComments).values(data).returning();
+      res.status(201).json(comment);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  // ==================== RECEPCJA MILEAGE ====================
+  app.get('/api/recepcja/mileage', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { employeeId, from, to } = req.query;
+      const conditions: any[] = [];
+      if (employeeId) conditions.push(eq(mileageEntries.employeeId, Number(employeeId)));
+      if (from && to) conditions.push(and(gte(mileageEntries.date, String(from)), lte(mileageEntries.date, String(to))));
+      const result = conditions.length > 0
+        ? await db.select().from(mileageEntries).where(and(...conditions)).orderBy(desc(mileageEntries.date))
+        : await db.select().from(mileageEntries).orderBy(desc(mileageEntries.date));
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== RECEPCJA SCHEDULE TEMPLATES ====================
+  app.get('/api/recepcja/schedule-templates', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const result = await db.select().from(scheduleTemplates).orderBy(sql`name ASC`);
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/schedule-templates', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const data = insertScheduleTemplateSchema.parse({ ...req.body, createdById: req.recepcjaUser?.id });
+      const [template] = await db.insert(scheduleTemplates).values(data).returning();
+      res.status(201).json(template);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/schedule-templates/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const [template] = await db.update(scheduleTemplates)
+        .set(req.body)
+        .where(eq(scheduleTemplates.id, Number(req.params.id)))
+        .returning();
+      if (!template) return res.status(404).json({ message: "Nie znaleziono szablonu" });
+      res.json(template);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.delete('/api/recepcja/schedule-templates/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      await db.delete(scheduleTemplates).where(eq(scheduleTemplates.id, Number(req.params.id)));
+      res.status(204).send();
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 }

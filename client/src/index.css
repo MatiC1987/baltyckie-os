@@ -719,3 +719,7 @@ aside[data-sidebar-fs]::after {
     font-size: 16px;
   }
 }
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

@@ -7,7 +7,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import webpush from "web-push";
-import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema } from "@shared/schema";
+import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema, employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema, mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between } from "drizzle-orm";
 import { db } from "./db";
 import { z } from "zod";
@@ -13939,7 +13939,271 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  // ============ EMPLOYEE TASKS ============
+  app.get('/api/employee-tasks', isAuthenticated, async (req, res) => {
+    try {
+      const { employeeId, date, from, to, status } = req.query;
+      let query = db.select().from(employeeTasks);
+      const conditions: any[] = [];
+      if (employeeId) conditions.push(eq(employeeTasks.employeeId, Number(employeeId)));
+      if (date) conditions.push(eq(employeeTasks.date, String(date)));
+      if (from && to) conditions.push(and(gte(employeeTasks.date, String(from)), lte(employeeTasks.date, String(to))));
+      if (status) conditions.push(eq(employeeTasks.status, String(status)));
+      const result = conditions.length > 0
+        ? await db.select().from(employeeTasks).where(and(...conditions)).orderBy(asc(employeeTasks.date), asc(employeeTasks.startTime))
+        : await db.select().from(employeeTasks).orderBy(asc(employeeTasks.date), asc(employeeTasks.startTime));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/employee-tasks/:id', isAuthenticated, async (req, res) => {
+    try {
+      const [task] = await db.select().from(employeeTasks).where(eq(employeeTasks.id, Number(req.params.id)));
+      if (!task) return res.status(404).json({ message: "Nie znaleziono zadania" });
+      res.json(task);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/employee-tasks', isAuthenticated, async (req, res) => {
+    try {
+      const data = insertEmployeeTaskSchema.parse(req.body);
+      const [task] = await db.insert(employeeTasks).values(data).returning();
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/employee-tasks/:id', isAuthenticated, async (req, res) => {
+    try {
+      const [task] = await db.update(employeeTasks)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(employeeTasks.id, Number(req.params.id)))
+        .returning();
+      if (!task) return res.status(404).json({ message: "Nie znaleziono zadania" });
+      res.json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/employee-tasks/:id', isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(employeeTasks).where(eq(employeeTasks.id, Number(req.params.id)));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============ TASK COMMENTS ============
+  app.get('/api/employee-tasks/:taskId/comments', isAuthenticated, async (req, res) => {
+    try {
+      const result = await db.select().from(taskComments)
+        .where(eq(taskComments.taskId, Number(req.params.taskId)))
+        .orderBy(asc(taskComments.createdAt));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/employee-tasks/:taskId/comments', isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTaskCommentSchema.parse({ ...req.body, taskId: Number(req.params.taskId) });
+      const [comment] = await db.insert(taskComments).values(data).returning();
+      res.status(201).json(comment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/employee-tasks/comments/:id', isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(taskComments).where(eq(taskComments.id, Number(req.params.id)));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============ MILEAGE ENTRIES ============
+  app.get('/api/mileage-entries', isAuthenticated, async (req, res) => {
+    try {
+      const { employeeId, date, from, to } = req.query;
+      const conditions: any[] = [];
+      if (employeeId) conditions.push(eq(mileageEntries.employeeId, Number(employeeId)));
+      if (date) conditions.push(eq(mileageEntries.date, String(date)));
+      if (from && to) conditions.push(and(gte(mileageEntries.date, String(from)), lte(mileageEntries.date, String(to))));
+      const result = conditions.length > 0
+        ? await db.select().from(mileageEntries).where(and(...conditions)).orderBy(desc(mileageEntries.date))
+        : await db.select().from(mileageEntries).orderBy(desc(mileageEntries.date));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/mileage-entries', isAuthenticated, async (req, res) => {
+    try {
+      const data = insertMileageEntrySchema.parse(req.body);
+      const [entry] = await db.insert(mileageEntries).values(data).returning();
+      res.status(201).json(entry);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/mileage-entries/:id', isAuthenticated, async (req, res) => {
+    try {
+      const [entry] = await db.update(mileageEntries)
+        .set(req.body)
+        .where(eq(mileageEntries.id, Number(req.params.id)))
+        .returning();
+      if (!entry) return res.status(404).json({ message: "Nie znaleziono wpisu" });
+      res.json(entry);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/mileage-entries/:id', isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(mileageEntries).where(eq(mileageEntries.id, Number(req.params.id)));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============ SCHEDULE TEMPLATES ============
+  app.get('/api/schedule-templates', isAuthenticated, async (req, res) => {
+    try {
+      const result = await db.select().from(scheduleTemplates).orderBy(asc(scheduleTemplates.name));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/schedule-templates', isAuthenticated, async (req, res) => {
+    try {
+      const data = insertScheduleTemplateSchema.parse(req.body);
+      const [template] = await db.insert(scheduleTemplates).values(data).returning();
+      res.status(201).json(template);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/schedule-templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      const [template] = await db.update(scheduleTemplates)
+        .set(req.body)
+        .where(eq(scheduleTemplates.id, Number(req.params.id)))
+        .returning();
+      if (!template) return res.status(404).json({ message: "Nie znaleziono szablonu" });
+      res.json(template);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/schedule-templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(scheduleTemplates).where(eq(scheduleTemplates.id, Number(req.params.id)));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============ TIME CLOCK TASKS (for worker app - uses JWT auth) ============
+  app.get('/api/time-clock/my-tasks', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const { date, from, to } = req.query;
+      const conditions = [eq(employeeTasks.employeeId, employeeId)];
+      if (date) conditions.push(eq(employeeTasks.date, String(date)));
+      if (from && to) conditions.push(and(gte(employeeTasks.date, String(from)), lte(employeeTasks.date, String(to)))!);
+      const result = await db.select().from(employeeTasks).where(and(...conditions)).orderBy(asc(employeeTasks.date), asc(employeeTasks.startTime));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/time-clock/tasks/:id/status', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const { status, actualStartTime, actualEndTime } = req.body;
+      const updateData: any = { status, updatedAt: new Date() };
+      if (actualStartTime) updateData.actualStartTime = actualStartTime;
+      if (actualEndTime) updateData.actualEndTime = actualEndTime;
+      const [task] = await db.update(employeeTasks)
+        .set(updateData)
+        .where(and(eq(employeeTasks.id, Number(req.params.id)), eq(employeeTasks.employeeId, employeeId)))
+        .returning();
+      if (!task) return res.status(404).json({ message: "Nie znaleziono zadania" });
+      res.json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/time-clock/tasks/:taskId/comments', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const allEmps = await storage.getEmployees();
+      const emp = allEmps.find(e => e.id === employeeId);
+      if (!emp) return res.status(401).json({ message: "Nie znaleziono pracownika" });
+      const data = insertTaskCommentSchema.parse({
+        taskId: Number(req.params.taskId),
+        authorId: employeeId,
+        authorName: `${emp.firstName} ${emp.lastName}`,
+        content: req.body.content,
+      });
+      const [comment] = await db.insert(taskComments).values(data).returning();
+      res.status(201).json(comment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/time-clock/mileage', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const data = insertMileageEntrySchema.parse({ ...req.body, employeeId });
+      const [entry] = await db.insert(mileageEntries).values(data).returning();
+      res.status(201).json(entry);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-clock/my-mileage', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const { date, from, to } = req.query;
+      const conditions = [eq(mileageEntries.employeeId, employeeId)];
+      if (date) conditions.push(eq(mileageEntries.date, String(date)));
+      if (from && to) conditions.push(and(gte(mileageEntries.date, String(from)), lte(mileageEntries.date, String(to)))!);
+      const result = await db.select().from(mileageEntries).where(and(...conditions)).orderBy(desc(mileageEntries.date));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
-
 

@@ -123,6 +123,7 @@ export const employees = pgTable("employees", {
   contractEnd: date("contract_end"),
   position: text("position").notNull(), // 'KIEROWNIK_RECEPCJI', 'PRACOWNIK_RECEPCJI', 'KONSERWATOR', 'OSOBA_SPRZATAJACA', 'FINANCIAL_MANAGER'
   hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }),
+  mileageRate: decimal("mileage_rate", { precision: 10, scale: 2 }),
   comment: text("comment"),
   status: text("status").notNull().default("AKTYWNY"), // 'AKTYWNY', 'NIEAKTYWNY'
   photoUrl: text("photo_url"),
@@ -1893,3 +1894,69 @@ export const localEvents = pgTable("local_events", {
 export const insertLocalEventSchema = createInsertSchema(localEvents).omit({ id: true, createdAt: true });
 export type LocalEvent = typeof localEvents.$inferSelect;
 export type InsertLocalEvent = z.infer<typeof insertLocalEventSchema>;
+
+export const employeeTasks = pgTable("employee_tasks", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  assignedById: integer("assigned_by_id"),
+  apartmentId: integer("apartment_id").references(() => apartments.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  date: date("date").notNull(),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  status: text("status").notNull().default("ZAPLANOWANE"),
+  priority: text("priority").notNull().default("NORMALNY"),
+  actualStartTime: text("actual_start_time"),
+  actualEndTime: text("actual_end_time"),
+  mileageKm: decimal("mileage_km", { precision: 10, scale: 1 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEmployeeTaskSchema = createInsertSchema(employeeTasks).omit({ id: true, createdAt: true, updatedAt: true });
+export type EmployeeTask = typeof employeeTasks.$inferSelect;
+export type InsertEmployeeTask = z.infer<typeof insertEmployeeTaskSchema>;
+
+export const taskComments = pgTable("task_comments", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => employeeTasks.id, { onDelete: "cascade" }).notNull(),
+  authorId: integer("author_id"),
+  authorName: text("author_name").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaskCommentSchema = createInsertSchema(taskComments).omit({ id: true, createdAt: true });
+export type TaskComment = typeof taskComments.$inferSelect;
+export type InsertTaskComment = z.infer<typeof insertTaskCommentSchema>;
+
+export const mileageEntries = pgTable("mileage_entries", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  taskId: integer("task_id").references(() => employeeTasks.id, { onDelete: "set null" }),
+  date: date("date").notNull(),
+  fromLocation: text("from_location").notNull(),
+  toLocation: text("to_location").notNull(),
+  distanceKm: decimal("distance_km", { precision: 10, scale: 1 }).notNull(),
+  purpose: text("purpose"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMileageEntrySchema = createInsertSchema(mileageEntries).omit({ id: true, createdAt: true });
+export type MileageEntry = typeof mileageEntries.$inferSelect;
+export type InsertMileageEntry = z.infer<typeof insertMileageEntrySchema>;
+
+export const scheduleTemplates = pgTable("schedule_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
+  days: text("days").notNull(),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertScheduleTemplateSchema = createInsertSchema(scheduleTemplates).omit({ id: true, createdAt: true });
+export type ScheduleTemplate = typeof scheduleTemplates.$inferSelect;
+export type InsertScheduleTemplate = z.infer<typeof insertScheduleTemplateSchema>;

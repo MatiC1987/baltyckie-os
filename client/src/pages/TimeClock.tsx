@@ -19,6 +19,7 @@ import {
   Square,
   History,
   ChevronLeft,
+  ChevronRight,
   UserX,
   CalendarDays,
   Plus,
@@ -35,6 +36,13 @@ import {
   Briefcase,
   Download,
   X,
+  Car,
+  ClipboardList,
+  MoreHorizontal,
+  CheckCircle2,
+  CircleDot,
+  MessageSquare,
+  Navigation,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -400,11 +408,19 @@ function EmployeeDashboard({
   const [gpsStatus, setGpsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsTrackingActive, setGpsTrackingActive] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showLeaves, setShowLeaves] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
+  const [activeTab, setActiveTab] = useState<"today" | "tasks" | "km" | "history" | "more">("today");
+  const [moreSubView, setMoreSubView] = useState<"menu" | "schedule" | "summary" | "leaves">("menu");
   const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
+  const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showMileageForm, setShowMileageForm] = useState(false);
+  const [mileageFrom, setMileageFrom] = useState("");
+  const [mileageTo, setMileageTo] = useState("");
+  const [mileageKm, setMileageKm] = useState("");
+  const [mileagePurpose, setMileagePurpose] = useState("");
+  const showHistory = activeTab === "history";
+  const showLeaves = moreSubView === "leaves" && activeTab === "more";
+  const showSchedule = moreSubView === "schedule" && activeTab === "more";
+  const showSummary = moreSubView === "summary" && activeTab === "more";
   const watchIdRef = useRef<number | null>(null);
   const lastSentRef = useRef<number>(0);
   const pendingBufferRef = useRef<{ latitude: number; longitude: number; accuracy: number }[]>([]);
@@ -722,319 +738,99 @@ function EmployeeDashboard({
       ? "text-green-600 dark:text-green-400"
       : "text-muted-foreground";
 
-  if (showLeaves) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
-          <Button variant="ghost" size="icon" onClick={() => setShowLeaves(false)} data-testid="button-back-from-leaves">
-            <ChevronLeft />
-          </Button>
-          <span className="font-semibold text-sm">Moje wnioski urlopowe</span>
-          <Button variant="ghost" size="icon" onClick={() => setShowNewLeaveDialog(true)} data-testid="button-new-leave">
-            <Plus />
-          </Button>
-        </header>
-        <div className="flex-1 overflow-auto p-4">
-          {leaveRequestsQuery.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : !leaveRequestsQuery.data?.length ? (
-            <div className="flex flex-col items-center gap-3 py-12">
-              <CalendarDays className="h-10 w-10 text-muted-foreground" />
-              <p className="text-center text-muted-foreground" data-testid="text-no-leaves">Brak wnioskow urlopowych</p>
-              <Button onClick={() => setShowNewLeaveDialog(true)} data-testid="button-new-leave-empty">
-                <Plus className="h-4 w-4 mr-2" />
-                Zloz wniosek
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {leaveRequestsQuery.data.map((lr) => (
-                <Card key={lr.id} className="p-4" data-testid={`card-leave-${lr.id}`}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div>
-                      <p className="font-medium text-sm">{leaveTypeLabel(lr.type)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDateShort(lr.startDate)} - {formatDateShort(lr.endDate)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-muted-foreground">{lr.days}d</span>
-                      <LeaveStatusBadge status={lr.status} />
-                    </div>
-                  </div>
-                  {lr.comment && (
-                    <p className="text-xs text-muted-foreground mt-1">{lr.comment}</p>
-                  )}
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
+  type TaskItem = { id: number; title: string; description: string | null; date: string; startTime: string | null; endTime: string | null; status: string; priority: string; apartmentId: number | null; actualStartTime: string | null; actualEndTime: string | null; mileageKm: string | null; notes: string | null };
+  const tasksQuery = useQuery<TaskItem[]>({
+    queryKey: ["/api/time-clock/my-tasks", taskDate],
+    enabled: activeTab === "tasks",
+    queryFn: async () => {
+      const res = await rcpFetch("GET", `/api/time-clock/my-tasks?date=${taskDate}`);
+      return await res.json();
+    },
+  });
 
-        <NewLeaveDialog
-          open={showNewLeaveDialog}
-          onClose={() => setShowNewLeaveDialog(false)}
-          onSubmit={(data) => createLeaveMutation.mutate(data)}
-          isPending={createLeaveMutation.isPending}
-        />
-      </div>
-    );
-  }
+  type MileageItem = { id: number; date: string; fromLocation: string; toLocation: string; distanceKm: string; purpose: string | null };
+  const today = new Date().toISOString().slice(0, 10);
+  const mileageQuery = useQuery<MileageItem[]>({
+    queryKey: ["/api/time-clock/my-mileage", today],
+    enabled: activeTab === "km",
+    queryFn: async () => {
+      const res = await rcpFetch("GET", `/api/time-clock/my-mileage?date=${today}`);
+      return await res.json();
+    },
+  });
 
-  if (showSchedule) {
-    const dayNames = ["Nd", "Pn", "Wt", "Śr", "Cz", "Pt", "So"];
-    const schedulesByDate = (scheduleQuery.data || []).reduce<Record<string, ScheduleEntry[]>>((acc, s) => {
-      (acc[s.date] = acc[s.date] || []).push(s);
-      return acc;
-    }, {});
-    const sortedDates = Object.keys(schedulesByDate).sort();
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
-          <Button variant="ghost" size="icon" onClick={() => setShowSchedule(false)} data-testid="button-back-from-schedule">
-            <ChevronLeft />
-          </Button>
-          <span className="font-semibold text-sm">Mój grafik (14 dni)</span>
-          <div className="w-9" />
-        </header>
-        <div className="flex-1 overflow-auto p-4">
-          {scheduleQuery.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : sortedDates.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-12">
-              <Calendar className="h-10 w-10 text-muted-foreground" />
-              <p className="text-center text-muted-foreground" data-testid="text-no-schedule">Brak zaplanowanych zmian</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 max-w-lg mx-auto">
-              {sortedDates.map((date) => {
-                const d = new Date(date + "T12:00:00");
-                const dayName = dayNames[d.getDay()];
-                const isToday = date === new Date().toISOString().split("T")[0];
-                return (
-                  <Card key={date} className={`p-4 ${isToday ? "ring-2 ring-primary" : ""}`} data-testid={`card-schedule-${date}`}>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">{dayName}</span>
-                        <span className="text-sm text-muted-foreground">{formatDateShort(date)}</span>
-                        {isToday && <Badge variant="outline" className="text-xs bg-primary/10 text-primary">Dziś</Badge>}
-                      </div>
-                    </div>
-                    {schedulesByDate[date].map((shift) => (
-                      <div key={shift.id} className="flex items-center gap-3 py-1">
-                        {shift.shiftColor && (
-                          <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: shift.shiftColor }} />
-                        )}
-                        <span className="text-sm font-medium">{shift.startTime} - {shift.endTime}</span>
-                        {shift.shiftName && (
-                          <span className="text-xs text-muted-foreground">{shift.shiftName}</span>
-                        )}
-                      </div>
-                    ))}
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const addMileageMutation = useMutation({
+    mutationFn: async (data: { date: string; fromLocation: string; toLocation: string; distanceKm: string; purpose: string }) => {
+      const res = await rcpFetch("POST", "/api/time-clock/mileage", data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-mileage"] });
+      setShowMileageForm(false);
+      setMileageFrom(""); setMileageTo(""); setMileageKm(""); setMileagePurpose("");
+      toast({ title: "Przejazd dodany" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
 
-  if (showSummary) {
-    const s = summaryQuery.data;
-    const monthNames = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
-    const progressPct = s ? Math.min(100, Math.round((s.workedHours / s.normHours) * 100)) : 0;
-    const progressColor = progressPct >= 100 ? "bg-red-500" : progressPct >= 80 ? "bg-yellow-500" : "bg-green-500";
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
-          <Button variant="ghost" size="icon" onClick={() => setShowSummary(false)} data-testid="button-back-from-summary">
-            <ChevronLeft />
-          </Button>
-          <span className="font-semibold text-sm">Podsumowanie miesiąca</span>
-          <div className="w-9" />
-        </header>
-        <div className="flex-1 overflow-auto p-4">
-          {summaryQuery.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : s ? (
-            <div className="flex flex-col gap-4 max-w-lg mx-auto">
-              <p className="text-center text-sm text-muted-foreground" data-testid="text-summary-period">
-                {monthNames[s.month - 1]} {s.year}
-              </p>
+  const updateTaskStatusMutation = useMutation({
+    mutationFn: async ({ id, status, actualStartTime, actualEndTime }: { id: number; status: string; actualStartTime?: string; actualEndTime?: string }) => {
+      const res = await rcpFetch("PUT", `/api/time-clock/tasks/${id}/status`, { status, actualStartTime, actualEndTime });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-tasks"] });
+      toast({ title: "Status zaktualizowany" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
 
-              <Card className="p-4" data-testid="card-hours-summary">
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <Timer className="h-4 w-4" />
-                  Godziny pracy
-                </h3>
-                <div className="mb-3">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Przepracowano</span>
-                    <span className="font-semibold">{s.workedHours}h / {s.normHours}h</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-3">
-                    <div className={`h-3 rounded-full transition-all ${progressColor}`} style={{ width: `${progressPct}%` }} />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">{progressPct}% normy miesięcznej</p>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div>
-                    <div className="text-xl font-bold text-primary" data-testid="text-worked-hours">{s.workedHours}</div>
-                    <p className="text-xs text-muted-foreground">Przepracowano (h)</p>
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold" data-testid="text-scheduled-hours">{s.scheduledHours}</div>
-                    <p className="text-xs text-muted-foreground">Zaplanowano (h)</p>
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold" data-testid="text-days-worked">{s.daysWorked}</div>
-                    <p className="text-xs text-muted-foreground">Dni pracy</p>
-                  </div>
-                </div>
-              </Card>
+  const dayNames = ["Nd", "Pn", "Wt", "Śr", "Cz", "Pt", "So"];
+  const monthNames = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+  const schedulesByDate = (scheduleQuery.data || []).reduce<Record<string, ScheduleEntry[]>>((acc, s) => {
+    (acc[s.date] = acc[s.date] || []).push(s);
+    return acc;
+  }, {});
+  const sortedDates = Object.keys(schedulesByDate).sort();
+  const sSummary = summaryQuery.data;
+  const progressPct = sSummary ? Math.min(100, Math.round((sSummary.workedHours / sSummary.normHours) * 100)) : 0;
+  const progressColor = progressPct >= 100 ? "bg-red-500" : progressPct >= 80 ? "bg-yellow-500" : "bg-green-500";
 
-              <Card className="p-4" data-testid="card-leave-balance">
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <TreePalm className="h-4 w-4" />
-                  Urlop {s.year}
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="text-center p-3 bg-muted/50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-leave-remaining">
-                      {s.leaveBalance.remaining}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Pozostało dni</p>
-                  </div>
-                  <div className="text-center p-3 bg-muted/50 rounded-lg">
-                    <div className="text-2xl font-bold" data-testid="text-leave-used">{s.leaveBalance.used}</div>
-                    <p className="text-xs text-muted-foreground">Wykorzystano</p>
-                  </div>
-                  <div className="text-center p-3 bg-muted/50 rounded-lg">
-                    <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400" data-testid="text-leave-pending">
-                      {s.leaveBalance.pending}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Oczekujące</p>
-                  </div>
-                  <div className="text-center p-3 bg-muted/50 rounded-lg">
-                    <div className="text-2xl font-bold text-muted-foreground" data-testid="text-leave-allocated">
-                      {s.leaveBalance.allocated}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Przysługuje</p>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          ) : (
-            <p className="text-center text-muted-foreground py-8">Brak danych</p>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const tabItems = [
+    { key: "today" as const, label: "Dziś", icon: Clock },
+    { key: "tasks" as const, label: "Zadania", icon: ClipboardList },
+    { key: "km" as const, label: "Km", icon: Car },
+    { key: "history" as const, label: "Historia", icon: History },
+    { key: "more" as const, label: "Więcej", icon: MoreHorizontal },
+  ];
 
-  if (showHistory) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
-          <Button variant="ghost" size="icon" onClick={() => setShowHistory(false)} data-testid="button-back-from-history">
-            <ChevronLeft />
-          </Button>
-          <span className="font-semibold text-sm">Historia (7 dni)</span>
-          <div className="w-9" />
-        </header>
-        <div className="flex-1 overflow-auto p-4">
-          {historyQuery.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : !historyQuery.data?.length ? (
-            <p className="text-center text-muted-foreground py-8" data-testid="text-no-history">Brak wpisow</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {historyQuery.data.map((entry) => {
-                const clockIn = new Date(entry.clockIn);
-                const clockOut = entry.clockOut ? new Date(entry.clockOut) : null;
-                const duration = clockOut
-                  ? clockOut.getTime() - clockIn.getTime() - (entry.breakMinutes || 0) * 60000
-                  : null;
-                return (
-                  <Card key={entry.id} className="p-4" data-testid={`card-history-${entry.id}`}>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div>
-                        <p className="font-medium text-sm">{formatDateShort(entry.date)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatTime(clockIn)} - {clockOut ? formatTime(clockOut) : "..."}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {duration !== null && (
-                          <span className="text-sm font-semibold" data-testid={`text-duration-${entry.id}`}>
-                            {formatDuration(duration)}
-                          </span>
-                        )}
-                        <StatusBadge status={entry.status} />
-                      </div>
-                    </div>
-                    {entry.breakMinutes && entry.breakMinutes > 0 ? (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Przerwa: {entry.breakMinutes}m
-                      </p>
-                    ) : null}
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const totalMileageToday = (mileageQuery.data || []).reduce((sum, e) => sum + parseFloat(e.distanceKm || "0"), 0);
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="flex items-center justify-between gap-2 p-3 border-b sticky top-0 z-50 bg-background">
-        <div className="flex items-center gap-2">
-          <img src={logoImg} alt="Logo" className="h-8 w-auto rounded-md" />
-          <span className="font-semibold text-sm hidden sm:inline">RCP</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => setShowSchedule(true)} data-testid="button-show-schedule" title="Mój grafik">
-            <Calendar />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowSummary(true)} data-testid="button-show-summary" title="Podsumowanie">
-            <BarChart3 />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowLeaves(true)} data-testid="button-show-leaves" title="Urlopy">
-            <CalendarDays />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowHistory(true)} data-testid="button-show-history" title="Historia">
-            <History />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onLogout} data-testid="button-logout">
-            <LogOut />
-          </Button>
-        </div>
-      </header>
+  const changeTaskDate = (delta: number) => {
+    const d = new Date(taskDate + "T12:00:00");
+    d.setDate(d.getDate() + delta);
+    setTaskDate(d.toISOString().slice(0, 10));
+  };
 
-      <div className="flex-1 overflow-auto">
+  const taskStatusIcon = (status: string) => {
+    if (status === "ZAKONCZONE") return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+    if (status === "W_TRAKCIE") return <CircleDot className="h-4 w-4 text-blue-500 animate-pulse" />;
+    return <Clock className="h-4 w-4 text-muted-foreground" />;
+  };
+
+  const renderTabContent = () => {
+    if (activeTab === "today") {
+      return (
         <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
           <div data-testid="text-greeting">
-            <h1 className="text-2xl font-bold">Czesc, {employee.firstName}!</h1>
+            <h1 className="text-2xl font-bold">Cześć, {employee.firstName}!</h1>
             <p className="text-sm text-muted-foreground">{employee.position?.replace(/_/g, " ")}</p>
           </div>
 
           <Card className="p-4" data-testid="card-team-status">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Moj zespol dzisiaj
+              Mój zespół dzisiaj
             </h3>
             {teamStatusQuery.isLoading ? (
               <div className="flex justify-center py-2">
@@ -1064,52 +860,40 @@ function EmployeeDashboard({
             ) : null}
           </Card>
 
-          <Card className="p-6" data-testid="card-time-clock">
+          <Card className="p-6 rounded-2xl" data-testid="card-time-clock">
             <div className="flex flex-col items-center gap-4">
               <LiveClock />
-
               {isWorking || isOnBreak ? (
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
-                  <ShiftTimer
-                    clockIn={String(activeEntry!.clockIn)}
-                    breakMinutes={activeEntry!.breakMinutes || 0}
-                  />
+                  <ShiftTimer clockIn={String(activeEntry!.clockIn)} breakMinutes={activeEntry!.breakMinutes || 0} />
                 </div>
               ) : null}
-
               <div className={`flex items-center gap-2 text-sm font-medium ${statusColor}`} data-testid="text-work-status">
                 {isOnBreak && <Coffee className="h-4 w-4" />}
                 {isWorking && <Play className="h-4 w-4" />}
                 {!isWorking && !isOnBreak && <UserX className="h-4 w-4" />}
                 {statusLabel}
               </div>
-
               {activeEntry?.isOutsideZone && (
                 <div className="flex items-center gap-2 text-sm text-destructive" data-testid="text-outside-zone-warning">
                   <AlertTriangle className="h-4 w-4" />
-                  <span>Poza strefa lokalizacji</span>
+                  <span>Poza strefą lokalizacji</span>
                 </div>
               )}
-
               {gpsStatus === "loading" && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="text-gps-loading">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Pobieranie lokalizacji GPS...</span>
                 </div>
               )}
-
               {gpsStatus === "success" && gpsCoords && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="text-gps-success">
                   <MapPin className="h-4 w-4" />
                   <span>{gpsCoords.lat.toFixed(4)}, {gpsCoords.lng.toFixed(4)}</span>
                 </div>
               )}
-
-              {gpsStatus === "error" && (
-                <GpsErrorPanel onRetry={() => getGps().catch(() => {})} />
-              )}
-
+              {gpsStatus === "error" && <GpsErrorPanel onRetry={() => getGps().catch(() => {})} />}
               {(isWorking || isOnBreak) && (
                 <div className={`flex items-center gap-2 text-xs ${gpsTrackingActive ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} data-testid="text-gps-tracking">
                   <MapPin className="h-3.5 w-3.5" />
@@ -1117,79 +901,26 @@ function EmployeeDashboard({
                   {gpsTrackingActive && <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />}
                 </div>
               )}
-
               <div className="flex flex-col gap-3 w-full mt-2">
                 {!isWorking && !isOnBreak && (
-                  <Button
-                    onClick={() => clockInMutation.mutate()}
-                    disabled={anyPending}
-                    className="w-full min-h-14 text-lg bg-green-600 hover:bg-green-600 text-white border-green-700"
-                    data-testid="button-clock-in"
-                  >
-                    {clockInMutation.isPending ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <>
-                        <Play className="h-5 w-5 mr-2" />
-                        ROZPOCZNIJ PRACE
-                      </>
-                    )}
+                  <Button onClick={() => clockInMutation.mutate()} disabled={anyPending} className="w-full min-h-14 text-lg rounded-2xl bg-green-600 hover:bg-green-700 text-white shadow-lg" data-testid="button-clock-in">
+                    {clockInMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Play className="h-5 w-5 mr-2" /> ROZPOCZNIJ PRACĘ</>}
                   </Button>
                 )}
-
                 {(isWorking || isOnBreak) && (
                   <>
                     {isWorking && !isOnBreak && (
-                      <Button
-                        onClick={() => breakStartMutation.mutate()}
-                        disabled={anyPending}
-                        className="w-full min-h-14 text-lg bg-yellow-500 hover:bg-yellow-500 text-white border-yellow-600"
-                        data-testid="button-break-start"
-                      >
-                        {breakStartMutation.isPending ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                          <>
-                            <Coffee className="h-5 w-5 mr-2" />
-                            PRZERWA
-                          </>
-                        )}
+                      <Button onClick={() => breakStartMutation.mutate()} disabled={anyPending} className="w-full min-h-14 text-lg rounded-2xl bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg" data-testid="button-break-start">
+                        {breakStartMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Coffee className="h-5 w-5 mr-2" /> PRZERWA</>}
                       </Button>
                     )}
-
                     {isOnBreak && (
-                      <Button
-                        onClick={() => breakEndMutation.mutate()}
-                        disabled={anyPending}
-                        className="w-full min-h-14 text-lg bg-green-600 hover:bg-green-600 text-white border-green-700"
-                        data-testid="button-break-end"
-                      >
-                        {breakEndMutation.isPending ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                          <>
-                            <Play className="h-5 w-5 mr-2" />
-                            WZNOW PRACE
-                          </>
-                        )}
+                      <Button onClick={() => breakEndMutation.mutate()} disabled={anyPending} className="w-full min-h-14 text-lg rounded-2xl bg-green-600 hover:bg-green-700 text-white shadow-lg" data-testid="button-break-end">
+                        {breakEndMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Play className="h-5 w-5 mr-2" /> WZNÓW PRACĘ</>}
                       </Button>
                     )}
-
-                    <Button
-                      onClick={() => clockOutMutation.mutate()}
-                      disabled={anyPending}
-                      variant="destructive"
-                      className="w-full min-h-14 text-lg"
-                      data-testid="button-clock-out"
-                    >
-                      {clockOutMutation.isPending ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <>
-                          <Square className="h-5 w-5 mr-2" />
-                          ZAKONCZ PRACE
-                        </>
-                      )}
+                    <Button onClick={() => clockOutMutation.mutate()} disabled={anyPending} variant="destructive" className="w-full min-h-14 text-lg rounded-2xl shadow-lg" data-testid="button-clock-out">
+                      {clockOutMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Square className="h-5 w-5 mr-2" /> ZAKOŃCZ PRACĘ</>}
                     </Button>
                   </>
                 )}
@@ -1197,7 +928,362 @@ function EmployeeDashboard({
             </div>
           </Card>
         </div>
+      );
+    }
+
+    if (activeTab === "tasks") {
+      const taskDateObj = new Date(taskDate + "T12:00:00");
+      const taskDayName = ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"][taskDateObj.getDay()];
+      const isToday = taskDate === today;
+      return (
+        <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="icon" onClick={() => changeTaskDate(-1)} data-testid="button-task-prev-day">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <div className="text-center">
+              <p className="font-semibold text-base" data-testid="text-task-date">{isToday ? "Dziś" : taskDayName}</p>
+              <p className="text-xs text-muted-foreground">{formatDateShort(taskDate)}</p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => changeTaskDate(1)} data-testid="button-task-next-day">
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </div>
+
+          {tasksQuery.isLoading ? (
+            <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : !tasksQuery.data?.length ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <ClipboardList className="h-10 w-10 text-muted-foreground/40" />
+              <p className="text-muted-foreground text-sm" data-testid="text-no-tasks">Brak zadań na ten dzień</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {tasksQuery.data.map((task) => (
+                <Card key={task.id} className="p-4 rounded-2xl" data-testid={`card-task-${task.id}`}>
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5">{taskStatusIcon(task.status)}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{task.title}</p>
+                      {task.startTime && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {task.startTime}{task.endTime ? ` - ${task.endTime}` : ""}
+                        </p>
+                      )}
+                      {task.description && <p className="text-xs text-muted-foreground mt-1">{task.description}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-3">
+                    {task.status === "ZAPLANOWANE" && (
+                      <Button size="sm" className="rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs" onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: "W_TRAKCIE", actualStartTime: new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }) })} data-testid={`button-start-task-${task.id}`}>
+                        <Play className="h-3 w-3 mr-1" /> Rozpocznij
+                      </Button>
+                    )}
+                    {task.status === "W_TRAKCIE" && (
+                      <Button size="sm" className="rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs" onClick={() => updateTaskStatusMutation.mutate({ id: task.id, status: "ZAKONCZONE", actualEndTime: new Date().toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }) })} data-testid={`button-finish-task-${task.id}`}>
+                        <CheckCircle2 className="h-3 w-3 mr-1" /> Zakończ
+                      </Button>
+                    )}
+                    {task.status === "ZAKONCZONE" && (
+                      <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-xl">Zakończone</Badge>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (activeTab === "km") {
+      return (
+        <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold">Kilometrówka</h2>
+            <Button size="sm" className="rounded-xl" onClick={() => setShowMileageForm(true)} data-testid="button-add-mileage">
+              <Plus className="h-4 w-4 mr-1" /> Dodaj przejazd
+            </Button>
+          </div>
+
+          <Card className="p-4 rounded-2xl bg-primary/5" data-testid="card-mileage-summary">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Dziś łącznie</p>
+                <p className="text-2xl font-bold">{totalMileageToday.toFixed(1)} km</p>
+              </div>
+              <Car className="h-8 w-8 text-primary/40" />
+            </div>
+          </Card>
+
+          {mileageQuery.isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : !mileageQuery.data?.length ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Navigation className="h-10 w-10 text-muted-foreground/40" />
+              <p className="text-muted-foreground text-sm" data-testid="text-no-mileage">Brak przejazdów dzisiaj</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {mileageQuery.data.map((entry) => (
+                <Card key={entry.id} className="p-3 rounded-2xl" data-testid={`card-mileage-${entry.id}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Navigation className="h-4 w-4 text-primary" />
+                      <div>
+                        <p className="text-sm font-medium">{entry.fromLocation} → {entry.toLocation}</p>
+                        {entry.purpose && <p className="text-xs text-muted-foreground">{entry.purpose}</p>}
+                      </div>
+                    </div>
+                    <span className="font-semibold text-sm">{parseFloat(entry.distanceKm).toFixed(1)} km</span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <Dialog open={showMileageForm} onOpenChange={setShowMileageForm}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader><DialogTitle>Nowy przejazd</DialogTitle></DialogHeader>
+              <form onSubmit={(e) => { e.preventDefault(); addMileageMutation.mutate({ date: today, fromLocation: mileageFrom, toLocation: mileageTo, distanceKm: mileageKm, purpose: mileagePurpose }); }} className="flex flex-col gap-3">
+                <div><Label>Skąd</Label><Input value={mileageFrom} onChange={(e) => setMileageFrom(e.target.value)} placeholder="np. Biuro" data-testid="input-mileage-from" /></div>
+                <div><Label>Dokąd</Label><Input value={mileageTo} onChange={(e) => setMileageTo(e.target.value)} placeholder="np. Baltic 204" data-testid="input-mileage-to" /></div>
+                <div><Label>Dystans (km)</Label><Input type="number" step="0.1" value={mileageKm} onChange={(e) => setMileageKm(e.target.value)} placeholder="12.5" data-testid="input-mileage-km" /></div>
+                <div><Label>Cel (opcjonalnie)</Label><Input value={mileagePurpose} onChange={(e) => setMileagePurpose(e.target.value)} placeholder="np. Sprzątanie" data-testid="input-mileage-purpose" /></div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setShowMileageForm(false)}>Anuluj</Button>
+                  <Button type="submit" disabled={!mileageFrom || !mileageTo || !mileageKm || addMileageMutation.isPending} data-testid="button-submit-mileage">
+                    {addMileageMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Dodaj"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      );
+    }
+
+    if (activeTab === "history") {
+      return (
+        <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+          <h2 className="text-lg font-bold">Historia (7 dni)</h2>
+          {historyQuery.isLoading ? (
+            <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : !historyQuery.data?.length ? (
+            <p className="text-center text-muted-foreground py-8" data-testid="text-no-history">Brak wpisów</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {historyQuery.data.map((entry) => {
+                const clockIn = new Date(entry.clockIn);
+                const clockOut = entry.clockOut ? new Date(entry.clockOut) : null;
+                const duration = clockOut ? clockOut.getTime() - clockIn.getTime() - (entry.breakMinutes || 0) * 60000 : null;
+                return (
+                  <Card key={entry.id} className="p-4 rounded-2xl" data-testid={`card-history-${entry.id}`}>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div>
+                        <p className="font-medium text-sm">{formatDateShort(entry.date)}</p>
+                        <p className="text-xs text-muted-foreground">{formatTime(clockIn)} - {clockOut ? formatTime(clockOut) : "..."}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {duration !== null && <span className="text-sm font-semibold" data-testid={`text-duration-${entry.id}`}>{formatDuration(duration)}</span>}
+                        <StatusBadge status={entry.status} />
+                      </div>
+                    </div>
+                    {entry.breakMinutes && entry.breakMinutes > 0 ? <p className="text-xs text-muted-foreground mt-1">Przerwa: {entry.breakMinutes}m</p> : null}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (activeTab === "more") {
+      if (moreSubView === "schedule") {
+        return (
+          <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => setMoreSubView("menu")} data-testid="button-back-from-schedule"><ChevronLeft /></Button>
+              <h2 className="text-lg font-bold">Mój grafik (14 dni)</h2>
+            </div>
+            {scheduleQuery.isLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : sortedDates.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-12"><Calendar className="h-10 w-10 text-muted-foreground" /><p className="text-muted-foreground" data-testid="text-no-schedule">Brak zaplanowanych zmian</p></div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {sortedDates.map((date) => {
+                  const d = new Date(date + "T12:00:00");
+                  const dayName = dayNames[d.getDay()];
+                  const isTodayDate = date === today;
+                  return (
+                    <Card key={date} className={`p-4 rounded-2xl ${isTodayDate ? "ring-2 ring-primary" : ""}`} data-testid={`card-schedule-${date}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-sm">{dayName}</span>
+                        <span className="text-sm text-muted-foreground">{formatDateShort(date)}</span>
+                        {isTodayDate && <Badge variant="outline" className="text-xs bg-primary/10 text-primary rounded-xl">Dziś</Badge>}
+                      </div>
+                      {schedulesByDate[date].map((shift) => (
+                        <div key={shift.id} className="flex items-center gap-3 py-1">
+                          {shift.shiftColor && <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: shift.shiftColor }} />}
+                          <span className="text-sm font-medium">{shift.startTime} - {shift.endTime}</span>
+                          {shift.shiftName && <span className="text-xs text-muted-foreground">{shift.shiftName}</span>}
+                        </div>
+                      ))}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      if (moreSubView === "summary") {
+        return (
+          <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => setMoreSubView("menu")} data-testid="button-back-from-summary"><ChevronLeft /></Button>
+              <h2 className="text-lg font-bold">Podsumowanie miesiąca</h2>
+            </div>
+            {summaryQuery.isLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : sSummary ? (
+              <div className="flex flex-col gap-4">
+                <p className="text-center text-sm text-muted-foreground" data-testid="text-summary-period">{monthNames[sSummary.month - 1]} {sSummary.year}</p>
+                <Card className="p-4 rounded-2xl" data-testid="card-hours-summary">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><Timer className="h-4 w-4" /> Godziny pracy</h3>
+                  <div className="mb-3">
+                    <div className="flex justify-between text-sm mb-1"><span>Przepracowano</span><span className="font-semibold">{sSummary.workedHours}h / {sSummary.normHours}h</span></div>
+                    <div className="w-full bg-muted rounded-full h-3"><div className={`h-3 rounded-full transition-all ${progressColor}`} style={{ width: `${progressPct}%` }} /></div>
+                    <p className="text-xs text-muted-foreground mt-1">{progressPct}% normy miesięcznej</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div><div className="text-xl font-bold text-primary" data-testid="text-worked-hours">{sSummary.workedHours}</div><p className="text-xs text-muted-foreground">Przepracowano (h)</p></div>
+                    <div><div className="text-xl font-bold" data-testid="text-scheduled-hours">{sSummary.scheduledHours}</div><p className="text-xs text-muted-foreground">Zaplanowano (h)</p></div>
+                    <div><div className="text-xl font-bold" data-testid="text-days-worked">{sSummary.daysWorked}</div><p className="text-xs text-muted-foreground">Dni pracy</p></div>
+                  </div>
+                </Card>
+                <Card className="p-4 rounded-2xl" data-testid="card-leave-balance">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><TreePalm className="h-4 w-4" /> Urlop {sSummary.year}</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="text-center p-3 bg-muted/50 rounded-xl"><div className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-leave-remaining">{sSummary.leaveBalance.remaining}</div><p className="text-xs text-muted-foreground">Pozostało</p></div>
+                    <div className="text-center p-3 bg-muted/50 rounded-xl"><div className="text-2xl font-bold" data-testid="text-leave-used">{sSummary.leaveBalance.used}</div><p className="text-xs text-muted-foreground">Wykorzystano</p></div>
+                    <div className="text-center p-3 bg-muted/50 rounded-xl"><div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400" data-testid="text-leave-pending">{sSummary.leaveBalance.pending}</div><p className="text-xs text-muted-foreground">Oczekujące</p></div>
+                    <div className="text-center p-3 bg-muted/50 rounded-xl"><div className="text-2xl font-bold text-muted-foreground" data-testid="text-leave-allocated">{sSummary.leaveBalance.allocated}</div><p className="text-xs text-muted-foreground">Przysługuje</p></div>
+                  </div>
+                </Card>
+              </div>
+            ) : <p className="text-center text-muted-foreground py-8">Brak danych</p>}
+          </div>
+        );
+      }
+
+      if (moreSubView === "leaves") {
+        return (
+          <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" onClick={() => setMoreSubView("menu")} data-testid="button-back-from-leaves"><ChevronLeft /></Button>
+                <h2 className="text-lg font-bold">Wnioski urlopowe</h2>
+              </div>
+              <Button size="sm" className="rounded-xl" onClick={() => setShowNewLeaveDialog(true)} data-testid="button-new-leave"><Plus className="h-4 w-4 mr-1" /> Nowy</Button>
+            </div>
+            {leaveRequestsQuery.isLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : !leaveRequestsQuery.data?.length ? (
+              <div className="flex flex-col items-center gap-3 py-12">
+                <CalendarDays className="h-10 w-10 text-muted-foreground" />
+                <p className="text-muted-foreground" data-testid="text-no-leaves">Brak wniosków urlopowych</p>
+                <Button onClick={() => setShowNewLeaveDialog(true)} data-testid="button-new-leave-empty"><Plus className="h-4 w-4 mr-2" /> Złóż wniosek</Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {leaveRequestsQuery.data.map((lr) => (
+                  <Card key={lr.id} className="p-4 rounded-2xl" data-testid={`card-leave-${lr.id}`}>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div><p className="font-medium text-sm">{leaveTypeLabel(lr.type)}</p><p className="text-xs text-muted-foreground">{formatDateShort(lr.startDate)} - {formatDateShort(lr.endDate)}</p></div>
+                      <div className="flex items-center gap-2"><span className="text-sm text-muted-foreground">{lr.days}d</span><LeaveStatusBadge status={lr.status} /></div>
+                    </div>
+                    {lr.comment && <p className="text-xs text-muted-foreground mt-1">{lr.comment}</p>}
+                  </Card>
+                ))}
+              </div>
+            )}
+            <NewLeaveDialog open={showNewLeaveDialog} onClose={() => setShowNewLeaveDialog(false)} onSubmit={(data) => createLeaveMutation.mutate(data)} isPending={createLeaveMutation.isPending} />
+          </div>
+        );
+      }
+
+      return (
+        <div className="max-w-lg mx-auto p-4 flex flex-col gap-3">
+          <h2 className="text-lg font-bold mb-2">Więcej</h2>
+          {[
+            { key: "schedule" as const, label: "Mój grafik", desc: "Zaplanowane zmiany", icon: Calendar },
+            { key: "summary" as const, label: "Podsumowanie", desc: "Godziny i urlopy", icon: BarChart3 },
+            { key: "leaves" as const, label: "Wnioski urlopowe", desc: "Złóż lub sprawdź wniosek", icon: CalendarDays },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <button key={item.key} onClick={() => setMoreSubView(item.key)} className="flex items-center gap-4 p-4 rounded-2xl bg-card border text-left hover:bg-muted/50 transition-colors w-full" data-testid={`button-more-${item.key}`}>
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><Icon className="h-5 w-5 text-primary" /></div>
+                <div className="flex-1"><p className="font-medium text-sm">{item.label}</p><p className="text-xs text-muted-foreground">{item.desc}</p></div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            );
+          })}
+          <button onClick={onLogout} className="flex items-center gap-4 p-4 rounded-2xl bg-card border text-left hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors w-full mt-4" data-testid="button-logout">
+            <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center"><LogOut className="h-5 w-5 text-red-600 dark:text-red-400" /></div>
+            <div className="flex-1"><p className="font-medium text-sm text-red-600 dark:text-red-400">Wyloguj się</p></div>
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="flex items-center justify-between gap-2 px-4 py-3 border-b sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <img src={logoImg} alt="Logo" className="h-7 w-auto rounded-md" />
+          <span className="font-semibold text-sm">RCP</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {(isWorking || isOnBreak) && (
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${isOnBreak ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"}`} data-testid="badge-work-status">
+              <span className={`h-1.5 w-1.5 rounded-full ${isOnBreak ? "bg-yellow-500" : "bg-green-500"} animate-pulse`} />
+              {isOnBreak ? "Przerwa" : "W pracy"}
+            </div>
+          )}
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-auto pb-20">
+        {renderTabContent()}
       </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-t safe-area-bottom" data-testid="nav-tab-bar">
+        <div className="flex items-center justify-around max-w-lg mx-auto">
+          {tabItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => { setActiveTab(item.key); if (item.key === "more") setMoreSubView("menu"); }}
+                className={`flex flex-col items-center gap-0.5 py-2 px-3 min-w-[56px] transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`}
+                data-testid={`tab-${item.key}`}
+              >
+                <Icon className={`h-5 w-5 ${isActive ? "text-primary" : ""}`} />
+                <span className="text-[10px] font-medium">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
