@@ -1359,6 +1359,51 @@ export function registerRecepcjaRoutes(app: Express) {
       res.status(204).send();
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
+
+  // ==================== RECEPCJA DAY VIEW (Tasks + Schedules + Workload) ====================
+  app.get('/api/recepcja/tasks/day', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { date } = req.query;
+      if (!date) return res.status(400).json({ message: 'date wymagany' });
+      const dateStr = String(date);
+
+      // Get all tasks for the day
+      const tasks = await db.select().from(employeeTasks)
+        .where(eq(employeeTasks.date, dateStr))
+        .orderBy(sql`start_time ASC`);
+
+      // Get work schedules for the day (etat employees)
+      const schedules = await db.select().from(workSchedules)
+        .where(eq(workSchedules.date, dateStr));
+
+      // Get all active employees
+      const allEmployees = await db.select().from(employees)
+        .where(sql`status = 'AKTYWNY'`);
+
+      // Compute hourly workload per employee (tasks today)
+      const workloadByEmployee: Record<number, { taskCount: number; totalMinutes: number }> = {};
+      for (const task of tasks) {
+        if (!workloadByEmployee[task.employeeId]) {
+          workloadByEmployee[task.employeeId] = { taskCount: 0, totalMinutes: 0 };
+        }
+        workloadByEmployee[task.employeeId].taskCount++;
+        if (task.startTime && task.endTime) {
+          const [sh, sm] = task.startTime.split(':').map(Number);
+          const [eh, em] = task.endTime.split(':').map(Number);
+          const mins = (eh * 60 + em) - (sh * 60 + sm);
+          if (mins > 0) workloadByEmployee[task.employeeId].totalMinutes += mins;
+        }
+      }
+
+      res.json({
+        date: dateStr,
+        tasks,
+        schedules,
+        employees: allEmployees,
+        workload: workloadByEmployee,
+      });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
 }
 
 // Seed Małgorzata's account on startup
