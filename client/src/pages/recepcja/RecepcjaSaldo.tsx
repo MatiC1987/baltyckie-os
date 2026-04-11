@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Wallet, Plus, Trash2, Edit, Loader2, Tag, Pencil, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Search, Filter, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -704,23 +704,35 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, incomeCategories, co
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{entry ? "Edytuj wpis" : "Dodaj wpis do salda"}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="flex items-center gap-2">
-            <Label className="shrink-0">Typ wpisu:</Label>
-            <div className="flex items-center border border-border rounded-md overflow-visible">
+      <DialogContent className="max-w-lg bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border-0 p-0 overflow-hidden">
+        <div className="px-6 pt-6 pb-2">
+          <DialogTitle className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+            {entry ? "Edytuj wpis" : "Dodaj wpis do salda"}
+          </DialogTitle>
+        </div>
+
+        <div className="px-6 pb-6 space-y-5 max-h-[70vh] overflow-y-auto">
+
+          {/* Segmented control — Przychód / Koszt */}
+          <div className="flex justify-center">
+            <div className="flex items-center bg-gray-100 dark:bg-neutral-800 rounded-full p-1 gap-1">
               <button
-                className={`px-3 py-1.5 text-sm font-medium transition-colors ${form.entryKind === "PRZYCHOD" ? "bg-green-600 text-white" : "hover:bg-muted"}`}
+                className={`px-5 py-1.5 text-sm font-semibold rounded-full transition-all duration-200 ${
+                  form.entryKind === "PRZYCHOD"
+                    ? "bg-white dark:bg-neutral-700 text-green-600 shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                }`}
                 onClick={() => u("entryKind", "PRZYCHOD")}
                 data-testid="toggle-new-przychod"
               >
                 Przychód
               </button>
               <button
-                className={`px-3 py-1.5 text-sm font-medium transition-colors ${form.entryKind === "KOSZT" ? "bg-red-600 text-white" : "hover:bg-muted"}`}
+                className={`px-5 py-1.5 text-sm font-semibold rounded-full transition-all duration-200 ${
+                  form.entryKind === "KOSZT"
+                    ? "bg-white dark:bg-neutral-700 text-red-500 shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                }`}
                 onClick={() => u("entryKind", "KOSZT")}
                 data-testid="toggle-new-koszt"
               >
@@ -728,19 +740,43 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, incomeCategories, co
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Data</Label>
-              <Input type="date" value={form.date} onChange={e => u("date", e.target.value)} data-testid="input-saldo-date" />
+
+          {/* Section A: Podstawowe info */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Podstawowe</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Data</label>
+                <Input
+                  type="date"
+                  value={form.date}
+                  onChange={e => u("date", e.target.value)}
+                  data-testid="input-saldo-date"
+                  className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Nazwa operacji</label>
+                <Input
+                  value={form.operationName}
+                  onChange={e => u("operationName", e.target.value)}
+                  placeholder={form.entryKind === "PRZYCHOD" ? "np. GRAND BALTIC 203" : "np. Zakup środków czystości"}
+                  data-testid="input-saldo-operation"
+                  className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
+          </div>
+
+          {/* Section B: Kategoria + Rezerwacja + Gość */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Szczegóły wpisu</p>
             <div className="space-y-1">
-              <Label>Nazwa operacji</Label>
-              <Input value={form.operationName} onChange={e => u("operationName", e.target.value)} placeholder={form.entryKind === "PRZYCHOD" ? "np. GRAND BALTIC 203" : "np. Zakup środków czystości"} data-testid="input-saldo-operation" />
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label>{form.entryKind === "KOSZT" ? "Kategoria kosztu" : "Kategoria przychodu"}</Label>
+              <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                {form.entryKind === "KOSZT" ? "Kategoria kosztu" : "Kategoria przychodu"}
+              </label>
               <Select value={form.category || "none"} onValueChange={v => u("category", v === "none" ? "" : v)}>
-                <SelectTrigger data-testid="select-saldo-cost-category">
+                <SelectTrigger data-testid="select-saldo-cost-category" className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm">
                   <SelectValue placeholder="Wybierz kategorię" />
                 </SelectTrigger>
                 <SelectContent>
@@ -751,77 +787,142 @@ function SaldoEntryDialog({ open, onClose, onSubmit, entry, incomeCategories, co
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Nr rezerwacji</Label>
-              <Input value={form.reservationNumber} onChange={e => handleReservationLookup(e.target.value)} data-testid="input-saldo-resnum" />
-            </div>
-            <div className="space-y-1">
-              <Label>Imię i nazwisko</Label>
-              <Input value={form.guestName} onChange={e => u("guestName", e.target.value)} data-testid="input-saldo-guest" />
-            </div>
-            <div className="space-y-1">
-              <Label>Sposób płatności</Label>
-              <Select value={form.paymentMethod || "none"} onValueChange={v => u("paymentMethod", v === "none" ? "" : v)}>
-                <SelectTrigger data-testid="select-saldo-payment">
-                  <SelectValue placeholder="Wybierz" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">-</SelectItem>
-                  <SelectItem value="GOTÓWKA">GOTÓWKA</SelectItem>
-                  <SelectItem value="KARTA">KARTA</SelectItem>
-                  <SelectItem value="BLIK">BLIK</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Suma (gotówka)</Label>
-              <Input type="number" step="0.01" value={form.cashAmount} onChange={e => u("cashAmount", e.target.value)} placeholder="0.00" data-testid="input-saldo-cash" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kwota kartą</Label>
-              <Input type="number" step="0.01" value={form.cardAmount} onChange={e => u("cardAmount", e.target.value)} placeholder="0.00" data-testid="input-saldo-card" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kod autoryzacji</Label>
-              <Input value={form.authCode} onChange={e => u("authCode", e.target.value)} data-testid="input-saldo-auth" />
-            </div>
-            <div className="space-y-1">
-              <Label>Uwagi</Label>
-              <Input value={form.notes} onChange={e => u("notes", e.target.value)} data-testid="input-saldo-notes" />
-            </div>
-            <div className="space-y-1">
-              <Label>Kasa fiskalna</Label>
-              <Select value={form.kasaFiskalna} onValueChange={v => u("kasaFiskalna", v)}>
-                <SelectTrigger data-testid="select-saldo-kf">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TAK">TAK</SelectItem>
-                  <SelectItem value="NIE">NIE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Faktura</Label>
-              <Select value={form.faktura} onValueChange={v => u("faktura", v)}>
-                <SelectTrigger data-testid="select-saldo-fv">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TAK">TAK</SelectItem>
-                  <SelectItem value="NIE">NIE</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Nr rezerwacji</label>
+                <Input
+                  value={form.reservationNumber}
+                  onChange={e => handleReservationLookup(e.target.value)}
+                  data-testid="input-saldo-resnum"
+                  className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Imię i nazwisko</label>
+                <Input
+                  value={form.guestName}
+                  onChange={e => u("guestName", e.target.value)}
+                  data-testid="input-saldo-guest"
+                  className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
           </div>
+
+          {/* Section C: Płatność */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Płatność</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Sposób płatności</label>
+                <Select value={form.paymentMethod || "none"} onValueChange={v => u("paymentMethod", v === "none" ? "" : v)}>
+                  <SelectTrigger data-testid="select-saldo-payment" className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm">
+                    <SelectValue placeholder="Wybierz" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">-</SelectItem>
+                    <SelectItem value="GOTÓWKA">GOTÓWKA</SelectItem>
+                    <SelectItem value="KARTA">KARTA</SelectItem>
+                    <SelectItem value="BLIK">BLIK</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Kod autoryzacji</label>
+                <Input
+                  value={form.authCode}
+                  onChange={e => u("authCode", e.target.value)}
+                  data-testid="input-saldo-auth"
+                  className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Suma (gotówka)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.cashAmount}
+                  onChange={e => u("cashAmount", e.target.value)}
+                  placeholder="0.00"
+                  data-testid="input-saldo-cash"
+                  className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Kwota kartą</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.cardAmount}
+                  onChange={e => u("cardAmount", e.target.value)}
+                  placeholder="0.00"
+                  data-testid="input-saldo-card"
+                  className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section D: Szczegóły dodatkowe */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Dodatkowe</p>
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Uwagi</label>
+              <Input
+                value={form.notes}
+                onChange={e => u("notes", e.target.value)}
+                data-testid="input-saldo-notes"
+                className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Kasa fiskalna</label>
+                <Select value={form.kasaFiskalna} onValueChange={v => u("kasaFiskalna", v)}>
+                  <SelectTrigger data-testid="select-saldo-kf" className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TAK">TAK</SelectItem>
+                    <SelectItem value="NIE">NIE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Faktura</label>
+                <Select value={form.faktura} onValueChange={v => u("faktura", v)}>
+                  <SelectTrigger data-testid="select-saldo-fv" className="bg-gray-50 dark:bg-neutral-800 border-gray-200 dark:border-neutral-700 rounded-xl text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TAK">TAK</SelectItem>
+                    <SelectItem value="NIE">NIE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Anuluj</Button>
-          <Button onClick={handleSubmit} disabled={isPending || !form.operationName.trim() || !form.date} data-testid="button-saldo-save">
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-gray-50 dark:bg-neutral-800/50 border-t border-gray-100 dark:border-neutral-800 flex items-center justify-between gap-3">
+          <button
+            onClick={onClose}
+            className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors px-2 py-1"
+          >
+            Anuluj
+          </button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isPending || !form.operationName.trim() || !form.date}
+            data-testid="button-saldo-save"
+            className="rounded-full px-6 font-semibold shadow-sm"
+          >
             {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
             {entry ? "Zapisz zmiany" : "Dodaj wpis"}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
