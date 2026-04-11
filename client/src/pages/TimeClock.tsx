@@ -474,11 +474,10 @@ function EmployeeDashboard({
           longitude: lng,
           accuracy,
         });
-        setGpsTrackingActive(true);
         lastSentRef.current = Date.now();
         return true;
-      } catch {
-        setGpsTrackingActive(false);
+      } catch (err) {
+        console.warn("[GPS] Błąd wysyłki lokalizacji na serwer:", err);
         return false;
       }
     };
@@ -510,6 +509,7 @@ function EmployeeDashboard({
             accuracy: pos.coords.accuracy,
           };
           setGpsCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setGpsTrackingActive(true);
           if (now - lastSentRef.current >= MIN_INTERVAL_MS) {
             sendToServer(entry.latitude, entry.longitude, entry.accuracy);
           } else {
@@ -546,7 +546,6 @@ function EmployeeDashboard({
       }
       document.removeEventListener("visibilitychange", handleVisibility);
       clearInterval(flushInterval);
-      setGpsTrackingActive(false);
     };
   }, [activeEntry?.id, activeEntry?.status]);
 
