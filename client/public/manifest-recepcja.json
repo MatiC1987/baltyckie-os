@@ -10,85 +10,85 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon-72.png",
+      "src": "/icon-recepcja-72.png",
       "sizes": "72x72",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-96.png",
+      "src": "/icon-recepcja-96.png",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-128.png",
+      "src": "/icon-recepcja-128.png",
       "sizes": "128x128",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-144.png",
+      "src": "/icon-recepcja-144.png",
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-192.png",
+      "src": "/icon-recepcja-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-384.png",
+      "src": "/icon-recepcja-384.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icon-recepcja-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-72.png",
+      "src": "/icon-recepcja-72.png",
       "sizes": "72x72",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-96.png",
+      "src": "/icon-recepcja-96.png",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-128.png",
+      "src": "/icon-recepcja-128.png",
       "sizes": "128x128",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-144.png",
+      "src": "/icon-recepcja-144.png",
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-192.png",
+      "src": "/icon-recepcja-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-384.png",
+      "src": "/icon-recepcja-384.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icon-recepcja-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -99,19 +99,19 @@
       "name": "Dashboard Recepcji",
       "short_name": "Dashboard",
       "url": "/recepcja",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-recepcja-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Rezerwacje",
       "short_name": "Rezerwacje",
       "url": "/recepcja/rezerwacje",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-recepcja-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Usterki",
       "short_name": "Usterki",
       "url": "/recepcja/usterki",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-recepcja-192.png", "sizes": "192x192" }]
     }
   ]
 }
