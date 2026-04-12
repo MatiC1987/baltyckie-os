@@ -11215,12 +11215,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         return res.status(400).json({ message: 'Brak współrzędnych' });
       }
 
-      const activeEntries = await db.select().from(timeEntries)
-        .where(and(
-          eq(timeEntries.employeeId, employeeId),
-          sql`${timeEntries.status} IN ('AKTYWNA', 'WARUNKOWA', 'PRZERWA')`
-        ));
-      const activeEntry = activeEntries[0];
+      const activeEntry = await storage.getActiveTimeEntry(employeeId);
       if (!activeEntry) return res.status(400).json({ message: 'Brak aktywnej zmiany' });
 
       const allLocations = await db.select().from(locations).where(
