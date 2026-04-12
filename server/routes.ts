@@ -11285,6 +11285,50 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     }
   });
 
+  app.get('/api/location-logs/per-employee', isAuthenticated, async (req, res) => {
+    try {
+      const { date } = req.query;
+      if (!date) return res.status(400).json({ message: 'Wymagane date' });
+
+      const dayStart = new Date(`${date}T00:00:00`);
+      const dayEnd = new Date(`${date}T23:59:59`);
+
+      const rows = await db
+        .select({
+          employeeId: locationLogs.employeeId,
+          firstName: employees.firstName,
+          lastName: employees.lastName,
+          logCount: sql<number>`cast(count(${locationLogs.id}) as int)`,
+          lastLat: sql<string>`(array_agg(${locationLogs.latitude} order by ${locationLogs.timestamp} desc))[1]`,
+          lastLng: sql<string>`(array_agg(${locationLogs.longitude} order by ${locationLogs.timestamp} desc))[1]`,
+          lastTimestamp: sql<string>`(array_agg(${locationLogs.timestamp} order by ${locationLogs.timestamp} desc))[1]`,
+          lastDistanceFromZone: sql<string | null>`(array_agg(${locationLogs.distanceFromZone} order by ${locationLogs.timestamp} desc))[1]`,
+        })
+        .from(locationLogs)
+        .innerJoin(employees, eq(locationLogs.employeeId, employees.id))
+        .where(and(
+          gte(locationLogs.timestamp, dayStart),
+          lte(locationLogs.timestamp, dayEnd),
+        ))
+        .groupBy(locationLogs.employeeId, employees.firstName, employees.lastName);
+
+      const result = rows.map(r => ({
+        employeeId: r.employeeId,
+        firstName: r.firstName,
+        lastName: r.lastName,
+        logCount: r.logCount,
+        lastLat: r.lastLat,
+        lastLng: r.lastLng,
+        lastTimestamp: r.lastTimestamp,
+        isOutsideZone: r.lastDistanceFromZone !== null && parseFloat(r.lastDistanceFromZone) > 0,
+      }));
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/location-logs/summary', isAuthenticated, async (req, res) => {
     try {
       const { date } = req.query;

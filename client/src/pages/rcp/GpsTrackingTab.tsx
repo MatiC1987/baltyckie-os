@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, MapPin, Navigation, Clock, AlertTriangle, CheckCircle } from "lucide-react";
+import { Loader2, MapPin, Clock, ChevronDown, ChevronUp, Navigation } from "lucide-react";
 import type { Employee } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import L from "leaflet";
@@ -29,9 +29,26 @@ interface GpsLocation {
   gpsRadius: number | null;
 }
 
+interface PerEmployeeData {
+  employeeId: number;
+  firstName: string;
+  lastName: string;
+  logCount: number;
+  lastLat: string;
+  lastLng: string;
+  lastTimestamp: string;
+  isOutsideZone: boolean;
+}
+
+function getInitials(firstName: string, lastName: string) {
+  return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase();
+}
+
 export default function GpsTrackingTab() {
-  const [selectedEmployee, setSelectedEmployee] = useState<string>("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showLogs, setShowLogs] = useState(false);
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -46,53 +63,71 @@ export default function GpsTrackingTab() {
     queryKey: ["/api/locations"],
   });
 
-  const { data: logs = [], isLoading } = useQuery<LocationLog[]>({
-    queryKey: ["/api/location-logs", selectedEmployee, date],
-    enabled: !!selectedEmployee && !!date,
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/location-logs?employeeId=${selectedEmployee}&date=${date}`);
-      return res.json();
-    },
-  });
-
-  const { data: summary } = useQuery<{ totalEmployees: number; totalLogs: number; outsideZone: number }>({
-    queryKey: ["/api/location-logs/summary", date],
+  const { data: perEmployee = [], isLoading: isLoadingPerEmployee } = useQuery<PerEmployeeData[]>({
+    queryKey: ["/api/location-logs/per-employee", date],
     enabled: !!date,
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/location-logs/summary?date=${date}`);
+      const res = await apiRequest("GET", `/api/location-logs/per-employee?date=${date}`);
       return res.json();
     },
   });
 
+  const { data: logs = [], isLoading: isLoadingLogs } = useQuery<LocationLog[]>({
+    queryKey: ["/api/location-logs", selectedEmployeeId, date],
+    enabled: !!selectedEmployeeId && !!date && showLogs,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/location-logs?employeeId=${selectedEmployeeId}&date=${date}`);
+      return res.json();
+    },
+  });
+
+  const { data: mapLogs = [], isLoading: isLoadingMapLogs } = useQuery<LocationLog[]>({
+    queryKey: ["/api/location-logs/map", selectedEmployeeId, date],
+    enabled: !!selectedEmployeeId && !!date,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/location-logs?employeeId=${selectedEmployeeId}&date=${date}`);
+      return res.json();
+    },
+  });
+
+  const selectedPerEmployee = perEmployee.find(p => p.employeeId === selectedEmployeeId) ?? null;
+
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    setShowLogs(false);
+  }, [selectedEmployeeId, date]);
 
-    const initMap = () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-      }
+  useEffect(() => {
+    if (!selectedEmployeeId || !mapContainerRef.current) return;
 
-      const map = L.map(mapContainerRef.current!, {
-        center: [54.35, 18.65],
-        zoom: 13,
-      });
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-      }).addTo(map);
-
-      mapRef.current = map;
-    };
-
-    initMap();
+    const map = L.map(mapContainerRef.current, {
+      center: [54.35, 18.65],
+      zoom: 13,
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap",
+    }).addTo(map);
+    mapRef.current = map;
 
     return () => {
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+      if (polylineRef.current) {
+        polylineRef.current.remove();
+        polylineRef.current = null;
+      }
+      circlesRef.current.forEach(c => c.remove());
+      circlesRef.current = [];
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [selectedEmployeeId]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -124,30 +159,30 @@ export default function GpsTrackingTab() {
       }
     });
 
-    if (logs.length === 0) return;
+    if (mapLogs.length === 0) return;
 
-    const points: [number, number][] = logs.map(l => [parseFloat(l.latitude), parseFloat(l.longitude)]);
+    const points: [number, number][] = mapLogs.map(l => [parseFloat(l.latitude), parseFloat(l.longitude)]);
 
-    logs.forEach((log, idx) => {
+    mapLogs.forEach((log, idx) => {
       const lat = parseFloat(log.latitude);
       const lng = parseFloat(log.longitude);
       const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
       const isInZone = dist !== null && dist <= 0;
       const time = new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+      const isLast = idx === mapLogs.length - 1;
 
       const iconHtml = `<div style="
-        width: 14px; height: 14px; border-radius: 50%;
+        width: ${isLast ? 18 : 14}px; height: ${isLast ? 18 : 14}px; border-radius: 50%;
         background: ${isInZone ? '#22c55e' : '#ef4444'};
-        border: 2px solid white;
+        border: ${isLast ? 3 : 2}px solid white;
         box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        ${idx === logs.length - 1 ? 'width: 18px; height: 18px; border: 3px solid white;' : ''}
       "></div>`;
 
       const icon = L.divIcon({
         html: iconHtml,
         className: "",
-        iconSize: [idx === logs.length - 1 ? 18 : 14, idx === logs.length - 1 ? 18 : 14],
-        iconAnchor: [idx === logs.length - 1 ? 9 : 7, idx === logs.length - 1 ? 9 : 7],
+        iconSize: [isLast ? 18 : 14, isLast ? 18 : 14],
+        iconAnchor: [isLast ? 9 : 7, isLast ? 9 : 7],
       });
 
       const marker = L.marker([lat, lng], { icon }).addTo(mapRef.current);
@@ -172,140 +207,193 @@ export default function GpsTrackingTab() {
     }
 
     mapRef.current.fitBounds(L.latLngBounds(points).pad(0.2));
-  }, [logs, locations]);
+  }, [mapLogs, locations]);
 
-  const inZoneCount = logs.filter(l => l.distanceFromZone && parseFloat(l.distanceFromZone) <= 0).length;
-  const outZoneCount = logs.filter(l => l.distanceFromZone && parseFloat(l.distanceFromZone) > 0).length;
+  useEffect(() => {
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, []);
+
+  const perEmployeeMap = new Map(perEmployee.map(p => [p.employeeId, p]));
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <Navigation className="h-4 w-4" />
-            Logów GPS dziś
-          </div>
-          <div className="text-2xl font-bold" data-testid="text-total-logs">{summary?.totalLogs ?? 0}</div>
-          <div className="text-xs text-muted-foreground">{summary?.totalEmployees ?? 0} pracowników</div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-1">
-            <CheckCircle className="h-4 w-4" />
-            W strefie
-          </div>
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-in-zone">{inZoneCount}</div>
-          <div className="text-xs text-muted-foreground">z {logs.length} logów wybranego pracownika</div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mb-1">
-            <AlertTriangle className="h-4 w-4" />
-            Poza strefą
-          </div>
-          <div className="text-2xl font-bold text-red-600 dark:text-red-400" data-testid="text-out-zone">{outZoneCount}</div>
-          {summary && summary.outsideZone > 0 && (
-            <div className="text-xs text-red-500">{summary.outsideZone} logów poza strefą ogółem</div>
-          )}
-        </Card>
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium text-muted-foreground">Data:</label>
+        <Input
+          type="date"
+          value={date}
+          onChange={e => {
+            setDate(e.target.value);
+            setSelectedEmployeeId(null);
+          }}
+          className="w-auto"
+          data-testid="input-gps-date"
+        />
+        {isLoadingPerEmployee && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div className="min-w-[200px]">
-            <label className="text-xs text-muted-foreground mb-1 block">Pracownik</label>
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger data-testid="select-employee-gps">
-                <SelectValue placeholder="Wybierz pracownika" />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map(emp => (
-                  <SelectItem key={emp.id} value={String(emp.id)}>
-                    {emp.firstName} {emp.lastName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Data</label>
-            <Input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className="w-auto"
-              data-testid="input-gps-date"
-            />
-          </div>
-        </div>
-      </Card>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {employees.map(emp => {
+          const data = perEmployeeMap.get(emp.id);
+          const hasLogs = !!data;
+          const isSelected = selectedEmployeeId === emp.id;
+          const isOutside = data?.isOutsideZone ?? false;
 
-      <Card className="overflow-hidden">
-        <div
-          ref={mapContainerRef}
-          className="h-[400px] w-full"
-          data-testid="map-gps-tracking"
-          style={{ zIndex: 1 }}
-        />
-      </Card>
-
-      {isLoading && (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {!isLoading && logs.length > 0 && (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="p-2 text-left">Czas</th>
-                <th className="p-2 text-left">Współrzędne</th>
-                <th className="p-2 text-right">Dokładność</th>
-                <th className="p-2 text-center">Status strefy</th>
-                <th className="p-2 text-right">Odległość</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => {
-                const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
-                const isIn = dist !== null && dist <= 0;
-                return (
-                  <tr key={log.id} className="border-b hover:bg-muted/30" data-testid={`row-gps-log-${log.id}`}>
-                    <td className="p-2">
+          return (
+            <Card
+              key={emp.id}
+              data-testid={`card-employee-gps-${emp.id}`}
+              onClick={() => hasLogs && setSelectedEmployeeId(isSelected ? null : emp.id)}
+              className={[
+                "p-3 transition-all",
+                hasLogs ? "cursor-pointer hover:shadow-md" : "opacity-50 cursor-not-allowed",
+                isSelected ? "ring-2 ring-primary shadow-md" : "",
+              ].join(" ")}
+            >
+              <div className="flex items-start gap-2">
+                <div className={[
+                  "flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white",
+                  !hasLogs ? "bg-gray-400" : isOutside ? "bg-red-500" : "bg-green-500",
+                ].join(" ")}>
+                  {getInitials(emp.firstName, emp.lastName)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-sm truncate">{emp.firstName} {emp.lastName}</div>
+                  <div className="mt-1">
+                    {!hasLogs ? (
+                      <Badge variant="secondary" className="text-xs">Brak logów</Badge>
+                    ) : isOutside ? (
+                      <Badge variant="destructive" className="text-xs">Poza strefą</Badge>
+                    ) : (
+                      <Badge className="text-xs bg-green-600 hover:bg-green-700">W strefie</Badge>
+                    )}
+                  </div>
+                  {data && (
+                    <div className="mt-1 text-xs text-muted-foreground space-y-0.5">
                       <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-muted-foreground" />
-                        {new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        <Navigation className="h-3 w-3" />
+                        {data.logCount} logów
                       </div>
-                    </td>
-                    <td className="p-2 font-mono text-xs">
-                      {parseFloat(log.latitude).toFixed(5)}, {parseFloat(log.longitude).toFixed(5)}
-                    </td>
-                    <td className="p-2 text-right">{parseFloat(log.accuracy).toFixed(1)}m</td>
-                    <td className="p-2 text-center">
-                      {dist !== null ? (
-                        <Badge variant={isIn ? "default" : "destructive"} className={isIn ? "bg-green-600" : ""}>
-                          {isIn ? "W strefie" : "Poza strefą"}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="p-2 text-right">
-                      {dist !== null ? (dist <= 0 ? "0m" : `${dist.toFixed(0)}m`) : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {new Date(data.lastTimestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {selectedEmployeeId && selectedPerEmployee && (
+        <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Trasa: {selectedPerEmployee.firstName} {selectedPerEmployee.lastName} — {new Date(date).toLocaleDateString("pl-PL")}
+            </h3>
+            {isLoadingMapLogs && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+          <Card className="overflow-hidden">
+            <div
+              ref={mapContainerRef}
+              className="h-[420px] w-full"
+              data-testid="map-gps-tracking"
+              style={{ zIndex: 1 }}
+            />
+          </Card>
+
+          {selectedPerEmployee.logCount > 0 && (
+            <Card className="p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  <span data-testid="text-log-count">{selectedPerEmployee.logCount} wpisów GPS</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowLogs(v => !v)}
+                  data-testid="button-toggle-logs"
+                >
+                  {showLogs ? (
+                    <><ChevronUp className="h-4 w-4 mr-1" />Ukryj</>
+                  ) : (
+                    <><ChevronDown className="h-4 w-4 mr-1" />Pokaż</>
+                  )}
+                </Button>
+              </div>
+
+              {showLogs && (
+                <div className="mt-3">
+                  {isLoadingLogs ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            <th className="p-2 text-left">Czas</th>
+                            <th className="p-2 text-left">Współrzędne</th>
+                            <th className="p-2 text-right">Dokładność</th>
+                            <th className="p-2 text-center">Status strefy</th>
+                            <th className="p-2 text-right">Odległość</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {logs.map(log => {
+                            const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
+                            const isIn = dist !== null && dist <= 0;
+                            return (
+                              <tr key={log.id} className="border-b hover:bg-muted/30" data-testid={`row-gps-log-${log.id}`}>
+                                <td className="p-2">
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3 text-muted-foreground" />
+                                    {new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                  </div>
+                                </td>
+                                <td className="p-2 font-mono text-xs">
+                                  {parseFloat(log.latitude).toFixed(5)}, {parseFloat(log.longitude).toFixed(5)}
+                                </td>
+                                <td className="p-2 text-right">{parseFloat(log.accuracy).toFixed(1)}m</td>
+                                <td className="p-2 text-center">
+                                  {dist !== null ? (
+                                    <Badge variant={isIn ? "default" : "destructive"} className={isIn ? "bg-green-600" : ""}>
+                                      {isIn ? "W strefie" : "Poza strefą"}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </td>
+                                <td className="p-2 text-right">
+                                  {dist !== null ? (dist <= 0 ? "0m" : `${dist.toFixed(0)}m`) : "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+        </>
       )}
 
-      {!isLoading && selectedEmployee && logs.length === 0 && (
-        <Card className="p-8 text-center">
-          <MapPin className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          <p className="text-muted-foreground" data-testid="text-no-gps-logs">Brak logów GPS dla wybranego pracownika w tym dniu</p>
-        </Card>
+      {!selectedEmployeeId && !isLoadingPerEmployee && employees.length > 0 && (
+        <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-select-employee-hint">
+          Kliknij kafelek pracownika, aby zobaczyć jego trasę GPS
+        </p>
       )}
     </div>
   );

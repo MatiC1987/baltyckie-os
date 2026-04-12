@@ -494,7 +494,8 @@ function EmployeeDashboard({
       }
     };
 
-    const MIN_INTERVAL_MS = 25000;
+    // Wysyłamy GPS co 2 minuty — dobra granularność (~30 punktów/zmianę), mniejsze obciążenie serwera
+    const MIN_INTERVAL_MS = 120000;
 
     const startWatch = () => {
       if (watchIdRef.current !== null) {
