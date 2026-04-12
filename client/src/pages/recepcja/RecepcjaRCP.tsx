@@ -79,17 +79,54 @@ export default function RecepcjaRCP() {
 
 function RCPDashboard() {
   const today = new Date().toISOString().slice(0, 10);
-  const { data: employees = [] } = useQuery({
+  const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
+
+  const { data: employees = [] } = useQuery<any[]>({
     queryKey: ["/api/recepcja/rcp/employees"],
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees"); return r.json(); },
   });
-  const { data: entries = [] } = useQuery({
+  const { data: entries = [] } = useQuery<any[]>({
     queryKey: [`/api/recepcja/rcp/time-entries?date=${today}`],
     queryFn: async () => { const r = await recepcjaFetch("GET", `/api/recepcja/rcp/time-entries?date=${today}`); return r.json(); },
+  });
+  const { data: perEmployee = [] } = useQuery<PerEmployeeGpsData[]>({
+    queryKey: ["/api/recepcja/rcp/location-logs/per-employee", today],
+    queryFn: async () => {
+      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/location-logs/per-employee?date=${today}`);
+      return r.json();
+    },
   });
 
   const working = entries.filter((e: any) => e.clockIn && !e.clockOut);
   const onBreak = entries.filter((e: any) => e.breakStart && !e.breakEnd);
+  const gpsDataMap = new Map(perEmployee.map(d => [d.employeeId, d]));
+  const selectedEntry = selectedEmployee ? entries.find((e: any) => e.employeeId === selectedEmployee.id) : null;
+
+  const getStatus = (emp: any) => {
+    const entry = entries.find((e: any) => e.employeeId === emp.id);
+    if (!entry || !entry.clockIn) return { label: "Nieobecny", variant: "secondary" as const, green: false };
+    if (entry.clockOut) return { label: "Zakończył", variant: "secondary" as const, green: false };
+    if (entry.breakStart && !entry.breakEnd) return { label: "Przerwa", variant: "outline" as const, green: false };
+    return { label: "Pracuje", variant: "default" as const, green: true };
+  };
+
+  const fmt = (ts: string | null) => {
+    if (!ts) return "—";
+    return new Date(ts).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const calcDuration = (entry: any) => {
+    if (!entry?.clockIn) return "—";
+    const start = new Date(entry.clockIn).getTime();
+    const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now();
+    const breakMs = (entry.breakStart && entry.breakEnd)
+      ? new Date(entry.breakEnd).getTime() - new Date(entry.breakStart).getTime()
+      : 0;
+    const diffMs = Math.max(0, end - start - breakMs);
+    const h = Math.floor(diffMs / 3600000);
+    const m = Math.floor((diffMs % 3600000) / 60000);
+    return `${h}h ${m}min`;
+  };
 
   return (
     <div className="space-y-4">
@@ -98,37 +135,119 @@ function RCPDashboard() {
         <Card className="p-4"><div className="text-2xl font-bold text-orange-600">{onBreak.length}</div><div className="text-sm text-muted-foreground">Na przerwie</div></Card>
         <Card className="p-4"><div className="text-2xl font-bold">{employees.length}</div><div className="text-sm text-muted-foreground">Pracowników</div></Card>
       </div>
-      <Card className="p-4">
-        <h3 className="font-semibold mb-2">Dzisiejsze wpisy</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="p-2 text-left">Pracownik</th>
-              <th className="p-2 text-left">Wejście</th>
-              <th className="p-2 text-left">Wyjście</th>
-              <th className="p-2 text-center">Status</th>
-            </tr></thead>
-            <tbody>
-              {entries.map((e: any) => {
-                const emp = employees.find((em: any) => em.id === e.employeeId);
-                return (
-                  <tr key={e.id} className="border-b">
-                    <td className="p-2">{emp ? `${emp.firstName} ${emp.lastName}` : `#${e.employeeId}`}</td>
-                    <td className="p-2">{e.clockIn ? new Date(e.clockIn).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                    <td className="p-2">{e.clockOut ? new Date(e.clockOut).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                    <td className="p-2 text-center">
-                      <Badge variant={e.clockOut ? 'secondary' : e.breakStart && !e.breakEnd ? 'outline' : 'default'}>
-                        {e.clockOut ? 'Zakończone' : e.breakStart && !e.breakEnd ? 'Przerwa' : 'Pracuje'}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {employees.map((emp: any) => {
+          const status = getStatus(emp);
+          const gps = gpsDataMap.get(emp.id);
+          return (
+            <Card
+              key={emp.id}
+              className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={() => setSelectedEmployee(emp)}
+              data-testid={`card-employee-${emp.id}`}
+            >
+              <div className="flex items-start gap-2">
+                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm flex-shrink-0">
+                  {emp.firstName?.[0]}{emp.lastName?.[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{emp.firstName} {emp.lastName}</div>
+                  <div className="text-xs text-muted-foreground truncate">{emp.position}</div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    <Badge variant={status.variant} className={`text-xs ${status.green ? "bg-green-600" : ""}`}>
+                      {status.label}
+                    </Badge>
+                    {gps ? (
+                      <Badge
+                        variant={gps.isOutsideZone ? "destructive" : "outline"}
+                        className={`text-xs ${!gps.isOutsideZone ? "border-green-600 text-green-600" : ""}`}
+                      >
+                        {gps.isOutsideZone ? "Poza strefą" : "W strefie"}
                       </Badge>
-                    </td>
-                  </tr>
-                );
-              })}
-              {entries.length === 0 && <tr><td colSpan={4} className="p-4 text-center text-muted-foreground">Brak wpisów</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Brak GPS</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+        {employees.length === 0 && (
+          <div className="col-span-2 sm:col-span-3 p-8 text-center text-muted-foreground">
+            <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>Brak pracowników</p>
+          </div>
+        )}
+      </div>
+
+      <Sheet open={!!selectedEmployee} onOpenChange={(open) => !open && setSelectedEmployee(null)}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="sheet-employee-detail">
+          <SheetHeader>
+            <SheetTitle>
+              {selectedEmployee?.firstName} {selectedEmployee?.lastName}
+              <span className="text-muted-foreground font-normal text-sm ml-2">
+                — {new Date(today).toLocaleDateString("pl-PL", { day: "numeric", month: "long", year: "numeric" })}
+              </span>
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="mt-5 space-y-6">
+            <div>
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" /> Wpis dnia
+              </h4>
+              {selectedEntry ? (
+                <div className="space-y-0 text-sm border rounded-md divide-y">
+                  <div className="flex justify-between px-3 py-2">
+                    <span className="text-muted-foreground">Wejście</span>
+                    <span className="font-medium">{fmt(selectedEntry.clockIn)}</span>
+                  </div>
+                  {selectedEntry.breakStart && (
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Przerwa</span>
+                      <span className="font-medium">
+                        {fmt(selectedEntry.breakStart)} – {selectedEntry.breakEnd ? fmt(selectedEntry.breakEnd) : "w trakcie"}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between px-3 py-2">
+                    <span className="text-muted-foreground">Wyjście</span>
+                    <span className="font-medium">{fmt(selectedEntry.clockOut)}</span>
+                  </div>
+                  <div className="flex justify-between px-3 py-2">
+                    <span className="text-muted-foreground">Czas pracy</span>
+                    <span className="font-medium">{calcDuration(selectedEntry)}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2">
+                    <span className="text-muted-foreground">Status</span>
+                    <Badge
+                      variant={selectedEntry.clockOut ? "secondary" : (selectedEntry.breakStart && !selectedEntry.breakEnd) ? "outline" : "default"}
+                      className={!selectedEntry.clockOut && !(selectedEntry.breakStart && !selectedEntry.breakEnd) ? "bg-green-600" : ""}
+                    >
+                      {selectedEntry.clockOut ? "Zakończone" : (selectedEntry.breakStart && !selectedEntry.breakEnd) ? "Na przerwie" : "Pracuje"}
+                    </Badge>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Brak wpisu na dziś</p>
+              )}
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-primary" /> Mapa GPS
+              </h4>
+              {selectedEmployee && (
+                <div className="rounded-md overflow-hidden border">
+                  <EmployeeMapPanel key={selectedEmployee.id} employeeId={selectedEmployee.id} date={today} />
+                </div>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -780,22 +899,23 @@ interface LocationLog {
   locationName?: string;
 }
 
-function RCPGpsTracking() {
-  const [selectedEmployee, setSelectedEmployee] = useState<string>("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const mapContainerRef = useRef<HTMLDivElement>(null);
+interface PerEmployeeGpsData {
+  employeeId: number;
+  firstName: string;
+  lastName: string;
+  logCount: number;
+  lastLat: string | null;
+  lastLng: string | null;
+  lastTimestamp: string | null;
+  isOutsideZone: boolean;
+}
+
+function EmployeeMapPanel({ employeeId, date }: { employeeId: number; date: string }) {
+  const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<any>(null);
   const circlesRef = useRef<any[]>([]);
-
-  const { data: employees = [] } = useQuery<any[]>({
-    queryKey: ["/api/recepcja/rcp/employees"],
-    queryFn: async () => {
-      const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees");
-      return r.json();
-    },
-  });
 
   const { data: rcpLocations = [] } = useQuery<any[]>({
     queryKey: ["/api/recepcja/rcp/locations"],
@@ -806,59 +926,45 @@ function RCPGpsTracking() {
   });
 
   const { data: logs = [], isLoading } = useQuery<LocationLog[]>({
-    queryKey: ["/api/recepcja/rcp/location-logs", selectedEmployee, date],
-    enabled: !!selectedEmployee && !!date,
+    queryKey: ["/api/recepcja/rcp/location-logs", employeeId, date],
     queryFn: async () => {
-      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/location-logs?employeeId=${selectedEmployee}&date=${date}`);
-      if (!r.ok) throw new Error((await r.json()).message || "Błąd pobierania logów GPS");
-      return r.json();
-    },
-  });
-
-  const { data: summary } = useQuery<{ totalEmployees: number; totalLogs: number; outsideZone: number }>({
-    queryKey: ["/api/recepcja/rcp/location-logs/summary", date],
-    enabled: !!date,
-    queryFn: async () => {
-      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/location-logs/summary?date=${date}`);
-      if (!r.ok) throw new Error((await r.json()).message || "Błąd pobierania podsumowania GPS");
+      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/location-logs?employeeId=${employeeId}&date=${date}`);
       return r.json();
     },
   });
 
   useEffect(() => {
-    if (!mapContainerRef.current) return;
-    if (mapRef.current) mapRef.current.remove();
-
-    const map = L.map(mapContainerRef.current!, { center: [54.35, 18.65], zoom: 13 });
+    if (!mapDivRef.current) return;
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    const map = L.map(mapDivRef.current, { center: [54.35, 18.65], zoom: 13 });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
     mapRef.current = map;
-
+    setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 350);
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
   }, []);
 
   useEffect(() => {
     if (!mapRef.current) return;
-
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
+    markersRef.current.forEach(m => m.remove()); markersRef.current = [];
     if (polylineRef.current) { polylineRef.current.remove(); polylineRef.current = null; }
-    circlesRef.current.forEach(c => c.remove());
-    circlesRef.current = [];
+    circlesRef.current.forEach(c => c.remove()); circlesRef.current = [];
 
     rcpLocations.forEach((loc: any) => {
       if (loc.latitude && loc.longitude && loc.gpsRadius) {
         const circle = L.circle([parseFloat(loc.latitude), parseFloat(loc.longitude)], {
           radius: loc.gpsRadius, color: "#3b82f6", fillColor: "#3b82f680", fillOpacity: 0.15, weight: 2, dashArray: "5,5",
         }).addTo(mapRef.current);
-        circle.bindTooltip(loc.name, { permanent: false });
+        circle.bindTooltip(loc.name);
         circlesRef.current.push(circle);
       }
     });
 
-    if (logs.length === 0) return;
+    if (logs.length === 0) {
+      mapRef.current.setView([54.35, 18.65], 13);
+      return;
+    }
 
     const points: [number, number][] = logs.map(l => [parseFloat(l.latitude), parseFloat(l.longitude)]);
-
     logs.forEach((log, idx) => {
       const lat = parseFloat(log.latitude);
       const lng = parseFloat(log.longitude);
@@ -866,138 +972,214 @@ function RCPGpsTracking() {
       const isInZone = dist !== null && dist <= 0;
       const time = new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
       const isLast = idx === logs.length - 1;
-
-      const iconHtml = `<div style="width:${isLast ? 18 : 14}px;height:${isLast ? 18 : 14}px;border-radius:50%;background:${isInZone ? '#22c55e' : '#ef4444'};border:${isLast ? 3 : 2}px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
-      const icon = L.divIcon({ html: iconHtml, className: "", iconSize: [isLast ? 18 : 14, isLast ? 18 : 14], iconAnchor: [isLast ? 9 : 7, isLast ? 9 : 7] });
-
+      const iconHtml = `<div style="width:${isLast ? 18 : 12}px;height:${isLast ? 18 : 12}px;border-radius:50%;background:${isInZone ? '#22c55e' : '#ef4444'};border:${isLast ? 3 : 2}px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+      const icon = L.divIcon({ html: iconHtml, className: "", iconSize: [isLast ? 18 : 12, isLast ? 18 : 12], iconAnchor: [isLast ? 9 : 6, isLast ? 9 : 6] });
       const marker = L.marker([lat, lng], { icon }).addTo(mapRef.current);
       const acc = log.accuracy ? parseFloat(log.accuracy) : null;
       const accStr = acc !== null && isFinite(acc) ? `${acc.toFixed(1)}m` : '—';
-      marker.bindPopup(`<div style="font-size:13px"><b>${time}</b><br/>Dokładność: ${accStr}<br/>${dist !== null ? `Odległość od strefy: ${dist <= 0 ? '<span style="color:green">W strefie</span>' : `<span style="color:red">${dist.toFixed(0)}m</span>`}` : 'Brak strefy'}${log.locationName ? `<br/>Lokalizacja: ${log.locationName}` : ''}</div>`);
+      marker.bindPopup(`<div style="font-size:12px"><b>${time}</b><br/>Dokładność: ${accStr}<br/>${dist !== null ? (dist <= 0 ? '<span style="color:green">W strefie</span>' : `<span style="color:red">${dist.toFixed(0)}m poza strefą</span>`) : "Brak strefy"}${log.locationName ? `<br/>${log.locationName}` : ""}</div>`);
       markersRef.current.push(marker);
     });
-
     if (points.length > 1) {
       polylineRef.current = L.polyline(points, { color: "#6366f1", weight: 2, opacity: 0.6, dashArray: "6,4" }).addTo(mapRef.current);
     }
-
     mapRef.current.fitBounds(L.latLngBounds(points).pad(0.2));
   }, [logs, rcpLocations]);
 
-  const inZoneCount = logs.filter(l => l.distanceFromZone && parseFloat(l.distanceFromZone) <= 0).length;
-  const outZoneCount = logs.filter(l => l.distanceFromZone && parseFloat(l.distanceFromZone) > 0).length;
+  return (
+    <div>
+      {isLoading && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      <div ref={mapDivRef} className="h-[300px] w-full" data-testid={`map-employee-${employeeId}`} style={{ zIndex: 1 }} />
+      {!isLoading && logs.length === 0 && (
+        <div className="flex flex-col items-center py-6 text-muted-foreground">
+          <MapPin className="h-6 w-6 mb-2 opacity-50" />
+          <p className="text-sm">Brak danych GPS na dziś</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RCPGpsTracking() {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
+
+  const { data: employees = [] } = useQuery<any[]>({
+    queryKey: ["/api/recepcja/rcp/employees"],
+    queryFn: async () => {
+      const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees");
+      return r.json();
+    },
+  });
+
+  const { data: perEmployee = [] } = useQuery<PerEmployeeGpsData[]>({
+    queryKey: ["/api/recepcja/rcp/location-logs/per-employee", date],
+    queryFn: async () => {
+      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/location-logs/per-employee?date=${date}`);
+      return r.json();
+    },
+  });
+
+  const { data: logs = [], isLoading: logsLoading } = useQuery<LocationLog[]>({
+    queryKey: ["/api/recepcja/rcp/location-logs", selectedEmployeeId, date],
+    enabled: !!selectedEmployeeId,
+    queryFn: async () => {
+      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/location-logs?employeeId=${selectedEmployeeId}&date=${date}`);
+      if (!r.ok) throw new Error((await r.json()).message || "Błąd pobierania logów GPS");
+      return r.json();
+    },
+  });
+
+  useEffect(() => { setShowLogs(false); }, [selectedEmployeeId, date]);
+
+  const gpsDataMap = new Map(perEmployee.map(d => [d.employeeId, d]));
+
+  const formatLastTime = (ts: string | null) => {
+    if (!ts) return null;
+    return new Date(ts).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+  };
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <Navigation className="h-4 w-4" />
-            Logów GPS dziś
-          </div>
-          <div className="text-2xl font-bold" data-testid="text-recepcja-total-logs">{summary?.totalLogs ?? 0}</div>
-          <div className="text-xs text-muted-foreground">{summary?.totalEmployees ?? 0} pracowników</div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-1">
-            <CheckCircle className="h-4 w-4" />
-            W strefie
-          </div>
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-recepcja-in-zone">{inZoneCount}</div>
-          <div className="text-xs text-muted-foreground">z {logs.length} logów wybranego pracownika</div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mb-1">
-            <AlertTriangle className="h-4 w-4" />
-            Poza strefą
-          </div>
-          <div className="text-2xl font-bold text-red-600 dark:text-red-400" data-testid="text-recepcja-out-zone">{outZoneCount}</div>
-          {summary && summary.outsideZone > 0 && (
-            <div className="text-xs text-red-500">{summary.outsideZone} logów poza strefą ogółem</div>
-          )}
-        </Card>
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium whitespace-nowrap">Data:</label>
+        <Input
+          type="date"
+          value={date}
+          onChange={e => { setDate(e.target.value); setSelectedEmployeeId(null); }}
+          className="w-auto"
+          data-testid="input-recepcja-gps-date"
+        />
       </div>
 
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div className="min-w-[200px]">
-            <label className="text-xs text-muted-foreground mb-1 block">Pracownik</label>
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger data-testid="select-recepcja-employee-gps">
-                <SelectValue placeholder="Wybierz pracownika" />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map((emp: any) => (
-                  <SelectItem key={emp.id} value={String(emp.id)}>
-                    {emp.firstName} {emp.lastName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Data</label>
-            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-auto" data-testid="input-recepcja-gps-date" />
-          </div>
-        </div>
-      </Card>
-
-      <Card className="overflow-hidden">
-        <div ref={mapContainerRef} className="h-[400px] w-full" data-testid="map-recepcja-gps-tracking" style={{ zIndex: 1 }} />
-      </Card>
-
-      {isLoading && (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {!isLoading && logs.length > 0 && (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="p-2 text-left">Czas</th>
-              <th className="p-2 text-left">Współrzędne</th>
-              <th className="p-2 text-right">Dokładność</th>
-              <th className="p-2 text-center">Status strefy</th>
-              <th className="p-2 text-right">Odległość</th>
-            </tr></thead>
-            <tbody>
-              {logs.map((log) => {
-                const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
-                const isIn = dist !== null && dist <= 0;
-                return (
-                  <tr key={log.id} className="border-b hover:bg-muted/30" data-testid={`row-recepcja-gps-log-${log.id}`}>
-                    <td className="p-2">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-muted-foreground" />
-                        {new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {employees.map((emp: any) => {
+          const gps = gpsDataMap.get(emp.id);
+          const isSelected = selectedEmployeeId === emp.id;
+          const hasGps = !!gps;
+          return (
+            <Card
+              key={emp.id}
+              className={`p-3 transition-colors ${hasGps ? "cursor-pointer hover:bg-muted/50" : "opacity-50"} ${isSelected ? "ring-2 ring-primary" : ""}`}
+              onClick={() => hasGps && setSelectedEmployeeId(isSelected ? null : emp.id)}
+              data-testid={`card-gps-employee-${emp.id}`}
+            >
+              <div className="flex items-start gap-2">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${hasGps ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                  {emp.firstName?.[0]}{emp.lastName?.[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{emp.firstName} {emp.lastName}</div>
+                  {hasGps ? (
+                    <>
+                      <Badge
+                        variant={gps.isOutsideZone ? "destructive" : "outline"}
+                        className={`text-xs mt-1 ${!gps.isOutsideZone ? "border-green-600 text-green-600" : ""}`}
+                      >
+                        {gps.isOutsideZone ? "Poza strefą" : "W strefie"}
+                      </Badge>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {gps.logCount} logów · {formatLastTime(gps.lastTimestamp)}
                       </div>
-                    </td>
-                    <td className="p-2 font-mono text-xs">
-                      {parseFloat(log.latitude).toFixed(5)}, {parseFloat(log.longitude).toFixed(5)}
-                    </td>
-                    <td className="p-2 text-right">{log.accuracy && isFinite(parseFloat(log.accuracy)) ? `${parseFloat(log.accuracy).toFixed(1)}m` : '—'}</td>
-                    <td className="p-2 text-center">
-                      {dist !== null ? (
-                        <Badge variant={isIn ? "default" : "destructive"} className={isIn ? "bg-green-600" : ""}>
-                          {isIn ? "W strefie" : "Poza strefą"}
-                        </Badge>
-                      ) : <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="p-2 text-right">{dist !== null ? (dist <= 0 ? "0m" : `${dist.toFixed(0)}m`) : "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </>
+                  ) : (
+                    <div className="text-xs text-muted-foreground mt-1">Brak logów GPS</div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+        {employees.length === 0 && (
+          <div className="col-span-2 sm:col-span-3 p-8 text-center text-muted-foreground">Brak pracowników</div>
+        )}
+      </div>
+
+      {selectedEmployeeId ? (
+        <Card className="overflow-hidden">
+          <EmployeeMapPanel key={`${selectedEmployeeId}-${date}`} employeeId={selectedEmployeeId} date={date} />
+        </Card>
+      ) : (
+        <Card className="p-8 text-center">
+          <Navigation className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+          <p className="text-muted-foreground text-sm">Wybierz pracownika z GPS, aby zobaczyć jego trasę</p>
         </Card>
       )}
 
-      {!isLoading && selectedEmployee && logs.length === 0 && (
-        <Card className="p-8 text-center">
-          <MapPin className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          <p className="text-muted-foreground" data-testid="text-recepcja-no-gps-logs">Brak logów GPS dla wybranego pracownika w tym dniu</p>
+      {selectedEmployeeId && (
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-sm flex items-center gap-2">
+              <Navigation className="h-4 w-4 text-primary" />
+              Logi GPS
+              {logs.length > 0 && <Badge variant="outline" className="text-xs">{logs.length}</Badge>}
+            </h4>
+            {!showLogs && logs.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowLogs(true)} data-testid="button-show-gps-logs">
+                Pokaż
+              </Button>
+            )}
+            {showLogs && (
+              <Button variant="ghost" size="sm" onClick={() => setShowLogs(false)}>
+                Ukryj
+              </Button>
+            )}
+          </div>
+
+          {logsLoading && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {!logsLoading && logs.length === 0 && (
+            <p className="text-sm text-muted-foreground" data-testid="text-recepcja-no-gps-logs">
+              Brak logów GPS dla wybranego pracownika w tym dniu
+            </p>
+          )}
+
+          {showLogs && !logsLoading && logs.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b bg-muted/50">
+                  <th className="p-2 text-left">Czas</th>
+                  <th className="p-2 text-left">Współrzędne</th>
+                  <th className="p-2 text-right">Dokładność</th>
+                  <th className="p-2 text-center">Status</th>
+                  <th className="p-2 text-right">Odległość</th>
+                </tr></thead>
+                <tbody>
+                  {logs.map((log) => {
+                    const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
+                    const isIn = dist !== null && dist <= 0;
+                    return (
+                      <tr key={log.id} className="border-b hover:bg-muted/30" data-testid={`row-recepcja-gps-log-${log.id}`}>
+                        <td className="p-2 whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </td>
+                        <td className="p-2 font-mono text-xs">
+                          {parseFloat(log.latitude).toFixed(5)}, {parseFloat(log.longitude).toFixed(5)}
+                        </td>
+                        <td className="p-2 text-right">{log.accuracy && isFinite(parseFloat(log.accuracy)) ? `${parseFloat(log.accuracy).toFixed(1)}m` : '—'}</td>
+                        <td className="p-2 text-center">
+                          {dist !== null ? (
+                            <Badge variant={isIn ? "default" : "destructive"} className={isIn ? "bg-green-600" : ""}>
+                              {isIn ? "W strefie" : "Poza strefą"}
+                            </Badge>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="p-2 text-right">{dist !== null ? (dist <= 0 ? "0m" : `${dist.toFixed(0)}m`) : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
     </div>

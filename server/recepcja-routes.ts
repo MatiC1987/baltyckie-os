@@ -815,6 +815,56 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.get('/api/recepcja/rcp/location-logs/per-employee', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { date } = req.query;
+      if (!date) return res.status(400).json({ message: 'Wymagane date' });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ message: 'Nieprawidłowy format daty (YYYY-MM-DD)' });
+
+      const dayStart = new Date(`${date}T00:00:00`);
+      const dayEnd = new Date(`${date}T23:59:59`);
+      if (isNaN(dayStart.getTime())) return res.status(400).json({ message: 'Nieprawidłowa data' });
+
+      const allLogs = await db.select({
+        log: locationLogs,
+        firstName: employees.firstName,
+        lastName: employees.lastName,
+      }).from(locationLogs)
+        .leftJoin(employees, eq(locationLogs.employeeId, employees.id))
+        .where(and(
+          gte(locationLogs.timestamp, dayStart),
+          lte(locationLogs.timestamp, dayEnd),
+        ))
+        .orderBy(locationLogs.timestamp);
+
+      const byEmployee = new Map<number, any>();
+      for (const row of allLogs) {
+        const empId = row.log.employeeId;
+        if (!byEmployee.has(empId)) {
+          byEmployee.set(empId, {
+            employeeId: empId,
+            firstName: row.firstName || '',
+            lastName: row.lastName || '',
+            logCount: 0,
+            lastLat: null,
+            lastLng: null,
+            lastTimestamp: null,
+            isOutsideZone: false,
+          });
+        }
+        const entry = byEmployee.get(empId);
+        entry.logCount++;
+        entry.lastLat = row.log.latitude;
+        entry.lastLng = row.log.longitude;
+        entry.lastTimestamp = row.log.timestamp;
+        const dist = row.log.distanceFromZone ? parseFloat(row.log.distanceFromZone) : null;
+        entry.isOutsideZone = dist !== null && dist > 0;
+      }
+
+      res.json(Array.from(byEmployee.values()));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get('/api/recepcja/rcp/employees-pins', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const emps = await storage.getEmployees();
