@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -117,6 +117,98 @@ function EmployeeAvatar({ emp }: { emp: Employee }) {
   );
 }
 
+function EmployeeGpsPanel({ employeeId, date }: { employeeId: number; date: string }) {
+  const mapDivRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<any>(null);
+  const circlesRef = useRef<any[]>([]);
+
+  const { data: locations = [] } = useQuery<any[]>({ queryKey: ["/api/locations"] });
+
+  const { data: logs = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/location-logs", employeeId, date],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/location-logs?employeeId=${employeeId}&date=${date}`);
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (!mapDivRef.current) return;
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    const map = L.map(mapDivRef.current, { center: [54.35, 18.65], zoom: 13 });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
+    mapRef.current = map;
+    setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 350);
+    return () => {
+      markersRef.current.forEach(m => m.remove()); markersRef.current = [];
+      if (polylineRef.current) { polylineRef.current.remove(); polylineRef.current = null; }
+      circlesRef.current.forEach(c => c.remove()); circlesRef.current = [];
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    markersRef.current.forEach(m => m.remove()); markersRef.current = [];
+    if (polylineRef.current) { polylineRef.current.remove(); polylineRef.current = null; }
+    circlesRef.current.forEach(c => c.remove()); circlesRef.current = [];
+
+    locations.forEach((loc: any) => {
+      if (loc.latitude && loc.longitude && loc.gpsRadius) {
+        const circle = L.circle(
+          [parseFloat(loc.latitude), parseFloat(loc.longitude)],
+          { radius: loc.gpsRadius, color: "#3b82f6", fillColor: "#3b82f680", fillOpacity: 0.15, weight: 2, dashArray: "5,5" }
+        ).addTo(mapRef.current);
+        circle.bindTooltip(loc.name);
+        circlesRef.current.push(circle);
+      }
+    });
+
+    if (logs.length === 0) {
+      mapRef.current.setView([54.35, 18.65], 13);
+      return;
+    }
+
+    const points: [number, number][] = logs.map((l: any) => [parseFloat(l.latitude), parseFloat(l.longitude)]);
+    logs.forEach((log: any, idx: number) => {
+      const lat = parseFloat(log.latitude);
+      const lng = parseFloat(log.longitude);
+      const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
+      const isInZone = dist !== null && dist <= 0;
+      const time = new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+      const isLast = idx === logs.length - 1;
+      const iconHtml = `<div style="width:${isLast ? 18 : 12}px;height:${isLast ? 18 : 12}px;border-radius:50%;background:${isInZone ? '#22c55e' : '#ef4444'};border:${isLast ? 3 : 2}px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+      const icon = L.divIcon({ html: iconHtml, className: "", iconSize: [isLast ? 18 : 12, isLast ? 18 : 12], iconAnchor: [isLast ? 9 : 6, isLast ? 9 : 6] });
+      const marker = L.marker([lat, lng], { icon }).addTo(mapRef.current);
+      marker.bindPopup(`<div style="font-size:12px"><b>${time}</b><br/>${dist !== null ? (dist <= 0 ? '<span style="color:green">W strefie</span>' : `<span style="color:red">${dist.toFixed(0)}m poza strefą</span>`) : "Brak strefy"}${log.locationName ? `<br/>${log.locationName}` : ""}</div>`);
+      markersRef.current.push(marker);
+    });
+    if (points.length > 1) {
+      polylineRef.current = L.polyline(points, { color: "#6366f1", weight: 2, opacity: 0.6, dashArray: "6,4" }).addTo(mapRef.current);
+    }
+    mapRef.current.fitBounds(L.latLngBounds(points).pad(0.2));
+  }, [logs, locations]);
+
+  return (
+    <div>
+      {isLoading && (
+        <div className="flex justify-center py-4">
+          <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+        </div>
+      )}
+      <div ref={mapDivRef} className="h-[280px] w-full" data-testid={`map-employee-detail-${employeeId}`} style={{ zIndex: 1 }} />
+      {!isLoading && logs.length === 0 && (
+        <div className="flex flex-col items-center py-5 text-muted-foreground">
+          <MapPin className="h-6 w-6 mb-2 opacity-50" />
+          <p className="text-sm">Brak danych GPS na dziś</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardTab() {
   const { data, isLoading } = useQuery<any>({ queryKey: ["/api/rcp/dashboard"] });
   const { toast } = useToast();
@@ -142,6 +234,7 @@ function DashboardTab() {
   });
 
   const [noteValues, setNoteValues] = useState<Record<number, string>>({});
+  const [selectedEmployeeStatus, setSelectedEmployeeStatus] = useState<any | null>(null);
 
   if (isLoading) {
     return <div className="flex items-center justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
@@ -216,7 +309,12 @@ function DashboardTab() {
               statusText = "Nieobecny(a)";
             }
             return (
-              <Card key={emp.id} data-testid={`card-employee-${emp.id}`}>
+              <Card
+                key={emp.id}
+                data-testid={`card-employee-${emp.id}`}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => setSelectedEmployeeStatus(es)}
+              >
                 <CardContent className="flex items-center gap-3 p-4">
                   <EmployeeAvatar emp={emp} />
                   <div className="min-w-0 flex-1">
@@ -348,6 +446,77 @@ function DashboardTab() {
           </div>
         </div>
       )}
+
+      <Sheet open={!!selectedEmployeeStatus} onOpenChange={(open) => { if (!open) setSelectedEmployeeStatus(null); }}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="sheet-employee-detail-rcp">
+          <SheetHeader>
+            <SheetTitle>
+              {selectedEmployeeStatus?.employee?.firstName} {selectedEmployeeStatus?.employee?.lastName}
+              <span className="text-muted-foreground font-normal text-sm ml-2">
+                — {new Date().toLocaleDateString("pl-PL", { day: "numeric", month: "long", year: "numeric" })}
+              </span>
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-5 space-y-6">
+            <div>
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" /> Wpis dnia
+              </h4>
+              {selectedEmployeeStatus?.status === "absent" ? (
+                <p className="text-sm text-muted-foreground">Brak wpisu na dziś — pracownik nieobecny.</p>
+              ) : (
+                <div className="border rounded-md divide-y text-sm">
+                  <div className="flex justify-between items-center px-3 py-2">
+                    <span className="text-muted-foreground">Status</span>
+                    <span>
+                      {selectedEmployeeStatus?.status === "working" && <Badge className="bg-green-600 hover:bg-green-700">W pracy</Badge>}
+                      {selectedEmployeeStatus?.status === "break" && <Badge variant="secondary">Przerwa</Badge>}
+                      {selectedEmployeeStatus?.status === "finished" && <Badge variant="outline">Zakończona</Badge>}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2">
+                    <span className="text-muted-foreground">Wejście</span>
+                    <span className="font-medium">{formatTime(selectedEmployeeStatus?.clockIn)}</span>
+                  </div>
+                  {selectedEmployeeStatus?.breakStart && (
+                    <div className="flex justify-between items-center px-3 py-2">
+                      <span className="text-muted-foreground">Przerwa od</span>
+                      <span className="font-medium">{formatTime(selectedEmployeeStatus?.breakStart)}</span>
+                    </div>
+                  )}
+                  {selectedEmployeeStatus?.clockOut && (
+                    <div className="flex justify-between items-center px-3 py-2">
+                      <span className="text-muted-foreground">Wyjście</span>
+                      <span className="font-medium">{formatTime(selectedEmployeeStatus?.clockOut)}</span>
+                    </div>
+                  )}
+                  {selectedEmployeeStatus?.clockIn && (
+                    <div className="flex justify-between items-center px-3 py-2">
+                      <span className="text-muted-foreground">Czas pracy</span>
+                      <span className="font-medium">{formatDuration(calcWorkMinutes(selectedEmployeeStatus))}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-primary" /> Mapa GPS — trasa dnia
+              </h4>
+              {selectedEmployeeStatus?.employee && (
+                <div className="rounded-md overflow-hidden border">
+                  <EmployeeGpsPanel
+                    key={selectedEmployeeStatus.employee.id}
+                    employeeId={selectedEmployeeStatus.employee.id}
+                    date={new Date().toISOString().slice(0, 10)}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
