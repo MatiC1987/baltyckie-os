@@ -1061,6 +1061,214 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // ==================== RCP DASHBOARD ====================
+  app.get('/api/recepcja/rcp/dashboard', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const allEmployees = await storage.getEmployees();
+      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY');
+      const todayEntries = await storage.getTimeEntriesByDay(today);
+
+      const rawPendingEntries = await storage.getTimeEntries({ status: 'WARUNKOWA' });
+      const pendingEntries = rawPendingEntries.map(e => {
+        const emp = allEmployees.find(a => a.id === e.employeeId);
+        return {
+          ...e,
+          employee: emp ? { id: emp.id, firstName: emp.firstName, lastName: emp.lastName } : null,
+        };
+      });
+
+      let working = 0, onBreak = 0;
+
+      for (const entry of todayEntries) {
+        if (entry.status === 'AKTYWNA' || entry.status === 'WARUNKOWA') {
+          working++;
+        } else if (entry.status === 'PRZERWA') {
+          onBreak++;
+        }
+      }
+
+      const pendingLeaves = await storage.getLeaveRequests({ status: 'OCZEKUJACY' });
+
+      const todaySchedules = await storage.getWorkSchedules({ from: today, to: today });
+      const employeesWithPin = activeEmployees.filter(e => e.pin);
+      const scheduledEmpIds = new Set(todaySchedules.map((s: any) => s.employeeId));
+      const missingSchedules = employeesWithPin
+        .filter(e => !scheduledEmpIds.has(e.id))
+        .map(e => ({ id: e.id, firstName: e.firstName, lastName: e.lastName }));
+
+      const lateToday: any[] = [];
+      const LATE_THRESHOLD_MIN = 15;
+      for (const sched of todaySchedules) {
+        const emp = activeEmployees.find(e => e.id === (sched as any).employeeId);
+        if (!emp) continue;
+        const entry = todayEntries.find(te => te.employeeId === (sched as any).employeeId);
+        const startTime = (sched as any).startTime || (sched as any).shiftStart;
+        if (!startTime) continue;
+        const [sh, sm] = startTime.split(':').map(Number);
+        const scheduledStart = new Date(`${today}T${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}:00`);
+        if (entry && entry.clockIn) {
+          const actualStart = new Date(entry.clockIn);
+          const diffMin = Math.round((actualStart.getTime() - scheduledStart.getTime()) / 60000);
+          if (diffMin > LATE_THRESHOLD_MIN) {
+            lateToday.push({
+              employee: { id: emp.id, firstName: emp.firstName, lastName: emp.lastName },
+              scheduledStart: startTime,
+              actualStart: actualStart.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
+              lateMinutes: diffMin,
+            });
+          }
+        } else if (!entry) {
+          const now = new Date();
+          const diffMin = Math.round((now.getTime() - scheduledStart.getTime()) / 60000);
+          if (diffMin > LATE_THRESHOLD_MIN) {
+            lateToday.push({
+              employee: { id: emp.id, firstName: emp.firstName, lastName: emp.lastName },
+              scheduledStart: startTime,
+              actualStart: null,
+              lateMinutes: diffMin,
+            });
+          }
+        }
+      }
+
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const yesterdayEntries = await storage.getTimeEntries({ from: yesterdayStr, to: yesterdayStr });
+      const overtimeYesterday: any[] = [];
+      for (const entry of yesterdayEntries) {
+        if (entry.clockIn && entry.clockOut) {
+          const totalMs = new Date(entry.clockOut).getTime() - new Date(entry.clockIn).getTime();
+          const workMin = Math.round(totalMs / 60000) - ((entry as any).breakMinutes || 0);
+          if (workMin > 480) {
+            const emp = activeEmployees.find(e => e.id === entry.employeeId);
+            if (emp) {
+              overtimeYesterday.push({
+                employee: { id: emp.id, firstName: emp.firstName, lastName: emp.lastName },
+                workMinutes: workMin,
+                overtimeMinutes: workMin - 480,
+              });
+            }
+          }
+        }
+      }
+
+      res.json({
+        working,
+        onBreak,
+        pendingCount: pendingEntries.length,
+        pendingEntries,
+        pendingLeavesCount: pendingLeaves.length,
+        missingSchedules,
+        lateToday,
+        overtimeYesterday,
+      });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/rcp/time-entries/:id/approve', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { adminNote } = req.body;
+      const existing = await storage.getTimeEntry(id);
+      if (!existing) return res.status(404).json({ message: 'Wpis nie istnieje' });
+      if (existing.status !== 'WARUNKOWA') {
+        return res.status(409).json({ message: `Wpis ma status "${existing.status}" i nie może zostać zaakceptowany` });
+      }
+      const entry = await storage.updateTimeEntry(id, {
+        status: 'ZAAKCEPTOWANA',
+        adminNote: adminNote || null,
+        editedBy: req.recepcjaUser.name,
+        editedAt: new Date(),
+      });
+      await logRecepcjaAction(req.recepcjaUser.id, 'APPROVE', 'time_entry', id.toString(), { adminNote });
+      res.json(entry);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/rcp/time-entries/:id/reject', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { adminNote } = req.body;
+      const existing = await storage.getTimeEntry(id);
+      if (!existing) return res.status(404).json({ message: 'Wpis nie istnieje' });
+      if (existing.status !== 'WARUNKOWA') {
+        return res.status(409).json({ message: `Wpis ma status "${existing.status}" i nie może zostać odrzucony` });
+      }
+      const entry = await storage.updateTimeEntry(id, {
+        status: 'ODRZUCONA',
+        adminNote: adminNote || null,
+        editedBy: req.recepcjaUser.name,
+        editedAt: new Date(),
+      });
+      await logRecepcjaAction(req.recepcjaUser.id, 'REJECT', 'time_entry', id.toString(), { adminNote });
+      res.json(entry);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ==================== RCP EMPLOYEE STATS ====================
+  app.get('/api/recepcja/rcp/employee-stats', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { from, to, employeeId } = req.query;
+      const filters: any = {};
+      if (from) filters.from = from as string;
+      if (to) filters.to = to as string;
+      if (employeeId) filters.employeeId = parseInt(employeeId as string);
+
+      const allEntries = await storage.getTimeEntries(filters);
+      const allEmployees = await storage.getEmployees();
+      const activeEmps = employeeId
+        ? allEmployees.filter(e => e.id === parseInt(employeeId as string))
+        : allEmployees.filter(e => e.status === 'AKTYWNY');
+
+      const stats = activeEmps.map(emp => {
+        const empEntries = allEntries.filter(e => e.employeeId === emp.id);
+        const completedEntries = empEntries.filter(e => e.clockOut);
+
+        let totalMinutes = 0;
+        let lateCount = 0;
+        let earlyLeaveCount = 0;
+
+        for (const entry of completedEntries) {
+          const clockIn = new Date(entry.clockIn);
+          const clockOut = new Date(entry.clockOut!);
+          const mins = (clockOut.getTime() - clockIn.getTime()) / 60000 - ((entry as any).breakMinutes || 0);
+          totalMinutes += mins;
+
+          const hour = clockIn.getHours();
+          const minute = clockIn.getMinutes();
+          if (hour > 8 || (hour === 8 && minute > 5)) lateCount++;
+          const outHour = clockOut.getHours();
+          if (outHour < 16) earlyLeaveCount++;
+        }
+
+        const totalHours = Math.round(totalMinutes / 60 * 100) / 100;
+        const avgHoursPerDay = completedEntries.length > 0
+          ? Math.round(totalHours / completedEntries.length * 100) / 100 : 0;
+        const overtimeHours = Math.max(0, totalHours - (completedEntries.length * 8));
+        const punctualityRate = completedEntries.length > 0
+          ? Math.round(((completedEntries.length - lateCount) / completedEntries.length) * 100) : 100;
+
+        return {
+          employeeId: emp.id,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          position: emp.position,
+          totalDays: completedEntries.length,
+          totalHours,
+          avgHoursPerDay,
+          overtimeHours: Math.round(overtimeHours * 100) / 100,
+          lateCount,
+          earlyLeaveCount,
+          punctualityRate,
+          outsideZoneCount: empEntries.filter((e: any) => e.isOutsideZone).length,
+        };
+      });
+
+      res.json(stats);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // ==================== RCP MONTHLY REPORT ====================
   app.get('/api/recepcja/rcp/monthly-report', isRecepcjaAuth as any, async (req: any, res) => {
     try {

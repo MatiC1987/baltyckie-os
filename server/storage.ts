@@ -451,6 +451,7 @@ export interface IStorage {
 
   // RCP - Time Entries
   getActiveTimeEntry(employeeId: number): Promise<TimeEntry | undefined>;
+  getTimeEntry(id: number): Promise<TimeEntry | undefined>;
   createTimeEntry(data: InsertTimeEntry): Promise<TimeEntry>;
   updateTimeEntry(id: number, data: Partial<InsertTimeEntry>): Promise<TimeEntry>;
   deleteTimeEntry(id: number): Promise<void>;
@@ -2262,6 +2263,11 @@ export class DatabaseStorage implements IStorage {
 
   async createTimeEntry(data: InsertTimeEntry): Promise<TimeEntry> {
     const [entry] = await db.insert(timeEntries).values(data).returning();
+    return entry;
+  }
+
+  async getTimeEntry(id: number): Promise<TimeEntry | undefined> {
+    const [entry] = await db.select().from(timeEntries).where(eq(timeEntries.id, id));
     return entry;
   }
 

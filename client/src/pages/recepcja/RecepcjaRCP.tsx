@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { recepcjaFetch } from "./RecepcjaApp";
 import { queryClient } from "@/lib/queryClient";
@@ -10,10 +10,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Slider } from "@/components/ui/slider";
+import { Skeleton } from "@/components/ui/skeleton";
 import GrafikEnhanced from "@/components/GrafikEnhanced";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp, Pencil, Navigation, CheckCircle, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp, Pencil, Navigation, CheckCircle, AlertTriangle, Eye, EyeOff, BarChart3, ArrowUpDown, Search, Award } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -24,7 +34,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-type RCPTab = "dashboard" | "obecnosci" | "grafik" | "urlopy" | "raporty" | "lokalizacje" | "gps" | "piny";
+type RCPTab = "dashboard" | "obecnosci" | "grafik" | "urlopy" | "raporty" | "lokalizacje" | "gps" | "piny" | "statystyki";
 
 const TAB_ITEMS: { key: RCPTab; label: string; icon: any }[] = [
   { key: "dashboard", label: "Dashboard", icon: Clock },
@@ -35,6 +45,7 @@ const TAB_ITEMS: { key: RCPTab; label: string; icon: any }[] = [
   { key: "lokalizacje", label: "Lokalizacje", icon: MapPin },
   { key: "gps", label: "Śledzenie GPS", icon: Navigation },
   { key: "piny", label: "PINy", icon: Key },
+  { key: "statystyki", label: "Statystyki", icon: BarChart3 },
 ];
 
 export default function RecepcjaRCP() {
@@ -73,6 +84,7 @@ export default function RecepcjaRCP() {
       {tab === "lokalizacje" && <RCPLokalizacje />}
       {tab === "gps" && <RCPGpsTracking />}
       {tab === "piny" && <RCPPiny />}
+      {tab === "statystyki" && <RCPStatystyki />}
     </div>
   );
 }
@@ -80,6 +92,8 @@ export default function RecepcjaRCP() {
 function RCPDashboard() {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
+  const [noteValues, setNoteValues] = useState<Record<number, string>>({});
+  const { toast } = useToast();
 
   const { data: employees = [] } = useQuery<any[]>({
     queryKey: ["/api/recepcja/rcp/employees"],
@@ -96,11 +110,53 @@ function RCPDashboard() {
       return r.json();
     },
   });
+  const { data: dashData } = useQuery<any>({
+    queryKey: ["/api/recepcja/rcp/dashboard"],
+    queryFn: async () => {
+      const r = await recepcjaFetch("GET", "/api/recepcja/rcp/dashboard");
+      return r.json();
+    },
+  });
+
+  const approveMut = useMutation({
+    mutationFn: async ({ id, adminNote }: { id: number; adminNote?: string }) => {
+      const r = await recepcjaFetch("PUT", `/api/recepcja/rcp/time-entries/${id}/approve`, { adminNote });
+      if (!r.ok) throw new Error((await r.json()).message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/rcp/dashboard"] });
+      toast({ title: "Wpis zaakceptowany" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd akceptacji", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const rejectMut = useMutation({
+    mutationFn: async ({ id, adminNote }: { id: number; adminNote?: string }) => {
+      const r = await recepcjaFetch("PUT", `/api/recepcja/rcp/time-entries/${id}/reject`, { adminNote });
+      if (!r.ok) throw new Error((await r.json()).message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/rcp/dashboard"] });
+      toast({ title: "Wpis odrzucony" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd odrzucenia", description: err.message, variant: "destructive" });
+    },
+  });
 
   const working = entries.filter((e: any) => e.clockIn && !e.clockOut);
   const onBreak = entries.filter((e: any) => e.breakStart && !e.breakEnd);
   const gpsDataMap = new Map(perEmployee.map(d => [d.employeeId, d]));
   const selectedEntry = selectedEmployee ? entries.find((e: any) => e.employeeId === selectedEmployee.id) : null;
+
+  const {
+    pendingLeavesCount = 0, missingSchedules = [], lateToday = [], overtimeYesterday = [],
+    pendingEntries = [],
+  } = dashData || {};
+
+  const alertCount = pendingLeavesCount + missingSchedules.length + lateToday.length + overtimeYesterday.length;
 
   const getStatus = (emp: any) => {
     const entry = entries.find((e: any) => e.employeeId === emp.id);
@@ -135,6 +191,119 @@ function RCPDashboard() {
         <Card className="p-4"><div className="text-2xl font-bold text-orange-600">{onBreak.length}</div><div className="text-sm text-muted-foreground">Na przerwie</div></Card>
         <Card className="p-4"><div className="text-2xl font-bold">{employees.length}</div><div className="text-sm text-muted-foreground">Pracowników</div></Card>
       </div>
+
+      {alertCount > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-base font-semibold flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            Powiadomienia ({alertCount})
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {pendingLeavesCount > 0 && (
+              <Card className="border-amber-200 dark:border-amber-800" data-testid="alert-pending-leaves">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Urlopy</Badge>
+                    <span className="font-medium text-sm">Nierozpatrzone wnioski urlopowe</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{pendingLeavesCount} {pendingLeavesCount === 1 ? "wniosek oczekuje" : "wniosków oczekuje"} na rozpatrzenie</p>
+                </CardContent>
+              </Card>
+            )}
+            {lateToday.length > 0 && (
+              <Card className="border-red-200 dark:border-red-800" data-testid="alert-late-today">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="destructive">Spóźnienia</Badge>
+                    <span className="font-medium text-sm">Spóźnienia dzisiaj</span>
+                  </div>
+                  <div className="space-y-1">
+                    {lateToday.map((lt: any, i: number) => (
+                      <p key={i} className="text-sm text-muted-foreground">
+                        {lt.employee.firstName} {lt.employee.lastName}: planowane {lt.scheduledStart}, {lt.actualStart ? `przyszedł ${lt.actualStart}` : "brak wejścia"} ({lt.lateMinutes} min)
+                      </p>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {overtimeYesterday.length > 0 && (
+              <Card className="border-blue-200 dark:border-blue-800" data-testid="alert-overtime-yesterday">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Nadgodziny</Badge>
+                    <span className="font-medium text-sm">Nadgodziny wczoraj</span>
+                  </div>
+                  <div className="space-y-1">
+                    {overtimeYesterday.map((ot: any, i: number) => (
+                      <p key={i} className="text-sm text-muted-foreground">
+                        {ot.employee.firstName} {ot.employee.lastName}: {Math.floor(ot.workMinutes / 60)}h {ot.workMinutes % 60}m ({ot.overtimeMinutes} min nadgodzin)
+                      </p>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {missingSchedules.length > 0 && (
+              <Card className="border-orange-200 dark:border-orange-800" data-testid="alert-missing-schedules">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">Grafik</Badge>
+                    <span className="font-medium text-sm">Brak grafiku na dzisiaj</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {missingSchedules.map((e: any) => `${e.firstName} ${e.lastName}`).join(", ")}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      {pendingEntries.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-base font-semibold">Wpisy warunkowe do akceptacji</h3>
+          {pendingEntries.map((entry: any) => (
+            <Card key={entry.id} data-testid={`card-pending-${entry.id}`}>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="font-medium">{entry.employee?.firstName} {entry.employee?.lastName}</span>
+                  <Badge variant="destructive">Warunkowa</Badge>
+                  <span className="text-sm text-muted-foreground">{entry.date} | {fmt(entry.clockIn)} - {entry.clockOut ? fmt(entry.clockOut) : "..."}</span>
+                </div>
+                {entry.note && <p className="text-sm text-muted-foreground">Notatka: {entry.note}</p>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Input
+                    placeholder="Notatka admina (opcjonalna)"
+                    className="max-w-xs"
+                    value={noteValues[entry.id] || ""}
+                    onChange={(e) => setNoteValues(prev => ({ ...prev, [entry.id]: e.target.value }))}
+                    data-testid={`input-admin-note-${entry.id}`}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => approveMut.mutate({ id: entry.id, adminNote: noteValues[entry.id] })}
+                    disabled={approveMut.isPending}
+                    data-testid={`button-approve-${entry.id}`}
+                  >
+                    <Check className="h-4 w-4 mr-1" /> Akceptuj
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => rejectMut.mutate({ id: entry.id, adminNote: noteValues[entry.id] })}
+                    disabled={rejectMut.isPending}
+                    data-testid={`button-reject-${entry.id}`}
+                  >
+                    <X className="h-4 w-4 mr-1" /> Odrzuć
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {employees.map((emp: any) => {
@@ -252,6 +421,24 @@ function RCPDashboard() {
   );
 }
 
+function calcTotalMinutes(entry: any): number {
+  if (!entry?.clockIn) return 0;
+  const start = new Date(entry.clockIn).getTime();
+  const end = entry.clockOut ? new Date(entry.clockOut).getTime() : Date.now();
+  return Math.max(0, Math.round((end - start) / 60000));
+}
+
+function calcWorkMinutes(entry: any): number {
+  const total = calcTotalMinutes(entry);
+  return Math.max(0, total - (entry.breakMinutes || entry.totalBreakMinutes || 0));
+}
+
+function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
+}
+
 function RCPObecnosci() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
@@ -330,18 +517,24 @@ function RCPObecnosci() {
             <th className="p-2 text-left">Wejście</th>
             <th className="p-2 text-left">Wyjście</th>
             <th className="p-2 text-left">Przerwa</th>
+            <th className="p-2 text-right">Razem</th>
+            <th className="p-2 text-right">Praca</th>
             <th className="p-2 text-center">Poza strefą</th>
             <th className="p-2 text-center">Status</th>
           </tr></thead>
           <tbody>
             {entries.map((e: any) => {
               const emp = employees.find((em: any) => em.id === e.employeeId);
+              const total = e.clockIn ? calcTotalMinutes(e) : null;
+              const work = e.clockIn ? calcWorkMinutes(e) : null;
               return (
                 <tr key={e.id} className="border-b hover:bg-muted/30 cursor-pointer" onClick={() => openDetail(e)} data-testid={`row-entry-${e.id}`}>
                   <td className="p-2 font-medium">{emp ? `${emp.firstName} ${emp.lastName}` : `#${e.employeeId}`}</td>
                   <td className="p-2">{e.clockIn ? new Date(e.clockIn).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td className="p-2">{e.clockOut ? new Date(e.clockOut).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td className="p-2">{e.totalBreakMinutes ? `${e.totalBreakMinutes} min` : '-'}</td>
+                  <td className="p-2 text-right">{total !== null ? formatDuration(total) : '—'}</td>
+                  <td className="p-2 text-right">{work !== null ? formatDuration(work) : '—'}</td>
                   <td className="p-2 text-center">{e.isOutsideZone ? <Badge variant="destructive">Tak</Badge> : '-'}</td>
                   <td className="p-2 text-center">
                     <Badge variant={e.status === 'ZAAKCEPTOWANA' || e.status === 'ZAKONCZONA' ? 'default' : e.status === 'ODRZUCONA' ? 'destructive' : 'secondary'}>
@@ -351,20 +544,40 @@ function RCPObecnosci() {
                 </tr>
               );
             })}
-            {entries.length === 0 && <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">Brak wpisów</td></tr>}
+            {entries.length === 0 && <tr><td colSpan={8} className="p-4 text-center text-muted-foreground">Brak wpisów</td></tr>}
           </tbody>
         </table>
       </Card>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-[400px] sm:w-[450px]">
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Szczegóły wpisu</SheetTitle>
           </SheetHeader>
           {selectedEntry && (() => {
             const emp = employees.find((em: any) => em.id === selectedEntry.employeeId);
+            const total = calcTotalMinutes(selectedEntry);
+            const work = calcWorkMinutes(selectedEntry);
             return (
               <div className="mt-4 space-y-4">
+                <div className="text-center">
+                  <p className="text-3xl font-bold" data-testid="text-detail-total">{formatDuration(total)}</p>
+                  <p className="text-sm text-muted-foreground">Razem</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-lg font-semibold">{formatDuration(work)}</p>
+                      <p className="text-xs text-muted-foreground">Praca</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-lg font-semibold">{formatDuration(selectedEntry.totalBreakMinutes || selectedEntry.breakMinutes || 0)}</p>
+                      <p className="text-xs text-muted-foreground">Przerwa</p>
+                    </CardContent>
+                  </Card>
+                </div>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Pracownik</span>
@@ -435,6 +648,15 @@ function RCPObecnosci() {
                     <p className="text-sm mt-1">{selectedEntry.note}</p>
                   </div>
                 )}
+
+                <div className="border-t pt-3">
+                  <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-primary" /> Mapa GPS
+                  </h4>
+                  <div className="rounded-md overflow-hidden border">
+                    <EmployeeMapPanel key={selectedEntry.id} employeeId={selectedEntry.employeeId} date={selectedEntry.date || date} />
+                  </div>
+                </div>
               </div>
             );
           })()}
@@ -1182,6 +1404,266 @@ function RCPGpsTracking() {
           )}
         </Card>
       )}
+    </div>
+  );
+}
+
+interface EmployeeStat {
+  employeeId: number;
+  employeeName: string;
+  position: string;
+  totalDays: number;
+  totalHours: number;
+  avgHoursPerDay: number;
+  overtimeHours: number;
+  lateCount: number;
+  earlyLeaveCount: number;
+  punctualityRate: number;
+  outsideZoneCount: number;
+}
+
+type StatSortField = "employeeName" | "totalDays" | "totalHours" | "overtimeHours" | "punctualityRate" | "lateCount";
+type StatSortDir = "asc" | "desc";
+
+function formatStatDate(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+function RCPStatystyki() {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const [fromDate, setFromDate] = useState(formatStatDate(firstDay));
+  const [toDate, setToDate] = useState(formatStatDate(lastDay));
+  const [search, setSearch] = useState("");
+  const [sortField, setSortField] = useState<StatSortField>("employeeName");
+  const [sortDir, setSortDir] = useState<StatSortDir>("asc");
+
+  const { data: stats = [], isLoading, isError } = useQuery<EmployeeStat[]>({
+    queryKey: ["/api/recepcja/rcp/employee-stats", fromDate, toDate],
+    queryFn: async () => {
+      const r = await recepcjaFetch("GET", `/api/recepcja/rcp/employee-stats?from=${fromDate}&to=${toDate}`);
+      if (!r.ok) throw new Error("Błąd pobierania danych");
+      return r.json();
+    },
+  });
+
+  const toggleSort = (field: StatSortField) => {
+    if (sortField === field) {
+      setSortDir(d => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const filtered = useMemo(() => {
+    let result = [...stats];
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(s =>
+        s.employeeName.toLowerCase().includes(q) ||
+        (s.position || "").toLowerCase().includes(q)
+      );
+    }
+    result.sort((a, b) => {
+      const valA = a[sortField];
+      const valB = b[sortField];
+      if (typeof valA === "string" && typeof valB === "string") {
+        return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      const nA = valA as number;
+      const nB = valB as number;
+      return sortDir === "asc" ? nA - nB : nB - nA;
+    });
+    return result;
+  }, [stats, search, sortField, sortDir]);
+
+  const totalEmployees = stats.length;
+  const avgHours = totalEmployees > 0
+    ? Math.round((stats.reduce((s, e) => s + e.totalHours, 0) / totalEmployees) * 100) / 100
+    : 0;
+  const bestPunctuality = totalEmployees > 0
+    ? Math.max(...stats.map(s => s.punctualityRate))
+    : 0;
+
+  const chartData = filtered.map(s => ({
+    name: s.employeeName.length > 15 ? s.employeeName.slice(0, 15) + "..." : s.employeeName,
+    godziny: s.totalHours,
+    nadgodziny: s.overtimeHours,
+  }));
+
+  const StatSortButton = ({ field, children }: { field: StatSortField; children: ReactNode }) => (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="gap-1 -ml-3 no-default-hover-elevate no-default-active-elevate"
+      onClick={() => toggleSort(field)}
+      data-testid={`button-sort-${field}`}
+    >
+      {children}
+      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+    </Button>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Input
+          type="date"
+          value={fromDate}
+          onChange={e => setFromDate(e.target.value)}
+          data-testid="input-stat-date-from"
+        />
+        <span className="text-muted-foreground">—</span>
+        <Input
+          type="date"
+          value={toDate}
+          onChange={e => setToDate(e.target.value)}
+          data-testid="input-stat-date-to"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Pracownicy</p>
+              <p className="text-2xl font-bold" data-testid="text-stat-total-employees">
+                {isLoading ? <Skeleton className="h-7 w-10" /> : totalEmployees}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Śr. godzin</p>
+              <p className="text-2xl font-bold" data-testid="text-stat-avg-hours">
+                {isLoading ? <Skeleton className="h-7 w-10" /> : `${avgHours}h`}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
+              <Award className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Najlepsza punktualność</p>
+              <p className="text-2xl font-bold" data-testid="text-stat-best-punctuality">
+                {isLoading ? <Skeleton className="h-7 w-10" /> : `${bestPunctuality}%`}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {filtered.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-4">Godziny pracy wg pracownika</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <RechartsTooltip />
+                  <Bar dataKey="godziny" fill="hsl(var(--primary))" name="Godziny" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="nadgodziny" fill="hsl(var(--destructive))" name="Nadgodziny" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Szukaj pracownika..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="max-w-xs"
+              data-testid="input-stat-search"
+            />
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : isError ? (
+            <div className="text-center py-8 text-destructive" data-testid="text-stat-error">
+              Błąd pobierania danych. Sprawdź zakres dat i spróbuj ponownie.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>
+                      <StatSortButton field="employeeName">Pracownik</StatSortButton>
+                    </TableHead>
+                    <TableHead>Stanowisko</TableHead>
+                    <TableHead className="text-right">
+                      <StatSortButton field="totalDays">Dni</StatSortButton>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <StatSortButton field="totalHours">Godziny</StatSortButton>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <StatSortButton field="overtimeHours">Nadgodziny</StatSortButton>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <StatSortButton field="punctualityRate">Punktualność</StatSortButton>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <StatSortButton field="lateCount">Spóźnienia</StatSortButton>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        Brak danych dla wybranego okresu
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filtered.map(s => (
+                      <TableRow key={s.employeeId} data-testid={`row-stat-employee-${s.employeeId}`}>
+                        <TableCell className="font-medium" data-testid={`text-stat-name-${s.employeeId}`}>
+                          {s.employeeName}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{s.position || "—"}</TableCell>
+                        <TableCell className="text-right">{s.totalDays}</TableCell>
+                        <TableCell className="text-right">{s.totalHours}h</TableCell>
+                        <TableCell className="text-right">{s.overtimeHours}h</TableCell>
+                        <TableCell className="text-right">{s.punctualityRate}%</TableCell>
+                        <TableCell className="text-right">{s.lateCount}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
