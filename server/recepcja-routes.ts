@@ -588,7 +588,9 @@ export function registerRecepcjaRoutes(app: Express) {
     try {
       const { date, employeeId } = req.query;
       const entries = await storage.getTimeEntries(date as string, employeeId ? Number(employeeId) : undefined);
-      res.json(entries);
+      const allEmps = await storage.getEmployees();
+      const hiddenIds = new Set(allEmps.filter((e: any) => e.hideFromRcp).map((e: any) => e.id));
+      res.json(entries.filter((e: any) => !hiddenIds.has(e.employeeId)));
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
@@ -715,7 +717,8 @@ export function registerRecepcjaRoutes(app: Express) {
   app.get('/api/recepcja/rcp/leave-balance', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const { year } = req.query;
-      const emps = await storage.getEmployees();
+      const allEmps = await storage.getEmployees();
+      const emps = allEmps.filter((e: any) => !e.hideFromRcp);
       const reqs = await storage.getLeaveRequests({});
       const balance = emps.map(e => {
         const empReqs = reqs.filter((r: any) => r.employeeId === e.id && r.startDate?.startsWith(String(year)));
@@ -836,6 +839,7 @@ export function registerRecepcjaRoutes(app: Express) {
         log: locationLogs,
         firstName: employees.firstName,
         lastName: employees.lastName,
+        hideFromRcp: employees.hideFromRcp,
       }).from(locationLogs)
         .leftJoin(employees, eq(locationLogs.employeeId, employees.id))
         .where(and(
@@ -846,6 +850,7 @@ export function registerRecepcjaRoutes(app: Express) {
 
       const byEmployee = new Map<number, any>();
       for (const row of allLogs) {
+        if (row.hideFromRcp) continue;
         const empId = row.log.employeeId;
         if (!byEmployee.has(empId)) {
           byEmployee.set(empId, {
