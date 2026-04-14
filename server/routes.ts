@@ -14327,6 +14327,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       if (!emp) return res.status(404).json({ message: 'Nie znaleziono pracownika' });
       const { apartmentId, title, description, priority, category, photoUrls } = req.body;
       if (!apartmentId || !title) return res.status(400).json({ message: 'Apartament i tytuł są wymagane' });
+      const validPhotoUrls = Array.isArray(photoUrls) ? photoUrls.slice(0, 3) : null;
       const [issue] = await db.insert(issues).values({
         apartmentId: Number(apartmentId),
         title: title.trim(),
@@ -14335,7 +14336,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         category: category || 'ogólne',
         reportedBy: `${emp.firstName} ${emp.lastName}`,
         status: 'OTWARTE',
-        photoUrls: Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : null,
+        photoUrls: validPhotoUrls && validPhotoUrls.length > 0 ? validPhotoUrls : null,
       }).returning();
       res.json(issue);
     } catch (err: any) {

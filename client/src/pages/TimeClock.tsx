@@ -59,6 +59,27 @@ import logoImg from "@assets/base_logo_white_background_1770751806017.png";
 import type { Employee, TimeEntry, LeaveRequest } from "@shared/schema";
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
 
+function FilePreview({ file, onRemove, testId, size = "w-16 h-16" }: { file: File; onRemove: () => void; testId?: string; size?: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  if (!url) return null;
+  return (
+    <div className={`relative ${size} rounded-md overflow-hidden border bg-muted`}>
+      <img src={url} alt={file.name} className="object-cover w-full h-full" />
+      <button
+        type="button"
+        className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+        onClick={onRemove}
+        data-testid={testId}
+      >×</button>
+    </div>
+  );
+}
+
 let rcpToken: string | null = null;
 
 async function rcpFetch(method: string, url: string, data?: unknown): Promise<Response> {
@@ -1453,20 +1474,14 @@ function EmployeeDashboard({
                   )}
                   {newIssueFiles.length > 0 && (
                     <div className="flex gap-2 flex-wrap">
-                      {newIssueFiles.map((f, i) => {
-                        const objUrl = URL.createObjectURL(f);
-                        return (
-                          <div key={i} className="relative w-16 h-16 rounded-md overflow-hidden border bg-muted">
-                            <img src={objUrl} alt={f.name} className="object-cover w-full h-full" />
-                            <button
-                              type="button"
-                              className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
-                              onClick={() => setNewIssueFiles(prev => prev.filter((_, idx) => idx !== i))}
-                              data-testid={`button-remove-new-issue-photo-${i}`}
-                            >×</button>
-                          </div>
-                        );
-                      })}
+                      {newIssueFiles.map((f, i) => (
+                        <FilePreview
+                          key={i}
+                          file={f}
+                          onRemove={() => setNewIssueFiles(prev => prev.filter((_, idx) => idx !== i))}
+                          testId={`button-remove-new-issue-photo-${i}`}
+                        />
+                      ))}
                     </div>
                   )}
                 </div>

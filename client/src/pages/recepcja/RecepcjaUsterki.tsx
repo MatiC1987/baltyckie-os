@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { recepcjaFetch } from "./RecepcjaApp";
 import { queryClient } from "@/lib/queryClient";
@@ -254,6 +254,27 @@ export default function RecepcjaUsterki() {
   );
 }
 
+function FileThumb({ file, onRemove, testId }: { file: File; onRemove: () => void; testId?: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  if (!url) return null;
+  return (
+    <div className="relative w-20 h-20 rounded-md overflow-hidden border bg-muted">
+      <img src={url} alt={file.name} className="object-cover w-full h-full" />
+      <button
+        type="button"
+        className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+        onClick={onRemove}
+        data-testid={testId}
+      >×</button>
+    </div>
+  );
+}
+
 function AddIssueForm({ apartments, onSuccess }: {
   apartments: { id: number; name: string }[];
   onSuccess: () => void;
@@ -397,20 +418,14 @@ function AddIssueForm({ apartments, onSuccess }: {
         )}
         {files.length > 0 && (
           <div className="flex gap-2 flex-wrap">
-            {files.map((f, i) => {
-              const url = URL.createObjectURL(f);
-              return (
-                <div key={i} className="relative w-20 h-20 rounded-md overflow-hidden border bg-muted">
-                  <img src={url} alt={f.name} className="object-cover w-full h-full" />
-                  <button
-                    type="button"
-                    className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
-                    onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}
-                    data-testid={`button-remove-photo-${i}`}
-                  >×</button>
-                </div>
-              );
-            })}
+            {files.map((f, i) => (
+              <FileThumb
+                key={i}
+                file={f}
+                onRemove={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}
+                testId={`button-remove-photo-${i}`}
+              />
+            ))}
           </div>
         )}
       </div>
