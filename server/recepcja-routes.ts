@@ -596,7 +596,12 @@ export function registerRecepcjaRoutes(app: Express) {
 
   app.put('/api/recepcja/rcp/time-entries/:id', isRecepcjaAuth as any, async (req: any, res) => {
     try {
-      const entry = await storage.updateTimeEntry(Number(req.params.id), req.body);
+      const body = { ...req.body };
+      if (body.clockIn) body.clockIn = new Date(body.clockIn);
+      if (body.clockOut) body.clockOut = new Date(body.clockOut);
+      if (body.breakStart) body.breakStart = new Date(body.breakStart);
+      if (body.breakEnd) body.breakEnd = new Date(body.breakEnd);
+      const entry = await storage.updateTimeEntry(Number(req.params.id), body);
       await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'time_entry', req.params.id, req.body);
       res.json(entry);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
