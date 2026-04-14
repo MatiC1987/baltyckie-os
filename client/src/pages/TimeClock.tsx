@@ -445,6 +445,7 @@ function EmployeeDashboard({
   const [mileageKm, setMileageKm] = useState("");
   const [mileagePurpose, setMileagePurpose] = useState("");
   const showHistory = activeTab === "history";
+  const isHourly = employee.cooperationType === "PRACA_NA_H";
   const showLeaves = moreSubView === "leaves" && activeTab === "more";
   const showSchedule = moreSubView === "schedule" && activeTab === "more";
   const showSummary = moreSubView === "summary" && activeTab === "more";
@@ -701,7 +702,7 @@ function EmployeeDashboard({
 
   const leaveRequestsQuery = useQuery<LeaveRequest[]>({
     queryKey: ["/api/time-clock/leave-requests"],
-    enabled: showLeaves,
+    enabled: showLeaves && !isHourly,
     queryFn: async () => {
       const res = await rcpFetch("GET", "/api/time-clock/leave-requests");
       return await res.json();
@@ -1567,6 +1568,7 @@ function EmployeeDashboard({
                     <div><div className="text-xl font-bold" data-testid="text-days-worked">{sSummary.daysWorked}</div><p className="text-xs text-muted-foreground">Dni pracy</p></div>
                   </div>
                 </Card>
+                {!isHourly && (
                 <Card className="p-4 rounded-2xl" data-testid="card-leave-balance">
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><TreePalm className="h-4 w-4" /> Urlop {sSummary.year}</h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -1576,13 +1578,14 @@ function EmployeeDashboard({
                     <div className="text-center p-3 bg-muted/50 rounded-xl"><div className="text-2xl font-bold text-muted-foreground" data-testid="text-leave-allocated">{sSummary.leaveBalance.allocated}</div><p className="text-xs text-muted-foreground">Przysługuje</p></div>
                   </div>
                 </Card>
+                )}
               </div>
             ) : <p className="text-center text-muted-foreground py-8">Brak danych</p>}
           </div>
         );
       }
 
-      if (moreSubView === "leaves") {
+      if (moreSubView === "leaves" && !isHourly) {
         return (
           <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -1637,8 +1640,8 @@ function EmployeeDashboard({
           <h2 className="text-lg font-bold mb-2">Więcej</h2>
           {[
             { key: "schedule" as const, label: "Mój grafik", desc: "Zaplanowane zmiany", icon: Calendar },
-            { key: "summary" as const, label: "Podsumowanie", desc: "Godziny i urlopy", icon: BarChart3 },
-            { key: "leaves" as const, label: "Wnioski urlopowe", desc: "Złóż lub sprawdź wniosek", icon: CalendarDays },
+            { key: "summary" as const, label: "Podsumowanie", desc: isHourly ? "Godziny pracy" : "Godziny i urlopy", icon: BarChart3 },
+            ...(!isHourly ? [{ key: "leaves" as const, label: "Wnioski urlopowe", desc: "Złóż lub sprawdź wniosek", icon: CalendarDays }] : []),
             { key: "instrukcja" as const, label: "Instrukcja", desc: "Jak korzystać z aplikacji", icon: BookOpen },
           ].map((item) => {
             const Icon = item.icon;
