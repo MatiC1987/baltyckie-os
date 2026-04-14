@@ -441,6 +441,7 @@ function IssueDetail({ issue, employees, onUpdated }: {
   const [dirty, setDirty] = useState(false);
   const [taskEmployeeId, setTaskEmployeeId] = useState("");
   const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [showCreateTask, setShowCreateTask] = useState(false);
 
   const konserwators = employees.filter(e => ["KONSERWATOR", "OSOBA_SPRZATAJACA", "PRACOWNIK_RECEPCJI"].includes(e.position));
@@ -647,16 +648,40 @@ function IssueDetail({ issue, employees, onUpdated }: {
           <h4 className="text-sm font-medium">Zdjęcia ({issue.photoUrls.length})</h4>
           <div className="grid grid-cols-2 gap-2">
             {issue.photoUrls.map((url, i) => (
-              <div key={i} className="rounded-md overflow-hidden border bg-muted aspect-square flex items-center justify-center">
+              <div
+                key={i}
+                className="rounded-md overflow-hidden border bg-muted aspect-square flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setLightboxUrl(url)}
+                data-testid={`img-issue-photo-${i}`}
+              >
                 <img
                   src={url}
                   alt={`Zdjęcie ${i + 1}`}
                   className="object-cover w-full h-full"
-                  data-testid={`img-issue-photo-${i}`}
                 />
               </div>
             ))}
           </div>
+        </div>
+      )}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setLightboxUrl(null)}
+          data-testid="lightbox-overlay"
+        >
+          <button
+            className="absolute top-4 right-4 text-white bg-black/50 rounded-full w-8 h-8 flex items-center justify-center text-lg"
+            onClick={() => setLightboxUrl(null)}
+            data-testid="button-close-lightbox"
+          >×</button>
+          <img
+            src={lightboxUrl}
+            alt="Powiększone zdjęcie"
+            className="max-w-full max-h-full object-contain rounded"
+            onClick={e => e.stopPropagation()}
+            data-testid="img-lightbox-full"
+          />
         </div>
       )}
 

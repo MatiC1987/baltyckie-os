@@ -866,11 +866,15 @@ function EmployeeDashboard({
         newIssueFiles.forEach(f => formData.append("photos", f));
         const headers: Record<string, string> = {};
         if (rcpToken) headers["Authorization"] = `Bearer ${rcpToken}`;
-        await fetch(`/api/time-clock/issues/${issue.id}/photos`, {
+        const uploadRes = await fetch(`/api/time-clock/issues/${issue.id}/photos`, {
           method: "POST",
           headers,
           body: formData,
         });
+        if (!uploadRes.ok) {
+          const errBody = await uploadRes.json().catch(() => ({ message: "Błąd uploadu zdjęć" }));
+          throw new Error(errBody.message || "Błąd uploadu zdjęć");
+        }
       }
       return issue;
     },

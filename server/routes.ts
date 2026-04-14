@@ -14408,9 +14408,15 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     try {
       const employeeId = getRcpEmployeeId(req);
       if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: 'Nie znaleziono pracownika' });
       const id = Number(req.params.id);
       const [existing] = await db.select().from(issues).where(eq(issues.id, id));
       if (!existing) return res.status(404).json({ message: 'Nie znaleziono usterki' });
+      const empFullName = `${emp.firstName} ${emp.lastName}`;
+      if (existing.reportedBy !== empFullName && existing.assignedTo !== empFullName) {
+        return res.status(403).json({ message: 'Brak uprawnień do tej usterki' });
+      }
       const files = req.files as Express.Multer.File[];
       if (!files || files.length === 0) return res.status(400).json({ message: 'Brak plików' });
       const { ObjectStorageService, objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
