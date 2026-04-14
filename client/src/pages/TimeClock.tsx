@@ -48,6 +48,7 @@ import {
   BookOpen,
   Wrench,
   Save,
+  Camera,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -847,6 +848,8 @@ function EmployeeDashboard({
   const [newIssuePriority, setNewIssuePriority] = useState("NORMALNY");
   const [newIssueApartmentId, setNewIssueApartmentId] = useState("");
   const [newIssueCategory, setNewIssueCategory] = useState("ogólne");
+  const [newIssueFiles, setNewIssueFiles] = useState<File[]>([]);
+  const newIssueFileRef = useRef<HTMLInputElement>(null);
   const reportIssueMutation = useMutation({
     mutationFn: async () => {
       const res = await rcpFetch("POST", "/api/time-clock/issues", {
@@ -857,12 +860,24 @@ function EmployeeDashboard({
         category: newIssueCategory,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
-      return res.json();
+      const issue = await res.json();
+      if (newIssueFiles.length > 0) {
+        const formData = new FormData();
+        newIssueFiles.forEach(f => formData.append("photos", f));
+        const headers: Record<string, string> = {};
+        if (rcpToken) headers["Authorization"] = `Bearer ${rcpToken}`;
+        await fetch(`/api/time-clock/issues/${issue.id}/photos`, {
+          method: "POST",
+          headers,
+          body: formData,
+        });
+      }
+      return issue;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-reported-issues"] });
       setShowNewIssueDialog(false);
-      setNewIssueTitle(""); setNewIssueDesc(""); setNewIssuePriority("NORMALNY"); setNewIssueApartmentId(""); setNewIssueCategory("ogólne");
+      setNewIssueTitle(""); setNewIssueDesc(""); setNewIssuePriority("NORMALNY"); setNewIssueApartmentId(""); setNewIssueCategory("ogólne"); setNewIssueFiles([]);
       toast({ title: "Usterka zgłoszona" });
     },
     onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
@@ -1333,7 +1348,7 @@ function EmployeeDashboard({
             </div>
           </div>
 
-          <Dialog open={showNewIssueDialog} onOpenChange={setShowNewIssueDialog}>
+          <Dialog open={showNewIssueDialog} onOpenChange={v => { setShowNewIssueDialog(v); if (!v) setNewIssueFiles([]); }}>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Zgłoś usterkę</DialogTitle>
@@ -1401,6 +1416,51 @@ function EmployeeDashboard({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Zdjęcia (max 3)</Label>
+                  {newIssueFiles.length < 3 && (
+                    <div
+                      className="border-2 border-dashed rounded-md p-3 text-center cursor-pointer hover:border-primary transition-colors"
+                      onClick={() => newIssueFileRef.current?.click()}
+                      data-testid="dropzone-new-issue-photos"
+                    >
+                      <Camera className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
+                      <p className="text-xs text-muted-foreground">Dodaj zdjęcia</p>
+                      <input
+                        ref={newIssueFileRef}
+                        type="file"
+                        className="hidden"
+                        multiple
+                        accept="image/*"
+                        onChange={e => {
+                          if (e.target.files) {
+                            const added = Array.from(e.target.files);
+                            setNewIssueFiles(prev => [...prev, ...added].slice(0, 3));
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                  {newIssueFiles.length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {newIssueFiles.map((f, i) => {
+                        const objUrl = URL.createObjectURL(f);
+                        return (
+                          <div key={i} className="relative w-16 h-16 rounded-md overflow-hidden border bg-muted">
+                            <img src={objUrl} alt={f.name} className="object-cover w-full h-full" />
+                            <button
+                              type="button"
+                              className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                              onClick={() => setNewIssueFiles(prev => prev.filter((_, idx) => idx !== i))}
+                              data-testid={`button-remove-new-issue-photo-${i}`}
+                            >×</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <Button
                   className="w-full"

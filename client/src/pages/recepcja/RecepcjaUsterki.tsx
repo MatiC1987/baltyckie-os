@@ -370,30 +370,47 @@ function AddIssueForm({ apartments, onSuccess }: {
       </div>
 
       <div className="space-y-2">
-        <Label>Zdjęcia</Label>
-        <div
-          className="border-2 border-dashed rounded-md p-4 text-center cursor-pointer hover:border-primary transition-colors"
-          onClick={() => fileRef.current?.click()}
-          data-testid="dropzone-issue-photos"
-        >
-          <Camera className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">Kliknij aby dodać zdjęcia (max 5)</p>
-          <input
-            ref={fileRef}
-            type="file"
-            className="hidden"
-            multiple
-            accept="image/*"
-            onChange={e => {
-              if (e.target.files) setFiles(Array.from(e.target.files).slice(0, 5));
-            }}
-          />
-        </div>
+        <Label>Zdjęcia (max 3)</Label>
+        {files.length < 3 && (
+          <div
+            className="border-2 border-dashed rounded-md p-4 text-center cursor-pointer hover:border-primary transition-colors"
+            onClick={() => fileRef.current?.click()}
+            data-testid="dropzone-issue-photos"
+          >
+            <Camera className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Kliknij aby dodać zdjęcia</p>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              multiple
+              accept="image/*"
+              onChange={e => {
+                if (e.target.files) {
+                  const newFiles = Array.from(e.target.files);
+                  setFiles(prev => [...prev, ...newFiles].slice(0, 3));
+                  e.target.value = "";
+                }
+              }}
+            />
+          </div>
+        )}
         {files.length > 0 && (
           <div className="flex gap-2 flex-wrap">
-            {files.map((f, i) => (
-              <Badge key={i} variant="secondary">{f.name}</Badge>
-            ))}
+            {files.map((f, i) => {
+              const url = URL.createObjectURL(f);
+              return (
+                <div key={i} className="relative w-20 h-20 rounded-md overflow-hidden border bg-muted">
+                  <img src={url} alt={f.name} className="object-cover w-full h-full" />
+                  <button
+                    type="button"
+                    className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                    onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}
+                    data-testid={`button-remove-photo-${i}`}
+                  >×</button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -632,7 +649,7 @@ function IssueDetail({ issue, employees, onUpdated }: {
             {issue.photoUrls.map((url, i) => (
               <div key={i} className="rounded-md overflow-hidden border bg-muted aspect-square flex items-center justify-center">
                 <img
-                  src={`/api/objects/${url}`}
+                  src={url}
                   alt={`Zdjęcie ${i + 1}`}
                   className="object-cover w-full h-full"
                   data-testid={`img-issue-photo-${i}`}

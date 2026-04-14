@@ -14404,6 +14404,39 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post('/api/time-clock/issues/:id/photos', upload.array('photos', 3) as any, async (req: any, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const id = Number(req.params.id);
+      const [existing] = await db.select().from(issues).where(eq(issues.id, id));
+      if (!existing) return res.status(404).json({ message: 'Nie znaleziono usterki' });
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) return res.status(400).json({ message: 'Brak plików' });
+      const { ObjectStorageService, objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
+      const newUrls: string[] = [];
+      for (const file of files) {
+        const ext = (file.originalname.split('.').pop() || 'jpg').toLowerCase();
+        const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const entityId = `issues/issue_${id}_${uniqueId}.${ext}`;
+        const fullPath = `${privateDir}/${entityId}`;
+        const p = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
+        const parts = p.split('/');
+        const storageFile = osClient.bucket(parts[0]).file(parts.slice(1).join('/'));
+        await storageFile.save(file.buffer, { contentType: file.mimetype });
+        newUrls.push(`/objects/${entityId}`);
+      }
+      const currentUrls = existing.photoUrls || [];
+      const allUrls = [...currentUrls, ...newUrls];
+      const [updated] = await db.update(issues).set({ photoUrls: allUrls, updatedAt: new Date() }).where(eq(issues.id, id)).returning();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
 

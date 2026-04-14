@@ -1552,14 +1552,20 @@ export function registerRecepcjaRoutes(app: Express) {
       const files = req.files as Express.Multer.File[];
       if (!files || files.length === 0) return res.status(400).json({ message: 'Brak plików' });
 
-      const { objectStorage } = await import('./replit_integrations/object_storage');
+      const { ObjectStorageService, objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
       const newUrls: string[] = [];
       for (const file of files) {
-        const ext = file.originalname.split('.').pop() || 'jpg';
+        const ext = (file.originalname.split('.').pop() || 'jpg').toLowerCase();
         const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const path = `private/issues/issue_${id}_${uniqueId}.${ext}`;
-        await objectStorage.writeFile(path, file.buffer);
-        newUrls.push(path);
+        const entityId = `issues/issue_${id}_${uniqueId}.${ext}`;
+        const fullPath = `${privateDir}/${entityId}`;
+        const p = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
+        const parts = p.split('/');
+        const storageFile = osClient.bucket(parts[0]).file(parts.slice(1).join('/'));
+        await storageFile.save(file.buffer, { contentType: file.mimetype });
+        newUrls.push(`/objects/${entityId}`);
       }
 
       const currentUrls = existing.photoUrls || [];
