@@ -27,7 +27,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X, Eye, AlertTriangle, CheckCircle, UserCog } from "lucide-react";
+import { Plus, Pencil, Trash2, Phone, Mail, UserCircle, Upload, X, Eye, AlertTriangle, CheckCircle, UserCog, EyeOff } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { ResponsiveTable, type ResponsiveColumn } from "@/components/ResponsiveTable";
@@ -906,18 +907,22 @@ export default function Employees() {
                   data-testid="input-employee-comment"
                 />
               </div>
-              <div className="flex items-center gap-3 pt-1">
-                <input
-                  type="checkbox"
-                  id="hideFromRcp"
-                  checked={!!form.hideFromRcp}
-                  onChange={e => setForm(prev => ({ ...prev, hideFromRcp: e.target.checked }))}
-                  className="h-4 w-4 rounded border-border cursor-pointer"
-                  data-testid="checkbox-hide-from-rcp"
+
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    Ukryj w RCP
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Pracownik nie będzie widoczny na listach w module RCP (logowanie PINem nadal działa)
+                  </p>
+                </div>
+                <Switch
+                  checked={form.hideFromRcp ?? false}
+                  onCheckedChange={(checked) => setForm(prev => ({ ...prev, hideFromRcp: checked }))}
+                  data-testid="switch-hide-from-rcp"
                 />
-                <Label htmlFor="hideFromRcp" className="text-sm cursor-pointer">
-                  Ukryj w module RCP (nie pokazuj na listach ewidencji czasu)
-                </Label>
               </div>
             </FormSection>
 

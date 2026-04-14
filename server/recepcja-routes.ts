@@ -1086,17 +1086,21 @@ export function registerRecepcjaRoutes(app: Express) {
     try {
       const today = new Date().toISOString().split('T')[0];
       const allEmployees = await storage.getEmployees();
-      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY');
-      const todayEntries = await storage.getTimeEntriesByDay(today);
+      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY' && !e.hideFromRcp);
+      const hiddenFromRcpIds = new Set(allEmployees.filter(e => e.hideFromRcp).map(e => e.id));
+      const allTodayEntries = await storage.getTimeEntriesByDay(today);
+      const todayEntries = allTodayEntries.filter((e: any) => !hiddenFromRcpIds.has(e.employeeId));
 
       const rawPendingEntries = await storage.getTimeEntries({ status: 'WARUNKOWA' });
-      const pendingEntries = rawPendingEntries.map(e => {
-        const emp = allEmployees.find(a => a.id === e.employeeId);
-        return {
-          ...e,
-          employee: emp ? { id: emp.id, firstName: emp.firstName, lastName: emp.lastName } : null,
-        };
-      });
+      const pendingEntries = rawPendingEntries
+        .filter((e: any) => !hiddenFromRcpIds.has(e.employeeId))
+        .map((e: any) => {
+          const emp = allEmployees.find(a => a.id === e.employeeId);
+          return {
+            ...e,
+            employee: emp ? { id: emp.id, firstName: emp.firstName, lastName: emp.lastName } : null,
+          };
+        });
 
       let working = 0, onBreak = 0;
 
@@ -1240,7 +1244,7 @@ export function registerRecepcjaRoutes(app: Express) {
       const allEmployees = await storage.getEmployees();
       const activeEmps = employeeId
         ? allEmployees.filter(e => e.id === parseInt(employeeId as string))
-        : allEmployees.filter(e => e.status === 'AKTYWNY');
+        : allEmployees.filter(e => e.status === 'AKTYWNY' && !e.hideFromRcp);
 
       const stats = activeEmps.map(emp => {
         const empEntries = allEntries.filter(e => e.employeeId === emp.id);
@@ -1297,7 +1301,8 @@ export function registerRecepcjaRoutes(app: Express) {
       const y = Number(year);
       if (!m || !y) return res.status(400).json({ message: 'month and year required' });
 
-      const emps = await storage.getEmployees();
+      const allEmps = await storage.getEmployees();
+      const emps = allEmps.filter(e => !e.hideFromRcp);
       const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
       const lastDay = new Date(y, m, 0).getDate();
       const endDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;

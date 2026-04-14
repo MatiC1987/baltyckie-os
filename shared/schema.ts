@@ -128,7 +128,7 @@ export const employees = pgTable("employees", {
   status: text("status").notNull().default("AKTYWNY"), // 'AKTYWNY', 'NIEAKTYWNY'
   photoUrl: text("photo_url"),
   pin: text("pin"),
-  hideFromRcp: boolean("hide_from_rcp").default(false),
+  hideFromRcp: boolean("hide_from_rcp").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

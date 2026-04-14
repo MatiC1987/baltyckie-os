@@ -10618,10 +10618,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     try {
       const today = new Date().toISOString().split('T')[0];
       const allEmployees = await storage.getEmployees();
-      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY');
-      const todayEntries = await storage.getTimeEntriesByDay(today);
+      const activeEmployees = allEmployees.filter(e => e.status === 'AKTYWNY' && !e.hideFromRcp);
+      const hiddenFromRcpIds = new Set(allEmployees.filter(e => e.hideFromRcp).map(e => e.id));
+      const allTodayEntries = await storage.getTimeEntriesByDay(today);
+      const todayEntries = allTodayEntries.filter(e => !hiddenFromRcpIds.has(e.employeeId));
 
-      const pendingEntries = await storage.getTimeEntries({ status: 'WARUNKOWA' });
+      const allPendingEntries = await storage.getTimeEntries({ status: 'WARUNKOWA' });
+      const pendingEntries = allPendingEntries.filter(e => !hiddenFromRcpIds.has(e.employeeId));
 
       let working = 0, onBreak = 0;
       const employeeStatuses: any[] = [];
@@ -13014,7 +13017,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       const allEmployees = await storage.getEmployees();
       const activeEmps = employeeId
         ? allEmployees.filter(e => e.id === parseInt(employeeId as string))
-        : allEmployees.filter(e => e.status === "AKTYWNY");
+        : allEmployees.filter(e => e.status === "AKTYWNY" && !e.hideFromRcp);
 
       const stats = activeEmps.map(emp => {
         const empEntries = allEntries.filter(e => e.employeeId === emp.id);
@@ -13150,7 +13153,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     try {
       const today = new Date().toISOString().split("T")[0];
       const allEmployees = await storage.getEmployees();
-      const activeEmployees = allEmployees.filter(e => e.status === "AKTYWNY");
+      const activeEmployees = allEmployees.filter(e => e.status === "AKTYWNY" && !e.hideFromRcp);
       const todaySchedules = await storage.getWorkSchedules({ from: today, to: today });
       const todayEntries = await storage.getTimeEntriesByDay(today);
 
