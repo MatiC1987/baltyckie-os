@@ -1552,6 +1552,13 @@ export function registerRecepcjaRoutes(app: Express) {
       const files = req.files as Express.Multer.File[];
       if (!files || files.length === 0) return res.status(400).json({ message: 'Brak plików' });
 
+      const ALLOWED_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      for (const file of files) {
+        if (!ALLOWED_MIMES.includes(file.mimetype)) {
+          return res.status(400).json({ message: 'Dozwolone formaty: JPG, PNG, WEBP' });
+        }
+      }
+
       const { ObjectStorageService, objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
       const osService = new ObjectStorageService();
       const privateDir = osService.getPrivateObjectDir();

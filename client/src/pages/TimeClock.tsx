@@ -852,31 +852,35 @@ function EmployeeDashboard({
   const newIssueFileRef = useRef<HTMLInputElement>(null);
   const reportIssueMutation = useMutation({
     mutationFn: async () => {
+      const uploadedUrls: string[] = [];
+      if (newIssueFiles.length > 0) {
+        const authHeaders: Record<string, string> = {};
+        if (rcpToken) authHeaders["Authorization"] = `Bearer ${rcpToken}`;
+        for (const file of newIssueFiles) {
+          const formData = new FormData();
+          formData.append("photo", file);
+          const uploadRes = await fetch("/api/time-clock/issues/upload-photo", {
+            method: "POST",
+            headers: authHeaders,
+            body: formData,
+          });
+          if (!uploadRes.ok) {
+            const errBody = await uploadRes.json().catch(() => ({ message: "Błąd uploadu zdjęć" }));
+            throw new Error(errBody.message || "Błąd uploadu zdjęć");
+          }
+          const { url } = await uploadRes.json();
+          uploadedUrls.push(url);
+        }
+      }
       const res = await rcpFetch("POST", "/api/time-clock/issues", {
         apartmentId: Number(newIssueApartmentId),
         title: newIssueTitle.trim(),
         description: newIssueDesc.trim() || null,
         priority: newIssuePriority,
         category: newIssueCategory,
+        photoUrls: uploadedUrls.length > 0 ? uploadedUrls : undefined,
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
-      const issue = await res.json();
-      if (newIssueFiles.length > 0) {
-        const formData = new FormData();
-        newIssueFiles.forEach(f => formData.append("photos", f));
-        const headers: Record<string, string> = {};
-        if (rcpToken) headers["Authorization"] = `Bearer ${rcpToken}`;
-        const uploadRes = await fetch(`/api/time-clock/issues/${issue.id}/photos`, {
-          method: "POST",
-          headers,
-          body: formData,
-        });
-        if (!uploadRes.ok) {
-          const errBody = await uploadRes.json().catch(() => ({ message: "Błąd uploadu zdjęć" }));
-          throw new Error(errBody.message || "Błąd uploadu zdjęć");
-        }
-      }
-      return issue;
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-reported-issues"] });

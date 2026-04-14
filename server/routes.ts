@@ -14325,7 +14325,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
       const emp = await storage.getEmployee(employeeId);
       if (!emp) return res.status(404).json({ message: 'Nie znaleziono pracownika' });
-      const { apartmentId, title, description, priority, category } = req.body;
+      const { apartmentId, title, description, priority, category, photoUrls } = req.body;
       if (!apartmentId || !title) return res.status(400).json({ message: 'Apartament i tytuł są wymagane' });
       const [issue] = await db.insert(issues).values({
         apartmentId: Number(apartmentId),
@@ -14335,6 +14335,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         category: category || 'ogólne',
         reportedBy: `${emp.firstName} ${emp.lastName}`,
         status: 'OTWARTE',
+        photoUrls: Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : null,
       }).returning();
       res.json(issue);
     } catch (err: any) {
@@ -14404,6 +14405,33 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  const ALLOWED_ISSUE_PHOTO_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
+  app.post('/api/time-clock/issues/upload-photo', upload.single('photo') as any, async (req: any, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      if (!req.file) return res.status(400).json({ message: 'Brak pliku' });
+      if (!ALLOWED_ISSUE_PHOTO_MIMES.includes(req.file.mimetype)) {
+        return res.status(400).json({ message: 'Dozwolone formaty: JPG, PNG, WEBP' });
+      }
+      const { ObjectStorageService, objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
+      const ext = (req.file.originalname.split('.').pop() || 'jpg').toLowerCase();
+      const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const entityId = `issues/tc_${employeeId}_${uniqueId}.${ext}`;
+      const fullPath = `${privateDir}/${entityId}`;
+      const p = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
+      const parts = p.split('/');
+      const storageFile = osClient.bucket(parts[0]).file(parts.slice(1).join('/'));
+      await storageFile.save(req.file.buffer, { contentType: req.file.mimetype });
+      res.json({ url: `/objects/${entityId}` });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/time-clock/issues/:id/photos', upload.array('photos', 3) as any, async (req: any, res) => {
     try {
       const employeeId = getRcpEmployeeId(req);
@@ -14419,6 +14447,11 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       }
       const files = req.files as Express.Multer.File[];
       if (!files || files.length === 0) return res.status(400).json({ message: 'Brak plików' });
+      for (const file of files) {
+        if (!ALLOWED_ISSUE_PHOTO_MIMES.includes(file.mimetype)) {
+          return res.status(400).json({ message: 'Dozwolone formaty: JPG, PNG, WEBP' });
+        }
+      }
       const { ObjectStorageService, objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
       const osService = new ObjectStorageService();
       const privateDir = osService.getPrivateObjectDir();
