@@ -807,19 +807,24 @@ export function registerRecepcjaRoutes(app: Express) {
       const dayEnd = new Date(`${date}T23:59:59`);
       if (isNaN(dayStart.getTime())) return res.status(400).json({ message: 'Nieprawidłowa data' });
 
-      const allLogs = await db.select()
+      const allLogs = await db.select({
+        log: locationLogs,
+        hideFromRcp: employees.hideFromRcp,
+      })
         .from(locationLogs)
+        .leftJoin(employees, eq(locationLogs.employeeId, employees.id))
         .where(and(
           gte(locationLogs.timestamp, dayStart),
           lte(locationLogs.timestamp, dayEnd),
         ));
 
-      const uniqueEmployees = new Set(allLogs.map(l => l.employeeId));
-      const outsideZone = allLogs.filter(l => l.distanceFromZone && parseFloat(l.distanceFromZone) > 0).length;
+      const visibleLogs = allLogs.filter(r => !r.hideFromRcp);
+      const uniqueEmployees = new Set(visibleLogs.map(r => r.log.employeeId));
+      const outsideZone = visibleLogs.filter(r => r.log.distanceFromZone && parseFloat(r.log.distanceFromZone) > 0).length;
 
       res.json({
         totalEmployees: uniqueEmployees.size,
-        totalLogs: allLogs.length,
+        totalLogs: visibleLogs.length,
         outsideZone,
       });
     } catch (err: any) { res.status(500).json({ message: err.message }); }
@@ -1117,7 +1122,8 @@ export function registerRecepcjaRoutes(app: Express) {
         }
       }
 
-      const pendingLeaves = await storage.getLeaveRequests({ status: 'OCZEKUJACY' });
+      const allPendingLeaves = await storage.getLeaveRequests({ status: 'OCZEKUJACY' });
+      const pendingLeaves = allPendingLeaves.filter((l: any) => !hiddenFromRcpIds.has(l.employeeId));
 
       const todaySchedules = await storage.getWorkSchedules({ from: today, to: today });
       const employeesWithPin = activeEmployees.filter(e => e.pin);
