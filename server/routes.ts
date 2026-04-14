@@ -14316,6 +14316,48 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post('/api/time-clock/issues', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: 'Nie znaleziono pracownika' });
+      const { apartmentId, title, description, priority, category } = req.body;
+      if (!apartmentId || !title) return res.status(400).json({ message: 'Apartament i tytuł są wymagane' });
+      const [issue] = await db.insert(issues).values({
+        apartmentId: Number(apartmentId),
+        title: title.trim(),
+        description: description?.trim() || null,
+        priority: priority || 'NORMALNY',
+        category: category || 'ogólne',
+        reportedBy: `${emp.firstName} ${emp.lastName}`,
+        status: 'OTWARTE',
+      }).returning();
+      res.json(issue);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/time-clock/my-reported-issues', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: 'Nie znaleziono pracownika' });
+      const result = await db.select({
+        issue: issues,
+        apartmentName: apartments.name,
+      }).from(issues)
+        .leftJoin(apartments, eq(issues.apartmentId, apartments.id))
+        .where(eq(issues.reportedBy, `${emp.firstName} ${emp.lastName}`))
+        .orderBy(desc(issues.createdAt));
+      res.json(result.map(r => ({ ...r.issue, apartmentName: r.apartmentName })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/time-clock/my-issues', async (req, res) => {
     try {
       const employeeId = getRcpEmployeeId(req);

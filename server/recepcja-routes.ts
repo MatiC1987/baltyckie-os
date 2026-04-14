@@ -1482,6 +1482,51 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.post('/api/recepcja/issues/:id/create-task', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      const [issueRow] = await db.select({ issue: issues, apartmentName: apartments.name })
+        .from(issues)
+        .leftJoin(apartments, eq(issues.apartmentId, apartments.id))
+        .where(eq(issues.id, id));
+      if (!issueRow) return res.status(404).json({ message: 'Nie znaleziono usterki' });
+      const iss = issueRow.issue;
+
+      const { employeeId, date, startTime, endTime } = req.body;
+      if (!employeeId || !date) return res.status(400).json({ message: 'Pracownik i data są wymagane' });
+
+      let categoryId: number | null = null;
+      const naprawaCats = await db.select().from(taskCategories).where(eq(taskCategories.name, 'Naprawa')).limit(1);
+      if (naprawaCats.length > 0) {
+        categoryId = naprawaCats[0].id;
+      } else {
+        const [newCat] = await db.insert(taskCategories).values({ name: 'Naprawa', color: '#f97316' }).returning();
+        categoryId = newCat.id;
+      }
+
+      const [task] = await db.insert(employeeTasks).values({
+        title: `Naprawa: ${iss.title}`,
+        description: iss.description || null,
+        employeeId: Number(employeeId),
+        date,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        priority: iss.priority,
+        status: 'ZAPLANOWANE',
+        apartmentId: iss.apartmentId,
+        categoryId,
+        source: 'RECEPCJA',
+      }).returning();
+
+      if (iss.status === 'OTWARTE') {
+        await db.update(issues).set({ status: 'W_REALIZACJI', updatedAt: new Date() }).where(eq(issues.id, id));
+      }
+
+      await logRecepcjaAction(req.recepcjaUser.id, 'CREATE_TASK_FROM_ISSUE', 'issue', id.toString(), { taskId: task.id });
+      res.json(task);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.post('/api/recepcja/issues/:id/photos', isRecepcjaAuth as any, upload.array('photos', 5) as any, async (req: any, res) => {
     try {
       const id = Number(req.params.id);

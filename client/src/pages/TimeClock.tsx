@@ -761,7 +761,7 @@ function EmployeeDashboard({
   type AptOption = { id: number; name: string; location: string | null };
   const workerAptsQuery = useQuery<AptOption[]>({
     queryKey: ["/api/time-clock/apartments"],
-    enabled: activeTab === "tasks",
+    enabled: activeTab === "tasks" || activeTab === "usterki",
     queryFn: async () => {
       const res = await rcpFetch("GET", "/api/time-clock/apartments");
       return await res.json();
@@ -833,6 +833,40 @@ function EmployeeDashboard({
       return await res.json();
     },
   });
+  const usterkiReportedQuery = useQuery<IssueClockItem[]>({
+    queryKey: ["/api/time-clock/my-reported-issues"],
+    enabled: activeTab === "usterki",
+    queryFn: async () => {
+      const res = await rcpFetch("GET", "/api/time-clock/my-reported-issues");
+      return await res.json();
+    },
+  });
+  const [showNewIssueDialog, setShowNewIssueDialog] = useState(false);
+  const [newIssueTitle, setNewIssueTitle] = useState("");
+  const [newIssueDesc, setNewIssueDesc] = useState("");
+  const [newIssuePriority, setNewIssuePriority] = useState("NORMALNY");
+  const [newIssueApartmentId, setNewIssueApartmentId] = useState("");
+  const [newIssueCategory, setNewIssueCategory] = useState("ogólne");
+  const reportIssueMutation = useMutation({
+    mutationFn: async () => {
+      const res = await rcpFetch("POST", "/api/time-clock/issues", {
+        apartmentId: Number(newIssueApartmentId),
+        title: newIssueTitle.trim(),
+        description: newIssueDesc.trim() || null,
+        priority: newIssuePriority,
+        category: newIssueCategory,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-reported-issues"] });
+      setShowNewIssueDialog(false);
+      setNewIssueTitle(""); setNewIssueDesc(""); setNewIssuePriority("NORMALNY"); setNewIssueApartmentId(""); setNewIssueCategory("ogólne");
+      toast({ title: "Usterka zgłoszona" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
   const updateIssueStatusMutation = useMutation({
     mutationFn: async ({ id, status, notes }: { id: number; status: string; notes?: string }) => {
       const res = await rcpFetch("PUT", `/api/time-clock/issues/${id}/status`, { status, notes });
@@ -871,7 +905,7 @@ function EmployeeDashboard({
   const tabItems = [
     { key: "today" as const, label: "Dziś", icon: Clock },
     { key: "tasks" as const, label: "Zadania", icon: ClipboardList },
-    ...(isKonserwator ? [{ key: "usterki" as const, label: "Usterki", icon: Wrench }] : []),
+    { key: "usterki" as const, label: "Usterki", icon: Wrench },
     { key: "km" as const, label: "Km", icon: Car },
     { key: "history" as const, label: "Historia", icon: History },
     { key: "more" as const, label: "Więcej", icon: MoreHorizontal },
@@ -1227,7 +1261,8 @@ function EmployeeDashboard({
     }
 
     if (activeTab === "usterki") {
-      const usterkiList = usterkiQuery.data || [];
+      const assignedList = usterkiQuery.data || [];
+      const reportedList = usterkiReportedQuery.data || [];
       const PRIORITY_COLORS: Record<string, string> = {
         PILNY: "bg-red-500/15 text-red-600 border-red-500/20",
         WYSOKI: "bg-orange-500/15 text-orange-600 border-orange-500/20",
@@ -1236,32 +1271,149 @@ function EmployeeDashboard({
       };
       const PRIORITY_LABELS: Record<string, string> = { PILNY: "Pilny", WYSOKI: "Wysoki", NORMALNY: "Normalny", NISKI: "Niski" };
       const STATUS_LABELS: Record<string, string> = { OTWARTE: "Otwarte", W_REALIZACJI: "W realizacji", "ROZWIĄZANE": "Rozwiązane", "ZAMKNIĘTE": "Zamknięte" };
+      const STATUS_COLORS: Record<string, string> = {
+        OTWARTE: "bg-yellow-500/15 text-yellow-700 border-yellow-500/20",
+        W_REALIZACJI: "bg-blue-500/15 text-blue-600 border-blue-500/20",
+        "ROZWIĄZANE": "bg-green-500/15 text-green-600 border-green-500/20",
+        "ZAMKNIĘTE": "bg-gray-500/15 text-gray-600 border-gray-500/20",
+      };
+      const apts = workerAptsQuery.data || [];
       return (
         <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <Wrench className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-bold">Moje usterki</h2>
-            {usterkiQuery.isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-bold">Usterki</h2>
+              {(usterkiReportedQuery.isLoading || usterkiQuery.isLoading) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            <Button size="sm" className="rounded-xl" onClick={() => setShowNewIssueDialog(true)} data-testid="button-new-issue">
+              <Plus className="h-4 w-4 mr-1" /> Zgłoś
+            </Button>
           </div>
-          {!usterkiQuery.isLoading && usterkiList.length === 0 && (
-            <Card className="p-8 text-center" data-testid="text-no-usterki">
-              <Wrench className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-muted-foreground text-sm">Brak przypisanych usterek</p>
-            </Card>
+
+          {isKonserwator && (
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Przypisane do mnie</h3>
+              {!usterkiQuery.isLoading && assignedList.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-2" data-testid="text-no-assigned-usterki">Brak przypisanych usterek</p>
+              )}
+              {assignedList.map(issue => (
+                <UsterkiCard
+                  key={issue.id}
+                  issue={issue}
+                  priorityColors={PRIORITY_COLORS}
+                  priorityLabels={PRIORITY_LABELS}
+                  statusLabels={STATUS_LABELS}
+                  onUpdateStatus={(id, status, notes) => updateIssueStatusMutation.mutate({ id, status, notes })}
+                  isPending={updateIssueStatusMutation.isPending}
+                />
+              ))}
+            </div>
           )}
+
           <div className="flex flex-col gap-3">
-            {usterkiList.map(issue => (
-              <UsterkiCard
-                key={issue.id}
-                issue={issue}
-                priorityColors={PRIORITY_COLORS}
-                priorityLabels={PRIORITY_LABELS}
-                statusLabels={STATUS_LABELS}
-                onUpdateStatus={(id, status, notes) => updateIssueStatusMutation.mutate({ id, status, notes })}
-                isPending={updateIssueStatusMutation.isPending}
-              />
-            ))}
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Moje zgłoszenia</h3>
+            {!usterkiReportedQuery.isLoading && reportedList.length === 0 && (
+              <Card className="p-6 text-center" data-testid="text-no-usterki">
+                <Wrench className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-muted-foreground text-sm">Nie masz jeszcze żadnych zgłoszeń</p>
+              </Card>
+            )}
+            <div className="flex flex-col gap-2">
+              {reportedList.map(issue => (
+                <Card key={issue.id} className="p-3 rounded-2xl" data-testid={`card-reported-issue-${issue.id}`}>
+                  <p className="font-medium text-sm" data-testid={`text-reported-issue-title-${issue.id}`}>{issue.title}</p>
+                  <p className="text-xs text-muted-foreground">{issue.apartmentName || ""}</p>
+                  <div className="flex gap-2 mt-1.5 flex-wrap">
+                    <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[issue.priority] || ""}`}>{PRIORITY_LABELS[issue.priority] || issue.priority}</Badge>
+                    <Badge variant="outline" className={`text-xs ${STATUS_COLORS[issue.status] || ""}`}>{STATUS_LABELS[issue.status] || issue.status}</Badge>
+                  </div>
+                </Card>
+              ))}
+            </div>
           </div>
+
+          <Dialog open={showNewIssueDialog} onOpenChange={setShowNewIssueDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Zgłoś usterkę</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Apartament</Label>
+                  <Select value={newIssueApartmentId} onValueChange={setNewIssueApartmentId}>
+                    <SelectTrigger data-testid="select-new-issue-apartment">
+                      <SelectValue placeholder="Wybierz apartament" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apts.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tytuł</Label>
+                  <Input
+                    value={newIssueTitle}
+                    onChange={e => setNewIssueTitle(e.target.value)}
+                    placeholder="Np. Zepsuty kran w łazience"
+                    data-testid="input-new-issue-title"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Opis (opcjonalnie)</Label>
+                  <Textarea
+                    value={newIssueDesc}
+                    onChange={e => setNewIssueDesc(e.target.value)}
+                    placeholder="Szczegóły..."
+                    className="resize-none"
+                    rows={2}
+                    data-testid="input-new-issue-desc"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1 space-y-1.5">
+                    <Label>Priorytet</Label>
+                    <Select value={newIssuePriority} onValueChange={setNewIssuePriority}>
+                      <SelectTrigger data-testid="select-new-issue-priority">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NISKI">Niski</SelectItem>
+                        <SelectItem value="NORMALNY">Normalny</SelectItem>
+                        <SelectItem value="WYSOKI">Wysoki</SelectItem>
+                        <SelectItem value="PILNY">Pilny</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    <Label>Kategoria</Label>
+                    <Select value={newIssueCategory} onValueChange={setNewIssueCategory}>
+                      <SelectTrigger data-testid="select-new-issue-category">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hydraulika">Hydraulika</SelectItem>
+                        <SelectItem value="elektryka">Elektryka</SelectItem>
+                        <SelectItem value="AGD">AGD</SelectItem>
+                        <SelectItem value="meble">Meble</SelectItem>
+                        <SelectItem value="ogólne">Ogólne</SelectItem>
+                        <SelectItem value="inne">Inne</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={!newIssueTitle.trim() || !newIssueApartmentId || reportIssueMutation.isPending}
+                  onClick={() => reportIssueMutation.mutate()}
+                  data-testid="button-submit-new-issue"
+                >
+                  {reportIssueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                  Zgłoś usterkę
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       );
     }

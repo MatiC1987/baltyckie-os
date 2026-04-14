@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, Plus, Camera, Loader2, Clock, User,
-  MapPin, Tag, Filter, ChevronRight, Save, DollarSign, StickyNote,
+  MapPin, Tag, Filter, ChevronRight, Save, DollarSign, StickyNote, ClipboardList,
 } from "lucide-react";
 
 const PRIORITIES = [
@@ -422,6 +422,9 @@ function IssueDetail({ issue, employees, onUpdated }: {
   const [editNotes, setEditNotes] = useState(issue.notes || "");
   const [editCost, setEditCost] = useState(issue.cost || "");
   const [dirty, setDirty] = useState(false);
+  const [taskEmployeeId, setTaskEmployeeId] = useState("");
+  const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showCreateTask, setShowCreateTask] = useState(false);
 
   const konserwators = employees.filter(e => ["KONSERWATOR", "OSOBA_SPRZATAJACA", "PRACOWNIK_RECEPCJI"].includes(e.position));
 
@@ -440,6 +443,26 @@ function IssueDetail({ issue, employees, onUpdated }: {
       toast({ title: "Zapisano zmiany" });
       setDirty(false);
       onUpdated(updated);
+    },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+
+  const createTaskMutation = useMutation({
+    mutationFn: async () => {
+      if (!taskEmployeeId || !taskDate) throw new Error("Wybierz pracownika i datę");
+      const r = await recepcjaFetch("POST", `/api/recepcja/issues/${issue.id}/create-task`, {
+        employeeId: Number(taskEmployeeId),
+        date: taskDate,
+      });
+      if (!r.ok) throw new Error((await r.json()).message);
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Zadanie utworzone", description: "Usterka zmieniona na W realizacji" });
+      setShowCreateTask(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/issues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recepcja/tasks"] });
+      onUpdated({ status: "W_REALIZACJI" });
     },
     onError: (err: any) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
   });
@@ -550,6 +573,55 @@ function IssueDetail({ issue, employees, onUpdated }: {
             {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
             Zapisz zmiany
           </Button>
+        )}
+      </div>
+
+      <div className="space-y-3 border-t pt-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold flex items-center gap-1.5">
+            <ClipboardList className="h-4 w-4" />
+            Utwórz zadanie
+          </h4>
+          <Button variant="ghost" size="sm" onClick={() => setShowCreateTask(!showCreateTask)} data-testid="button-toggle-create-task">
+            {showCreateTask ? "Anuluj" : "Rozwiń"}
+          </Button>
+        </div>
+        {showCreateTask && (
+          <div className="space-y-3 bg-muted/40 rounded-lg p-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Przypisz pracownika</Label>
+              <Select value={taskEmployeeId} onValueChange={setTaskEmployeeId}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-task-employee">
+                  <SelectValue placeholder="Wybierz pracownika" />
+                </SelectTrigger>
+                <SelectContent>
+                  {konserwators.map(e => (
+                    <SelectItem key={e.id} value={String(e.id)}>{e.firstName} {e.lastName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Data</Label>
+              <Input
+                type="date"
+                value={taskDate}
+                onChange={e => setTaskDate(e.target.value)}
+                className="h-8 text-sm"
+                data-testid="input-task-date"
+              />
+            </div>
+            <Button
+              className="w-full"
+              size="sm"
+              onClick={() => createTaskMutation.mutate()}
+              disabled={!taskEmployeeId || !taskDate || createTaskMutation.isPending}
+              data-testid="button-create-task-from-issue"
+            >
+              {createTaskMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+              Utwórz zadanie naprawy
+            </Button>
+          </div>
         )}
       </div>
 
