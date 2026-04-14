@@ -14289,7 +14289,11 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     try {
       const employeeId = getRcpEmployeeId(req);
       if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
-      const data = insertMileageEntrySchema.parse({ ...req.body, employeeId });
+      const today = new Date().toISOString().slice(0, 10);
+      if (req.body.date && req.body.date !== today) {
+        return res.status(400).json({ message: 'Kilometrówkę można dodać tylko w dniu przejazdu. Wpisy z poprzednich dni nie są możliwe.' });
+      }
+      const data = insertMileageEntrySchema.parse({ ...req.body, employeeId, date: today });
       const [entry] = await db.insert(mileageEntries).values(data).returning();
       res.status(201).json(entry);
     } catch (err: any) {
