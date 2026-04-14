@@ -102,6 +102,7 @@ const emptyForm: InsertEmployee = {
   comment: "",
   status: "AKTYWNY",
   photoUrl: "",
+  hideFromRcp: false,
 };
 
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
@@ -271,6 +272,7 @@ export default function Employees() {
       comment: emp.comment || "",
       status: emp.status,
       photoUrl: emp.photoUrl || "",
+      hideFromRcp: emp.hideFromRcp ?? false,
     });
     setDialogOpen(true);
   }
@@ -903,6 +905,19 @@ export default function Employees() {
                   rows={3}
                   data-testid="input-employee-comment"
                 />
+              </div>
+              <div className="flex items-center gap-3 pt-1">
+                <input
+                  type="checkbox"
+                  id="hideFromRcp"
+                  checked={!!form.hideFromRcp}
+                  onChange={e => setForm(prev => ({ ...prev, hideFromRcp: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border cursor-pointer"
+                  data-testid="checkbox-hide-from-rcp"
+                />
+                <Label htmlFor="hideFromRcp" className="text-sm cursor-pointer">
+                  Ukryj w module RCP (nie pokazuj na listach ewidencji czasu)
+                </Label>
               </div>
             </FormSection>
 

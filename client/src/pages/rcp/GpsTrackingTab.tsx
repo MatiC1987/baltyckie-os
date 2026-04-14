@@ -57,9 +57,10 @@ export default function GpsTrackingTab() {
   const polylineRef = useRef<any>(null);
   const circlesRef = useRef<any[]>([]);
 
-  const { data: employees = [] } = useQuery<Employee[]>({
+  const { data: allEmployeesRaw = [] } = useQuery<Employee[]>({
     queryKey: ["/api/employees"],
   });
+  const employees = allEmployeesRaw.filter((e: any) => !e.hideFromRcp);
 
   const { data: locations = [] } = useQuery<GpsLocation[]>({
     queryKey: ["/api/locations"],

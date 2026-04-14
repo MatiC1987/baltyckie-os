@@ -75,7 +75,8 @@ export default function RaportyTab() {
   const [year, setYear] = useState(String(now.getFullYear()));
   const [month, setMonth] = useState(String(now.getMonth() + 1));
 
-  const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
+  const { data: allEmployeesRaw = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
+  const employees = allEmployeesRaw.filter((e: any) => !e.hideFromRcp);
 
   const qk = empId ? `/api/rcp/report?employeeId=${empId}&year=${year}&month=${month}` : null;
   const { data: report, isLoading } = useQuery<any>({

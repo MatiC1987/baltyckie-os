@@ -577,7 +577,10 @@ export function registerRecepcjaRoutes(app: Express) {
 
   // ==================== RCP ADMIN ====================
   app.get('/api/recepcja/rcp/employees', isRecepcjaAuth as any, async (req: any, res) => {
-    try { res.json(await storage.getEmployees()); }
+    try {
+      const all = await storage.getEmployees();
+      res.json(all.filter((e: any) => !e.hideFromRcp));
+    }
     catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
@@ -872,7 +875,7 @@ export function registerRecepcjaRoutes(app: Express) {
   app.get('/api/recepcja/rcp/employees-pins', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const emps = await storage.getEmployees();
-      res.json(emps.map(e => ({ id: e.id, firstName: e.firstName, lastName: e.lastName, pin: e.pin ? '••••••' : null })));
+      res.json(emps.filter((e: any) => !e.hideFromRcp).map(e => ({ id: e.id, firstName: e.firstName, lastName: e.lastName, pin: e.pin ? '••••••' : null })));
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 

@@ -577,7 +577,7 @@ function ObecnosciTab() {
       }
     }
     return allEmployees
-      .filter(e => e.status === "AKTYWNY")
+      .filter(e => e.status === "AKTYWNY" && !e.hideFromRcp)
       .map(emp => ({
         employee: emp,
         entry: entryMap.get(emp.id) || null,
@@ -1060,7 +1060,7 @@ function PINyTab() {
     return <div className="flex items-center justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
   }
 
-  const activeEmployees = (employees || []).filter(e => e.status === "AKTYWNY");
+  const activeEmployees = (employees || []).filter(e => e.status === "AKTYWNY" && !e.hideFromRcp);
 
   return (
     <div className="space-y-4">
