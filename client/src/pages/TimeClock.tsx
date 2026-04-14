@@ -46,6 +46,8 @@ import {
   MessageSquare,
   Navigation,
   BookOpen,
+  Wrench,
+  Save,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -411,7 +413,7 @@ function EmployeeDashboard({
   const [gpsStatus, setGpsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsTrackingActive, setGpsTrackingActive] = useState(false);
-  const [activeTab, setActiveTab] = useState<"today" | "tasks" | "km" | "history" | "more">("today");
+  const [activeTab, setActiveTab] = useState<"today" | "tasks" | "km" | "history" | "more" | "usterki">("today");
   const [moreSubView, setMoreSubView] = useState<"menu" | "schedule" | "summary" | "leaves" | "instrukcja">("menu");
   const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
   const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
@@ -816,6 +818,33 @@ function EmployeeDashboard({
     onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
   });
 
+  type IssueClockItem = {
+    id: number; apartmentId: number; apartmentName: string | null;
+    title: string; description: string | null; priority: string; status: string;
+    category: string; reportedBy: string; assignedTo: string | null;
+    notes: string | null; cost: string | null; createdAt: string; resolvedAt: string | null;
+  };
+  const isKonserwator = employee.position === "KONSERWATOR" || employee.position === "OSOBA_SPRZATAJACA";
+  const usterkiQuery = useQuery<IssueClockItem[]>({
+    queryKey: ["/api/time-clock/my-issues"],
+    enabled: activeTab === "usterki" && isKonserwator,
+    queryFn: async () => {
+      const res = await rcpFetch("GET", "/api/time-clock/my-issues");
+      return await res.json();
+    },
+  });
+  const updateIssueStatusMutation = useMutation({
+    mutationFn: async ({ id, status, notes }: { id: number; status: string; notes?: string }) => {
+      const res = await rcpFetch("PUT", `/api/time-clock/issues/${id}/status`, { status, notes });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-clock/my-issues"] });
+      toast({ title: "Status zaktualizowany" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+
   const updateTaskStatusMutation = useMutation({
     mutationFn: async ({ id, status, actualStartTime, actualEndTime }: { id: number; status: string; actualStartTime?: string; actualEndTime?: string }) => {
       const res = await rcpFetch("PUT", `/api/time-clock/tasks/${id}/status`, { status, actualStartTime, actualEndTime });
@@ -842,6 +871,7 @@ function EmployeeDashboard({
   const tabItems = [
     { key: "today" as const, label: "Dziś", icon: Clock },
     { key: "tasks" as const, label: "Zadania", icon: ClipboardList },
+    ...(isKonserwator ? [{ key: "usterki" as const, label: "Usterki", icon: Wrench }] : []),
     { key: "km" as const, label: "Km", icon: Car },
     { key: "history" as const, label: "Historia", icon: History },
     { key: "more" as const, label: "Więcej", icon: MoreHorizontal },
@@ -1098,6 +1128,11 @@ function EmployeeDashboard({
             </Button>
           </div>
 
+          <div className="flex items-start gap-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-3 py-2.5" data-testid="banner-km-info">
+            <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+            <p className="text-xs text-blue-700 dark:text-blue-300">Kilometrówka rejestruje tylko przejazdy z bieżącego dnia. Wcześniejszych wpisów nie można dodać.</p>
+          </div>
+
           <Card className="p-4 rounded-2xl bg-primary/5" data-testid="card-mileage-summary">
             <div className="flex items-center justify-between">
               <div>
@@ -1187,6 +1222,46 @@ function EmployeeDashboard({
               })}
             </div>
           )}
+        </div>
+      );
+    }
+
+    if (activeTab === "usterki") {
+      const usterkiList = usterkiQuery.data || [];
+      const PRIORITY_COLORS: Record<string, string> = {
+        PILNY: "bg-red-500/15 text-red-600 border-red-500/20",
+        WYSOKI: "bg-orange-500/15 text-orange-600 border-orange-500/20",
+        NORMALNY: "bg-blue-500/15 text-blue-600 border-blue-500/20",
+        NISKI: "bg-gray-500/15 text-gray-600 border-gray-500/20",
+      };
+      const PRIORITY_LABELS: Record<string, string> = { PILNY: "Pilny", WYSOKI: "Wysoki", NORMALNY: "Normalny", NISKI: "Niski" };
+      const STATUS_LABELS: Record<string, string> = { OTWARTE: "Otwarte", W_REALIZACJI: "W realizacji", "ROZWIĄZANE": "Rozwiązane", "ZAMKNIĘTE": "Zamknięte" };
+      return (
+        <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Wrench className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-bold">Moje usterki</h2>
+            {usterkiQuery.isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+          {!usterkiQuery.isLoading && usterkiList.length === 0 && (
+            <Card className="p-8 text-center" data-testid="text-no-usterki">
+              <Wrench className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">Brak przypisanych usterek</p>
+            </Card>
+          )}
+          <div className="flex flex-col gap-3">
+            {usterkiList.map(issue => (
+              <UsterkiCard
+                key={issue.id}
+                issue={issue}
+                priorityColors={PRIORITY_COLORS}
+                priorityLabels={PRIORITY_LABELS}
+                statusLabels={STATUS_LABELS}
+                onUpdateStatus={(id, status, notes) => updateIssueStatusMutation.mutate({ id, status, notes })}
+                isPending={updateIssueStatusMutation.isPending}
+              />
+            ))}
+          </div>
         </div>
       );
     }
@@ -1544,6 +1619,82 @@ function NewLeaveDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type UsterkiCardProps = {
+  issue: {
+    id: number; title: string; description: string | null; priority: string; status: string;
+    category: string; apartmentName: string | null; createdAt: string; notes: string | null;
+  };
+  priorityColors: Record<string, string>;
+  priorityLabels: Record<string, string>;
+  statusLabels: Record<string, string>;
+  onUpdateStatus: (id: number, status: string, notes?: string) => void;
+  isPending: boolean;
+};
+
+function UsterkiCard({ issue, priorityColors, priorityLabels, statusLabels, onUpdateStatus, isPending }: UsterkiCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [newStatus, setNewStatus] = useState(issue.status);
+  const [newNotes, setNewNotes] = useState(issue.notes || "");
+  const [dirty, setDirty] = useState(false);
+
+  const STATUSES_FOR_WORKER = [
+    { value: "W_REALIZACJI", label: "W realizacji" },
+    { value: "ROZWIĄZANE", label: "Rozwiązane" },
+  ];
+
+  return (
+    <Card className="p-4 rounded-2xl" data-testid={`card-usterka-${issue.id}`}>
+      <div className="flex items-start justify-between gap-2 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm" data-testid={`text-usterka-title-${issue.id}`}>{issue.title}</p>
+          <p className="text-xs text-muted-foreground">{issue.apartmentName || `Apt #${issue.id}`}</p>
+          <div className="flex gap-2 mt-1.5 flex-wrap">
+            <Badge variant="outline" className={`text-xs ${priorityColors[issue.priority] || ""}`}>{priorityLabels[issue.priority] || issue.priority}</Badge>
+            <Badge variant="outline" className="text-xs">{statusLabels[issue.status] || issue.status}</Badge>
+          </div>
+        </div>
+        {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0 mt-1" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />}
+      </div>
+
+      {expanded && (
+        <div className="mt-3 space-y-3 border-t pt-3">
+          {issue.description && (
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap">{issue.description}</p>
+          )}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium">Zaktualizuj status</p>
+            <Select value={newStatus} onValueChange={v => { setNewStatus(v); setDirty(true); }}>
+              <SelectTrigger className="h-8 text-sm" data-testid={`select-usterka-status-${issue.id}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUSES_FOR_WORKER.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium">Notatka</p>
+            <Textarea
+              value={newNotes}
+              onChange={e => { setNewNotes(e.target.value); setDirty(true); }}
+              rows={2}
+              className="text-sm resize-none"
+              placeholder="Opis wykonanych prac..."
+              data-testid={`input-usterka-notes-${issue.id}`}
+            />
+          </div>
+          {dirty && (
+            <Button className="w-full" size="sm" disabled={isPending} onClick={() => onUpdateStatus(issue.id, newStatus, newNotes || undefined)} data-testid={`button-save-usterka-${issue.id}`}>
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+              Zapisz
+            </Button>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 

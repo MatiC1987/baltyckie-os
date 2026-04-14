@@ -1668,11 +1668,105 @@ function RCPStatystyki() {
   );
 }
 
+const POSITIONS_HOURLY = [
+  { value: "PRACOWNIK_RECEPCJI", label: "Pracownik recepcji" },
+  { value: "KONSERWATOR", label: "Konserwator" },
+  { value: "OSOBA_SPRZATAJACA", label: "Osoba sprzątająca" },
+  { value: "FINANCIAL_MANAGER", label: "Menedżer finansowy" },
+];
+
+function AddHourlyEmployeeDialog({ onSuccess }: { onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ firstName: "", lastName: "", position: "", phone: "", hourlyRate: "" });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: typeof form) => {
+      const r = await recepcjaFetch("POST", "/api/recepcja/rcp/employees", {
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        position: data.position,
+        phone: data.phone.trim() || null,
+        hourlyRate: data.hourlyRate ? data.hourlyRate : null,
+      });
+      if (!r.ok) throw new Error((await r.json()).message);
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Pracownik dodany" });
+      setOpen(false);
+      setForm({ firstName: "", lastName: "", position: "", phone: "", hourlyRate: "" });
+      onSuccess();
+    },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.position) {
+      toast({ title: "Uzupełnij wymagane pola", variant: "destructive" });
+      return;
+    }
+    createMutation.mutate(form);
+  };
+
+  return (
+    <>
+      <Button size="sm" onClick={() => setOpen(true)} data-testid="button-add-hourly-employee">
+        <Users className="h-4 w-4 mr-1" />
+        Dodaj pracownika na godziny
+      </Button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setOpen(false)}>
+          <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">Nowy pracownik na godziny</h2>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Imię *</label>
+                  <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Imię" data-testid="input-employee-firstname" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Nazwisko *</label>
+                  <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Nazwisko" data-testid="input-employee-lastname" />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Stanowisko *</label>
+                <Select value={form.position} onValueChange={v => setForm(f => ({ ...f, position: v }))}>
+                  <SelectTrigger data-testid="select-employee-position"><SelectValue placeholder="Wybierz stanowisko" /></SelectTrigger>
+                  <SelectContent>
+                    {POSITIONS_HOURLY.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Telefon</label>
+                <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+48 000 000 000" data-testid="input-employee-phone" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Stawka godzinowa (zł/h)</label>
+                <Input type="number" step="0.01" min="0" value={form.hourlyRate} onChange={e => setForm(f => ({ ...f, hourlyRate: e.target.value }))} placeholder="np. 25.00" data-testid="input-employee-hourly-rate" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>Anuluj</Button>
+                <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-add-employee">
+                  {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Dodaj"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function RCPPiny() {
   const { toast } = useToast();
   const [visiblePinId, setVisiblePinId] = useState<number | null>(null);
   const [revealedPin, setRevealedPin] = useState<string | null>(null);
-  const { data: employees = [], isLoading } = useQuery({
+  const { data: employees = [], isLoading, refetch } = useQuery({
     queryKey: ["/api/recepcja/rcp/employees-pins"],
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees-pins"); return r.json(); },
   });
@@ -1709,36 +1803,41 @@ function RCPPiny() {
   const generatePin = () => String(Math.floor(100000 + Math.random() * 900000));
 
   return (
-    <Card className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead><tr className="border-b bg-muted/50">
-          <th className="p-2 text-left">Pracownik</th>
-          <th className="p-2 text-center">PIN</th>
-          <th className="p-2 text-center">Akcje</th>
-        </tr></thead>
-        <tbody>
-          {employees.map((e: any) => (
-            <tr key={e.id} className="border-b">
-              <td className="p-2 font-medium">{e.firstName} {e.lastName}</td>
-              <td className="p-2 text-center font-mono">
-                <div className="flex items-center justify-center gap-1">
-                  <span data-testid={`text-pin-${e.id}`}>{visiblePinId === e.id ? (revealedPin || '-') : (e.pin || '-')}</span>
-                  {e.pin && (
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => togglePinVisibility(e.id)} data-testid={`button-toggle-pin-${e.id}`}>
-                      {visiblePinId === e.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </Button>
-                  )}
-                </div>
-              </td>
-              <td className="p-2 text-center">
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => setPinMutation.mutate({ id: e.id, pin: generatePin() })} data-testid={`button-generate-pin-${e.id}`}>
-                  Generuj PIN
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <AddHourlyEmployeeDialog onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/recepcja/rcp/employees-pins"] })} />
+      </div>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b bg-muted/50">
+            <th className="p-2 text-left">Pracownik</th>
+            <th className="p-2 text-center">PIN</th>
+            <th className="p-2 text-center">Akcje</th>
+          </tr></thead>
+          <tbody>
+            {employees.map((e: any) => (
+              <tr key={e.id} className="border-b">
+                <td className="p-2 font-medium">{e.firstName} {e.lastName}</td>
+                <td className="p-2 text-center font-mono">
+                  <div className="flex items-center justify-center gap-1">
+                    <span data-testid={`text-pin-${e.id}`}>{visiblePinId === e.id ? (revealedPin || '-') : (e.pin || '-')}</span>
+                    {e.pin && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => togglePinVisibility(e.id)} data-testid={`button-toggle-pin-${e.id}`}>
+                        {visiblePinId === e.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </Button>
+                    )}
+                  </div>
+                </td>
+                <td className="p-2 text-center">
+                  <Button variant="outline" size="sm" className="text-xs" onClick={() => setPinMutation.mutate({ id: e.id, pin: generatePin() })} data-testid={`button-generate-pin-${e.id}`}>
+                    Generuj PIN
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
   );
 }

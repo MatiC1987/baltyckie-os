@@ -14312,6 +14312,49 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.get('/api/time-clock/my-issues', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: 'Nie znaleziono pracownika' });
+      const result = await db.select({
+        issue: issues,
+        apartmentName: apartments.name,
+      }).from(issues)
+        .leftJoin(apartments, eq(issues.apartmentId, apartments.id))
+        .where(eq(issues.assignedTo, `${emp.firstName} ${emp.lastName}`))
+        .orderBy(desc(issues.createdAt));
+      res.json(result.map(r => ({ ...r.issue, apartmentName: r.apartmentName })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put('/api/time-clock/issues/:id/status', async (req, res) => {
+    try {
+      const employeeId = getRcpEmployeeId(req);
+      if (!employeeId) return res.status(401).json({ message: 'Sesja wygasła — zaloguj się ponownie' });
+      const emp = await storage.getEmployee(employeeId);
+      if (!emp) return res.status(404).json({ message: 'Nie znaleziono pracownika' });
+      const id = Number(req.params.id);
+      const [existing] = await db.select().from(issues).where(eq(issues.id, id));
+      if (!existing) return res.status(404).json({ message: 'Nie znaleziono usterki' });
+      if (existing.assignedTo !== `${emp.firstName} ${emp.lastName}`) {
+        return res.status(403).json({ message: 'Brak uprawnień' });
+      }
+      const { status, notes } = req.body;
+      const update: any = { updatedAt: new Date() };
+      if (status) update.status = status;
+      if (notes !== undefined) update.notes = notes;
+      if (status === 'ROZWIĄZANE' && !existing.resolvedAt) update.resolvedAt = new Date();
+      const [updated] = await db.update(issues).set(update).where(eq(issues.id, id)).returning();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
 

@@ -221,6 +221,9 @@ export default function RecepcjaSaldo() {
       toast({ title: "Dodano kategorię" });
       setNewCatName("");
     },
+    onError: (err: any) => {
+      toast({ title: "Błąd", description: err.message || "Nie udało się dodać kategorii", variant: "destructive" });
+    },
   });
 
   const renameCategoryMutation = useMutation({
@@ -243,10 +246,14 @@ export default function RecepcjaSaldo() {
       if (!r.ok) throw new Error((await r.json()).message);
       return r.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, deletedName) => {
       queryClient.invalidateQueries({ queryKey: ["/api/recepcja/saldo/categories"] });
       queryClient.invalidateQueries({ queryKey: ["/api/recepcja/saldo"] });
+      setSelectedCats(prev => { const next = new Set(prev); next.delete(deletedName); return next; });
       toast({ title: "Usunięto kategorię" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd usuwania", description: err.message || "Nie udało się usunąć kategorii", variant: "destructive" });
     },
   });
 
@@ -261,6 +268,9 @@ export default function RecepcjaSaldo() {
       queryClient.invalidateQueries({ queryKey: ["/api/recepcja/saldo"] });
       setSelectedCats(new Set());
       toast({ title: "Usunięto wybrane kategorie" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd usuwania", description: err.message || "Nie udało się usunąć kategorii", variant: "destructive" });
     },
   });
 
@@ -518,7 +528,15 @@ export default function RecepcjaSaldo() {
                 </div>
                 <Button
                   size="sm"
-                  onClick={() => { if (newCatName.trim()) createCategoryMutation.mutate({ name: newCatName.trim(), type: newCatType }); }}
+                  onClick={() => {
+                    const trimmed = newCatName.trim();
+                    if (!trimmed) return;
+                    if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+                      toast({ title: "Kategoria już istnieje", description: `Kategoria "${trimmed}" jest już na liście.`, variant: "destructive" });
+                      return;
+                    }
+                    createCategoryMutation.mutate({ name: trimmed, type: newCatType });
+                  }}
                   disabled={!newCatName.trim() || createCategoryMutation.isPending}
                   data-testid="button-add-category"
                 >

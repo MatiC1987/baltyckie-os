@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,8 @@ export default function GpsTrackingTab() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [showLogs, setShowLogs] = useState(false);
+  const [timeFrom, setTimeFrom] = useState("");
+  const [timeTo, setTimeTo] = useState("");
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -92,8 +94,30 @@ export default function GpsTrackingTab() {
 
   const selectedPerEmployee = perEmployee.find(p => p.employeeId === selectedEmployeeId) ?? null;
 
+  const filteredMapLogs = useMemo(() => {
+    if (!timeFrom && !timeTo) return mapLogs;
+    return mapLogs.filter(log => {
+      const t = new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":").slice(0, 5);
+      if (timeFrom && t < timeFrom) return false;
+      if (timeTo && t > timeTo) return false;
+      return true;
+    });
+  }, [mapLogs, timeFrom, timeTo]);
+
+  const filteredLogs = useMemo(() => {
+    if (!timeFrom && !timeTo) return logs;
+    return logs.filter(log => {
+      const t = new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":").slice(0, 5);
+      if (timeFrom && t < timeFrom) return false;
+      if (timeTo && t > timeTo) return false;
+      return true;
+    });
+  }, [logs, timeFrom, timeTo]);
+
   useEffect(() => {
     setShowLogs(false);
+    setTimeFrom("");
+    setTimeTo("");
   }, [selectedEmployeeId, date]);
 
   useEffect(() => {
@@ -159,17 +183,17 @@ export default function GpsTrackingTab() {
       }
     });
 
-    if (mapLogs.length === 0) return;
+    if (filteredMapLogs.length === 0) return;
 
-    const points: [number, number][] = mapLogs.map(l => [parseFloat(l.latitude), parseFloat(l.longitude)]);
+    const points: [number, number][] = filteredMapLogs.map(l => [parseFloat(l.latitude), parseFloat(l.longitude)]);
 
-    mapLogs.forEach((log, idx) => {
+    filteredMapLogs.forEach((log, idx) => {
       const lat = parseFloat(log.latitude);
       const lng = parseFloat(log.longitude);
       const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
       const isInZone = dist !== null && dist <= 0;
       const time = new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
-      const isLast = idx === mapLogs.length - 1;
+      const isLast = idx === filteredMapLogs.length - 1;
 
       const iconHtml = `<div style="
         width: ${isLast ? 18 : 14}px; height: ${isLast ? 18 : 14}px; border-radius: 50%;
@@ -207,7 +231,7 @@ export default function GpsTrackingTab() {
     }
 
     mapRef.current.fitBounds(L.latLngBounds(points).pad(0.2));
-  }, [mapLogs, locations]);
+  }, [filteredMapLogs, locations]);
 
   useEffect(() => {
     return () => {
@@ -311,23 +335,37 @@ export default function GpsTrackingTab() {
 
           {selectedPerEmployee.logCount > 0 && (
             <Card className="p-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span data-testid="text-log-count">{selectedPerEmployee.logCount} wpisów GPS</span>
+                  <span data-testid="text-log-count">
+                    {(timeFrom || timeTo) ? `${filteredMapLogs.length} / ${selectedPerEmployee.logCount}` : selectedPerEmployee.logCount} wpisów GPS
+                  </span>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowLogs(v => !v)}
-                  data-testid="button-toggle-logs"
-                >
-                  {showLogs ? (
-                    <><ChevronUp className="h-4 w-4 mr-1" />Ukryj</>
-                  ) : (
-                    <><ChevronDown className="h-4 w-4 mr-1" />Pokaż</>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>Od:</span>
+                    <Input type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="h-7 w-24 text-xs px-2" data-testid="input-time-from" />
+                    <span>Do:</span>
+                    <Input type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="h-7 w-24 text-xs px-2" data-testid="input-time-to" />
+                    {(timeFrom || timeTo) && (
+                      <button onClick={() => { setTimeFrom(""); setTimeTo(""); }} className="text-muted-foreground hover:text-foreground" data-testid="button-clear-time-filter">✕</button>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowLogs(v => !v)}
+                    data-testid="button-toggle-logs"
+                  >
+                    {showLogs ? (
+                      <><ChevronUp className="h-4 w-4 mr-1" />Ukryj</>
+                    ) : (
+                      <><ChevronDown className="h-4 w-4 mr-1" />Pokaż</>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {showLogs && (
@@ -349,7 +387,7 @@ export default function GpsTrackingTab() {
                           </tr>
                         </thead>
                         <tbody>
-                          {logs.map(log => {
+                          {filteredLogs.map(log => {
                             const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
                             const isIn = dist !== null && dist <= 0;
                             return (

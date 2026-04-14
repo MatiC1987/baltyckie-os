@@ -534,12 +534,19 @@ function ObecnosciTab() {
 
   const updateMut = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      await apiRequest("PUT", `/api/time-entries/${id}`, data);
+      const res = await apiRequest("PUT", `/api/time-entries/${id}`, data);
+      return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/time-entries/day"] });
+    onSuccess: (updatedEntry) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/time-entries/day", `?date=${selectedDate}`] });
       toast({ title: "Wpis zaktualizowany" });
       setEditMode(false);
+      if (updatedEntry) {
+        setSelectedEntry((prev: any) => prev ? { ...prev, entry: updatedEntry } : null);
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd zapisu", description: err.message, variant: "destructive" });
     },
   });
 

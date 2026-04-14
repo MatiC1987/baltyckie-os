@@ -1895,11 +1895,23 @@ export const insertLocalEventSchema = createInsertSchema(localEvents).omit({ id:
 export type LocalEvent = typeof localEvents.$inferSelect;
 export type InsertLocalEvent = z.infer<typeof insertLocalEventSchema>;
 
+export const taskCategories = pgTable("task_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#6366f1"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaskCategorySchema = createInsertSchema(taskCategories).omit({ id: true, createdAt: true });
+export type TaskCategory = typeof taskCategories.$inferSelect;
+export type InsertTaskCategory = z.infer<typeof insertTaskCategorySchema>;
+
 export const employeeTasks = pgTable("employee_tasks", {
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
   assignedById: integer("assigned_by_id"),
   apartmentId: integer("apartment_id").references(() => apartments.id),
+  categoryId: integer("category_id").references(() => taskCategories.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   description: text("description"),
   date: date("date").notNull(),

@@ -19,7 +19,9 @@ import {
   insertTenantDataSubmissionSchema,
   insertWorkScheduleSchema, insertLeaveRequestSchema,
   employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema,
+  taskCategories, insertTaskCategorySchema,
   mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema,
+  insertEmployeeSchema,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -177,10 +179,12 @@ export function registerRecepcjaRoutes(app: Express) {
       if (!rawName || typeof rawName !== 'string' || !rawName.trim()) return res.status(400).json({ message: "Podaj nazwę kategorii" });
       const name = rawName.trim();
       const validType = type === 'PRZYCHOD' ? 'PRZYCHOD' : 'KOSZT';
+      const existing = await db.select().from(saldoCategories).where(and(eq(saldoCategories.personName, RECEPCJA_PERSON), eq(saldoCategories.name, name)));
+      if (existing.length > 0) return res.status(400).json({ message: `Kategoria "${name}" już istnieje` });
       const [cat] = await db.insert(saldoCategories).values({ personName: RECEPCJA_PERSON, name, type: validType }).returning();
       await logRecepcjaAction(req.recepcjaUser.id, 'CREATE', 'saldo_category', cat.id.toString(), { name, type });
       res.json(cat);
-    } catch (err: any) { res.status(500).json({ message: err.message }); }
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
   });
 
   app.put('/api/recepcja/saldo/categories/:name', isRecepcjaAuth as any, async (req: any, res) => {
@@ -889,6 +893,19 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  app.post('/api/recepcja/rcp/employees', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const data = insertEmployeeSchema.parse({
+        ...req.body,
+        cooperationType: "PRACA_NA_H",
+        status: "AKTYWNY",
+      });
+      const emp = await storage.createEmployee(data);
+      await logRecepcjaAction(req.recepcjaUser.id, 'CREATE_EMPLOYEE', 'employee', String(emp.id));
+      res.status(201).json(emp);
+    } catch (err: any) { res.status(400).json({ message: err.message || "Błąd walidacji" }); }
+  });
+
   // ==================== KONTAKTY NAJEMCÓW ====================
   app.get('/api/recepcja/tenant-contacts', isRecepcjaAuth as any, async (req: any, res) => {
     try {
@@ -1443,15 +1460,19 @@ export function registerRecepcjaRoutes(app: Express) {
       const id = Number(req.params.id);
       const [existing] = await db.select().from(issues).where(eq(issues.id, id));
       if (!existing) return res.status(404).json({ message: 'Nie znaleziono' });
-      if (existing.reportedBy !== req.recepcjaUser.name && existing.status !== 'OTWARTE') {
-        return res.status(403).json({ message: 'Brak uprawnień' });
-      }
-      const { title, description, priority, category } = req.body;
+      const { title, description, priority, category, status, assignedTo, cost, notes } = req.body;
       const update: any = { updatedAt: new Date() };
       if (title) update.title = title;
       if (description !== undefined) update.description = description;
       if (priority) update.priority = priority;
       if (category) update.category = category;
+      if (status) {
+        update.status = status;
+        if (status === 'ROZWIĄZANE' && !existing.resolvedAt) update.resolvedAt = new Date();
+      }
+      if (assignedTo !== undefined) update.assignedTo = assignedTo || null;
+      if (cost !== undefined) update.cost = cost || null;
+      if (notes !== undefined) update.notes = notes || null;
       const [updated] = await db.update(issues).set(update).where(eq(issues.id, id)).returning();
       await logRecepcjaAction(req.recepcjaUser.id, 'UPDATE', 'issue', req.params.id, update);
       res.json(updated);
@@ -1506,7 +1527,44 @@ export function registerRecepcjaRoutes(app: Express) {
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // ==================== RECEPCJA EMPLOYEE TASKS ====================
+  // ==================== TASK CATEGORIES ====================
+  app.get('/api/recepcja/task-categories', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const result = await db.select().from(taskCategories).orderBy(sql`name ASC`);
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post('/api/recepcja/task-categories', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { name, color } = req.body;
+      if (!name || !name.trim()) return res.status(400).json({ message: "Podaj nazwę kategorii" });
+      const existing = await db.select().from(taskCategories).where(eq(taskCategories.name, name.trim()));
+      if (existing.length > 0) return res.status(400).json({ message: `Kategoria "${name.trim()}" już istnieje` });
+      const [cat] = await db.insert(taskCategories).values({ name: name.trim(), color: color || '#6366f1' }).returning();
+      res.status(201).json(cat);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.put('/api/recepcja/task-categories/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      const { name, color } = req.body;
+      const [cat] = await db.update(taskCategories)
+        .set({ ...(name ? { name: name.trim() } : {}), ...(color ? { color } : {}) })
+        .where(eq(taskCategories.id, Number(req.params.id)))
+        .returning();
+      if (!cat) return res.status(404).json({ message: "Nie znaleziono kategorii" });
+      res.json(cat);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+
+  app.delete('/api/recepcja/task-categories/:id', isRecepcjaAuth as any, async (req: any, res) => {
+    try {
+      await db.delete(taskCategories).where(eq(taskCategories.id, Number(req.params.id)));
+      res.status(204).send();
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   app.get('/api/recepcja/tasks', isRecepcjaAuth as any, async (req: any, res) => {
     try {
       const { employeeId, date, from, to, status } = req.query;

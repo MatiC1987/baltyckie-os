@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, Plus, Camera, Loader2, Clock, User,
-  MapPin, Tag, Filter, ChevronRight,
+  MapPin, Tag, Filter, ChevronRight, Save, DollarSign, StickyNote,
 } from "lucide-react";
 
 const PRIORITIES = [
@@ -111,6 +111,14 @@ export default function RecepcjaUsterki() {
     queryKey: ["/api/recepcja/apartments"],
     queryFn: async () => {
       const r = await recepcjaFetch("GET", "/api/recepcja/apartments");
+      return r.json();
+    },
+  });
+
+  const { data: employees = [] } = useQuery<{ id: number; firstName: string; lastName: string; position: string }[]>({
+    queryKey: ["/api/recepcja/rcp/employees"],
+    queryFn: async () => {
+      const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees");
       return r.json();
     },
   });
@@ -230,7 +238,16 @@ export default function RecepcjaUsterki() {
 
       <Sheet open={!!detailIssue} onOpenChange={(o) => { if (!o) setDetailIssue(null); }}>
         <SheetContent className="overflow-y-auto">
-          {detailIssue && <IssueDetail issue={detailIssue} />}
+          {detailIssue && (
+            <IssueDetail
+              issue={detailIssue}
+              employees={employees}
+              onUpdated={(updated) => {
+                setDetailIssue({ ...detailIssue, ...updated });
+                queryClient.invalidateQueries({ queryKey: ["/api/recepcja/issues"] });
+              }}
+            />
+          )}
         </SheetContent>
       </Sheet>
     </div>
@@ -394,7 +411,44 @@ function AddIssueForm({ apartments, onSuccess }: {
   );
 }
 
-function IssueDetail({ issue }: { issue: IssueItem }) {
+function IssueDetail({ issue, employees, onUpdated }: {
+  issue: IssueItem;
+  employees: { id: number; firstName: string; lastName: string; position: string }[];
+  onUpdated: (updated: Partial<IssueItem>) => void;
+}) {
+  const { toast } = useToast();
+  const [editStatus, setEditStatus] = useState(issue.status);
+  const [editAssignedTo, setEditAssignedTo] = useState(issue.assignedTo || "");
+  const [editNotes, setEditNotes] = useState(issue.notes || "");
+  const [editCost, setEditCost] = useState(issue.cost || "");
+  const [dirty, setDirty] = useState(false);
+
+  const konserwators = employees.filter(e => ["KONSERWATOR", "OSOBA_SPRZATAJACA", "PRACOWNIK_RECEPCJI"].includes(e.position));
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      const r = await recepcjaFetch("PUT", `/api/recepcja/issues/${issue.id}`, {
+        status: editStatus,
+        assignedTo: editAssignedTo || null,
+        notes: editNotes || null,
+        cost: editCost || null,
+      });
+      if (!r.ok) throw new Error((await r.json()).message);
+      return r.json();
+    },
+    onSuccess: (updated: IssueItem) => {
+      toast({ title: "Zapisano zmiany" });
+      setDirty(false);
+      onUpdated(updated);
+    },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+
+  const handleChange = (setter: (v: string) => void) => (v: string) => {
+    setter(v);
+    setDirty(true);
+  };
+
   return (
     <div className="space-y-5">
       <SheetHeader>
@@ -403,7 +457,7 @@ function IssueDetail({ issue }: { issue: IssueItem }) {
 
       <div className="flex items-center gap-2 flex-wrap">
         <Badge className={priorityBadge(issue.priority)}>{priorityLabel(issue.priority)}</Badge>
-        <Badge className={statusBadge(issue.status)}>{statusLabel(issue.status)}</Badge>
+        <Badge className={statusBadge(editStatus)}>{statusLabel(editStatus)}</Badge>
         <Badge variant="outline">{categoryLabel(issue.category)}</Badge>
       </div>
 
@@ -416,12 +470,6 @@ function IssueDetail({ issue }: { issue: IssueItem }) {
           <User className="h-4 w-4 text-muted-foreground shrink-0" />
           <span>Zgłosił: {issue.reportedBy}</span>
         </div>
-        {issue.assignedTo && (
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span>Przypisano: {issue.assignedTo}</span>
-          </div>
-        )}
         <div className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
           <span>Utworzono: {new Date(issue.createdAt).toLocaleString("pl-PL")}</span>
@@ -430,12 +478,6 @@ function IssueDetail({ issue }: { issue: IssueItem }) {
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
             <span>Rozwiązano: {new Date(issue.resolvedAt).toLocaleString("pl-PL")}</span>
-          </div>
-        )}
-        {issue.cost && (
-          <div className="text-sm">
-            <span className="text-muted-foreground">Koszt naprawy: </span>
-            <span className="font-medium">{Number(issue.cost).toFixed(2)} zł</span>
           </div>
         )}
       </div>
@@ -447,14 +489,69 @@ function IssueDetail({ issue }: { issue: IssueItem }) {
         </div>
       )}
 
-      {issue.notes && (
-        <div className="space-y-1">
-          <h4 className="text-sm font-medium">Notatki admina</h4>
-          <Card className="p-3">
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap" data-testid="text-issue-notes">{issue.notes}</p>
-          </Card>
+      <div className="space-y-3 border-t pt-4">
+        <h4 className="text-sm font-semibold">Zarządzanie</h4>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Status</Label>
+          <Select value={editStatus} onValueChange={handleChange(setEditStatus)}>
+            <SelectTrigger className="h-8 text-sm" data-testid="select-detail-status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
-      )}
+
+        <div className="space-y-1.5">
+          <Label className="text-xs flex items-center gap-1"><User className="h-3 w-3" />Przypisz do</Label>
+          <Select value={editAssignedTo || "none"} onValueChange={v => handleChange(setEditAssignedTo)(v === "none" ? "" : v)}>
+            <SelectTrigger className="h-8 text-sm" data-testid="select-detail-assigned">
+              <SelectValue placeholder="Nieprzypisana" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Nieprzypisana</SelectItem>
+              {konserwators.map(e => (
+                <SelectItem key={e.id} value={`${e.firstName} ${e.lastName}`}>{e.firstName} {e.lastName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs flex items-center gap-1"><DollarSign className="h-3 w-3" />Koszt naprawy (zł)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={editCost}
+            onChange={e => handleChange(setEditCost)(e.target.value)}
+            className="h-8 text-sm"
+            placeholder="np. 150.00"
+            data-testid="input-detail-cost"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs flex items-center gap-1"><StickyNote className="h-3 w-3" />Notatki</Label>
+          <Textarea
+            value={editNotes}
+            onChange={e => handleChange(setEditNotes)(e.target.value)}
+            className="text-sm resize-none"
+            rows={3}
+            placeholder="Uwagi, postęp prac..."
+            data-testid="input-detail-notes"
+          />
+        </div>
+
+        {dirty && (
+          <Button className="w-full" size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} data-testid="button-save-issue">
+            {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+            Zapisz zmiany
+          </Button>
+        )}
+      </div>
 
       {issue.photoUrls && issue.photoUrls.length > 0 && (
         <div className="space-y-2">
@@ -487,7 +584,7 @@ function IssueDetail({ issue }: { issue: IssueItem }) {
             <div className="flex items-start gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
               <div className="text-xs text-muted-foreground">
-                Status zmieniony na <span className="font-medium text-foreground">{statusLabel(issue.status)}</span> — {new Date(issue.updatedAt).toLocaleString("pl-PL")}
+                Status zmieniony na <span className="font-medium text-foreground">{statusLabel(editStatus)}</span> — {new Date(issue.updatedAt).toLocaleString("pl-PL")}
               </div>
             </div>
           )}

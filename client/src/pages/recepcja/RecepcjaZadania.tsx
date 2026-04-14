@@ -9,18 +9,20 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Loader2, ChevronLeft, ChevronRight,
   ClipboardList, CheckCircle2, CircleDot, Clock, AlertTriangle,
-  Trash2, Edit, MessageSquare, Send, Building2, X, Calendar, List,
+  Trash2, Edit, MessageSquare, Send, Building2, X, Calendar, List, Tags, Pencil, Check,
 } from "lucide-react";
 import type { Employee } from "@shared/schema";
 
+type CategoryItem = { id: number; name: string; color: string };
 type TaskItem = {
   id: number; title: string; description: string | null; date: string;
   startTime: string | null; endTime: string | null; status: string; priority: string;
-  employeeId: number; apartmentId: number | null;
+  employeeId: number; apartmentId: number | null; categoryId: number | null;
   actualStartTime: string | null; actualEndTime: string | null;
   mileageKm: string | null; notes: string | null; assignedById: number | null;
   source?: string;
@@ -41,7 +43,7 @@ type ScheduleMap = Record<number, WorkScheduleItem[]>;
 type TaskPayload = {
   title?: string; description?: string | null; employeeId?: number; date?: string;
   startTime?: string | null; endTime?: string | null; priority?: string; status?: string;
-  apartmentId?: number | null; source?: string;
+  apartmentId?: number | null; categoryId?: number | null; source?: string;
 };
 type UpdateTaskPayload = TaskPayload & { id: number };
 
@@ -139,6 +141,8 @@ export default function RecepcjaZadania() {
   const [formEnd, setFormEnd] = useState("");
   const [formPriority, setFormPriority] = useState("NORMALNY");
   const [formApartment, setFormApartment] = useState("");
+  const [formCategoryId, setFormCategoryId] = useState<string>("");
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   const calendarRef = useRef<HTMLDivElement>(null);
   const [nowPx, setNowPx] = useState(0);
@@ -199,6 +203,10 @@ export default function RecepcjaZadania() {
     enabled: !!popoverTask,
     queryFn: async () => (await recepcjaFetch("GET", `/api/recepcja/tasks/${popoverTask!.id}/comments`)).json(),
   });
+  const taskCategoriesQuery = useQuery<CategoryItem[]>({
+    queryKey: ["/api/recepcja/task-categories"],
+    queryFn: async () => (await recepcjaFetch("GET", "/api/recepcja/task-categories")).json(),
+  });
 
   const createTaskMutation = useMutation({
     mutationFn: async (data: TaskPayload) => {
@@ -254,14 +262,41 @@ export default function RecepcjaZadania() {
     onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
   });
 
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: { name: string; color: string }) => {
+      const res = await recepcjaFetch("POST", "/api/recepcja/task-categories", data);
+      if (!res.ok) throw new Error((await res.json()).message);
+      return res.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/recepcja/task-categories"] }); toast({ title: "Dodano kategorię" }); },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ id, name, color }: { id: number; name: string; color: string }) => {
+      const res = await recepcjaFetch("PUT", `/api/recepcja/task-categories/${id}`, { name, color });
+      if (!res.ok) throw new Error((await res.json()).message);
+      return res.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/recepcja/task-categories"] }); queryClient.invalidateQueries({ queryKey: ["/api/recepcja/tasks"] }); toast({ title: "Zaktualizowano kategorię" }); },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await recepcjaFetch("DELETE", `/api/recepcja/task-categories/${id}`);
+      if (!res.ok) throw new Error("Błąd usuwania kategorii");
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/recepcja/task-categories"] }); queryClient.invalidateQueries({ queryKey: ["/api/recepcja/tasks"] }); toast({ title: "Usunięto kategorię" }); },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+
   const closeSheet = () => {
     setShowSheet(false); setEditingTask(null);
-    setFormTitle(""); setFormDesc(""); setFormEmployee(""); setFormStart(""); setFormEnd(""); setFormPriority("NORMALNY"); setFormApartment("");
+    setFormTitle(""); setFormDesc(""); setFormEmployee(""); setFormStart(""); setFormEnd(""); setFormPriority("NORMALNY"); setFormApartment(""); setFormCategoryId("");
   };
   const openCreateForm = (prefillEmployee?: string, prefillDate?: string, prefillStart?: string) => {
     setEditingTask(null);
     setFormDate(prefillDate || date);
-    setFormTitle(""); setFormDesc(""); setFormEmployee(prefillEmployee || ""); setFormStart(prefillStart || ""); setFormEnd(""); setFormPriority("NORMALNY"); setFormApartment("");
+    setFormTitle(""); setFormDesc(""); setFormEmployee(prefillEmployee || ""); setFormStart(prefillStart || ""); setFormEnd(""); setFormPriority("NORMALNY"); setFormApartment(""); setFormCategoryId("");
     setShowSheet(true);
   };
   const openEditForm = (task: TaskItem) => {
@@ -269,6 +304,7 @@ export default function RecepcjaZadania() {
     setFormTitle(task.title); setFormDesc(task.description || ""); setFormEmployee(String(task.employeeId));
     setFormDate(task.date); setFormStart(task.startTime || ""); setFormEnd(task.endTime || ""); setFormPriority(task.priority);
     setFormApartment(task.apartmentId ? String(task.apartmentId) : "");
+    setFormCategoryId(task.categoryId ? String(task.categoryId) : "");
     setShowSheet(true);
   };
 
@@ -280,6 +316,7 @@ export default function RecepcjaZadania() {
       startTime: formStart || null, endTime: formEnd || null, priority: formPriority,
       status: editingTask?.status || "ZAPLANOWANE",
       apartmentId: formApartment && formApartment !== "none" ? Number(formApartment) : null,
+      categoryId: formCategoryId && formCategoryId !== "none" ? Number(formCategoryId) : null,
       source: "RECEPCJA",
     };
     if (editingTask) updateTaskMutation.mutate({ id: editingTask.id, ...payload });
@@ -471,9 +508,14 @@ export default function RecepcjaZadania() {
             <h1 className="text-xl font-bold" data-testid="text-zadania-title">Zadania pracowników</h1>
             <p className="text-sm text-muted-foreground">Planowanie i śledzenie zadań</p>
           </div>
-          <Button className="rounded-xl" onClick={() => openCreateForm()} data-testid="button-create-task">
-            <Plus className="h-4 w-4 mr-1" /> Nowe zadanie
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setShowCategoryManager(true)} data-testid="button-manage-categories">
+              <Tags className="h-4 w-4 mr-1" /> Kategorie
+            </Button>
+            <Button className="rounded-xl" onClick={() => openCreateForm()} data-testid="button-create-task">
+              <Plus className="h-4 w-4 mr-1" /> Nowe zadanie
+            </Button>
+          </div>
         </div>
 
         {/* Segmented Control */}
@@ -558,6 +600,7 @@ export default function RecepcjaZadania() {
             setNewComment("");
           }}
           onCreateTask={() => openCreateForm()}
+          categories={taskCategoriesQuery.data || []}
         />
       ) : (
         <DayCalendar
@@ -613,6 +656,18 @@ export default function RecepcjaZadania() {
         />
       )}
 
+      {/* Category Manager Dialog */}
+      <CategoryManagerDialog
+        open={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
+        categories={taskCategoriesQuery.data || []}
+        onAdd={(name, color) => createCategoryMutation.mutate({ name, color })}
+        onUpdate={(id, name, color) => updateCategoryMutation.mutate({ id, name, color })}
+        onDelete={(id) => deleteCategoryMutation.mutate(id)}
+        addPending={createCategoryMutation.isPending}
+        deletePending={deleteCategoryMutation.isPending}
+      />
+
       {/* Edit Sheet */}
       {showSheet && (
         <TaskSheet
@@ -625,6 +680,8 @@ export default function RecepcjaZadania() {
           formEnd={formEnd} setFormEnd={setFormEnd}
           formPriority={formPriority} setFormPriority={setFormPriority}
           formApartment={formApartment} setFormApartment={setFormApartment}
+          formCategoryId={formCategoryId} setFormCategoryId={setFormCategoryId}
+          categories={taskCategoriesQuery.data || []}
           etatEmployees={etatEmployees}
           hourlyEmployees={hourlyEmployees}
           activeApartments={activeApartments}
@@ -725,11 +782,12 @@ interface ListViewProps {
   getEmployee: (id: number) => Employee | undefined;
   onClickTask: (task: TaskItem, el: HTMLElement) => void;
   onCreateTask: () => void;
+  categories?: CategoryItem[];
 }
 function ListView({
   tasksQuery, filteredTasks, groupedByEmployee, activeEmployees, etatEmployees, hourlyEmployees,
   filterEmployee, setFilterEmployee, filterStatus, setFilterStatus,
-  getEmployeeName, getApartmentName, getEmployee, onClickTask, onCreateTask
+  getEmployeeName, getApartmentName, getEmployee, onClickTask, onCreateTask, categories = []
 }: ListViewProps) {
   return (
     <div>
@@ -814,6 +872,12 @@ function ListView({
                             <div className="min-w-0">
                               <p className="font-medium text-sm truncate">{task.title}</p>
                               <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                {task.categoryId && (() => {
+                                  const cat = categories.find(c => c.id === task.categoryId);
+                                  return cat ? (
+                                    <span className="flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: cat.color }} data-testid={`badge-cat-${task.id}`}>{cat.name}</span>
+                                  ) : null;
+                                })()}
                                 {aptName && (
                                   <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
                                     <Building2 className="h-3 w-3" />{aptName}
@@ -1302,25 +1366,101 @@ function TaskPopover({
   );
 }
 
+// ===== CATEGORY MANAGER DIALOG =====
+const PRESET_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#64748b"];
+
+function CategoryManagerDialog({
+  open, onClose, categories, onAdd, onUpdate, onDelete, addPending, deletePending
+}: {
+  open: boolean; onClose: () => void;
+  categories: CategoryItem[];
+  onAdd: (name: string, color: string) => void;
+  onUpdate: (id: number, name: string, color: string) => void;
+  onDelete: (id: number) => void;
+  addPending: boolean; deletePending: boolean;
+}) {
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("");
+  const { toast } = useToast();
+
+  const handleAdd = () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    if (categories.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast({ title: "Kategoria już istnieje", variant: "destructive" }); return;
+    }
+    onAdd(trimmed, newColor);
+    setNewName("");
+  };
+
+  const startEdit = (cat: CategoryItem) => { setEditingId(cat.id); setEditName(cat.name); setEditColor(cat.color); };
+  const saveEdit = () => { if (editName.trim() && editingId != null) { onUpdate(editingId, editName.trim(), editColor); setEditingId(null); } };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><Tags className="h-4 w-4" /> Kategorie zadań</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nazwa kategorii..." className="flex-1" onKeyDown={e => { if (e.key === "Enter") handleAdd(); }} data-testid="input-new-cat-name" />
+            <Button size="sm" onClick={handleAdd} disabled={!newName.trim() || addPending} data-testid="button-add-category">
+              {addPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_COLORS.map(c => (
+              <button key={c} className={`w-6 h-6 rounded-full border-2 transition-all ${newColor === c ? "border-foreground scale-110" : "border-transparent"}`} style={{ backgroundColor: c }} onClick={() => setNewColor(c)} data-testid={`color-preset-${c.replace('#', '')}`} />
+            ))}
+          </div>
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Brak kategorii. Dodaj pierwszą.</p>
+            ) : categories.map(cat => (
+              <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                {editingId === cat.id ? (
+                  <>
+                    <div className="flex flex-wrap gap-1">
+                      {PRESET_COLORS.map(c => (
+                        <button key={c} className={`w-5 h-5 rounded-full border-2 ${editColor === c ? "border-foreground" : "border-transparent"}`} style={{ backgroundColor: c }} onClick={() => setEditColor(c)} />
+                      ))}
+                    </div>
+                    <Input value={editName} onChange={e => setEditName(e.target.value)} className="flex-1 h-8" onKeyDown={e => { if (e.key === "Enter") saveEdit(); }} data-testid={`input-edit-cat-${cat.id}`} />
+                    <Button size="sm" variant="ghost" onClick={saveEdit} disabled={!editName.trim()} data-testid={`button-save-cat-${cat.id}`}><Check className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} data-testid={`button-cancel-cat-${cat.id}`}><X className="h-4 w-4" /></Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                    <span className="flex-1 text-sm font-medium" data-testid={`text-cat-${cat.id}`}>{cat.name}</span>
+                    <Button size="sm" variant="ghost" onClick={() => startEdit(cat)} data-testid={`button-edit-cat-${cat.id}`}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => { if (window.confirm(`Usunąć kategorię "${cat.name}"?`)) onDelete(cat.id); }} disabled={deletePending} data-testid={`button-delete-cat-${cat.id}`}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ===== TASK SHEET =====
 interface TaskSheetProps {
   editingTask: TaskItem | null;
-  formTitle: string;
-  setFormTitle: (v: string) => void;
-  formDesc: string;
-  setFormDesc: (v: string) => void;
-  formEmployee: string;
-  setFormEmployee: (v: string) => void;
-  formDate: string;
-  setFormDate: (v: string) => void;
-  formStart: string;
-  setFormStart: (v: string) => void;
-  formEnd: string;
-  setFormEnd: (v: string) => void;
-  formPriority: string;
-  setFormPriority: (v: string) => void;
-  formApartment: string;
-  setFormApartment: (v: string) => void;
+  formTitle: string; setFormTitle: (v: string) => void;
+  formDesc: string; setFormDesc: (v: string) => void;
+  formEmployee: string; setFormEmployee: (v: string) => void;
+  formDate: string; setFormDate: (v: string) => void;
+  formStart: string; setFormStart: (v: string) => void;
+  formEnd: string; setFormEnd: (v: string) => void;
+  formPriority: string; setFormPriority: (v: string) => void;
+  formApartment: string; setFormApartment: (v: string) => void;
+  formCategoryId: string; setFormCategoryId: (v: string) => void;
+  categories: CategoryItem[];
   etatEmployees: Employee[];
   hourlyEmployees: Employee[];
   activeApartments: ApartmentItem[];
@@ -1335,7 +1475,8 @@ interface TaskSheetProps {
 function TaskSheet({
   editingTask, formTitle, setFormTitle, formDesc, setFormDesc, formEmployee, setFormEmployee,
   formDate, setFormDate, formStart, setFormStart, formEnd, setFormEnd, formPriority, setFormPriority,
-  formApartment, setFormApartment, etatEmployees, hourlyEmployees, activeApartments,
+  formApartment, setFormApartment, formCategoryId, setFormCategoryId, categories,
+  etatEmployees, hourlyEmployees, activeApartments,
   schedulesByEmployee, workload, date, onClose, onSubmit, onPreset, isLoading
 }: TaskSheetProps) {
   useEffect(() => {
@@ -1421,6 +1562,26 @@ function TaskSheet({
                 </SelectContent>
               </Select>
             </div>
+
+            {categories.length > 0 && (
+              <div>
+                <Label>Kategoria (opcjonalnie)</Label>
+                <Select value={formCategoryId || "none"} onValueChange={v => setFormCategoryId(v === "none" ? "" : v)}>
+                  <SelectTrigger data-testid="select-task-category"><SelectValue placeholder="— Brak kategorii —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Brak kategorii —</SelectItem>
+                    {categories.map(cat => (
+                      <SelectItem key={cat.id} value={String(cat.id)}>
+                        <span className="flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                          {cat.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <Button type="submit" className="w-full mt-2" disabled={!formTitle || !formEmployee || isLoading} data-testid="button-submit-task">
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : editingTask ? "Zapisz zmiany" : "Utwórz zadanie"}
