@@ -473,12 +473,20 @@ function RCPObecnosci() {
   const updateMut = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
       const r = await recepcjaFetch("PUT", `/api/recepcja/rcp/time-entries/${id}`, data);
-      if (!r.ok) throw new Error("Błąd zapisu");
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.message || "Błąd zapisu");
+      }
+      return r.json();
     },
-    onSuccess: () => {
+    onSuccess: (updated: any) => {
       queryClient.invalidateQueries({ queryKey: [`/api/recepcja/rcp/time-entries?date=${date}`] });
       toast({ title: "Wpis zaktualizowany" });
       setEditMode(false);
+      if (updated) setSelectedEntry(updated);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd zapisu", description: err.message, variant: "destructive" });
     },
   });
 
@@ -491,15 +499,16 @@ function RCPObecnosci() {
   const openDetail = (entry: any) => {
     setSelectedEntry(entry);
     setEditMode(false);
-    if (entry.clockIn) setEditClockIn(new Date(entry.clockIn).toTimeString().slice(0, 5));
-    if (entry.clockOut) setEditClockOut(new Date(entry.clockOut).toTimeString().slice(0, 5));
+    setEditClockIn(entry.clockIn ? new Date(entry.clockIn).toTimeString().slice(0, 5) : "");
+    setEditClockOut(entry.clockOut ? new Date(entry.clockOut).toTimeString().slice(0, 5) : "");
     setSheetOpen(true);
   };
 
   const saveEdit = () => {
     if (!selectedEntry) return;
-    const clockIn = editClockIn ? new Date(`${date}T${editClockIn}:00`) : undefined;
-    const clockOut = editClockOut ? new Date(`${date}T${editClockOut}:00`) : undefined;
+    const entryDate = selectedEntry.date || date;
+    const clockIn = editClockIn ? new Date(`${entryDate}T${editClockIn}:00`) : undefined;
+    const clockOut = editClockOut ? new Date(`${entryDate}T${editClockOut}:00`) : undefined;
     updateMut.mutate({ id: selectedEntry.id, data: { clockIn, clockOut } });
   };
 
@@ -1230,6 +1239,8 @@ function RCPGpsTracking() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
   const [showLogs, setShowLogs] = useState(false);
+  const [timeFrom, setTimeFrom] = useState("");
+  const [timeTo, setTimeTo] = useState("");
 
   const { data: employees = [] } = useQuery<any[]>({
     queryKey: ["/api/recepcja/rcp/employees"],
@@ -1257,7 +1268,17 @@ function RCPGpsTracking() {
     },
   });
 
-  useEffect(() => { setShowLogs(false); }, [selectedEmployeeId, date]);
+  const filteredLogs = useMemo(() => {
+    if (!timeFrom && !timeTo) return logs;
+    return logs.filter(log => {
+      const t = new Date(log.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":").slice(0, 5);
+      if (timeFrom && t < timeFrom) return false;
+      if (timeTo && t > timeTo) return false;
+      return true;
+    });
+  }, [logs, timeFrom, timeTo]);
+
+  useEffect(() => { setShowLogs(false); setTimeFrom(""); setTimeTo(""); }, [selectedEmployeeId, date]);
 
   const gpsDataMap = new Map(perEmployee.map(d => [d.employeeId, d]));
 
@@ -1335,22 +1356,40 @@ function RCPGpsTracking() {
 
       {selectedEmployeeId && (
         <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h4 className="font-medium text-sm flex items-center gap-2">
               <Navigation className="h-4 w-4 text-primary" />
               Logi GPS
-              {logs.length > 0 && <Badge variant="outline" className="text-xs">{logs.length}</Badge>}
+              {logs.length > 0 && (
+                <Badge variant="outline" className="text-xs" data-testid="badge-gps-log-count">
+                  {(timeFrom || timeTo) ? `${filteredLogs.length} / ${logs.length}` : logs.length}
+                </Badge>
+              )}
             </h4>
-            {!showLogs && logs.length > 0 && (
-              <Button variant="outline" size="sm" onClick={() => setShowLogs(true)} data-testid="button-show-gps-logs">
-                Pokaż
-              </Button>
-            )}
-            {showLogs && (
-              <Button variant="ghost" size="sm" onClick={() => setShowLogs(false)}>
-                Ukryj
-              </Button>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {logs.length > 0 && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  <span>Od:</span>
+                  <Input type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="h-7 w-24 text-xs px-2" data-testid="input-gps-time-from" />
+                  <span>Do:</span>
+                  <Input type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="h-7 w-24 text-xs px-2" data-testid="input-gps-time-to" />
+                  {(timeFrom || timeTo) && (
+                    <button onClick={() => { setTimeFrom(""); setTimeTo(""); }} className="text-muted-foreground hover:text-foreground" data-testid="button-clear-gps-time-filter">✕</button>
+                  )}
+                </div>
+              )}
+              {!showLogs && logs.length > 0 && (
+                <Button variant="outline" size="sm" onClick={() => setShowLogs(true)} data-testid="button-show-gps-logs">
+                  Pokaż
+                </Button>
+              )}
+              {showLogs && (
+                <Button variant="ghost" size="sm" onClick={() => setShowLogs(false)}>
+                  Ukryj
+                </Button>
+              )}
+            </div>
           </div>
 
           {logsLoading && (
@@ -1375,7 +1414,7 @@ function RCPGpsTracking() {
                   <th className="p-2 text-right">Odległość</th>
                 </tr></thead>
                 <tbody>
-                  {logs.map((log) => {
+                  {filteredLogs.map((log) => {
                     const dist = log.distanceFromZone ? parseFloat(log.distanceFromZone) : null;
                     const isIn = dist !== null && dist <= 0;
                     return (
@@ -1398,6 +1437,9 @@ function RCPGpsTracking() {
                       </tr>
                     );
                   })}
+                  {filteredLogs.length === 0 && (timeFrom || timeTo) && (
+                    <tr><td colSpan={5} className="p-4 text-center text-muted-foreground text-sm">Brak logów w wybranym przedziale czasu</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>

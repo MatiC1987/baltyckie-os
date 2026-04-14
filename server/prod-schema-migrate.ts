@@ -22,6 +22,15 @@ const SCHEMA_MIGRATIONS = [
       created_at TIMESTAMP DEFAULT NOW()
     );`,
   },
+  {
+    name: "add_employee_hide_from_rcp",
+    sql: `ALTER TABLE employees ADD COLUMN IF NOT EXISTS hide_from_rcp boolean NOT NULL DEFAULT false;
+          UPDATE employees SET hide_from_rcp = true WHERE position = 'ZARZADCA' AND hide_from_rcp = false;`,
+  },
+  {
+    name: "add_issues_photo_urls",
+    sql: `ALTER TABLE issues ADD COLUMN IF NOT EXISTS photo_urls text[];`,
+  },
 ];
 
 export async function runProdSchemaMigration() {
