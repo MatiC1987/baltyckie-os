@@ -693,6 +693,9 @@ function leaveTypeLabel(type: string): string {
 
 function RCPUrlopy() {
   const { toast } = useToast();
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ["/api/recepcja/rcp/leave-requests"],
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/leave-requests"); return r.json(); },
@@ -701,6 +704,14 @@ function RCPUrlopy() {
     queryKey: ["/api/recepcja/rcp/employees"],
     queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees"); return r.json(); },
   });
+
+  const filteredRequests = useMemo(() => {
+    return requests.filter((r: any) => {
+      const typeMatch = filterType === "all" || r.type === filterType;
+      const statusMatch = filterStatus === "all" || r.status === filterStatus;
+      return typeMatch && statusMatch;
+    });
+  }, [requests, filterType, filterStatus]);
 
   const approveMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -725,51 +736,86 @@ function RCPUrlopy() {
   });
 
   return (
-    <Card className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead><tr className="border-b bg-muted/50">
-          <th className="p-2 text-left">Pracownik</th>
-          <th className="p-2 text-left">Typ</th>
-          <th className="p-2 text-left">Od</th>
-          <th className="p-2 text-left">Do</th>
-          <th className="p-2 text-center">Dni</th>
-          <th className="p-2 text-center">Status</th>
-          <th className="p-2 text-center">Akcje</th>
-        </tr></thead>
-        <tbody>
-          {requests.map((r: any) => {
-            const emp = employees.find((e: any) => e.id === r.employeeId);
-            return (
-              <tr key={r.id} className="border-b">
-                <td className="p-2">{emp ? `${emp.firstName} ${emp.lastName}` : `#${r.employeeId}`}</td>
-                <td className="p-2">{leaveTypeLabel(r.type)}</td>
-                <td className="p-2">{r.startDate}</td>
-                <td className="p-2">{r.endDate}</td>
-                <td className="p-2 text-center">{r.days}</td>
-                <td className="p-2 text-center">
-                  <Badge variant={r.status === 'ZAAKCEPTOWANY' ? 'default' : r.status === 'ODRZUCONY' ? 'destructive' : 'secondary'}>
-                    {r.status}
-                  </Badge>
-                </td>
-                <td className="p-2 text-center">
-                  {r.status === 'OCZEKUJACY' && (
-                    <div className="flex gap-1 justify-center">
-                      <Button variant="outline" size="icon" className="h-7 w-7 text-green-600" onClick={() => approveMutation.mutate(r.id)}>
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button variant="outline" size="icon" className="h-7 w-7 text-red-600" onClick={() => rejectMutation.mutate(r.id)}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-          {requests.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-muted-foreground">Brak wniosków</td></tr>}
-        </tbody>
-      </table>
-    </Card>
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-3">
+        <Select value={filterType} onValueChange={setFilterType}>
+          <SelectTrigger className="w-52" data-testid="select-filter-type">
+            <SelectValue placeholder="Typ wniosku" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Wszystkie typy</SelectItem>
+            <SelectItem value="URLOP_WYPOCZYNKOWY">Urlop wypoczynkowy</SelectItem>
+            <SelectItem value="URLOP_NA_ZADANIE">Urlop na żądanie</SelectItem>
+            <SelectItem value="ZWOLNIENIE_LEKARSKIE">Zwolnienie lekarskie</SelectItem>
+            <SelectItem value="CH">Chorobowe</SelectItem>
+            <SelectItem value="OP">Opieka nad dzieckiem</SelectItem>
+            <SelectItem value="INNY">Inny</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-48" data-testid="select-filter-status">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Wszystkie statusy</SelectItem>
+            <SelectItem value="OCZEKUJACY">Oczekujące</SelectItem>
+            <SelectItem value="ZAAKCEPTOWANY">Zaakceptowane</SelectItem>
+            <SelectItem value="ODRZUCONY">Odrzucone</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b bg-muted/50">
+            <th className="p-2 text-left">Pracownik</th>
+            <th className="p-2 text-left">Typ</th>
+            <th className="p-2 text-left">Od</th>
+            <th className="p-2 text-left">Do</th>
+            <th className="p-2 text-center">Dni</th>
+            <th className="p-2 text-center">Status</th>
+            <th className="p-2 text-center">Akcje</th>
+          </tr></thead>
+          <tbody>
+            {filteredRequests.map((r: any) => {
+              const emp = employees.find((e: any) => e.id === r.employeeId);
+              return (
+                <tr key={r.id} className="border-b" data-testid={`row-leave-request-${r.id}`}>
+                  <td className="p-2">{emp ? `${emp.firstName} ${emp.lastName}` : `#${r.employeeId}`}</td>
+                  <td className="p-2">{leaveTypeLabel(r.type)}</td>
+                  <td className="p-2">{r.startDate}</td>
+                  <td className="p-2">{r.endDate}</td>
+                  <td className="p-2 text-center">{r.days}</td>
+                  <td className="p-2 text-center">
+                    <Badge variant={r.status === 'ZAAKCEPTOWANY' ? 'default' : r.status === 'ODRZUCONY' ? 'destructive' : 'secondary'}>
+                      {r.status}
+                    </Badge>
+                  </td>
+                  <td className="p-2 text-center">
+                    {r.status === 'OCZEKUJACY' && (
+                      <div className="flex gap-1 justify-center">
+                        <Button variant="outline" size="icon" className="h-7 w-7 text-green-600" onClick={() => approveMutation.mutate(r.id)} data-testid={`button-approve-${r.id}`}>
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button variant="outline" size="icon" className="h-7 w-7 text-red-600" onClick={() => rejectMutation.mutate(r.id)} data-testid={`button-reject-${r.id}`}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {filteredRequests.length === 0 && (
+              <tr><td colSpan={7} className="p-4 text-center text-muted-foreground">
+                {requests.length === 0 ? "Brak wniosków" : "Brak wyników dla wybranych filtrów"}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
   );
 }
 
