@@ -20,167 +20,218 @@ const objectStorageClient = new Storage({
   projectId: "",
 });
 
+/**
+ * Parses PRIVATE_OBJECT_DIR to extract bucket name and base object path prefix.
+ * PRIVATE_OBJECT_DIR = "/bucket-name/.private"
+ * Returns { bucketName, privatePrefix: ".private" }
+ */
+function parsePrivateDir(): { bucketName: string; privatePrefix: string } {
+  const dir = process.env.PRIVATE_OBJECT_DIR || "";
+  if (!dir) throw new Error("PRIVATE_OBJECT_DIR env var not set");
+  const normalized = dir.startsWith("/") ? dir.slice(1) : dir;
+  const parts = normalized.split("/");
+  return { bucketName: parts[0], privatePrefix: parts.slice(1).join("/") };
+}
+
+/**
+ * getObjectEntityFile() expects objectPath = "/objects/<entityId>"
+ * where entityId is appended to PRIVATE_OBJECT_DIR to get the actual file:
+ *   PRIVATE_OBJECT_DIR/<entityId>  →  bucket/.private/<entityId>
+ *
+ * So to store a file at `.private/templates/foo.docx`:
+ *   - Upload to: bucket, objectName = ".private/templates/foo.docx"
+ *   - Store objectPath = "/objects/templates/foo.docx"
+ */
+
 async function buildAnnexDocx(): Promise<Buffer> {
-  const { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } = await import("docx");
+  const {
+    Document, Packer, Paragraph, TextRun, AlignmentType,
+    Table, TableRow, TableCell, WidthType, BorderStyle,
+  } = await import("docx");
 
-  const bold = (text: string) => new TextRun({ text, bold: true, size: 24, font: "Times New Roman" });
-  const normal = (text: string) => new TextRun({ text, size: 24, font: "Times New Roman" });
-  const placeholder = (key: string) => new TextRun({ text: `[${key}]`, size: 24, font: "Times New Roman", underline: {} });
+  const B = (text: string) => new TextRun({ text, bold: true, size: 24, font: "Times New Roman" });
+  const N = (text: string) => new TextRun({ text, size: 24, font: "Times New Roman" });
+  const P = (key: string) => new TextRun({ text: `[${key}]`, size: 24, font: "Times New Roman", underline: {} });
 
-  const emptyLine = new Paragraph({ children: [normal("")], spacing: { after: 80 } });
+  const noBorder = {
+    top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+  };
 
-  const noBorder = { top: { style: BorderStyle.NONE, size: 0 }, bottom: { style: BorderStyle.NONE, size: 0 }, left: { style: BorderStyle.NONE, size: 0 }, right: { style: BorderStyle.NONE, size: 0 }, insideH: { style: BorderStyle.NONE, size: 0 }, insideV: { style: BorderStyle.NONE, size: 0 } };
+  const sp = (after = 160) => ({ spacing: { after } });
 
   const doc = new Document({
     styles: {
       default: {
-        document: {
-          run: { font: "Times New Roman", size: 24 },
-        },
+        document: { run: { font: "Times New Roman", size: 24 } },
       },
     },
     sections: [{
       properties: {
-        page: {
-          margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 },
-        },
+        page: { margin: { top: 1418, right: 1134, bottom: 1134, left: 1134 } },
       },
       children: [
-        // City and date header
+        // City + date (right-aligned)
         new Paragraph({
           alignment: AlignmentType.RIGHT,
-          children: [placeholder("MIEJSCOWOSC"), normal(", dnia "), placeholder("DATA_ANEKSU")],
-          spacing: { after: 400 },
+          children: [P("MIEJSCOWOSC"), N(", dnia "), P("DATA_ANEKSU"), N(" roku")],
+          ...sp(400),
         }),
 
-        // Title
+        // Title block
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [bold("ANEKS NR "), placeholder("NUMER_ANEKSU")],
-          spacing: { after: 80 },
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [bold("do Umowy Podnajmu lokalu mieszkalnego")],
-          spacing: { after: 80 },
+          children: [B("ANEKS NR "), P("NUMER_ANEKSU"), B(" do Umowy najmu")],
+          ...sp(60),
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [bold("zawartej w dniu "), placeholder("DATA_UMOWY_PIERWOTNEJ")],
-          spacing: { after: 400 },
+          children: [B("pod warunkiem zawieszającym z dnia "), P("DATA_UMOWY_PIERWOTNEJ")],
+          ...sp(400),
         }),
 
-        // Parties
+        // Preamble
         new Paragraph({
-          children: [bold("Strony Umowy:")],
-          spacing: { after: 200 },
+          children: [
+            N("Zawarty w dniu "), P("DATA_ANEKSU"), N(" roku w "), P("MIEJSCOWOSC"),
+            N(" pomiędzy"),
+          ],
+          ...sp(200),
         }),
+
+        // Lessor block
+        new Paragraph({
+          children: [
+            P("NAZWA_FIRMY_WYNAJMUJACEGO"),
+            N(", z siedzibą w "),
+            P("MIEJSCOWOSC"),
+            N(" ("),
+            P("KOD_POCZTOWY_WYNAJMUJACEGO"),
+            N(") przy ul. "),
+            P("ULICA_WYNAJMUJACEGO"),
+            N(", NIP: "),
+            P("NIP_WYNAJMUJACEGO"),
+            N(", REGON: "),
+            P("REGON_WYNAJMUJACEGO"),
+            N(","),
+          ],
+          ...sp(60),
+        }),
+        new Paragraph({
+          children: [N("zarządzane przez "), P("IMIE_NAZWISKO_WYNAJMUJACEGO"), N(", "), P("STANOWISKO_WYNAJMUJACEGO"), N(".")],
+          ...sp(60),
+        }),
+        new Paragraph({
+          children: [B("Zwanym dalej: \"Wynajmujacym\"")],
+          ...sp(200),
+        }),
+
+        new Paragraph({ children: [N("a")], ...sp(200) }),
+
+        // Lessee block
+        new Paragraph({
+          children: [
+            P("NAZWA_FIRMY_NAJEMCY"),
+            N(" z siedzibą "),
+            P("ADRES_NAJEMCY"),
+            N(", NIP: "),
+            P("NIP_NAJEMCY"),
+            N("; REGON: "),
+            P("REGON_NAJEMCY"),
+            N(","),
+          ],
+          ...sp(60),
+        }),
+        new Paragraph({ children: [B("Zwaną dalej: \"Najemcą\"")], ...sp(200) }),
 
         new Paragraph({
           children: [
-            bold("Wynajmujący: "),
-            placeholder("NAZWA_FIRMY_WYNAJMUJACEGO"),
-            normal(", NIP: "),
-            placeholder("NIP_WYNAJMUJACEGO"),
-            normal(", REGON: "),
-            placeholder("REGON_WYNAJMUJACEGO"),
-            normal(", adres: "),
-            placeholder("ADRES_WYNAJMUJACEGO"),
-            normal(", reprezentowany przez: "),
-            placeholder("IMIE_NAZWISKO_WYNAJMUJACEGO"),
-            normal(", "),
-            placeholder("STANOWISKO_WYNAJMUJACEGO"),
+            N("(dla osoby fizycznej: "),
+            P("IMIE_I_NAZWISKO_NAJEMCY"),
+            N(", zamieszkałym/ą "),
+            P("ADRES_NAJEMCY"),
+            N(", PESEL: "),
+            P("PESEL"),
+            N(", nr dowodu: "),
+            P("NR_DOWODU"),
+            N(")"),
           ],
-          spacing: { after: 200 },
+          ...sp(200),
         }),
 
+        new Paragraph({
+          children: [N("Wynajmujący i Najemca są zwani dalej łącznie \"Stronami\".")],
+          ...sp(400),
+        }),
+
+        // § 1
+        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 1")], ...sp(200) }),
         new Paragraph({
           children: [
-            bold("Najemca: "),
-            placeholder("IMIE_I_NAZWISKO_NAJEMCY"),
-            normal(", zamieszkały/a: "),
-            placeholder("ADRES_NAJEMCY"),
-            normal(", nr dowodu: "),
-            placeholder("NR_DOWODU"),
-            normal(", NIP: "),
-            placeholder("NIP_NAJEMCY"),
-            normal(", REGON: "),
-            placeholder("REGON_NAJEMCY"),
+            N("Strony zgodnie oświadczają, że przedłużają okres trwania umowy najmu lokalu/lokali "),
+            P("NUMER_LOKALU"),
+            N(" od dnia "),
+            P("DATA_OD"),
+            N(" do dnia "),
+            P("NOWA_DATA_DO"),
+            N("."),
           ],
-          spacing: { after: 400 },
+          ...sp(300),
         }),
 
-        // Premises
+        // § 2
+        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 2")], ...sp(200) }),
+        new Paragraph({
+          children: [N("Strony ustaliły, że opłaty miesięczne najmu wynoszą:")],
+          ...sp(80),
+        }),
+        new Paragraph({
+          children: [P("NOWA_KWOTA_CZYNSZU"), N(" PLN + "), P("KWOTA_VAT"), N(" VAT")],
+          ...sp(80),
+        }),
         new Paragraph({
           children: [
-            normal("Dotyczy lokalu: "),
-            placeholder("NUMER_LOKALU"),
+            N("Płatność do "),
+            P("DZIEN_PLATNOSCI"),
+            N(". dnia każdego miesiąca, na rachunek bankowy Wynajmującego nr: "),
+            P("NUMER_KONTA"),
           ],
-          spacing: { after: 400 },
+          ...sp(300),
         }),
 
-        // Paragraph 1
-        new Paragraph({
-          children: [bold("§ 1")],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 200 },
-        }),
-
+        // § 3
+        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 3. Inne opłaty")], ...sp(200) }),
         new Paragraph({
           children: [
-            normal("Strony postanawiają, że z dniem "),
-            placeholder("DATA_OD"),
-            normal(" Umowa Podnajmu zostaje zmieniona w następujący sposób:"),
+            N("Najemca zobowiązany jest do ponoszenia miesięcznych kosztów mediów zgodnie z warunkami określonymi w umowie pierwotnej lub ustalonych odrębnie."),
           ],
-          spacing: { after: 200 },
+          ...sp(300),
         }),
 
+        // § 4
+        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 4")], ...sp(200) }),
         new Paragraph({
           children: [
-            normal("1. Nowa kwota miesięcznego czynszu wynosi: "),
-            placeholder("NOWA_KWOTA_CZYNSZU"),
-            normal(" zł brutto"),
+            N("Strony oświadczają, że dotychczasowe warunki umowy pozostają bez zmian, o ile nie zostały zmienione niniejszym Aneksem."),
           ],
-          spacing: { after: 200 },
+          ...sp(300),
         }),
 
+        // § 5
+        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 5")], ...sp(200) }),
         new Paragraph({
           children: [
-            normal("2. Nowa data zakończenia umowy: "),
-            placeholder("NOWA_DATA_DO"),
+            N("Aneks Nr "), P("NUMER_ANEKSU"),
+            N(" sporządzono w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze Stron."),
           ],
-          spacing: { after: 400 },
+          ...sp(600),
         }),
 
-        // Paragraph 2
-        new Paragraph({
-          children: [bold("§ 2")],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 200 },
-        }),
-
-        new Paragraph({
-          children: [
-            normal("Pozostałe warunki Umowy Podnajmu pozostają bez zmian."),
-          ],
-          spacing: { after: 400 },
-        }),
-
-        // Paragraph 3
-        new Paragraph({
-          children: [bold("§ 3")],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 200 },
-        }),
-
-        new Paragraph({
-          children: [
-            normal("Aneks sporządzono w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze Stron."),
-          ],
-          spacing: { after: 600 },
-        }),
-
-        // Signatures table
+        // Signatures
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
           borders: noBorder,
@@ -191,42 +242,19 @@ async function buildAnnexDocx(): Promise<Buffer> {
                   width: { size: 50, type: WidthType.PERCENTAGE },
                   borders: noBorder,
                   children: [
-                    new Paragraph({
-                      children: [bold("WYNAJMUJĄCY")],
-                      alignment: AlignmentType.CENTER,
-                      spacing: { after: 400 },
-                    }),
-                    new Paragraph({
-                      children: [normal("___________________________")],
-                      alignment: AlignmentType.CENTER,
-                    }),
-                    new Paragraph({
-                      children: [placeholder("IMIE_NAZWISKO_WYNAJMUJACEGO")],
-                      alignment: AlignmentType.CENTER,
-                    }),
-                    new Paragraph({
-                      children: [placeholder("STANOWISKO_WYNAJMUJACEGO")],
-                      alignment: AlignmentType.CENTER,
-                    }),
+                    new Paragraph({ children: [N("Wynajmujący")], ...sp(300) }),
+                    new Paragraph({ children: [N("________________________")], ...sp(60) }),
+                    new Paragraph({ children: [P("IMIE_NAZWISKO_WYNAJMUJACEGO")], ...sp(0) }),
+                    new Paragraph({ children: [P("STANOWISKO_WYNAJMUJACEGO")], ...sp(0) }),
                   ],
                 }),
                 new TableCell({
                   width: { size: 50, type: WidthType.PERCENTAGE },
                   borders: noBorder,
                   children: [
-                    new Paragraph({
-                      children: [bold("NAJEMCA")],
-                      alignment: AlignmentType.CENTER,
-                      spacing: { after: 400 },
-                    }),
-                    new Paragraph({
-                      children: [normal("___________________________")],
-                      alignment: AlignmentType.CENTER,
-                    }),
-                    new Paragraph({
-                      children: [placeholder("IMIE_I_NAZWISKO_NAJEMCY")],
-                      alignment: AlignmentType.CENTER,
-                    }),
+                    new Paragraph({ children: [N("Najemca")], ...sp(300) }),
+                    new Paragraph({ children: [N("________________________")], ...sp(60) }),
+                    new Paragraph({ children: [P("IMIE_I_NAZWISKO_NAJEMCY")], ...sp(0) }),
                   ],
                 }),
               ],
@@ -243,46 +271,46 @@ async function buildAnnexDocx(): Promise<Buffer> {
 async function main() {
   console.log("=== Seed: Annex DOCX Template ===\n");
 
-  // Check if already exists
-  const existing = await db.select().from(documentTemplates).where(eq(documentTemplates.name, "Szablon Aneksu do Umowy Podnajmu"));
-  if (existing.length > 0) {
-    console.log(`Template already exists (id=${existing[0].id}), skipping.`);
-    process.exit(0);
-  }
+  const TEMPLATE_NAME = "Aneks do umowy podnajmu";
+  const FILE_NAME = "szablon_aneksu_podnajmu.docx";
 
-  const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
-  if (!privateDir) throw new Error("PRIVATE_OBJECT_DIR env var not set");
+  // Clean up any previous runs
+  const existing = await db.select().from(documentTemplates)
+    .where(eq(documentTemplates.name, TEMPLATE_NAME));
+  if (existing.length > 0) {
+    console.log(`Removing existing template (id=${existing[0].id})...`);
+    await db.delete(documentTemplates).where(eq(documentTemplates.name, TEMPLATE_NAME));
+  }
 
   // Build DOCX buffer
   console.log("Generating annex DOCX...");
   const docxBuffer = await buildAnnexDocx();
   console.log(`DOCX buffer size: ${docxBuffer.length} bytes`);
 
-  // Upload to object storage
-  const fileName = "szablon_aneks_podnajem.docx";
-  const storagePath = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
-  const parts = storagePath.split("/");
-  const bucketName = parts[0];
-  const objectName = `${parts.slice(1).join("/")}/templates/${fileName}`;
-  const objectPath = `/${storagePath}/templates/${fileName}`;
+  // Resolve storage paths
+  const { bucketName, privatePrefix } = parsePrivateDir();
+  const entityId = `templates/${FILE_NAME}`;                // e.g. "templates/szablon_aneksu_podnajmu.docx"
+  const objectName = `${privatePrefix}/${entityId}`;        // e.g. ".private/templates/szablon_aneksu_podnajmu.docx"
+  const objectPath = `/objects/${entityId}`;                // e.g. "/objects/templates/szablon_aneksu_podnajmu.docx"
 
   console.log(`Uploading to bucket=${bucketName}, object=${objectName}...`);
   const file = objectStorageClient.bucket(bucketName).file(objectName);
   await file.save(docxBuffer, {
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
-  console.log("Upload complete.");
+  console.log(`Upload complete. objectPath=${objectPath}`);
 
   // Insert into document_templates
   const [inserted] = await db.insert(documentTemplates).values({
-    name: "Szablon Aneksu do Umowy Podnajmu",
-    fileName,
+    name: TEMPLATE_NAME,
+    fileName: FILE_NAME,
     objectPath,
-    description: "Szablon aneksu do umowy podnajmu lokalu mieszkalnego. Zawiera pola: numer aneksu, data, strony, nowy czynsz, nowa data zakończenia.",
+    description: "Szablon aneksu — przedłużenie okresu i/lub zmiana czynszu do umowy podnajmu.",
     templateType: "ANEKS",
   }).returning();
 
-  console.log(`\nTemplate inserted: id=${inserted.id}, templateType=${inserted.templateType}`);
+  console.log(`\nTemplate inserted: id=${inserted.id}, name="${inserted.name}", templateType=${inserted.templateType}`);
+  console.log(`objectPath: ${inserted.objectPath}`);
   console.log("Done!");
   process.exit(0);
 }
