@@ -12,7 +12,7 @@ import {
   Building2, User, Briefcase, CreditCard, Paperclip, ClipboardCheck,
   ArrowUpDown, ArrowUp, ArrowDown, Shield, RefreshCw, Download, FileSignature,
   FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle, Zap, Droplets,
-  ChevronLeft, ChevronRight, TrendingUp, ChevronDown
+  ChevronLeft, ChevronRight, TrendingUp, ChevronDown, Eye
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { HandoverProtocolsTab } from "./HandoverProtocols";
@@ -965,6 +965,9 @@ export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentSta
   const [showSheet, setShowSheet] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [previewAnnex, setPreviewAnnex] = useState<SubleaseAttachment | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [annexForm, setAnnexForm] = useState<AnnexFormState>({
     templateId: 0,
     annexNumber: "1",
@@ -1019,6 +1022,29 @@ export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentSta
       document.body.removeChild(a);
     } catch {
       toast({ title: "Błąd", description: "Nie udało się pobrać pliku", variant: "destructive" });
+    }
+  };
+
+  const previewAnnexFile = async (att: SubleaseAttachment) => {
+    setPreviewAnnex(att);
+    setPreviewHtml("");
+    setPreviewLoading(true);
+    try {
+      const resp = await fetch(`/api/sublease-attachments/${att.id}/download`, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Błąd pobierania');
+      const arrayBuffer = await resp.arrayBuffer();
+      const [mammoth, DOMPurify] = await Promise.all([
+        import("mammoth"),
+        import("dompurify"),
+      ]);
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      const clean = DOMPurify.default.sanitize(result.value);
+      setPreviewHtml(clean);
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się wczytać podglądu", variant: "destructive" });
+      setPreviewAnnex(null);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -1195,7 +1221,10 @@ export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentSta
                   <span className="text-xs text-muted-foreground">{format(new Date(att.uploadedAt), "dd.MM.yyyy", { locale: pl })}</span>
                 )}
               </div>
-              <Button size="icon" variant="ghost" onClick={() => downloadAnnexFile(att.id, att.fileName)} data-testid={`button-download-annex-${att.id}`}>
+              <Button size="icon" variant="ghost" onClick={() => previewAnnexFile(att)} title="Podgląd" data-testid={`button-preview-annex-${att.id}`}>
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => downloadAnnexFile(att.id, att.fileName)} title="Pobierz" data-testid={`button-download-annex-${att.id}`}>
                 <Download className="h-4 w-4" />
               </Button>
               <AlertDialog>
@@ -1500,6 +1529,40 @@ export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentSta
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={!!previewAnnex} onOpenChange={(open) => { if (!open) setPreviewAnnex(null); }}>
+        <DialogContent className="max-w-4xl w-full h-[90vh] flex flex-col p-0" data-testid="dialog-annex-preview">
+          <DialogHeader className="px-6 pt-5 pb-3 border-b shrink-0">
+            <DialogTitle className="text-base truncate">{previewAnnex?.fileName}</DialogTitle>
+            <DialogDescription>Podgląd aneksu</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {previewLoading ? (
+              <div className="flex items-center justify-center h-full" data-testid="preview-loading">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : previewHtml ? (
+              <div
+                className="prose prose-sm dark:prose-invert max-w-none"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+                data-testid="preview-content"
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground text-center py-8" data-testid="preview-empty">
+                Brak zawartości do wyświetlenia
+              </div>
+            )}
+          </div>
+          <div className="px-6 py-3 border-t shrink-0 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPreviewAnnex(null)} data-testid="button-close-preview">Zamknij</Button>
+            {previewAnnex && (
+              <Button onClick={() => downloadAnnexFile(previewAnnex.id, previewAnnex.fileName)} data-testid="button-download-from-preview">
+                <Download className="h-4 w-4 mr-1" /> Pobierz
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
