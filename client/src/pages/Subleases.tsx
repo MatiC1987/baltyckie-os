@@ -904,6 +904,228 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
   );
 }
 
+function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: { subleaseId: number; currentRentAmount?: string | null; currentStartDate?: string | null }) {
+  const { toast } = useToast();
+  const [showDialog, setShowDialog] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [annexForm, setAnnexForm] = useState({
+    templateId: 0,
+    annexNumber: "1",
+    originalContractDate: currentStartDate || "",
+    newEndDate: "",
+    newRentAmount: currentRentAmount || "",
+  });
+
+  const { data: attachments = [] } = useQuery<SubleaseAttachment[]>({
+    queryKey: ['/api/subleases', subleaseId, 'attachments'],
+    queryFn: async () => {
+      const r = await fetch(`/api/subleases/${subleaseId}/attachments`, { credentials: 'include' });
+      if (!r.ok) throw new Error('Fetch error');
+      return r.json();
+    },
+  });
+
+  const annexAttachments = attachments.filter(a => a.category === 'ANEKS');
+
+  const { data: docTemplates = [] } = useQuery<DocumentTemplate[]>({
+    queryKey: ['/api/document-templates'],
+  });
+
+  const downloadAnnexFile = async (attId: number, fileName: string) => {
+    try {
+      const resp = await fetch(`/api/sublease-attachments/${attId}/download`, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Błąd pobierania');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się pobrać pliku", variant: "destructive" });
+    }
+  };
+
+  const handleOpenDialog = () => {
+    setAnnexForm(f => ({
+      ...f,
+      templateId: 0,
+      annexNumber: String(annexAttachments.length + 1),
+      originalContractDate: currentStartDate || "",
+      newRentAmount: currentRentAmount || "",
+      newEndDate: "",
+    }));
+    setShowDialog(true);
+  };
+
+  const handleGenerate = async () => {
+    if (!annexForm.templateId) {
+      toast({ title: "Błąd", description: "Wybierz szablon aneksu", variant: "destructive" });
+      return;
+    }
+    if (!annexForm.originalContractDate) {
+      toast({ title: "Błąd", description: "Podaj datę pierwotnej umowy", variant: "destructive" });
+      return;
+    }
+    if (!annexForm.newEndDate) {
+      toast({ title: "Błąd", description: "Podaj nową datę zakończenia", variant: "destructive" });
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const resp = await fetch(`/api/subleases/${subleaseId}/generate-annex`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          templateId: annexForm.templateId,
+          annexNumber: annexForm.annexNumber,
+          originalContractDate: annexForm.originalContractDate,
+          newEndDate: annexForm.newEndDate,
+          newRentAmount: annexForm.newRentAmount || undefined,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err as any).message || 'Błąd generowania');
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cd = resp.headers.get('Content-Disposition') || '';
+      const match = cd.match(/filename="([^"]+)"/);
+      a.download = match ? decodeURIComponent(match[1]) : `Aneks_${annexForm.annexNumber}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
+      toast({ title: "Sukces", description: "Aneks wygenerowany i pobrany" });
+      setShowDialog(false);
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 py-2">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {annexAttachments.length > 0 ? `${annexAttachments.length} aneks(y)` : "Brak wygenerowanych aneksów"}
+        </p>
+        <Button size="sm" onClick={handleOpenDialog} data-testid="button-generate-annex">
+          <FilePlus2 className="h-4 w-4 mr-1" /> Generuj aneks
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        {annexAttachments.length > 0 ? (
+          annexAttachments.map((att) => (
+            <div key={att.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50" data-testid={`row-annex-${att.id}`}>
+              <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div className="min-w-0 flex-1">
+                <button type="button" onClick={() => downloadAnnexFile(att.id, att.fileName)} className="text-sm font-medium hover:underline truncate block text-left" data-testid={`link-annex-${att.id}`}>
+                  {att.fileName}
+                </button>
+                {att.uploadedAt && (
+                  <span className="text-xs text-muted-foreground">{format(new Date(att.uploadedAt), "dd.MM.yyyy", { locale: pl })}</span>
+                )}
+              </div>
+              <Button size="icon" variant="ghost" onClick={() => downloadAnnexFile(att.id, att.fileName)} data-testid={`button-download-annex-${att.id}`}>
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-muted-foreground text-center py-8">
+            Kliknij "Generuj aneks" aby wygenerować aneks do tej umowy
+          </div>
+        )}
+      </div>
+
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generuj aneks do umowy</DialogTitle>
+            <DialogDescription>Wypełnij dane i wygeneruj aneks w formacie DOCX</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div>
+              <Label className="mb-1 block">Szablon dokumentu</Label>
+              <Select
+                value={annexForm.templateId ? String(annexForm.templateId) : ""}
+                onValueChange={(v) => setAnnexForm(f => ({ ...f, templateId: Number(v) }))}
+              >
+                <SelectTrigger data-testid="select-annex-template">
+                  <SelectValue placeholder="Wybierz szablon aneksu..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {docTemplates.length === 0 && (
+                    <SelectItem value="none" disabled>Brak szablonów</SelectItem>
+                  )}
+                  {docTemplates.map(t => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block">Numer aneksu</Label>
+              <Input
+                value={annexForm.annexNumber}
+                onChange={e => setAnnexForm(f => ({ ...f, annexNumber: e.target.value }))}
+                data-testid="input-annex-number"
+              />
+            </div>
+            <div>
+              <Label className="mb-1 block">Data zawarcia pierwotnej umowy</Label>
+              <Input
+                type="date"
+                value={annexForm.originalContractDate}
+                onChange={e => setAnnexForm(f => ({ ...f, originalContractDate: e.target.value }))}
+                data-testid="input-annex-original-date"
+              />
+            </div>
+            <div>
+              <Label className="mb-1 block">Nowa data zakończenia umowy</Label>
+              <Input
+                type="date"
+                value={annexForm.newEndDate}
+                onChange={e => setAnnexForm(f => ({ ...f, newEndDate: e.target.value }))}
+                data-testid="input-annex-new-end-date"
+              />
+            </div>
+            <div>
+              <Label className="mb-1 block">Nowa kwota czynszu (opcjonalnie)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={annexForm.newRentAmount}
+                onChange={e => setAnnexForm(f => ({ ...f, newRentAmount: e.target.value }))}
+                placeholder="Pozostaw puste jeśli bez zmian"
+                data-testid="input-annex-rent"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Anuluj</Button>
+            <LoadingButton onClick={handleGenerate} isPending={isGenerating} loadingText="Generowanie..." data-testid="button-confirm-generate-annex">
+              <Download className="h-4 w-4 mr-1" /> Generuj i pobierz
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 type DepositSortKey = "apartment" | "tenant" | "amount" | "returnDate";
 
 function DepositsToReturn({ subleases, apartments, allApartmentChanges = [] }: { subleases: Sublease[]; apartments: Apartment[]; allApartmentChanges?: SubleaseApartmentChange[] }) {
@@ -2540,6 +2762,9 @@ export default function Subleases() {
                   <TabsTrigger value="protokoly" className="gap-1" data-testid="tab-protokoly">
                     <ClipboardCheck className="h-4 w-4" /> Protokoły
                   </TabsTrigger>
+                  <TabsTrigger value="aneksy" className="gap-1" data-testid="tab-aneksy">
+                    <FilePlus2 className="h-4 w-4" /> Aneksy
+                  </TabsTrigger>
                 </>
               )}
             </TabsList>
@@ -2578,6 +2803,13 @@ export default function Subleases() {
                     subleaseId={editId}
                     sublease={subleases.find((s: Sublease) => s.id === editId)}
                     apartments={apartments}
+                  />
+                </TabsContent>
+                <TabsContent value="aneksy" className="flex-1 overflow-y-auto mt-0">
+                  <AnnexesTab
+                    subleaseId={editId}
+                    currentRentAmount={form.rentAmount}
+                    currentStartDate={form.startDate}
                   />
                 </TabsContent>
               </>

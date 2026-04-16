@@ -3460,6 +3460,253 @@ export async function registerRoutes(
     }
   });
 
+  // Generate Annex for existing sublease
+  app.post('/api/subleases/:id/generate-annex', isAuthenticated, async (req, res) => {
+    try {
+      const subleaseId = parseInt(req.params.id, 10);
+      if (isNaN(subleaseId)) return res.status(400).json({ message: "Nieprawidłowe ID umowy" });
+
+      const { templateId, annexNumber, originalContractDate, newEndDate, newRentAmount } = req.body;
+      if (!templateId) return res.status(400).json({ message: "Brak ID szablonu" });
+      if (!originalContractDate) return res.status(400).json({ message: "Brak daty pierwotnej umowy" });
+      if (!newEndDate) return res.status(400).json({ message: "Brak nowej daty zakończenia" });
+
+      const sublease = await storage.getSublease(subleaseId);
+      if (!sublease) return res.status(404).json({ message: "Umowa nie znaleziona" });
+
+      const templates = await storage.getDocumentTemplates();
+      const template = templates.find(t => t.id === templateId);
+      if (!template) return res.status(404).json({ message: "Szablon nie znaleziony" });
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const objectFile = await osService.getObjectEntityFile(template.objectPath);
+      const [fileBuffer] = await objectFile.download();
+
+      const PizZip = (await import("pizzip")).default;
+
+      const aptIds: number[] = sublease.apartmentIds || (sublease.apartmentId ? [sublease.apartmentId] : []);
+      const allApartments = await storage.getApartments();
+      const aptNames = aptIds.map(id => allApartments.find(a => a.id === id)?.name || "").filter(Boolean);
+
+      const companyData = await storage.getCompanySettings();
+
+      const today = new Date();
+      const formatDatePL = (d: string) => {
+        if (!d) return "";
+        const [y, m, dd] = d.split("-");
+        return `${dd}.${m}.${y}`;
+      };
+
+      const fullName = `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
+      const fullAddress = [sublease.street, sublease.postalCode, sublease.city].filter(Boolean).join(", ");
+      const companyFullAddress = companyData ? [companyData.street, companyData.postalCode, companyData.city].filter(Boolean).join(", ") : "";
+      const paymentDayStr = sublease.paymentDay ? String(sublease.paymentDay) : "";
+      const effectiveRent = newRentAmount || sublease.rentAmount || "";
+
+      const replacements: Record<string, string> = {
+        "IMIĘ_I_NAZWISKO_NAJEMCY": fullName,
+        "IMIE_I_NAZWISKO_NAJEMCY": fullName,
+        "IMIĘ_NAZWISKO_NAJEMCY": fullName,
+        "IMIE_NAZWISKO_NAJEMCY": fullName,
+        "IMIĘ_NAZWISKO_REPREZENTANTA": fullName,
+        "IMIE_NAZWISKO_REPREZENTANTA": fullName,
+        "IMIĘ_NAZWISKO_WYNAJMUJĄCEGO": companyData?.representativeName || "",
+        "IMIE_NAZWISKO_WYNAJMUJACEGO": companyData?.representativeName || "",
+        "STANOWISKO_WYNAJMUJĄCEGO": companyData?.representativeRole || "",
+        "STANOWISKO_WYNAJMUJACEGO": companyData?.representativeRole || "",
+        "ADRES_NAJEMCY": fullAddress,
+        "ULICA_NAJEMCY": sublease.street || "",
+        "KOD_POCZTOWY_NAJEMCY": sublease.postalCode || "",
+        "MIEJSCOWOŚĆ_NAJEMCY": sublease.city || "",
+        "MIEJSCOWOSC_NAJEMCY": sublease.city || "",
+        "PESEL": sublease.peselOrPassport || "",
+        "NR_DOWODU": sublease.idNumber || "",
+        "NUMER_DOWODU": sublease.idNumber || "",
+        "NAZWA_FIRMY_NAJEMCY": sublease.companyName || "",
+        "NIP_NAJEMCY": sublease.nip || "",
+        "REGON_NAJEMCY": "",
+        "NAZWA_FIRMY_WYNAJMUJĄCEGO": companyData?.companyName || "",
+        "NAZWA_FIRMY_WYNAJMUJACEGO": companyData?.companyName || "",
+        "ADRES_FIRMY": companyFullAddress,
+        "ADRES_WYNAJMUJĄCEGO": companyFullAddress,
+        "ADRES_WYNAJMUJACEGO": companyFullAddress,
+        "ULICA_WYNAJMUJĄCEGO": companyData?.street || "",
+        "ULICA_WYNAJMUJACEGO": companyData?.street || "",
+        "KOD_POCZTOWY_WYNAJMUJĄCEGO": companyData?.postalCode || "",
+        "KOD_POCZTOWY_WYNAJMUJACEGO": companyData?.postalCode || "",
+        "MIEJSCOWOŚĆ_WYNAJMUJĄCEGO": companyData?.city || "",
+        "MIEJSCOWOSC_WYNAJMUJACEGO": companyData?.city || "",
+        "NIP_WYNAJMUJĄCEGO": companyData?.nip || "",
+        "NIP_WYNAJMUJACEGO": companyData?.nip || "",
+        "REGON_WYNAJMUJĄCEGO": companyData?.regon || "",
+        "REGON_WYNAJMUJACEGO": companyData?.regon || "",
+        "NUMER_LOKALU": aptNames[0] || "",
+        "ADRES_LOKALU": aptNames.join(", "),
+        "MIEJSCOWOŚĆ": sublease.city || "",
+        "MIEJSCOWOSC": sublease.city || "",
+        "DATA_ZAWARCIA": formatDatePL(today.toISOString().slice(0, 10)),
+        "DATA_OD": formatDatePL(sublease.startDate || ""),
+        "DATA_DO": formatDatePL(newEndDate),
+        "DATA_ROZPOCZECIA": formatDatePL(sublease.startDate || ""),
+        "DATA_ZAKONCZENIA": formatDatePL(newEndDate),
+        "KWOTA_CZYNSZU": effectiveRent ? Number(effectiveRent).toFixed(2) : "",
+        "KWOTA_CZYNSZU_NETTO": effectiveRent ? Number(effectiveRent).toFixed(2) : "",
+        "KWOTA_VAT": sublease.vatRate || "23%",
+        "KWOTA_KAUCJI": sublease.depositAmount ? Number(sublease.depositAmount).toFixed(2) : "",
+        "NUMER_KONTA": companyData?.bankAccount || "",
+        "NAZWA_BANKU": companyData?.bankName || "",
+        "DZIEŃ_PŁATNOŚCI": paymentDayStr,
+        "DZIEN_PLATNOSCI": paymentDayStr,
+        "LICZBA_DNI_ZALEGŁOŚCI": "",
+        "LICZBA_DNI_ZALEGLOSCI": "",
+        "TELEFON_WYNAJMUJĄCEGO": companyData?.phone || "",
+        "TELEFON_WYNAJMUJACEGO": companyData?.phone || "",
+        "EMAIL_WYNAJMUJĄCEGO": companyData?.email || "",
+        "EMAIL_WYNAJMUJACEGO": companyData?.email || "",
+        // Annex-specific placeholders
+        "NUMER_ANEKSU": annexNumber ? String(annexNumber) : "1",
+        "DATA_UMOWY_PIERWOTNEJ": formatDatePL(originalContractDate),
+        "DATA_ANEKSU": formatDatePL(today.toISOString().slice(0, 10)),
+        "DATA_PODPISANIA_ANEKSU": formatDatePL(today.toISOString().slice(0, 10)),
+        "NOWA_KWOTA_CZYNSZU": effectiveRent ? Number(effectiveRent).toFixed(2) : "",
+        "NOWA_DATA_DO": formatDatePL(newEndDate),
+        "NOWA_DATA_ZAKONCZENIA": formatDatePL(newEndDate),
+      };
+
+      const zip = new PizZip(fileBuffer);
+
+      const mergeRunsAndReplace = (xml: string, repls: Record<string, string>): string => {
+        return xml.replace(/<w:p[\s>][\s\S]*?<\/w:p>/g, (para) => {
+          const textParts: { match: string; text: string }[] = [];
+          const runRegex = /<w:r[\s>][\s\S]*?<\/w:r>/g;
+          let m;
+          while ((m = runRegex.exec(para)) !== null) {
+            const runXml = m[0];
+            const texts: string[] = [];
+            const tRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+            let tm;
+            while ((tm = tRegex.exec(runXml)) !== null) {
+              texts.push(tm[1]);
+            }
+            textParts.push({ match: runXml, text: texts.join("") });
+          }
+          const fullText = textParts.map(p => p.text).join("");
+          let hasPlaceholder = false;
+          for (const key of Object.keys(repls)) {
+            if (fullText.includes(`[${key}]`)) { hasPlaceholder = true; break; }
+          }
+          if (!hasPlaceholder) return para;
+
+          let replacedText = fullText;
+          for (const [key, val] of Object.entries(repls)) {
+            replacedText = replacedText.split(`[${key}]`).join(val);
+          }
+          if (textParts.length === 0) return para;
+          const firstRun = textParts[0].match;
+          const newRun = firstRun.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, "").replace(/<\/w:r>$/, "") +
+            `<w:t xml:space="preserve">${replacedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</w:t></w:r>`;
+          let result = para;
+          for (let i = textParts.length - 1; i >= 1; i--) {
+            result = result.replace(textParts[i].match, "");
+          }
+          result = result.replace(textParts[0].match, newRun);
+          return result;
+        });
+      };
+
+      const xmlFiles = ["word/document.xml", "word/header1.xml", "word/header2.xml", "word/header3.xml", "word/footer1.xml", "word/footer2.xml", "word/footer3.xml"];
+      for (const xmlFile of xmlFiles) {
+        const entry = zip.files[xmlFile];
+        if (!entry) continue;
+        let xml = entry.asText();
+        xml = mergeRunsAndReplace(xml, replacements);
+        zip.file(xmlFile, xml);
+      }
+
+      const nullGetter = () => "";
+      const Docxtemplater = (await import("docxtemplater")).default;
+
+      const templateDataDocx: Record<string, string> = {
+        imie: sublease.firstName || "",
+        nazwisko: sublease.lastName || "",
+        imie_nazwisko: fullName,
+        nazwa_firmy: sublease.companyName || "",
+        apartament: aptNames.join(", "),
+        apartamenty: aptNames.join(", "),
+        data_rozpoczecia: formatDatePL(sublease.startDate || ""),
+        data_zakonczenia: formatDatePL(newEndDate),
+        data_od: formatDatePL(sublease.startDate || ""),
+        data_do: formatDatePL(newEndDate),
+        czynsz: effectiveRent ? Number(effectiveRent).toFixed(2) : "",
+        kwota_czynszu: effectiveRent ? Number(effectiveRent).toFixed(2) : "",
+        kaucja: sublease.depositAmount ? Number(sublease.depositAmount).toFixed(2) : "",
+        data_dzisiejsza: formatDatePL(today.toISOString().slice(0, 10)),
+        data_umowy: formatDatePL(today.toISOString().slice(0, 10)),
+        nr_dowodu: sublease.idNumber || "",
+        numer_dowodu: sublease.idNumber || "",
+        dzien_platnosci: paymentDayStr,
+        numer_konta: companyData?.bankAccount || "",
+        nazwa_banku: companyData?.bankName || "",
+        nazwa_firmy_wynajmujacego: companyData?.companyName || "",
+        nip_wynajmujacego: companyData?.nip || "",
+        regon_wynajmujacego: companyData?.regon || "",
+        adres_wynajmujacego: companyFullAddress,
+        imie_nazwisko_wynajmujacego: companyData?.representativeName || "",
+        stanowisko_wynajmujacego: companyData?.representativeRole || "",
+        numer_aneksu: annexNumber ? String(annexNumber) : "1",
+        data_umowy_pierwotnej: formatDatePL(originalContractDate),
+        data_aneksu: formatDatePL(today.toISOString().slice(0, 10)),
+        nowa_kwota_czynszu: effectiveRent ? Number(effectiveRent).toFixed(2) : "",
+        nowa_data_do: formatDatePL(newEndDate),
+      };
+
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: "{{", end: "}}" },
+        nullGetter,
+      });
+      doc.render(templateDataDocx);
+      const buf = doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+
+      const tenantName = sublease.tenantType === 'firma'
+        ? (sublease.companyName || 'firma')
+        : `${sublease.firstName || ''}_${sublease.lastName || ''}`.trim();
+      const annexNum = annexNumber ? String(annexNumber) : "1";
+      const fileName = `Aneks_${annexNum}_${tenantName}_${new Date().toISOString().slice(0, 10)}.docx`;
+
+      const privateDir = osService.getPrivateObjectDir();
+      const storagePath = `${privateDir}/contracts/${subleaseId}_${fileName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(buf, { contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+
+      const objectPath = `/objects/contracts/${subleaseId}_${fileName}`;
+
+      await storage.createSubleaseAttachment({
+        subleaseId,
+        fileName,
+        objectPath,
+        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        category: "ANEKS",
+      });
+
+      logActivity(req, "create", "sublease_annex", subleaseId, fileName);
+
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.send(buf);
+    } catch (error: any) {
+      console.error("Error generating annex:", error);
+      res.status(500).json({ message: error.message || "Błąd generowania aneksu" });
+    }
+  });
+
   // Sublease Attachments
   app.get('/api/sublease-attachments/all', isAuthenticated, async (_req, res) => {
     const atts = await storage.getAllSubleaseAttachments();
