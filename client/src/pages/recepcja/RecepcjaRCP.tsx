@@ -730,7 +730,14 @@ function RCPUrlopy() {
             return (
               <tr key={r.id} className="border-b">
                 <td className="p-2">{emp ? `${emp.firstName} ${emp.lastName}` : `#${r.employeeId}`}</td>
-                <td className="p-2">{r.type}</td>
+                <td className="p-2">{{
+                  URLOP_WYPOCZYNKOWY: "Urlop wypoczynkowy",
+                  URLOP_NA_ZADANIE: "Urlop na żądanie",
+                  ZWOLNIENIE_LEKARSKIE: "Zwolnienie lekarskie",
+                  CH: "Chorobowe",
+                  OP: "Opieka nad dzieckiem",
+                  INNY: "Inny",
+                }[r.type as string] ?? r.type}</td>
                 <td className="p-2">{r.startDate}</td>
                 <td className="p-2">{r.endDate}</td>
                 <td className="p-2 text-center">{r.days}</td>
