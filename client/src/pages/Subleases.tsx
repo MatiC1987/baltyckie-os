@@ -1457,13 +1457,18 @@ export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentSta
                             </div>
                           </div>
                           <div className="flex items-center justify-between">
-                            {entryCnt > 0 && entry.amount ? (
-                              <span className="text-xs text-muted-foreground">
-                                {entryCnt} opłat{entryCnt === 1 ? 'a' : 'y'} × {Number(entry.amount).toFixed(2)} zł = <span className="font-semibold text-foreground">{entryTotal.toFixed(2)} zł</span>
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">Podaj kwotę i okres</span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {entryCnt > 0 && entry.amount ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {entryCnt} opłat{entryCnt === 1 ? 'a' : 'y'} × {Number(entry.amount).toFixed(2)} zł = <span className="font-semibold text-foreground">{entryTotal.toFixed(2)} zł</span>
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Podaj kwotę i okres</span>
+                              )}
+                              {entry.category && (
+                                <Badge variant="secondary" className="text-xs px-1.5 py-0" data-testid={`badge-payment-category-${idx}`}>{entry.category}</Badge>
+                              )}
+                            </div>
                             <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => removePaymentEntry(entry.id)} data-testid={`button-remove-payment-${idx}`}>
                               <X className="h-3.5 w-3.5" />
                             </Button>
