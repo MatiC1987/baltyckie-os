@@ -1800,8 +1800,8 @@ function NewLeaveDialog({
                 <SelectItem value="URLOP_WYPOCZYNKOWY">Urlop wypoczynkowy</SelectItem>
                 <SelectItem value="URLOP_NA_ZADANIE">Urlop na żądanie</SelectItem>
                 <SelectItem value="ZWOLNIENIE_LEKARSKIE">Zwolnienie lekarskie</SelectItem>
-                <SelectItem value="CH">Chorobowe (CH)</SelectItem>
-                <SelectItem value="OP">Opieka nad dzieckiem (OP)</SelectItem>
+                <SelectItem value="CH">Chorobowe</SelectItem>
+                <SelectItem value="OP">Opieka nad dzieckiem</SelectItem>
                 <SelectItem value="INNY">Inny</SelectItem>
               </SelectContent>
             </Select>
