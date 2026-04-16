@@ -78,7 +78,7 @@ import {
   extraRevenues, ExtraRevenue, InsertExtraRevenue,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // Users (optional if auth handles it separately, but good to have)
@@ -1969,9 +1969,7 @@ export class DatabaseStorage implements IStorage {
 
   async bulkUpdateAirbnbInvoiceStatus(ids: number[], status: string): Promise<void> {
     if (ids.length === 0) return;
-    for (const id of ids) {
-      await db.update(airbnbInvoices).set({ status }).where(eq(airbnbInvoices.id, id));
-    }
+    await db.update(airbnbInvoices).set({ status }).where(inArray(airbnbInvoices.id, ids));
   }
 
   async getZipDownloadHistory(): Promise<ZipDownloadHistory[]> {
