@@ -1,7 +1,15 @@
+/**
+ * Seed script: generates annex DOCX template from user's reference file.
+ * Reads attached_assets/19.05.2026_Elektropaks_-_Aneks_Nr_1_1776338280825.docx,
+ * replaces Elektropaks-specific values with [PLACEHOLDER] tags,
+ * uploads to object storage.
+ *
+ * DB inserts are done separately via executeSql.
+ */
+
+import fs from "fs";
+import path from "path";
 import { Storage } from "@google-cloud/storage";
-import { db } from "../server/db";
-import { documentTemplates } from "../shared/schema";
-import { eq } from "drizzle-orm";
 
 const SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
@@ -20,11 +28,6 @@ const objectStorageClient = new Storage({
   projectId: "",
 });
 
-/**
- * Parses PRIVATE_OBJECT_DIR to extract bucket name and base object path prefix.
- * PRIVATE_OBJECT_DIR = "/bucket-name/.private"
- * Returns { bucketName, privatePrefix: ".private" }
- */
 function parsePrivateDir(): { bucketName: string; privatePrefix: string } {
   const dir = process.env.PRIVATE_OBJECT_DIR || "";
   if (!dir) throw new Error("PRIVATE_OBJECT_DIR env var not set");
@@ -34,288 +37,156 @@ function parsePrivateDir(): { bucketName: string; privatePrefix: string } {
 }
 
 /**
- * getObjectEntityFile() expects objectPath = "/objects/<entityId>"
- * where entityId is appended to PRIVATE_OBJECT_DIR to get the actual file:
- *   PRIVATE_OBJECT_DIR/<entityId>  →  bucket/.private/<entityId>
- *
- * So to store a file at `.private/templates/foo.docx`:
- *   - Upload to: bucket, objectName = ".private/templates/foo.docx"
- *   - Store objectPath = "/objects/templates/foo.docx"
+ * Merge all runs within each paragraph and replace full-text matches.
+ * This handles DOCX XML where a single word/phrase is split across multiple <w:r> runs.
  */
+function mergeRunsAndReplace(
+  xml: string,
+  replacements: Array<{ from: string; to: string }>
+): string {
+  return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (para) => {
+    const textParts: { match: string; text: string }[] = [];
+    const runRegex = /<w:r[ >][\s\S]*?<\/w:r>/g;
+    let m: RegExpExecArray | null;
+    while ((m = runRegex.exec(para)) !== null) {
+      const runXml = m[0];
+      const texts: string[] = [];
+      const tRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+      let tm: RegExpExecArray | null;
+      while ((tm = tRegex.exec(runXml)) !== null) {
+        texts.push(tm[1]);
+      }
+      textParts.push({ match: runXml, text: texts.join("") });
+    }
+    if (textParts.length === 0) return para;
 
-async function buildAnnexDocx(): Promise<Buffer> {
-  const {
-    Document, Packer, Paragraph, TextRun, AlignmentType,
-    Table, TableRow, TableCell, WidthType, BorderStyle,
-  } = await import("docx");
+    const fullText = textParts.map(p => p.text).join("");
 
-  const B = (text: string) => new TextRun({ text, bold: true, size: 24, font: "Times New Roman" });
-  const N = (text: string) => new TextRun({ text, size: 24, font: "Times New Roman" });
-  const P = (key: string) => new TextRun({ text: `[${key}]`, size: 24, font: "Times New Roman", underline: {} });
+    let hasMatch = false;
+    for (const r of replacements) {
+      if (fullText.includes(r.from)) { hasMatch = true; break; }
+    }
+    if (!hasMatch) return para;
 
-  const noBorder = {
-    top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-    bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-    left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-    right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-    insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-    insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-  };
+    let replacedText = fullText;
+    for (const { from, to } of replacements) {
+      replacedText = replacedText.split(from).join(to);
+    }
 
-  const sp = (after = 160) => ({ spacing: { after } });
+    const firstRun = textParts[0].match;
+    const newRun = firstRun
+      .replace(/<w:t[^>]*>[^<]*<\/w:t>/g, "")
+      .replace(/<\/w:r>$/, "") +
+      `<w:t xml:space="preserve">${replacedText
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+      }</w:t></w:r>`;
 
-  const doc = new Document({
-    styles: {
-      default: {
-        document: { run: { font: "Times New Roman", size: 24 } },
-      },
-    },
-    sections: [{
-      properties: {
-        page: { margin: { top: 1418, right: 1134, bottom: 1134, left: 1134 } },
-      },
-      children: [
-        // City + date (right-aligned)
-        new Paragraph({
-          alignment: AlignmentType.RIGHT,
-          children: [P("MIEJSCOWOSC"), N(", dnia "), P("DATA_ANEKSU"), N(" roku")],
-          ...sp(400),
-        }),
-
-        // Title block
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [B("ANEKS NR "), P("NUMER_ANEKSU"), B(" do Umowy najmu")],
-          ...sp(60),
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [B("pod warunkiem zawieszającym z dnia "), P("DATA_UMOWY_PIERWOTNEJ")],
-          ...sp(400),
-        }),
-
-        // Preamble
-        new Paragraph({
-          children: [
-            N("Zawarty w dniu "), P("DATA_ANEKSU"), N(" roku w "), P("MIEJSCOWOSC"),
-            N(" pomiędzy"),
-          ],
-          ...sp(200),
-        }),
-
-        // Lessor block
-        new Paragraph({
-          children: [
-            P("NAZWA_FIRMY_WYNAJMUJACEGO"),
-            N(", z siedzibą w "),
-            P("MIEJSCOWOSC"),
-            N(" ("),
-            P("KOD_POCZTOWY_WYNAJMUJACEGO"),
-            N(") przy ul. "),
-            P("ULICA_WYNAJMUJACEGO"),
-            N(", NIP: "),
-            P("NIP_WYNAJMUJACEGO"),
-            N(", REGON: "),
-            P("REGON_WYNAJMUJACEGO"),
-            N(","),
-          ],
-          ...sp(60),
-        }),
-        new Paragraph({
-          children: [N("zarządzane przez "), P("IMIE_NAZWISKO_WYNAJMUJACEGO"), N(", "), P("STANOWISKO_WYNAJMUJACEGO"), N(".")],
-          ...sp(60),
-        }),
-        new Paragraph({
-          children: [B("Zwanym dalej: \"Wynajmujacym\"")],
-          ...sp(200),
-        }),
-
-        new Paragraph({ children: [N("a")], ...sp(200) }),
-
-        // Lessee block
-        new Paragraph({
-          children: [
-            P("NAZWA_FIRMY_NAJEMCY"),
-            N(" z siedzibą "),
-            P("ADRES_NAJEMCY"),
-            N(", NIP: "),
-            P("NIP_NAJEMCY"),
-            N("; REGON: "),
-            P("REGON_NAJEMCY"),
-            N(","),
-          ],
-          ...sp(60),
-        }),
-        new Paragraph({ children: [B("Zwaną dalej: \"Najemcą\"")], ...sp(200) }),
-
-        new Paragraph({
-          children: [
-            N("(dla osoby fizycznej: "),
-            P("IMIE_I_NAZWISKO_NAJEMCY"),
-            N(", zamieszkałym/ą "),
-            P("ADRES_NAJEMCY"),
-            N(", PESEL: "),
-            P("PESEL"),
-            N(", nr dowodu: "),
-            P("NR_DOWODU"),
-            N(")"),
-          ],
-          ...sp(200),
-        }),
-
-        new Paragraph({
-          children: [N("Wynajmujący i Najemca są zwani dalej łącznie \"Stronami\".")],
-          ...sp(400),
-        }),
-
-        // § 1
-        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 1")], ...sp(200) }),
-        new Paragraph({
-          children: [
-            N("Strony zgodnie oświadczają, że przedłużają okres trwania umowy najmu lokalu/lokali "),
-            P("NUMER_LOKALU"),
-            N(" od dnia "),
-            P("DATA_OD"),
-            N(" do dnia "),
-            P("NOWA_DATA_DO"),
-            N("."),
-          ],
-          ...sp(300),
-        }),
-
-        // § 2
-        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 2")], ...sp(200) }),
-        new Paragraph({
-          children: [N("Strony ustaliły, że opłaty miesięczne najmu wynoszą:")],
-          ...sp(80),
-        }),
-        new Paragraph({
-          children: [P("NOWA_KWOTA_CZYNSZU"), N(" PLN + "), P("KWOTA_VAT"), N(" VAT")],
-          ...sp(80),
-        }),
-        new Paragraph({
-          children: [
-            N("Płatność do "),
-            P("DZIEN_PLATNOSCI"),
-            N(". dnia każdego miesiąca, na rachunek bankowy Wynajmującego nr: "),
-            P("NUMER_KONTA"),
-          ],
-          ...sp(300),
-        }),
-
-        // § 3
-        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 3. Inne opłaty")], ...sp(200) }),
-        new Paragraph({
-          children: [
-            N("Najemca zobowiązany jest do ponoszenia miesięcznych kosztów mediów zgodnie z warunkami określonymi w umowie pierwotnej lub ustalonych odrębnie."),
-          ],
-          ...sp(300),
-        }),
-
-        // § 4
-        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 4")], ...sp(200) }),
-        new Paragraph({
-          children: [
-            N("Strony oświadczają, że dotychczasowe warunki umowy pozostają bez zmian, o ile nie zostały zmienione niniejszym Aneksem."),
-          ],
-          ...sp(300),
-        }),
-
-        // § 5
-        new Paragraph({ alignment: AlignmentType.CENTER, children: [B("§ 5")], ...sp(200) }),
-        new Paragraph({
-          children: [
-            N("Aneks Nr "), P("NUMER_ANEKSU"),
-            N(" sporządzono w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze Stron."),
-          ],
-          ...sp(600),
-        }),
-
-        // Signatures
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          borders: noBorder,
-          rows: [
-            new TableRow({
-              children: [
-                new TableCell({
-                  width: { size: 50, type: WidthType.PERCENTAGE },
-                  borders: noBorder,
-                  children: [
-                    new Paragraph({ children: [N("Wynajmujący")], ...sp(300) }),
-                    new Paragraph({ children: [N("________________________")], ...sp(60) }),
-                    new Paragraph({ children: [P("IMIE_NAZWISKO_WYNAJMUJACEGO")], ...sp(0) }),
-                    new Paragraph({ children: [P("STANOWISKO_WYNAJMUJACEGO")], ...sp(0) }),
-                  ],
-                }),
-                new TableCell({
-                  width: { size: 50, type: WidthType.PERCENTAGE },
-                  borders: noBorder,
-                  children: [
-                    new Paragraph({ children: [N("Najemca")], ...sp(300) }),
-                    new Paragraph({ children: [N("________________________")], ...sp(60) }),
-                    new Paragraph({ children: [P("IMIE_I_NAZWISKO_NAJEMCY")], ...sp(0) }),
-                  ],
-                }),
-              ],
-            }),
-          ],
-        }),
-      ],
-    }],
+    let result = para;
+    for (let i = textParts.length - 1; i >= 1; i--) {
+      result = result.replace(textParts[i].match, "");
+    }
+    result = result.replace(textParts[0].match, newRun);
+    return result;
   });
+}
 
-  return Packer.toBuffer(doc);
+async function processAnnexDocx(): Promise<Buffer> {
+  const refPath = path.join(
+    process.cwd(),
+    "attached_assets",
+    "19.05.2026_Elektropaks_-_Aneks_Nr_1_1776338280825.docx"
+  );
+  const buf = fs.readFileSync(refPath);
+  console.log(`Read reference DOCX: ${buf.length} bytes`);
+
+  const PizZip = (await import("pizzip")).default;
+  const zip = new PizZip(buf);
+
+  const replacements: Array<{ from: string; to: string }> = [
+    { from: "Apartamenty Bałtyckie Mateusz Cieślak", to: "[NAZWA_FIRMY_WYNAJMUJACEGO]" },
+    { from: "ELEKTROPAKS Sp. z o.o.", to: "[NAZWA_FIRMY_NAJEMCY]" },
+    { from: "Elektropaks Spółka z o.o.", to: "[NAZWA_FIRMY_NAJEMCY]" },
+    { from: "8392963268", to: "[NIP_WYNAJMUJACEGO]" },
+    { from: "50501301445", to: "[NIP_NAJEMCY]" },
+    { from: "5050 1301445", to: "[NIP_NAJEMCY]" },
+    { from: "5050130144 5", to: "[NIP_NAJEMCY]" },
+    { from: "385574636", to: "[REGON_NAJEMCY]" },
+    { from: "Mateusza Cieślak", to: "[IMIE_NAZWISKO_WYNAJMUJACEGO]" },
+    { from: "Mateusza Cie ś lak", to: "[IMIE_NAZWISKO_WYNAJMUJACEGO]" },
+    { from: "19.05.2025", to: "[DATA_UMOWY_PIERWOTNEJ]" },
+    { from: "16.04.2026", to: "[DATA_ANEKSU]" },
+    { from: "20.05.2026", to: "[DATA_OD]" },
+    { from: "31.10.2026", to: "[NOWA_DATA_DO]" },
+    // City/postal code — order matters: longer strings first
+    { from: "Ustce (76 -270)", to: "[MIEJSCOWOSC] ([KOD_POCZTOWY_WYNAJMUJACEGO])" },
+    { from: "w Ustce pomiędzy", to: "w [MIEJSCOWOSC] pomiędzy" },
+    { from: "76 -270", to: "[KOD_POCZTOWY_WYNAJMUJACEGO]" },
+    // Streets
+    { from: "ul. Na Wydmie 7/32", to: "[ULICA_WYNAJMUJACEGO]" },
+    // Representative's private address (split across 2 paragraphs in XML)
+    { from: "ul. Sportowa 27, ", to: "[ADRES_ZAMIESZKANIA_WYNAJMUJACEGO], " },
+    { from: " 76-200 Bierkowo k. Słupska.", to: "" },
+    { from: "76-200 Bierkowo k. Słupska.", to: "" },
+    { from: "76-200 Bierkowo k. Słupska", to: "" },
+    { from: "ul. Dęblińska 6, 24-100 Puławy", to: "[ADRES_NAJEMCY]" },
+    { from: "ul. Dęblińska6, 24-100 Puławy", to: "[ADRES_NAJEMCY]" },
+    { from: "Ustka ul. Uzdrowiskowa nr 49 i 51 oraz Ustka ul. Na Wydmie 7/4", to: "[NUMER_LOKALU]" },
+    // Catch any remaining 'Ustce' references (in case city appears elsewhere in the doc)
+    { from: "Ustce", to: "[MIEJSCOWOSC]" },
+  ];
+
+  const xmlFiles = [
+    "word/document.xml",
+    "word/header1.xml",
+    "word/header2.xml",
+    "word/header3.xml",
+    "word/footer1.xml",
+    "word/footer2.xml",
+    "word/footer3.xml",
+  ];
+
+  for (const xmlFile of xmlFiles) {
+    const entry = zip.files[xmlFile];
+    if (!entry) continue;
+    let xml = entry.asText();
+    xml = mergeRunsAndReplace(xml, replacements);
+    zip.file(xmlFile, xml);
+  }
+
+  const output = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+  console.log(`Processed DOCX: ${output.length} bytes`);
+  return output;
+}
+
+async function uploadToObjectStorage(docxBuffer: Buffer): Promise<string> {
+  const { bucketName, privatePrefix } = parsePrivateDir();
+  const entityId = "templates/szablon_aneksu_podnajmu.docx";
+  const objectName = `${privatePrefix}/${entityId}`;
+  const objectPath = `/objects/${entityId}`;
+
+  console.log(`\nUploading to bucket=${bucketName}, object=${objectName}...`);
+  const file = objectStorageClient.bucket(bucketName).file(objectName);
+  await file.save(docxBuffer, {
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+  console.log(`Upload complete. objectPath=${objectPath}`);
+  return objectPath;
 }
 
 async function main() {
-  console.log("=== Seed: Annex DOCX Template ===\n");
+  console.log("=== Seed: Annex DOCX Template (from user reference) ===\n");
 
-  const TEMPLATE_NAME = "Aneks do umowy podnajmu";
-  const FILE_NAME = "szablon_aneksu_podnajmu.docx";
+  const docxBuffer = await processAnnexDocx();
+  await uploadToObjectStorage(docxBuffer);
 
-  // Clean up any previous runs
-  const existing = await db.select().from(documentTemplates)
-    .where(eq(documentTemplates.name, TEMPLATE_NAME));
-  if (existing.length > 0) {
-    console.log(`Removing existing template (id=${existing[0].id})...`);
-    await db.delete(documentTemplates).where(eq(documentTemplates.name, TEMPLATE_NAME));
-  }
-
-  // Build DOCX buffer
-  console.log("Generating annex DOCX...");
-  const docxBuffer = await buildAnnexDocx();
-  console.log(`DOCX buffer size: ${docxBuffer.length} bytes`);
-
-  // Resolve storage paths
-  const { bucketName, privatePrefix } = parsePrivateDir();
-  const entityId = `templates/${FILE_NAME}`;                // e.g. "templates/szablon_aneksu_podnajmu.docx"
-  const objectName = `${privatePrefix}/${entityId}`;        // e.g. ".private/templates/szablon_aneksu_podnajmu.docx"
-  const objectPath = `/objects/${entityId}`;                // e.g. "/objects/templates/szablon_aneksu_podnajmu.docx"
-
-  console.log(`Uploading to bucket=${bucketName}, object=${objectName}...`);
-  const file = objectStorageClient.bucket(bucketName).file(objectName);
-  await file.save(docxBuffer, {
-    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  });
-  console.log(`Upload complete. objectPath=${objectPath}`);
-
-  // Insert into document_templates
-  const [inserted] = await db.insert(documentTemplates).values({
-    name: TEMPLATE_NAME,
-    fileName: FILE_NAME,
-    objectPath,
-    description: "Szablon aneksu — przedłużenie okresu i/lub zmiana czynszu do umowy podnajmu.",
-    templateType: "ANEKS",
-  }).returning();
-
-  console.log(`\nTemplate inserted: id=${inserted.id}, name="${inserted.name}", templateType=${inserted.templateType}`);
-  console.log(`objectPath: ${inserted.objectPath}`);
-  console.log("Done!");
+  console.log("\nDone! DB inserts should be done via executeSql tool.");
   process.exit(0);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error("Error:", err);
   process.exit(1);
 });

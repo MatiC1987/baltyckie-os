@@ -6,6 +6,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runProdDataMigration } from "./prod-data-migrate";
 import { runProdSchemaMigration } from "./prod-schema-migrate";
+import { seedAneksTemplate } from "./seed-aneks-template";
 
 const app = express();
 const httpServer = createServer(app);
@@ -115,6 +116,11 @@ app.use((req, res, next) => {
           await runProdDataMigration();
         } catch (e) {
           console.error("[migrate] Migration error (non-fatal):", e);
+        }
+        try {
+          await seedAneksTemplate();
+        } catch (e) {
+          console.error("[seed-aneks] Seed error (non-fatal):", e);
         }
       }
     },
