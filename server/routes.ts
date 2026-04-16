@@ -3779,7 +3779,7 @@ export async function registerRoutes(
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
       res.setHeader("X-Payments-Created", String(totalPaymentsCreated));
-      res.setHeader("X-Sublease-Updated", updateSubleaseEndDate ? "1" : "0");
+      res.setHeader("X-Sublease-Updated", (updateSubleaseEndDate || (updateSubleaseRent && !!newRentAmount)) ? "1" : "0");
       res.send(buf);
     } catch (error: any) {
       console.error("Error generating annex:", error);
