@@ -48,6 +48,7 @@ import {
   companySettings, CompanySettings, InsertCompanySettings,
   accountingNotes, AccountingNote, InsertAccountingNote,
   costInvoices, CostInvoice, InsertCostInvoice,
+  airbnbInvoices, AirbnbInvoice, InsertAirbnbInvoice,
   zipDownloadHistory, ZipDownloadHistory, InsertZipDownloadHistory,
   handoverProtocols, HandoverProtocol, InsertHandoverProtocol,
   handoverProtocolRooms, HandoverProtocolRoom, InsertHandoverProtocolRoom,
@@ -371,6 +372,14 @@ export interface IStorage {
   createCostInvoice(data: InsertCostInvoice): Promise<CostInvoice>;
   updateCostInvoice(id: number, data: Partial<InsertCostInvoice>): Promise<CostInvoice>;
   deleteCostInvoice(id: number): Promise<void>;
+
+  // AirBnb Invoices
+  getAirbnbInvoices(): Promise<AirbnbInvoice[]>;
+  getAirbnbInvoice(id: number): Promise<AirbnbInvoice | undefined>;
+  createAirbnbInvoice(data: InsertAirbnbInvoice): Promise<AirbnbInvoice>;
+  updateAirbnbInvoice(id: number, data: Partial<InsertAirbnbInvoice>): Promise<AirbnbInvoice>;
+  deleteAirbnbInvoice(id: number): Promise<void>;
+  bulkUpdateAirbnbInvoiceStatus(ids: number[], status: string): Promise<void>;
 
   // ZIP Download History
   getZipDownloadHistory(): Promise<ZipDownloadHistory[]>;
@@ -1933,6 +1942,36 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCostInvoice(id: number): Promise<void> {
     await db.delete(costInvoices).where(eq(costInvoices.id, id));
+  }
+
+  async getAirbnbInvoices(): Promise<AirbnbInvoice[]> {
+    return db.select().from(airbnbInvoices).orderBy(desc(airbnbInvoices.uploadedAt));
+  }
+
+  async getAirbnbInvoice(id: number): Promise<AirbnbInvoice | undefined> {
+    const [row] = await db.select().from(airbnbInvoices).where(eq(airbnbInvoices.id, id));
+    return row;
+  }
+
+  async createAirbnbInvoice(data: InsertAirbnbInvoice): Promise<AirbnbInvoice> {
+    const [created] = await db.insert(airbnbInvoices).values(data).returning();
+    return created;
+  }
+
+  async updateAirbnbInvoice(id: number, data: Partial<InsertAirbnbInvoice>): Promise<AirbnbInvoice> {
+    const [updated] = await db.update(airbnbInvoices).set(data).where(eq(airbnbInvoices.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAirbnbInvoice(id: number): Promise<void> {
+    await db.delete(airbnbInvoices).where(eq(airbnbInvoices.id, id));
+  }
+
+  async bulkUpdateAirbnbInvoiceStatus(ids: number[], status: string): Promise<void> {
+    if (ids.length === 0) return;
+    for (const id of ids) {
+      await db.update(airbnbInvoices).set({ status }).where(eq(airbnbInvoices.id, id));
+    }
   }
 
   async getZipDownloadHistory(): Promise<ZipDownloadHistory[]> {

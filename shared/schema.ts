@@ -960,6 +960,26 @@ export const insertCostInvoiceSchema = createInsertSchema(costInvoices).omit({ i
 export type CostInvoice = typeof costInvoices.$inferSelect;
 export type InsertCostInvoice = z.infer<typeof insertCostInvoiceSchema>;
 
+export const airbnbInvoices = pgTable("airbnb_invoices", {
+  id: serial("id").primaryKey(),
+  fileName: text("file_name").notNull(),
+  originalFileName: text("original_file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  objectStoragePath: text("object_storage_path").notNull(),
+  invoiceDate: date("invoice_date").notNull(),
+  invoiceMonth: integer("invoice_month").notNull(),
+  invoiceYear: integer("invoice_year").notNull(),
+  listingName: text("listing_name"),
+  comment: text("comment"),
+  status: text("status").notNull().default("NOWA"),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+export const insertAirbnbInvoiceSchema = createInsertSchema(airbnbInvoices).omit({ id: true, uploadedAt: true });
+export type AirbnbInvoice = typeof airbnbInvoices.$inferSelect;
+export type InsertAirbnbInvoice = z.infer<typeof insertAirbnbInvoiceSchema>;
+
 export const zipDownloadHistory = pgTable("zip_download_history", {
   id: serial("id").primaryKey(),
   month: integer("month").notNull(),

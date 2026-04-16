@@ -5708,6 +5708,202 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     res.status(204).end();
   });
 
+  // ---- AirBnb Invoices ----
+  app.get('/api/airbnb-invoices', isAuthenticated, async (_req, res) => {
+    const invoicesList = await storage.getAirbnbInvoices();
+    res.json(invoicesList);
+  });
+
+  app.post('/api/airbnb-invoices', isAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku" });
+      const allowedMimes = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({ message: "Dozwolone formaty: PDF, PNG, JPG, WEBP" });
+      }
+
+      const { ObjectStorageService, objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const osService = new ObjectStorageService();
+      const privateDir = osService.getPrivateObjectDir();
+
+      const uniqueId = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+      const ext = req.file.originalname.split(".").pop() || "pdf";
+      const storedName = `airbnb_invoice_${uniqueId}.${ext}`;
+      const storagePath = `${privateDir}/airbnb-invoices/${storedName}`;
+      const parsedPath = (() => {
+        const p = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
+        const parts = p.split("/");
+        return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
+      })();
+
+      const storageFile = osStorageClient.bucket(parsedPath.bucketName).file(parsedPath.objectName);
+      await storageFile.save(req.file.buffer, { contentType: req.file.mimetype });
+
+      let invoiceDate = req.body.invoiceDate;
+      if (!invoiceDate) {
+        const dateMatch = req.file.originalname.match(/(\d{4})[_\-.](\d{2})[_\-.](\d{2})/);
+        if (dateMatch) {
+          invoiceDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+        } else {
+          const dateMatch2 = req.file.originalname.match(/(\d{2})[_\-.](\d{2})[_\-.](\d{4})/);
+          if (dateMatch2) {
+            invoiceDate = `${dateMatch2[3]}-${dateMatch2[2]}-${dateMatch2[1]}`;
+          } else {
+            invoiceDate = new Date().toISOString().slice(0, 10);
+          }
+        }
+      }
+
+      const d = new Date(invoiceDate);
+      const invoiceMonth = d.getMonth() + 1;
+      const invoiceYear = d.getFullYear();
+      const user = req.user as any;
+
+      const invoice = await storage.createAirbnbInvoice({
+        fileName: storedName,
+        originalFileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        objectStoragePath: storagePath,
+        invoiceDate,
+        invoiceMonth,
+        invoiceYear,
+        listingName: req.body.listingName || null,
+        comment: req.body.comment || null,
+        status: "NOWA",
+        uploadedBy: user?.username || user?.firstName || "Nieznany",
+      });
+
+      await logActivity(req, "create", "airbnb_invoice", invoice.id, req.file.originalname, `Dodano fakturę AirBnb: ${req.file.originalname}`);
+      res.status(201).json(invoice);
+    } catch (err: any) {
+      console.error("AirBnb invoice upload error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/airbnb-invoices/bulk-status', isAuthenticated, async (req, res) => {
+    try {
+      const { ids, status } = req.body;
+      if (!ids || !Array.isArray(ids) || !status) return res.status(400).json({ message: "Brak ids lub status" });
+      await storage.bulkUpdateAirbnbInvoiceStatus(ids, status);
+      res.json({ updated: ids.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch('/api/airbnb-invoices/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates: any = {};
+      if (req.body.status !== undefined) updates.status = req.body.status;
+      if (req.body.comment !== undefined) updates.comment = req.body.comment;
+      if (req.body.listingName !== undefined) updates.listingName = req.body.listingName;
+      if (req.body.originalFileName !== undefined) updates.originalFileName = req.body.originalFileName;
+      if (req.body.invoiceDate !== undefined) {
+        updates.invoiceDate = req.body.invoiceDate;
+        const d = new Date(req.body.invoiceDate);
+        updates.invoiceMonth = d.getMonth() + 1;
+        updates.invoiceYear = d.getFullYear();
+      }
+      const updated = await storage.updateAirbnbInvoice(id, updates);
+      await logActivity(req, "update", "airbnb_invoice", id, updates.originalFileName || "", "Zaktualizowano fakturę AirBnb");
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete('/api/airbnb-invoices/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const invoice = await storage.getAirbnbInvoice(id);
+      if (invoice) {
+        try {
+          const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const p = invoice.objectStoragePath.startsWith("/") ? invoice.objectStoragePath.slice(1) : invoice.objectStoragePath;
+          const parts = p.split("/");
+          const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+          await storageFile.delete().catch(() => {});
+        } catch (e) {}
+        await storage.deleteAirbnbInvoice(id);
+        await logActivity(req, "delete", "airbnb_invoice", id, invoice.originalFileName);
+      }
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/airbnb-invoices/:id/file', isAuthenticated, async (req, res) => {
+    try {
+      const invoice = await storage.getAirbnbInvoice(parseInt(req.params.id));
+      if (!invoice) return res.status(404).json({ message: "Nie znaleziono faktury" });
+
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const p = invoice.objectStoragePath.startsWith("/") ? invoice.objectStoragePath.slice(1) : invoice.objectStoragePath;
+      const parts = p.split("/");
+      const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+      const [fileBuffer] = await storageFile.download();
+
+      res.setHeader("Content-Type", invoice.mimeType);
+      if (req.query.download === "true") {
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(invoice.originalFileName)}"`);
+      } else {
+        res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(invoice.originalFileName)}"`);
+      }
+      res.send(fileBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/airbnb-invoices/download-zip', isAuthenticated, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Brak wybranych faktur" });
+      }
+
+      const JSZip = (await import("jszip")).default;
+      const zipFile = new JSZip();
+      const { objectStorageClient: osStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+
+      const invoicesList = [];
+      for (const id of ids) {
+        const invoice = await storage.getAirbnbInvoice(id);
+        if (!invoice) continue;
+        invoicesList.push(invoice);
+        try {
+          const p = invoice.objectStoragePath.startsWith("/") ? invoice.objectStoragePath.slice(1) : invoice.objectStoragePath;
+          const parts = p.split("/");
+          const storageFile = osStorageClient.bucket(parts[0]).file(parts.slice(1).join("/"));
+          const [fileBuffer] = await storageFile.download();
+          zipFile.file(invoice.originalFileName, fileBuffer);
+        } catch (e) {
+          console.error(`Error downloading AirBnb invoice ${id} for ZIP:`, e);
+        }
+      }
+
+      for (const inv of invoicesList) {
+        if (inv.status === "NOWA") {
+          await storage.updateAirbnbInvoice(inv.id, { status: "WYSLANA" });
+        }
+      }
+
+      const zipBuffer = await zipFile.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+      const now = new Date();
+      const zipName = `faktury_airbnb_${now.toISOString().slice(0, 10)}.zip`;
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
+      res.send(zipBuffer);
+    } catch (err: any) {
+      console.error("AirBnb ZIP download error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get('/api/document-templates', isAuthenticated, async (_req, res) => {
     const templates = await storage.getDocumentTemplates();
     res.json(templates);

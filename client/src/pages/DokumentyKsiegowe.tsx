@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { authenticatedUrl, getAuthHeaders } from "@/lib/auth-token";
 import { useToast } from "@/hooks/use-toast";
-import type { CostInvoice, ZipDownloadHistory, AccountingNote, Sublease, MediaSettlementReport } from "@shared/schema";
+import type { CostInvoice, ZipDownloadHistory, AccountingNote, Sublease, MediaSettlementReport, AirbnbInvoice } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -1440,6 +1440,656 @@ function AccountingNotesTab() {
           );
         })
       )}
+    </div>
+  );
+}
+
+function AirbnbMonthGroup({
+  year, month, invoices, selectedIds, allSelected,
+  onToggleSelect, onToggleSelectAll, onDelete, onStatusChange, onPreview, onEdit,
+  getStatusBadge, isImage, viewMode
+}: {
+  year: number; month: number; invoices: AirbnbInvoice[];
+  selectedIds: Set<number>; allSelected: boolean;
+  onToggleSelect: (id: number) => void;
+  onToggleSelectAll: () => void;
+  onDelete: (id: number) => void;
+  onStatusChange: (id: number, status: string) => void;
+  onPreview: (inv: AirbnbInvoice) => void;
+  onEdit: (inv: AirbnbInvoice) => void;
+  getStatusBadge: (s: string) => JSX.Element;
+  isImage: (mime: string) => boolean;
+  viewMode: "list" | "grid";
+}) {
+  const [open, setOpen] = useState(true);
+  const newCount = invoices.filter(i => i.status === "NOWA").length;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer flex flex-row items-center justify-between gap-2 pb-2">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">{getMonthName(month)} {year}</CardTitle>
+              <Badge variant="secondary" className="text-xs">{invoices.length}</Badge>
+              {newCount > 0 && <Badge variant="default" className="text-xs">{newCount} nowych</Badge>}
+            </div>
+            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+            {viewMode === "grid" ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {invoices.map(inv => (
+                  <div
+                    key={inv.id}
+                    className={`relative rounded-md border p-2 flex flex-col gap-2 cursor-pointer transition-colors ${
+                      selectedIds.has(inv.id) ? "border-primary bg-primary/5" : "hover-elevate"
+                    }`}
+                    data-testid={`card-airbnb-invoice-${inv.id}`}
+                  >
+                    <div className="absolute top-2 left-2 z-10">
+                      <Checkbox
+                        checked={selectedIds.has(inv.id)}
+                        onCheckedChange={() => onToggleSelect(inv.id)}
+                        data-testid={`checkbox-grid-airbnb-${inv.id}`}
+                      />
+                    </div>
+                    <div
+                      className="w-full aspect-[3/4] rounded overflow-hidden bg-muted flex items-center justify-center"
+                      onClick={() => onPreview(inv)}
+                    >
+                      {isImage(inv.mimeType) ? (
+                        <img
+                          src={authenticatedUrl(`/api/airbnb-invoices/${inv.id}/file`)}
+                          alt={inv.originalFileName}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <FileText className="h-12 w-12 text-muted-foreground/50" />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs truncate font-medium" title={inv.originalFileName} data-testid={`text-grid-airbnb-filename-${inv.id}`}>
+                        {inv.originalFileName}
+                      </p>
+                      {inv.listingName && (
+                        <p className="text-xs text-muted-foreground truncate">{inv.listingName}</p>
+                      )}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {getStatusBadge(inv.status)}
+                        <span className="text-xs text-muted-foreground">{formatDate(inv.invoiceDate)}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(inv)} data-testid={`button-edit-airbnb-${inv.id}`}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onDelete(inv.id)} data-testid={`button-delete-airbnb-${inv.id}`}>
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={onToggleSelectAll}
+                        data-testid="checkbox-select-all-airbnb"
+                      />
+                    </TableHead>
+                    <TableHead>Plik</TableHead>
+                    <TableHead>Nieruchomość</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Dodał</TableHead>
+                    <TableHead className="w-24"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map(inv => (
+                    <TableRow key={inv.id} data-testid={`row-airbnb-invoice-${inv.id}`}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(inv.id)}
+                          onCheckedChange={() => onToggleSelect(inv.id)}
+                          data-testid={`checkbox-airbnb-${inv.id}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <span className="font-medium text-sm" data-testid={`text-airbnb-filename-${inv.id}`}>{inv.originalFileName}</span>
+                          {inv.comment && <p className="text-xs text-muted-foreground">{inv.comment}</p>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm" data-testid={`text-airbnb-listing-${inv.id}`}>{inv.listingName || "—"}</span>
+                      </TableCell>
+                      <TableCell>{formatDate(inv.invoiceDate)}</TableCell>
+                      <TableCell>
+                        <Select value={inv.status} onValueChange={val => onStatusChange(inv.id, val)}>
+                          <SelectTrigger className="h-7 w-auto text-xs border-0 px-1" data-testid={`select-airbnb-status-${inv.id}`}>
+                            <SelectValue>{getStatusBadge(inv.status)}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{inv.uploadedBy}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onPreview(inv)} data-testid={`button-preview-airbnb-${inv.id}`}>
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Podgląd</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(inv)} data-testid={`button-edit-airbnb-${inv.id}`}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edytuj</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onDelete(inv.id)} data-testid={`button-delete-airbnb-${inv.id}`}>
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Usuń</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+export function AirbnbInvoicesTab() {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isDragging, setIsDragging] = useState(false);
+  const [previewInvoice, setPreviewInvoice] = useState<AirbnbInvoice | null>(null);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadComment, setUploadComment] = useState("");
+  const [uploadDate, setUploadDate] = useState("");
+  const [uploadListingName, setUploadListingName] = useState("");
+  const [editInvoice, setEditInvoice] = useState<AirbnbInvoice | null>(null);
+  const [editForm, setEditForm] = useState({ originalFileName: "", invoiceDate: "", comment: "", listingName: "" });
+  const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
+    try { return (localStorage.getItem("airbnb-view-mode") as "list" | "grid") || "list"; } catch { return "list"; }
+  });
+
+  const { data: invoices = [], isLoading } = useQuery<AirbnbInvoice[]>({ queryKey: ["/api/airbnb-invoices"] });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
+      const resp = await fetch("/api/airbnb-invoices", { method: "POST", body: formData, credentials: "include" });
+      if (!resp.ok) { const e = await resp.json(); throw new Error(e.message || "Błąd uploadu"); }
+      return resp.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/airbnb-invoices"] });
+      setShowUploadDialog(false);
+      setUploadFiles([]);
+      setUploadComment("");
+      setUploadDate("");
+      setUploadListingName("");
+      toast({ title: "Faktura AirBnb dodana" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/airbnb-invoices/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/airbnb-invoices"] });
+      toast({ title: "Usunięto fakturę AirBnb" });
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/airbnb-invoices/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/airbnb-invoices"] }),
+  });
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: number[]; status: string }) =>
+      apiRequest("PATCH", "/api/airbnb-invoices/bulk-status", { ids, status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/airbnb-invoices"] });
+      setSelectedIds(new Set());
+      toast({ title: "Statusy zaktualizowane" });
+    },
+  });
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, any> }) =>
+      apiRequest("PATCH", `/api/airbnb-invoices/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/airbnb-invoices"] });
+      setEditInvoice(null);
+      toast({ title: "Zaktualizowano fakturę" });
+    },
+    onError: (err: Error) => toast({ title: "Błąd aktualizacji", description: err.message, variant: "destructive" }),
+  });
+
+  const openEditDialog = (inv: AirbnbInvoice) => {
+    setEditInvoice(inv);
+    setEditForm({
+      originalFileName: inv.originalFileName,
+      invoiceDate: inv.invoiceDate,
+      comment: inv.comment || "",
+      listingName: inv.listingName || "",
+    });
+  };
+
+  const handleEditSave = () => {
+    if (!editInvoice) return;
+    updateInvoiceMutation.mutate({ id: editInvoice.id, data: editForm });
+  };
+
+  const toggleViewMode = useCallback(() => {
+    const next = viewMode === "list" ? "grid" : "list";
+    setViewMode(next);
+    try { localStorage.setItem("airbnb-view-mode", next); } catch {}
+  }, [viewMode]);
+
+  const handleFilesDrop = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files).filter(f =>
+      ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"].includes(f.type)
+    );
+    if (arr.length === 0) {
+      toast({ title: "Niedozwolony format", description: "Dozwolone: PDF, PNG, JPG, WEBP", variant: "destructive" });
+      return;
+    }
+    setUploadFiles(arr);
+    const suggestedDate = extractDateFromFilename(arr[0].name);
+    setUploadDate(suggestedDate || new Date().toISOString().slice(0, 10));
+    setUploadComment("");
+    setUploadListingName("");
+    setShowUploadDialog(true);
+  }, [toast]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); }, []);
+  const handleDragLeave = useCallback(() => setIsDragging(false), []);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFilesDrop(e.dataTransfer.files);
+  }, [handleFilesDrop]);
+
+  const handleUpload = async () => {
+    for (const file of uploadFiles) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("invoiceDate", uploadDate);
+      if (uploadComment) formData.append("comment", uploadComment);
+      if (uploadListingName) formData.append("listingName", uploadListingName);
+      await uploadMutation.mutateAsync(formData);
+    }
+  };
+
+  const handleZipDownload = async () => {
+    if (selectedIds.size === 0) {
+      toast({ title: "Zaznacz faktury", description: "Wybierz faktury do pobrania", variant: "destructive" });
+      return;
+    }
+    try {
+      const resp = await fetch("/api/airbnb-invoices/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selectedIds] }),
+        credentials: "include",
+      });
+      if (!resp.ok) throw new Error("Błąd pobierania ZIP");
+      const blob = await resp.blob();
+      const cd = resp.headers.get("Content-Disposition");
+      let fn = "faktury_airbnb.zip";
+      if (cd) { const m = cd.match(/filename="?([^"]+)"?/); if (m) fn = m[1]; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = fn;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/airbnb-invoices"] });
+      toast({ title: "Paczka ZIP pobrana" });
+    } catch (err: any) {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const filteredInvoices = useMemo(() => {
+    let result = invoices;
+    if (statusFilter !== "ALL") result = result.filter(i => i.status === statusFilter);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(i =>
+        i.originalFileName.toLowerCase().includes(q) ||
+        (i.comment || "").toLowerCase().includes(q) ||
+        (i.listingName || "").toLowerCase().includes(q) ||
+        i.uploadedBy.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [invoices, statusFilter, searchQuery]);
+
+  const groupedByMonth = useMemo(() => {
+    const groups: Record<string, AirbnbInvoice[]> = {};
+    for (const inv of filteredInvoices) {
+      const key = `${inv.invoiceYear}-${String(inv.invoiceMonth).padStart(2, "0")}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(inv);
+    }
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filteredInvoices]);
+
+  const toggleSelect = (id: number) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const getStatusBadge = (status: string) => <StatusBadge status={status} />;
+  const isImage = (mime: string) => mime.startsWith("image/");
+
+  return (
+    <div className="space-y-4">
+      {/* Drop Zone */}
+      <div
+        ref={dropZoneRef}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`border-2 border-dashed rounded-md p-6 text-center transition-colors cursor-pointer ${
+          isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+        }`}
+        onClick={() => fileInputRef.current?.click()}
+        data-testid="dropzone-airbnb-upload"
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept=".pdf,.png,.jpg,.jpeg,.webp"
+          multiple
+          onChange={e => { if (e.target.files?.length) handleFilesDrop(e.target.files); e.target.value = ""; }}
+          data-testid="input-airbnb-file-upload"
+        />
+        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Przeciągnij i upuść faktury AirBnb (PDF, PNG, JPG) lub <span className="text-primary font-medium">kliknij aby wybrać</span>
+        </p>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Szukaj po nazwie, nieruchomości, komentarzu..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9"
+            data-testid="input-airbnb-search"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[160px]" data-testid="select-airbnb-status-filter">
+            <Filter className="h-4 w-4 mr-1" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Wszystkie</SelectItem>
+            {STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        {selectedIds.size > 0 && (
+          <>
+            <Button onClick={handleZipDownload} data-testid="button-airbnb-download-zip">
+              <Package className="h-4 w-4 mr-1" />
+              Pobierz ZIP ({selectedIds.size})
+            </Button>
+            <Select onValueChange={val => bulkStatusMutation.mutate({ ids: [...selectedIds], status: val })}>
+              <SelectTrigger className="w-[160px]" data-testid="select-airbnb-bulk-status">
+                <SelectValue placeholder="Zmień status" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" size="icon" onClick={toggleViewMode} data-testid="button-airbnb-toggle-view">
+              {viewMode === "list" ? <LayoutGrid className="h-4 w-4" /> : <LayoutList className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{viewMode === "list" ? "Widok miniaturek" : "Widok listy"}</TooltipContent>
+        </Tooltip>
+      </div>
+
+      {/* Invoices grouped by month */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+        </div>
+      ) : groupedByMonth.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            {invoices.length === 0 ? "Brak faktur AirBnb. Przeciągnij pliki powyżej aby dodać." : "Brak faktur pasujących do filtrów."}
+          </CardContent>
+        </Card>
+      ) : (
+        groupedByMonth.map(([monthKey, monthInvoices]) => {
+          const [y, m] = monthKey.split("-").map(Number);
+          const allSelected = monthInvoices.every(i => selectedIds.has(i.id));
+
+          return (
+            <AirbnbMonthGroup
+              key={monthKey}
+              year={y}
+              month={m}
+              invoices={monthInvoices}
+              selectedIds={selectedIds}
+              allSelected={allSelected}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={() => {
+                const next = new Set(selectedIds);
+                if (allSelected) {
+                  monthInvoices.forEach(i => next.delete(i.id));
+                } else {
+                  monthInvoices.forEach(i => next.add(i.id));
+                }
+                setSelectedIds(next);
+              }}
+              onDelete={id => deleteMutation.mutate(id)}
+              onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
+              onPreview={setPreviewInvoice}
+              onEdit={openEditDialog}
+              getStatusBadge={getStatusBadge}
+              isImage={isImage}
+              viewMode={viewMode}
+            />
+          );
+        })
+      )}
+
+      {/* Upload Dialog */}
+      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dodaj fakturę AirBnb</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Pliki</Label>
+              <div className="text-sm text-muted-foreground mt-1">
+                {uploadFiles.map(f => f.name).join(", ")}
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="airbnb-upload-date">Data faktury</Label>
+              <Input
+                id="airbnb-upload-date"
+                type="date"
+                value={uploadDate}
+                onChange={e => setUploadDate(e.target.value)}
+                data-testid="input-airbnb-upload-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="airbnb-upload-listing">Nazwa nieruchomości (opcjonalnie)</Label>
+              <Input
+                id="airbnb-upload-listing"
+                placeholder="np. Apartament Morska 12"
+                value={uploadListingName}
+                onChange={e => setUploadListingName(e.target.value)}
+                data-testid="input-airbnb-upload-listing"
+              />
+            </div>
+            <div>
+              <Label htmlFor="airbnb-upload-comment">Komentarz / opis</Label>
+              <Input
+                id="airbnb-upload-comment"
+                placeholder="np. Faktura prowizja - grudzień"
+                value={uploadComment}
+                onChange={e => setUploadComment(e.target.value)}
+                data-testid="input-airbnb-upload-comment"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUploadDialog(false)} data-testid="button-airbnb-cancel-upload">
+              Anuluj
+            </Button>
+            <Button onClick={handleUpload} disabled={uploadMutation.isPending} data-testid="button-airbnb-confirm-upload">
+              {uploadMutation.isPending ? "Wysyłanie..." : "Dodaj"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editInvoice} onOpenChange={() => setEditInvoice(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edycja faktury AirBnb</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="airbnb-edit-fileName">Nazwa pliku</Label>
+              <Input
+                id="airbnb-edit-fileName"
+                value={editForm.originalFileName}
+                onChange={e => setEditForm(f => ({ ...f, originalFileName: e.target.value }))}
+                data-testid="input-airbnb-edit-filename"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="airbnb-edit-invoiceDate">Data faktury</Label>
+              <Input
+                id="airbnb-edit-invoiceDate"
+                type="date"
+                value={editForm.invoiceDate}
+                onChange={e => setEditForm(f => ({ ...f, invoiceDate: e.target.value }))}
+                data-testid="input-airbnb-edit-date"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="airbnb-edit-listing">Nazwa nieruchomości</Label>
+              <Input
+                id="airbnb-edit-listing"
+                value={editForm.listingName}
+                onChange={e => setEditForm(f => ({ ...f, listingName: e.target.value }))}
+                placeholder="np. Apartament Morska 12"
+                data-testid="input-airbnb-edit-listing"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="airbnb-edit-comment">Komentarz</Label>
+              <Input
+                id="airbnb-edit-comment"
+                value={editForm.comment}
+                onChange={e => setEditForm(f => ({ ...f, comment: e.target.value }))}
+                placeholder="Opis faktury..."
+                data-testid="input-airbnb-edit-comment"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditInvoice(null)} data-testid="button-airbnb-edit-cancel">Anuluj</Button>
+            <Button onClick={handleEditSave} disabled={updateInvoiceMutation.isPending} data-testid="button-airbnb-edit-save">
+              {updateInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Zapisz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={!!previewInvoice} onOpenChange={() => setPreviewInvoice(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>{previewInvoice?.originalFileName}</DialogTitle>
+          </DialogHeader>
+          {previewInvoice && (
+            <div className="overflow-auto max-h-[60vh]">
+              {isImage(previewInvoice.mimeType) ? (
+                <img
+                  src={authenticatedUrl(`/api/airbnb-invoices/${previewInvoice.id}/file`)}
+                  alt={previewInvoice.originalFileName}
+                  className="max-w-full rounded-md"
+                />
+              ) : (
+                <iframe
+                  src={authenticatedUrl(`/api/airbnb-invoices/${previewInvoice.id}/file`)}
+                  className="w-full h-[55vh] rounded-md border"
+                  title={previewInvoice.originalFileName}
+                />
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewInvoice(null)}>Zamknij</Button>
+            <Button asChild>
+              <a href={authenticatedUrl(`/api/airbnb-invoices/${previewInvoice?.id}/file?download=true`)} download data-testid="button-airbnb-download-preview">
+                <Download className="h-4 w-4 mr-1" /> Pobierz
+              </a>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

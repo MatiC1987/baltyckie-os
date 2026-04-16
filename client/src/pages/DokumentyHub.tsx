@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnimatedTabContent } from "@/components/AnimatedTabContent";
-import { FileText, FileSpreadsheet } from "lucide-react";
+import { FileText, FileSpreadsheet, Home } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
-import { DokumentyKsiegowe } from "@/pages/DokumentyKsiegowe";
+import { DokumentyKsiegowe, AirbnbInvoicesTab } from "@/pages/DokumentyKsiegowe";
 import { Invoices } from "@/pages/Invoices";
 
 const TABS = [
   { value: "dokumenty", label: "Dokumenty księgowe", icon: FileText },
   { value: "faktury", label: "Faktury", icon: FileSpreadsheet },
+  { value: "airbnb", label: "AirBnb", icon: Home },
 ];
 
 export default function DokumentyHub() {
@@ -34,7 +35,7 @@ export default function DokumentyHub() {
       <div className="px-4 lg:px-6 pt-4 lg:pt-6 pb-2">
         <PageHeader
           title="Dokumenty"
-          description="Dokumenty księgowe i faktury sprzedaży"
+          description="Dokumenty księgowe, faktury sprzedaży i faktury AirBnb"
           icon={FileText}
         />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mt-4">
@@ -59,6 +60,9 @@ export default function DokumentyHub() {
           </AnimatedTabContent>
           <AnimatedTabContent value="faktury" activeValue={activeTab}>
             <Invoices />
+          </AnimatedTabContent>
+          <AnimatedTabContent value="airbnb" activeValue={activeTab}>
+            <AirbnbInvoicesTab />
           </AnimatedTabContent>
         </Tabs>
       </div>
