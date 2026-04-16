@@ -3467,9 +3467,17 @@ export async function registerRoutes(
       if (isNaN(subleaseId)) return res.status(400).json({ message: "Nieprawidłowe ID umowy" });
 
       const { templateId, annexNumber, originalContractDate, newEndDate, newRentAmount } = req.body;
-      if (!templateId) return res.status(400).json({ message: "Brak ID szablonu" });
-      if (!originalContractDate) return res.status(400).json({ message: "Brak daty pierwotnej umowy" });
-      if (!newEndDate) return res.status(400).json({ message: "Brak nowej daty zakończenia" });
+      if (!templateId || typeof templateId !== "number") return res.status(400).json({ message: "Brak ID szablonu" });
+      const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+      if (!originalContractDate || !isoDateRe.test(originalContractDate)) return res.status(400).json({ message: "Nieprawidłowy format daty pierwotnej umowy (wymagany YYYY-MM-DD)" });
+      if (!newEndDate || !isoDateRe.test(newEndDate)) return res.status(400).json({ message: "Nieprawidłowy format nowej daty zakończenia (wymagany YYYY-MM-DD)" });
+      if (newEndDate < originalContractDate) return res.status(400).json({ message: "Nowa data zakończenia musi być późniejsza niż data pierwotnej umowy" });
+      if (newRentAmount !== undefined && newRentAmount !== null && newRentAmount !== "") {
+        const rentNum = Number(newRentAmount);
+        if (isNaN(rentNum) || rentNum < 0) return res.status(400).json({ message: "Nieprawidłowa kwota czynszu" });
+      }
+      const annexNum = annexNumber ? String(annexNumber).trim() : "1";
+      if (!annexNum) return res.status(400).json({ message: "Numer aneksu nie może być pusty" });
 
       const sublease = await storage.getSublease(subleaseId);
       if (!sublease) return res.status(404).json({ message: "Umowa nie znaleziona" });
@@ -3565,7 +3573,7 @@ export async function registerRoutes(
         "EMAIL_WYNAJMUJĄCEGO": companyData?.email || "",
         "EMAIL_WYNAJMUJACEGO": companyData?.email || "",
         // Annex-specific placeholders
-        "NUMER_ANEKSU": annexNumber ? String(annexNumber) : "1",
+        "NUMER_ANEKSU": annexNum,
         "DATA_UMOWY_PIERWOTNEJ": formatDatePL(originalContractDate),
         "DATA_ANEKSU": formatDatePL(today.toISOString().slice(0, 10)),
         "DATA_PODPISANIA_ANEKSU": formatDatePL(today.toISOString().slice(0, 10)),
@@ -3654,7 +3662,7 @@ export async function registerRoutes(
         adres_wynajmujacego: companyFullAddress,
         imie_nazwisko_wynajmujacego: companyData?.representativeName || "",
         stanowisko_wynajmujacego: companyData?.representativeRole || "",
-        numer_aneksu: annexNumber ? String(annexNumber) : "1",
+        numer_aneksu: annexNum,
         data_umowy_pierwotnej: formatDatePL(originalContractDate),
         data_aneksu: formatDatePL(today.toISOString().slice(0, 10)),
         nowa_kwota_czynszu: effectiveRent ? Number(effectiveRent).toFixed(2) : "",
@@ -3673,7 +3681,6 @@ export async function registerRoutes(
       const tenantName = sublease.tenantType === 'firma'
         ? (sublease.companyName || 'firma')
         : `${sublease.firstName || ''}_${sublease.lastName || ''}`.trim();
-      const annexNum = annexNumber ? String(annexNumber) : "1";
       const fileName = `Aneks_${annexNum}_${tenantName}_${new Date().toISOString().slice(0, 10)}.docx`;
 
       const privateDir = osService.getPrivateObjectDir();
