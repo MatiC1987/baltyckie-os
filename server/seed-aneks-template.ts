@@ -1,17 +1,70 @@
 /**
  * One-time seed: registers the ANEKS document template in the database.
  * Runs at startup in production if the template doesn't exist yet.
- * The DOCX file is already uploaded to object storage during CI/CD.
+ * Verifies the DOCX file exists in object storage before inserting DB record.
  */
 
 import { db } from "./db";
 import { documentTemplates } from "../shared/schema";
 import { eq, and } from "drizzle-orm";
+import { Storage } from "@google-cloud/storage";
+
+const SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+
+function getObjectStorageClient() {
+  return new Storage({
+    credentials: {
+      audience: "replit",
+      subject_token_type: "access_token",
+      token_url: `${SIDECAR_ENDPOINT}/token`,
+      type: "external_account",
+      credential_source: {
+        url: `${SIDECAR_ENDPOINT}/credential`,
+        format: { type: "json", subject_token_field_name: "access_token" },
+      },
+      universe_domain: "googleapis.com",
+    },
+    projectId: "",
+  });
+}
+
+async function verifyObjectExists(objectPath: string): Promise<boolean> {
+  try {
+    const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
+    if (!privateDir) return false;
+    const normalized = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
+    const parts = normalized.split("/");
+    const bucketName = parts[0];
+    const privatePrefix = parts.slice(1).join("/");
+
+    // objectPath is like /objects/templates/file.docx → entityId = templates/file.docx
+    const entityId = objectPath.replace(/^\/objects\//, "");
+    const objectName = `${privatePrefix}/${entityId}`;
+
+    const client = getObjectStorageClient();
+    const [exists] = await client.bucket(bucketName).file(objectName).exists();
+    console.log(`[seed-aneks] Storage check: ${objectName} exists=${exists}`);
+    return exists;
+  } catch (err) {
+    console.error("[seed-aneks] Storage check error:", err);
+    return false;
+  }
+}
 
 const ANEKS_OBJECT_PATH = "/objects/templates/szablon_aneksu_podnajmu.docx";
 
 export async function seedAneksTemplate() {
   try {
+    // Verify the DOCX file exists in object storage before touching the DB
+    const fileExists = await verifyObjectExists(ANEKS_OBJECT_PATH);
+    if (!fileExists) {
+      console.error(
+        `[seed-aneks] DOCX not found in object storage (${ANEKS_OBJECT_PATH}). ` +
+        "Run scripts/seed-annex-template.ts to upload it first. Skipping DB seed."
+      );
+      return;
+    }
+
     const existing = await db
       .select({ id: documentTemplates.id, objectPath: documentTemplates.objectPath, templateType: documentTemplates.templateType })
       .from(documentTemplates)

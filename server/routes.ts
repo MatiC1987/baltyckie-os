@@ -14733,30 +14733,6 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
-  // One-time seed endpoint for ANEKS template (protected by admin secret)
-  app.post("/api/admin/seed-aneks-template", isAuthenticated, async (req, res) => {
-    try {
-      const existing = await db.select().from(documentTemplates).where(eq(documentTemplates.name, "Aneks do umowy podnajmu"));
-      if (existing.length > 0) {
-        return res.json({ status: "already_exists", id: existing[0].id, templateType: existing[0].templateType });
-      }
-      const [inserted] = await db.insert(documentTemplates).values({
-        name: "Aneks do umowy podnajmu",
-        fileName: "szablon_aneksu_podnajmu.docx",
-        objectPath: "/objects/templates/szablon_aneksu_podnajmu.docx",
-        description: "Szablon aneksu — przedłużenie okresu i/lub zmiana czynszu. Paragraf §2 (harmonogram płatności) wypełnić ręcznie w edytorze tekstu.",
-        templateType: "ANEKS",
-      }).returning();
-      // Also fix Nota type if needed
-      await db.update(documentTemplates).set({ templateType: "NOTA" }).where(
-        and(eq(documentTemplates.fileName, "nota_ksiegowa.docx"), eq(documentTemplates.templateType, "UMOWA"))
-      );
-      res.json({ status: "seeded", id: inserted.id, templateType: inserted.templateType });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
   return httpServer;
 }
 
