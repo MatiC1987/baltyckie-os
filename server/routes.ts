@@ -3736,32 +3736,44 @@ export async function registerRoutes(
       }
 
       // Generowanie płatności z harmonogramu
-      let totalPaymentsCreated = 0;
+      // Walidacja + budowanie listy płatności przed jakimkolwiek zapisem do bazy
+      const paymentsToCreate: { title: string; amount: string; dueDate: string }[] = [];
       if (Array.isArray(paymentSchedule)) {
+        const payDay = Math.min(Math.max(parseInt(effectivePaymentDay) || 10, 1), 28); // max 28 = bezpieczne dla każdego miesiąca
         for (const entry of paymentSchedule) {
           const { title, amount, periodFrom, periodTo } = entry as { title: string; amount: string; periodFrom: string; periodTo: string };
           if (!title || !amount || !periodFrom || !periodTo) continue;
           const [fromYear, fromMonth] = periodFrom.split('-').map(Number);
           const [toYear, toMonth] = periodTo.split('-').map(Number);
-          const payDay = parseInt(effectivePaymentDay) || 10;
+          if (isNaN(fromYear) || isNaN(fromMonth) || isNaN(toYear) || isNaN(toMonth)) continue;
+          if (fromYear > toYear || (fromYear === toYear && fromMonth > toMonth)) continue;
           let y = fromYear, m = fromMonth;
           while (y < toYear || (y === toYear && m <= toMonth)) {
+            // Bezpieczna data: klamrujemy dzień do rzeczywistej liczby dni w miesiącu
+            const daysInMonth = new Date(y, m, 0).getDate(); // new Date(y, m, 0) = ostatni dzień miesiąca m w roku y
+            const actualDay = Math.min(payDay, daysInMonth);
             const mm = String(m).padStart(2, '0');
-            const dd = String(payDay).padStart(2, '0');
-            await storage.createSubleasePayment({
-              subleaseId,
-              title,
-              category: "Czynsz",
-              amount: String(amount),
-              dueDate: `${y}-${mm}-${dd}`,
-              status: "do_oplacenia",
-              apartmentId: null,
-            });
-            totalPaymentsCreated++;
+            const dd = String(actualDay).padStart(2, '0');
+            paymentsToCreate.push({ title, amount: String(amount), dueDate: `${y}-${mm}-${dd}` });
             m++;
             if (m > 12) { m = 1; y++; }
           }
         }
+      }
+
+      // Zapis płatności do bazy (po walidacji wszystkich dat)
+      let totalPaymentsCreated = 0;
+      for (const p of paymentsToCreate) {
+        await storage.createSubleasePayment({
+          subleaseId,
+          title: p.title,
+          category: "Czynsz",
+          amount: p.amount,
+          dueDate: p.dueDate,
+          status: "do_oplacenia",
+          apartmentId: null,
+        });
+        totalPaymentsCreated++;
       }
 
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
