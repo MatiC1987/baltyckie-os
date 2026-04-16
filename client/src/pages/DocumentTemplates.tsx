@@ -341,15 +341,21 @@ export default function DocumentTemplates() {
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <Badge variant="outline" className="text-xs w-fit">{getCategoryName(doc.categoryId)}</Badge>
-                        {doc.templateType && doc.templateType !== "UMOWA" && (
-                          <Badge
-                            className="text-xs w-fit"
-                            variant={doc.templateType === "ANEKS" ? "default" : "secondary"}
-                            data-testid={`badge-type-${doc.id}`}
-                          >
-                            {doc.templateType === "ANEKS" ? "Aneks" : doc.templateType === "NOTA" ? "Nota" : "Inny"}
-                          </Badge>
-                        )}
+                        <Badge
+                          className="text-xs w-fit"
+                          variant={
+                            doc.templateType === "ANEKS" ? "default" :
+                            doc.templateType === "NOTA" ? "secondary" :
+                            doc.templateType === "INNY" ? "secondary" :
+                            "outline"
+                          }
+                          data-testid={`badge-type-${doc.id}`}
+                        >
+                          {doc.templateType === "ANEKS" ? "Aneks" :
+                           doc.templateType === "NOTA" ? "Nota" :
+                           doc.templateType === "INNY" ? "Inny" :
+                           "Umowa"}
+                        </Badge>
                       </div>
                     </TableCell>
                     <TableCell>
