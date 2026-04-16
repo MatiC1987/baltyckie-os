@@ -933,6 +933,8 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
     queryKey: ['/api/document-templates'],
   });
 
+  const annexTemplates = docTemplates.filter(t => t.templateType === 'ANEKS');
+
   const downloadAnnexFile = async (attId: number, fileName: string) => {
     try {
       const resp = await fetch(`/api/sublease-attachments/${attId}/download`, { credentials: 'include' });
@@ -1069,14 +1071,21 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
                   <SelectValue placeholder="Wybierz szablon aneksu..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {docTemplates.length === 0 && (
-                    <SelectItem value="none" disabled>Brak szablonów</SelectItem>
+                  {annexTemplates.length === 0 && (
+                    <SelectItem value="none" disabled>Brak szablonów aneksów</SelectItem>
                   )}
-                  {docTemplates.map(t => (
+                  {annexTemplates.map(t => (
                     <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {annexTemplates.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Brak szablonów aneksów. Przejdź do{" "}
+                  <span className="font-medium">Ustawienia → Szablony dokumentów</span>{" "}
+                  i dodaj szablon z typem "Aneks".
+                </p>
+              )}
             </div>
             <div>
               <Label className="mb-1 block">Numer aneksu</Label>
@@ -3344,11 +3353,11 @@ export default function Subleases() {
                   <SelectValue placeholder="Wybierz szablon..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {docTemplates.filter((t: any) => t.category === "PODNAJEM").map((t: any) => (
+                  {docTemplates.filter((t: any) => !t.templateType || t.templateType === "UMOWA").length === 0 && (
+                    <SelectItem value="none" disabled>Brak szablonów umów</SelectItem>
+                  )}
+                  {docTemplates.filter((t: any) => !t.templateType || t.templateType === "UMOWA").map((t: any) => (
                     <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-                  ))}
-                  {docTemplates.filter((t: any) => t.category !== "PODNAJEM").map((t: any) => (
-                    <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.category})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

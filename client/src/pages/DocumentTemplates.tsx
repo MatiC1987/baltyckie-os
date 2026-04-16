@@ -46,6 +46,7 @@ export default function DocumentTemplates() {
   const [docName, setDocName] = useState("");
   const [docDescription, setDocDescription] = useState("");
   const [docCategoryId, setDocCategoryId] = useState<string>("");
+  const [docTemplateType, setDocTemplateType] = useState<string>("UMOWA");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -126,6 +127,7 @@ export default function DocumentTemplates() {
         fileName: docFile.name,
         objectPath,
         description: docDescription.trim() || null,
+        templateType: docTemplateType,
       });
 
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
@@ -134,6 +136,7 @@ export default function DocumentTemplates() {
       setDocName("");
       setDocDescription("");
       setDocCategoryId("");
+      setDocTemplateType("UMOWA");
       setDocFile(null);
     } catch (err: any) {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
@@ -336,7 +339,18 @@ export default function DocumentTemplates() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs">{getCategoryName(doc.categoryId)}</Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant="outline" className="text-xs w-fit">{getCategoryName(doc.categoryId)}</Badge>
+                        {doc.templateType && doc.templateType !== "UMOWA" && (
+                          <Badge
+                            className="text-xs w-fit"
+                            variant={doc.templateType === "ANEKS" ? "default" : "secondary"}
+                            data-testid={`badge-type-${doc.id}`}
+                          >
+                            {doc.templateType === "ANEKS" ? "Aneks" : doc.templateType === "NOTA" ? "Nota" : "Inny"}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm">
@@ -424,6 +438,20 @@ export default function DocumentTemplates() {
                 placeholder="np. Szablon umowy najmu"
                 data-testid="input-document-name"
               />
+            </div>
+            <div>
+              <Label>Typ szablonu</Label>
+              <Select value={docTemplateType} onValueChange={setDocTemplateType}>
+                <SelectTrigger data-testid="select-document-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="UMOWA">Umowa / Kontrakt</SelectItem>
+                  <SelectItem value="ANEKS">Aneks</SelectItem>
+                  <SelectItem value="NOTA">Nota</SelectItem>
+                  <SelectItem value="INNY">Inny</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Kategoria</Label>

@@ -662,6 +662,7 @@ export const documentTemplates = pgTable("document_templates", {
   fileName: text("file_name").notNull(),
   objectPath: text("object_path").notNull(),
   description: text("description"),
+  templateType: text("template_type").default("UMOWA"),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
 });
 
