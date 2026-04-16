@@ -72,13 +72,18 @@ export async function seedAneksTemplate() {
 
     if (existing.length > 0) {
       const row = existing[0];
-      // Self-heal: if existing row has wrong objectPath or templateType, re-seed
-      const needsUpdate = row.objectPath !== ANEKS_OBJECT_PATH || row.templateType !== "ANEKS";
+      // Self-heal: if row is correct, skip; otherwise delete ALL stale rows and re-insert
+      const needsUpdate =
+        existing.length > 1 ||
+        row.objectPath !== ANEKS_OBJECT_PATH ||
+        row.templateType !== "ANEKS";
+
       if (!needsUpdate) {
         console.log(`[seed-aneks] ANEKS template ok (id=${row.id}), skipping`);
         // Fall through to NOTA fix
       } else {
-        console.log(`[seed-aneks] Stale ANEKS template detected (id=${row.id}), replacing...`);
+        console.log(`[seed-aneks] Replacing ${existing.length} stale ANEKS record(s)...`);
+        // Delete ALL rows with this name (handles duplicates)
         await db.delete(documentTemplates).where(eq(documentTemplates.name, "Aneks do umowy podnajmu"));
         const [inserted] = await db
           .insert(documentTemplates)
@@ -108,16 +113,11 @@ export async function seedAneksTemplate() {
       console.log(`[seed-aneks] Inserted ANEKS template id=${inserted.id}`);
     }
 
-    // Fix Nota templateType if it was incorrectly set to UMOWA
+    // Fix Nota templateType unconditionally (regardless of current value)
     const notaUpdated = await db
       .update(documentTemplates)
       .set({ templateType: "NOTA" })
-      .where(
-        and(
-          eq(documentTemplates.fileName, "nota_ksiegowa.docx"),
-          eq(documentTemplates.templateType, "UMOWA")
-        )
-      )
+      .where(eq(documentTemplates.fileName, "nota_ksiegowa.docx"))
       .returning();
 
     if (notaUpdated.length > 0) {
