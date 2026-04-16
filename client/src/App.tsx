@@ -23,6 +23,7 @@ const ImportBackup = lazy(() => import("@/pages/ImportBackup"));
 const Terminarz = lazy(() => import("@/pages/Terminarz"));
 const ServiceContracts = lazy(() => import("@/pages/ServiceContracts"));
 const Podnajem = lazy(() => import("@/pages/Podnajem"));
+const SubleaseDetailPage = lazy(() => import("@/pages/SubleaseDetailPage"));
 const UserAccounts = lazy(() => import("@/pages/UserAccounts"));
 const Saldo = lazy(() => import("@/pages/Saldo"));
 const DocumentTemplates = lazy(() => import("@/pages/DocumentTemplates"));
@@ -184,6 +185,7 @@ function AuthenticatedRouter() {
       <Route path="/finance" component={() => <AuthenticatedRoute component={Finance} />} />
 
       <Route path="/podnajem" component={() => <AuthenticatedRoute component={Podnajem} />} />
+      <Route path="/podnajem/:id" component={() => <AuthenticatedRoute component={SubleaseDetailPage} />} />
 
       <Route path="/ustawienia" component={() => <AuthenticatedRoute component={Ustawienia} />} />
       <Route path="/apartments" component={() => <AuthenticatedRoute component={ApartamentyHub} />} />

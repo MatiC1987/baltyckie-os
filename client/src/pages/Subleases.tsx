@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +14,7 @@ import {
   FileUp, Loader2, CalendarDays, Image, Clock, CheckCircle2, Archive, FilePlus2, MessageSquare, AlertTriangle, Zap, Droplets,
   ChevronLeft, ChevronRight, TrendingUp, ChevronDown
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { HandoverProtocolsTab } from "./HandoverProtocols";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -52,15 +53,16 @@ const PAYMENT_STATUSES: Record<string, { label: string; variant: "default" | "se
   czesciowo: { label: "Częściowo", variant: "secondary" },
 };
 
-function SubleaseFormFields({ form, setForm, apartments }: {
+export function SubleaseFormFields({ form, setForm, apartments, constrained = true }: {
   form: Record<string, any>;
   setForm: (f: Record<string, any>) => void;
   apartments: Apartment[];
+  constrained?: boolean;
 }) {
   const isCompany = form.tenantType === "firma";
 
   return (
-    <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
+    <div className={`space-y-4 py-2 pr-1 ${constrained ? "max-h-[60vh] overflow-y-auto" : ""}`}>
       <FormSection title="Najemca" first>
         <div className="space-y-2">
           <Label>Typ najemcy</Label>
@@ -463,7 +465,7 @@ function RecurringPaymentForm({ subleaseId, apartments, startDate, endDate, onCl
   );
 }
 
-function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseId: number; apartments: Apartment[]; startDate?: string; endDate?: string }) {
+export function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseId: number; apartments: Apartment[]; startDate?: string; endDate?: string }) {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
@@ -767,7 +769,7 @@ function PaymentsTab({ subleaseId, apartments, startDate, endDate }: { subleaseI
   );
 }
 
-function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
+export function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
   const { toast } = useToast();
   const [selectedCategory, setSelectedCategory] = useState("UMOWA");
   const [isUploading, setIsUploading] = useState(false);
@@ -904,7 +906,7 @@ function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
   );
 }
 
-function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: { subleaseId: number; currentRentAmount?: string | null; currentStartDate?: string | null }) {
+export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: { subleaseId: number; currentRentAmount?: string | null; currentStartDate?: string | null }) {
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1126,6 +1128,68 @@ function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: { suble
   );
 }
 
+export function DocumentsTab({
+  subleaseId,
+  sublease,
+  apartments,
+  currentRentAmount,
+  currentStartDate,
+}: {
+  subleaseId: number;
+  sublease?: Sublease;
+  apartments: Apartment[];
+  currentRentAmount?: string | null;
+  currentStartDate?: string | null;
+}) {
+  const [section, setSection] = useState<"zalaczniki" | "protokoly" | "aneksy">("zalaczniki");
+
+  return (
+    <div className="space-y-3 py-2">
+      <div className="flex gap-1 flex-wrap">
+        <Button
+          size="sm"
+          variant={section === "zalaczniki" ? "default" : "outline"}
+          onClick={() => setSection("zalaczniki")}
+          data-testid="btn-docs-zalaczniki"
+        >
+          <Paperclip className="h-3.5 w-3.5 mr-1" /> Załączniki
+        </Button>
+        <Button
+          size="sm"
+          variant={section === "protokoly" ? "default" : "outline"}
+          onClick={() => setSection("protokoly")}
+          data-testid="btn-docs-protokoly"
+        >
+          <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Protokoły
+        </Button>
+        <Button
+          size="sm"
+          variant={section === "aneksy" ? "default" : "outline"}
+          onClick={() => setSection("aneksy")}
+          data-testid="btn-docs-aneksy"
+        >
+          <FilePlus2 className="h-3.5 w-3.5 mr-1" /> Aneksy
+        </Button>
+      </div>
+      {section === "zalaczniki" && <AttachmentsTab subleaseId={subleaseId} />}
+      {section === "protokoly" && (
+        <HandoverProtocolsTab
+          subleaseId={subleaseId}
+          sublease={sublease}
+          apartments={apartments}
+        />
+      )}
+      {section === "aneksy" && (
+        <AnnexesTab
+          subleaseId={subleaseId}
+          currentRentAmount={currentRentAmount}
+          currentStartDate={currentStartDate}
+        />
+      )}
+    </div>
+  );
+}
+
 type DepositSortKey = "apartment" | "tenant" | "amount" | "returnDate";
 
 function DepositsToReturn({ subleases, apartments, allApartmentChanges = [] }: { subleases: Sublease[]; apartments: Apartment[]; allApartmentChanges?: SubleaseApartmentChange[] }) {
@@ -1256,7 +1320,7 @@ function DepositsToReturn({ subleases, apartments, allApartmentChanges = [] }: {
   );
 }
 
-function ApartmentChangesSection({ subleaseId, apartments, currentApartmentIds }: {
+export function ApartmentChangesSection({ subleaseId, apartments, currentApartmentIds }: {
   subleaseId: number;
   apartments: Apartment[];
   currentApartmentIds: number[];
@@ -1516,6 +1580,7 @@ function SubleaseMobileCard({
 export default function Subleases() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("dane");
@@ -1992,6 +2057,10 @@ export default function Subleases() {
   };
 
   const openEdit = (s: Sublease) => {
+    if (!isMobile) {
+      setLocation(`/podnajem/${s.id}`);
+      return;
+    }
     setForm({
       tenantType: s.tenantType,
       firstName: s.firstName || "",
@@ -2756,14 +2825,8 @@ export default function Subleases() {
                   <TabsTrigger value="oplaty" className="gap-1" data-testid="tab-oplaty">
                     <CreditCard className="h-4 w-4" /> Opłaty
                   </TabsTrigger>
-                  <TabsTrigger value="zalaczniki" className="gap-1" data-testid="tab-zalaczniki">
-                    <Paperclip className="h-4 w-4" /> Załączniki
-                  </TabsTrigger>
-                  <TabsTrigger value="protokoly" className="gap-1" data-testid="tab-protokoly">
-                    <ClipboardCheck className="h-4 w-4" /> Protokoły
-                  </TabsTrigger>
-                  <TabsTrigger value="aneksy" className="gap-1" data-testid="tab-aneksy">
-                    <FilePlus2 className="h-4 w-4" /> Aneksy
+                  <TabsTrigger value="dokumenty" className="gap-1" data-testid="tab-dokumenty">
+                    <Paperclip className="h-4 w-4" /> Dokumenty
                   </TabsTrigger>
                 </>
               )}
@@ -2795,19 +2858,11 @@ export default function Subleases() {
                     })()
                   } startDate={form.startDate} endDate={form.endDate} />
                 </TabsContent>
-                <TabsContent value="zalaczniki" className="flex-1 overflow-y-auto mt-0">
-                  <AttachmentsTab subleaseId={editId} />
-                </TabsContent>
-                <TabsContent value="protokoly" className="flex-1 overflow-y-auto mt-0">
-                  <HandoverProtocolsTab
+                <TabsContent value="dokumenty" className="flex-1 overflow-y-auto mt-0">
+                  <DocumentsTab
                     subleaseId={editId}
                     sublease={subleases.find((s: Sublease) => s.id === editId)}
                     apartments={apartments}
-                  />
-                </TabsContent>
-                <TabsContent value="aneksy" className="flex-1 overflow-y-auto mt-0">
-                  <AnnexesTab
-                    subleaseId={editId}
                     currentRentAmount={form.rentAmount}
                     currentStartDate={form.startDate}
                   />
