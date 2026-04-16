@@ -50,6 +50,13 @@ export default function DocumentTemplates() {
   const [docFile, setDocFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [editDocDialogOpen, setEditDocDialogOpen] = useState(false);
+  const [editDocId, setEditDocId] = useState<number | null>(null);
+  const [editDocName, setEditDocName] = useState("");
+  const [editDocDescription, setEditDocDescription] = useState("");
+  const [editDocCategoryId, setEditDocCategoryId] = useState<string>("none");
+  const [editDocTemplateType, setEditDocTemplateType] = useState<string>("UMOWA");
+
   const { data: categories = [] } = useQuery<DocumentCategory[]>({
     queryKey: ["/api/document-categories"],
   });
@@ -97,6 +104,42 @@ export default function DocumentTemplates() {
       toast({ title: "Usunięto dokument" });
     },
   });
+
+  const updateTemplateMut = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { name: string; description: string | null; categoryId: number | null; templateType: string } }) =>
+      apiRequest("PUT", `/api/document-templates/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
+      toast({ title: "Zaktualizowano dokument" });
+      setEditDocDialogOpen(false);
+      setEditDocId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const openEditTemplate = (doc: DocumentTemplate) => {
+    setEditDocId(doc.id);
+    setEditDocName(doc.name);
+    setEditDocDescription(doc.description || "");
+    setEditDocCategoryId(doc.categoryId ? String(doc.categoryId) : "none");
+    setEditDocTemplateType(doc.templateType || "UMOWA");
+    setEditDocDialogOpen(true);
+  };
+
+  const handleSaveTemplate = () => {
+    if (!editDocName.trim() || !editDocId) return;
+    updateTemplateMut.mutate({
+      id: editDocId,
+      data: {
+        name: editDocName.trim(),
+        description: editDocDescription.trim() || null,
+        categoryId: editDocCategoryId && editDocCategoryId !== "none" ? parseInt(editDocCategoryId) : null,
+        templateType: editDocTemplateType,
+      },
+    });
+  };
 
   const handleUploadDocument = async () => {
     if (!docFile || !docName.trim()) {
@@ -367,6 +410,9 @@ export default function DocumentTemplates() {
                     <TableCell className="text-sm text-muted-foreground">{formatDate(doc.uploadedAt)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => openEditTemplate(doc)} data-testid={`button-edit-document-${doc.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <a href={doc.objectPath} target="_blank" rel="noopener noreferrer" data-testid={`button-download-${doc.id}`}>
                           <Button size="icon" variant="ghost">
                             <Download className="h-4 w-4" />
@@ -425,6 +471,73 @@ export default function DocumentTemplates() {
               data-testid="button-save-category"
             >
               {editCatId ? "Zapisz" : "Dodaj"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editDocDialogOpen} onOpenChange={setEditDocDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edytuj dokument</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nazwa dokumentu</Label>
+              <Input
+                value={editDocName}
+                onChange={(e) => setEditDocName(e.target.value)}
+                placeholder="np. Szablon umowy najmu"
+                data-testid="input-edit-document-name"
+              />
+            </div>
+            <div>
+              <Label>Typ szablonu</Label>
+              <Select value={editDocTemplateType} onValueChange={setEditDocTemplateType}>
+                <SelectTrigger data-testid="select-edit-document-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="UMOWA">Umowa / Kontrakt</SelectItem>
+                  <SelectItem value="ANEKS">Aneks</SelectItem>
+                  <SelectItem value="NOTA">Nota</SelectItem>
+                  <SelectItem value="INNY">Inny</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Kategoria</Label>
+              <Select value={editDocCategoryId} onValueChange={setEditDocCategoryId}>
+                <SelectTrigger data-testid="select-edit-document-category">
+                  <SelectValue placeholder="Wybierz kategorię (opcjonalnie)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Bez kategorii</SelectItem>
+                  {categories.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Opis (opcjonalnie)</Label>
+              <Textarea
+                value={editDocDescription}
+                onChange={(e) => setEditDocDescription(e.target.value)}
+                placeholder="Krótki opis dokumentu..."
+                rows={2}
+                data-testid="input-edit-document-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDocDialogOpen(false)}>Anuluj</Button>
+            <Button
+              onClick={handleSaveTemplate}
+              disabled={!editDocName.trim() || updateTemplateMut.isPending}
+              data-testid="button-save-edit-document"
+            >
+              {updateTemplateMut.isPending ? "Zapisywanie..." : "Zapisz"}
             </Button>
           </DialogFooter>
         </DialogContent>
