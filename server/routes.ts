@@ -3737,11 +3737,11 @@ export async function registerRoutes(
 
       // Generowanie płatności z harmonogramu
       // Walidacja + budowanie listy płatności przed jakimkolwiek zapisem do bazy
-      const paymentsToCreate: { title: string; amount: string; dueDate: string }[] = [];
+      const paymentsToCreate: { title: string; category: string; amount: string; dueDate: string }[] = [];
       if (Array.isArray(paymentSchedule)) {
         const payDay = Math.min(Math.max(parseInt(effectivePaymentDay) || 10, 1), 28); // max 28 = bezpieczne dla każdego miesiąca
         for (const entry of paymentSchedule) {
-          const { title, amount, periodFrom, periodTo } = entry as { title: string; amount: string; periodFrom: string; periodTo: string };
+          const { title, category, amount, periodFrom, periodTo } = entry as { title: string; category: string; amount: string; periodFrom: string; periodTo: string };
           if (!title || !amount || !periodFrom || !periodTo) continue;
           const [fromYear, fromMonth] = periodFrom.split('-').map(Number);
           const [toYear, toMonth] = periodTo.split('-').map(Number);
@@ -3754,7 +3754,7 @@ export async function registerRoutes(
             const actualDay = Math.min(payDay, daysInMonth);
             const mm = String(m).padStart(2, '0');
             const dd = String(actualDay).padStart(2, '0');
-            paymentsToCreate.push({ title, amount: String(amount), dueDate: `${y}-${mm}-${dd}` });
+            paymentsToCreate.push({ title, category: category || "Czynsz", amount: String(amount), dueDate: `${y}-${mm}-${dd}` });
             m++;
             if (m > 12) { m = 1; y++; }
           }
@@ -3767,7 +3767,7 @@ export async function registerRoutes(
         await storage.createSubleasePayment({
           subleaseId,
           title: p.title,
-          category: "Czynsz",
+          category: p.category,
           amount: p.amount,
           dueDate: p.dueDate,
           status: "do_oplacenia",

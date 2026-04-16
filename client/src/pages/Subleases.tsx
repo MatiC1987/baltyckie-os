@@ -915,6 +915,7 @@ export function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
 type AnnexPaymentEntry = {
   id: string;
   title: string;
+  category: string;
   amount: string;
   periodFrom: string;
   periodTo: string;
@@ -1069,6 +1070,7 @@ export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentSta
     const newEntry: AnnexPaymentEntry = {
       id: Math.random().toString(36).slice(2),
       title: "Czynsz",
+      category: "Czynsz",
       amount: annexForm.rentAmount || "",
       periodFrom: "",
       periodTo: "",
@@ -1379,6 +1381,22 @@ export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentSta
                                 placeholder="np. Czynsz"
                                 data-testid={`input-payment-title-${idx}`}
                               />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Kategoria</Label>
+                              <Select
+                                value={entry.category || "Czynsz"}
+                                onValueChange={val => updatePaymentEntry(entry.id, 'category', val)}
+                              >
+                                <SelectTrigger data-testid={`select-payment-category-${idx}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {PAYMENT_CATEGORIES.map(c => (
+                                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Kwota (PLN)</Label>
