@@ -31,6 +31,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -906,16 +912,78 @@ export function AttachmentsTab({ subleaseId }: { subleaseId: number }) {
   );
 }
 
-export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: { subleaseId: number; currentRentAmount?: string | null; currentStartDate?: string | null }) {
+type AnnexPaymentEntry = {
+  id: string;
+  title: string;
+  amount: string;
+  periodFrom: string;
+  periodTo: string;
+};
+
+type AnnexFormState = {
+  templateId: number;
+  annexNumber: string;
+  originalContractDate: string;
+  newEndDate: string;
+  tenantName: string;
+  tenantStreet: string;
+  tenantPostalCode: string;
+  tenantCity: string;
+  tenantPesel: string;
+  tenantIdNumber: string;
+  tenantCompanyName: string;
+  tenantNip: string;
+  rentAmount: string;
+  depositAmount: string;
+  vatRate: string;
+  paymentDay: string;
+  updateSubleaseEndDate: boolean;
+  updateSubleaseRent: boolean;
+  paymentSchedule: AnnexPaymentEntry[];
+};
+
+function countPaymentEntries(schedule: AnnexPaymentEntry[]): number {
+  return schedule.reduce((sum, e) => {
+    if (!e.periodFrom || !e.periodTo) return sum;
+    const [fy, fm] = e.periodFrom.split('-').map(Number);
+    const [ty, tm] = e.periodTo.split('-').map(Number);
+    if (isNaN(fy) || isNaN(fm) || isNaN(ty) || isNaN(tm)) return sum;
+    let count = 0;
+    let y = fy, m = fm;
+    while (y < ty || (y === ty && m <= tm)) {
+      count++;
+      m++;
+      if (m > 12) { m = 1; y++; }
+    }
+    return sum + count;
+  }, 0);
+}
+
+export function AnnexesTab({ subleaseId, sublease, currentRentAmount, currentStartDate }: { subleaseId: number; sublease?: Sublease; currentRentAmount?: string | null; currentStartDate?: string | null }) {
   const { toast } = useToast();
-  const [showDialog, setShowDialog] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [annexForm, setAnnexForm] = useState({
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [annexForm, setAnnexForm] = useState<AnnexFormState>({
     templateId: 0,
     annexNumber: "1",
     originalContractDate: currentStartDate || "",
     newEndDate: "",
-    newRentAmount: currentRentAmount || "",
+    tenantName: "",
+    tenantStreet: "",
+    tenantPostalCode: "",
+    tenantCity: "",
+    tenantPesel: "",
+    tenantIdNumber: "",
+    tenantCompanyName: "",
+    tenantNip: "",
+    rentAmount: currentRentAmount || "",
+    depositAmount: "",
+    vatRate: "23%",
+    paymentDay: "10",
+    updateSubleaseEndDate: true,
+    updateSubleaseRent: false,
+    paymentSchedule: [],
   });
 
   const { data: attachments = [] } = useQuery<SubleaseAttachment[]>({
@@ -953,17 +1021,77 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
     }
   };
 
-  const handleOpenDialog = () => {
-    setAnnexForm(f => ({
-      ...f,
+  const deleteAnnex = async (attId: number) => {
+    setDeletingId(attId);
+    try {
+      const resp = await fetch(`/api/sublease-attachments/${attId}`, { method: 'DELETE', credentials: 'include' });
+      if (!resp.ok) throw new Error('Błąd usuwania');
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
+      toast({ title: "Usunięto", description: "Aneks został usunięty" });
+    } catch {
+      toast({ title: "Błąd", description: "Nie udało się usunąć aneksu", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleOpenSheet = () => {
+    const isCompany = sublease?.tenantType === 'firma';
+    const name = isCompany
+      ? (sublease?.companyName || "")
+      : `${sublease?.firstName || ""} ${sublease?.lastName || ""}`.trim();
+    setAnnexForm({
       templateId: 0,
       annexNumber: String(annexAttachments.length + 1),
-      originalContractDate: currentStartDate || "",
-      newRentAmount: currentRentAmount || "",
+      originalContractDate: sublease?.startDate || currentStartDate || "",
       newEndDate: "",
-    }));
-    setShowDialog(true);
+      tenantName: name,
+      tenantStreet: sublease?.street || "",
+      tenantPostalCode: sublease?.postalCode || "",
+      tenantCity: sublease?.city || "",
+      tenantPesel: sublease?.peselOrPassport || "",
+      tenantIdNumber: sublease?.idNumber || "",
+      tenantCompanyName: sublease?.companyName || "",
+      tenantNip: sublease?.nip || "",
+      rentAmount: sublease?.rentAmount || currentRentAmount || "",
+      depositAmount: sublease?.depositAmount || "",
+      vatRate: sublease?.vatRate || "23%",
+      paymentDay: sublease?.paymentDay ? String(sublease.paymentDay) : "10",
+      updateSubleaseEndDate: true,
+      updateSubleaseRent: false,
+      paymentSchedule: [],
+    });
+    setShowSheet(true);
   };
+
+  const addPaymentEntry = () => {
+    const newEntry: AnnexPaymentEntry = {
+      id: Math.random().toString(36).slice(2),
+      title: "Czynsz",
+      amount: annexForm.rentAmount || "",
+      periodFrom: "",
+      periodTo: "",
+    };
+    setAnnexForm(f => ({ ...f, paymentSchedule: [...f.paymentSchedule, newEntry] }));
+  };
+
+  const updatePaymentEntry = (id: string, field: keyof AnnexPaymentEntry, value: string) => {
+    setAnnexForm(f => ({
+      ...f,
+      paymentSchedule: f.paymentSchedule.map(e => e.id === id ? { ...e, [field]: value } : e),
+    }));
+  };
+
+  const removePaymentEntry = (id: string) => {
+    setAnnexForm(f => ({ ...f, paymentSchedule: f.paymentSchedule.filter(e => e.id !== id) }));
+  };
+
+  const totalPaymentsPreview = countPaymentEntries(annexForm.paymentSchedule);
+  const totalAmountPreview = annexForm.paymentSchedule.reduce((sum, e) => {
+    const cnt = countPaymentEntries([e]);
+    return sum + (Number(e.amount) || 0) * cnt;
+  }, 0);
 
   const handleGenerate = async () => {
     if (!annexForm.templateId) {
@@ -989,13 +1117,29 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
           annexNumber: annexForm.annexNumber,
           originalContractDate: annexForm.originalContractDate,
           newEndDate: annexForm.newEndDate,
-          newRentAmount: annexForm.newRentAmount || undefined,
+          newRentAmount: annexForm.rentAmount || undefined,
+          overrideTenantName: annexForm.tenantName || undefined,
+          overrideStreet: annexForm.tenantStreet || undefined,
+          overridePostalCode: annexForm.tenantPostalCode || undefined,
+          overrideCity: annexForm.tenantCity || undefined,
+          overridePesel: annexForm.tenantPesel || undefined,
+          overrideIdNumber: annexForm.tenantIdNumber || undefined,
+          overrideCompanyName: annexForm.tenantCompanyName || undefined,
+          overrideNip: annexForm.tenantNip || undefined,
+          overrideDeposit: annexForm.depositAmount || undefined,
+          overrideVatRate: annexForm.vatRate || undefined,
+          overridePaymentDay: annexForm.paymentDay || undefined,
+          updateSubleaseEndDate: annexForm.updateSubleaseEndDate,
+          updateSubleaseRent: annexForm.updateSubleaseRent,
+          paymentSchedule: annexForm.paymentSchedule,
         }),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error((err as any).message || 'Błąd generowania');
       }
+      const paymentsCreated = Number(resp.headers.get('X-Payments-Created') || '0');
+      const subleaseUpdated = resp.headers.get('X-Sublease-Updated') === '1';
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1009,8 +1153,13 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
       document.body.removeChild(a);
       queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'attachments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/sublease-attachments/all'] });
-      toast({ title: "Sukces", description: "Aneks wygenerowany i pobrany" });
-      setShowDialog(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases', subleaseId, 'payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/subleases'] });
+      const parts = ["Aneks wygenerowany i pobrany."];
+      if (subleaseUpdated) parts.push(`Zaktualizowano datę umowy do ${annexForm.newEndDate.split('-').reverse().join('.')}.`);
+      if (paymentsCreated > 0) parts.push(`Wygenerowano ${paymentsCreated} opłat${paymentsCreated === 1 ? 'ę' : 'y'}.`);
+      toast({ title: "Sukces", description: parts.join(' ') });
+      setShowSheet(false);
     } catch (err: any) {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
     } finally {
@@ -1018,13 +1167,15 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
     }
   };
 
+  const isCompanyTenant = sublease?.tenantType === 'firma';
+
   return (
     <div className="space-y-4 py-2">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {annexAttachments.length > 0 ? `${annexAttachments.length} aneks(y)` : "Brak wygenerowanych aneksów"}
         </p>
-        <Button size="sm" onClick={handleOpenDialog} data-testid="button-generate-annex">
+        <Button size="sm" onClick={handleOpenSheet} data-testid="button-generate-annex">
           <FilePlus2 className="h-4 w-4 mr-1" /> Generuj aneks
         </Button>
       </div>
@@ -1045,6 +1196,23 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
               <Button size="icon" variant="ghost" onClick={() => downloadAnnexFile(att.id, att.fileName)} data-testid={`button-download-annex-${att.id}`}>
                 <Download className="h-4 w-4" />
               </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" disabled={deletingId === att.id} data-testid={`button-delete-annex-${att.id}`}>
+                    {deletingId === att.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Usuń aneks</AlertDialogTitle>
+                    <AlertDialogDescription>Czy na pewno chcesz usunąć ten aneks? Tej operacji nie można cofnąć.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => deleteAnnex(att.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Usuń</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           ))
         ) : (
@@ -1054,85 +1222,266 @@ export function AnnexesTab({ subleaseId, currentRentAmount, currentStartDate }: 
         )}
       </div>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Generuj aneks do umowy</DialogTitle>
-            <DialogDescription>Wypełnij dane i wygeneruj aneks w formacie DOCX</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-1">
-            <div>
-              <Label className="mb-1 block">Szablon dokumentu</Label>
-              <Select
-                value={annexForm.templateId ? String(annexForm.templateId) : ""}
-                onValueChange={(v) => setAnnexForm(f => ({ ...f, templateId: Number(v) }))}
-              >
-                <SelectTrigger data-testid="select-annex-template">
-                  <SelectValue placeholder="Wybierz szablon aneksu..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {annexTemplates.length === 0 && (
-                    <SelectItem value="none" disabled>Brak szablonów aneksów</SelectItem>
+      <Sheet open={showSheet} onOpenChange={setShowSheet}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
+          <SheetHeader className="px-6 pt-6 pb-4 border-b">
+            <SheetTitle>Generuj aneks do umowy</SheetTitle>
+            <SheetDescription>Wszystkie pola są pre-wypełnione z danych umowy. Możesz je edytować przed wygenerowaniem.</SheetDescription>
+          </SheetHeader>
+
+          <ScrollArea className="flex-1 px-6 py-4">
+            <div className="space-y-6">
+
+              {/* Sekcja: Dokument */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Dokument</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Szablon aneksu</Label>
+                    <Select
+                      value={annexForm.templateId ? String(annexForm.templateId) : ""}
+                      onValueChange={(v) => setAnnexForm(f => ({ ...f, templateId: Number(v) }))}
+                    >
+                      <SelectTrigger data-testid="select-annex-template">
+                        <SelectValue placeholder="Wybierz szablon aneksu..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {annexTemplates.length === 0 && (
+                          <SelectItem value="none" disabled>Brak szablonów aneksów</SelectItem>
+                        )}
+                        {annexTemplates.map(t => (
+                          <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {annexTemplates.length === 0 && (
+                      <p className="text-xs text-muted-foreground">Przejdź do <span className="font-medium">Ustawienia → Szablony dokumentów</span> i dodaj szablon z typem "Aneks".</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Numer aneksu</Label>
+                    <Input value={annexForm.annexNumber} onChange={e => setAnnexForm(f => ({ ...f, annexNumber: e.target.value }))} data-testid="input-annex-number" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Data pierwotnej umowy</Label>
+                    <Input type="date" value={annexForm.originalContractDate} onChange={e => setAnnexForm(f => ({ ...f, originalContractDate: e.target.value }))} data-testid="input-annex-original-date" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Nowa data zakończenia umowy <span className="text-destructive">*</span></Label>
+                    <Input type="date" value={annexForm.newEndDate} onChange={e => setAnnexForm(f => ({ ...f, newEndDate: e.target.value }))} data-testid="input-annex-new-end-date" />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Sekcja: Dane najemcy */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Dane najemcy</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {isCompanyTenant ? (
+                    <>
+                      <div className="space-y-1 col-span-2">
+                        <Label className="text-xs">Nazwa firmy</Label>
+                        <Input value={annexForm.tenantCompanyName} onChange={e => setAnnexForm(f => ({ ...f, tenantCompanyName: e.target.value }))} data-testid="input-annex-company-name" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">NIP</Label>
+                        <Input value={annexForm.tenantNip} onChange={e => setAnnexForm(f => ({ ...f, tenantNip: e.target.value }))} data-testid="input-annex-nip" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Reprezentant (imię i nazwisko)</Label>
+                        <Input value={annexForm.tenantName} onChange={e => setAnnexForm(f => ({ ...f, tenantName: e.target.value }))} data-testid="input-annex-tenant-name" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-1 col-span-2">
+                        <Label className="text-xs">Imię i nazwisko</Label>
+                        <Input value={annexForm.tenantName} onChange={e => setAnnexForm(f => ({ ...f, tenantName: e.target.value }))} data-testid="input-annex-tenant-name" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">PESEL</Label>
+                        <Input value={annexForm.tenantPesel} onChange={e => setAnnexForm(f => ({ ...f, tenantPesel: e.target.value }))} data-testid="input-annex-pesel" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nr dowodu osobistego</Label>
+                        <Input value={annexForm.tenantIdNumber} onChange={e => setAnnexForm(f => ({ ...f, tenantIdNumber: e.target.value }))} data-testid="input-annex-id-number" />
+                      </div>
+                    </>
                   )}
-                  {annexTemplates.map(t => (
-                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {annexTemplates.length === 0 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Brak szablonów aneksów. Przejdź do{" "}
-                  <span className="font-medium">Ustawienia → Szablony dokumentów</span>{" "}
-                  i dodaj szablon z typem "Aneks".
-                </p>
-              )}
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Ulica</Label>
+                    <Input value={annexForm.tenantStreet} onChange={e => setAnnexForm(f => ({ ...f, tenantStreet: e.target.value }))} data-testid="input-annex-street" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Kod pocztowy</Label>
+                    <Input value={annexForm.tenantPostalCode} onChange={e => setAnnexForm(f => ({ ...f, tenantPostalCode: e.target.value }))} data-testid="input-annex-postal-code" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Miasto</Label>
+                    <Input value={annexForm.tenantCity} onChange={e => setAnnexForm(f => ({ ...f, tenantCity: e.target.value }))} data-testid="input-annex-city" />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Sekcja: Warunki umowy */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Warunki umowy</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Kwota czynszu (PLN)</Label>
+                    <Input type="number" step="0.01" value={annexForm.rentAmount} onChange={e => setAnnexForm(f => ({ ...f, rentAmount: e.target.value }))} data-testid="input-annex-rent" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Kaucja (PLN)</Label>
+                    <Input type="number" step="0.01" value={annexForm.depositAmount} onChange={e => setAnnexForm(f => ({ ...f, depositAmount: e.target.value }))} data-testid="input-annex-deposit" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Stawka VAT</Label>
+                    <Input value={annexForm.vatRate} onChange={e => setAnnexForm(f => ({ ...f, vatRate: e.target.value }))} placeholder="np. 23%" data-testid="input-annex-vat" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dzień płatności</Label>
+                    <Input type="number" min="1" max="31" value={annexForm.paymentDay} onChange={e => setAnnexForm(f => ({ ...f, paymentDay: e.target.value }))} data-testid="input-annex-payment-day" />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Sekcja: Harmonogram płatności */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Płatności do wygenerowania</h3>
+                  <Button size="sm" variant="outline" type="button" onClick={addPaymentEntry} data-testid="button-add-payment-entry">
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Dodaj wpłatę
+                  </Button>
+                </div>
+
+                {annexForm.paymentSchedule.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Brak wpisów. Kliknij "Dodaj wpłatę" aby dodać opłaty do wygenerowania po podpisaniu aneksu.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {annexForm.paymentSchedule.map((entry, idx) => {
+                      const entryCnt = countPaymentEntries([entry]);
+                      const entryTotal = (Number(entry.amount) || 0) * entryCnt;
+                      return (
+                        <div key={entry.id} className="rounded-md border border-border p-3 space-y-2 bg-muted/20" data-testid={`payment-entry-${idx}`}>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Tytuł</Label>
+                              <Input
+                                value={entry.title}
+                                onChange={e => updatePaymentEntry(entry.id, 'title', e.target.value)}
+                                placeholder="np. Czynsz"
+                                data-testid={`input-payment-title-${idx}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Kwota (PLN)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={entry.amount}
+                                onChange={e => updatePaymentEntry(entry.id, 'amount', e.target.value)}
+                                data-testid={`input-payment-amount-${idx}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Okres od</Label>
+                              <Input
+                                type="month"
+                                value={entry.periodFrom}
+                                onChange={e => updatePaymentEntry(entry.id, 'periodFrom', e.target.value)}
+                                data-testid={`input-payment-from-${idx}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Okres do</Label>
+                              <Input
+                                type="month"
+                                value={entry.periodTo}
+                                onChange={e => updatePaymentEntry(entry.id, 'periodTo', e.target.value)}
+                                data-testid={`input-payment-to-${idx}`}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            {entryCnt > 0 && entry.amount ? (
+                              <span className="text-xs text-muted-foreground">
+                                {entryCnt} opłat{entryCnt === 1 ? 'a' : 'y'} × {Number(entry.amount).toFixed(2)} zł = <span className="font-semibold text-foreground">{entryTotal.toFixed(2)} zł</span>
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Podaj kwotę i okres</span>
+                            )}
+                            <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => removePaymentEntry(entry.id)} data-testid={`button-remove-payment-${idx}`}>
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {totalPaymentsPreview > 0 && (
+                      <div className="rounded-md bg-muted/50 border border-border px-3 py-2 text-sm">
+                        Łącznie: <span className="font-semibold">{totalPaymentsPreview} opłat</span> na kwotę <span className="font-semibold">{totalAmountPreview.toFixed(2)} zł</span>
+                        {' '}— zostaną dodane do zakładki Opłaty (termin: {annexForm.paymentDay}. dnia miesiąca)
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Sekcja: Opcje automatyczne */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Opcje automatyczne</h3>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="update-end-date"
+                      checked={annexForm.updateSubleaseEndDate}
+                      onCheckedChange={(v) => setAnnexForm(f => ({ ...f, updateSubleaseEndDate: !!v }))}
+                      data-testid="checkbox-update-end-date"
+                    />
+                    <div className="space-y-0.5">
+                      <label htmlFor="update-end-date" className="text-sm font-medium cursor-pointer">Zaktualizuj datę zakończenia umowy w systemie</label>
+                      {annexForm.newEndDate && (
+                        <p className="text-xs text-muted-foreground">Na {annexForm.newEndDate.split('-').reverse().join('.')}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="update-rent"
+                      checked={annexForm.updateSubleaseRent}
+                      onCheckedChange={(v) => setAnnexForm(f => ({ ...f, updateSubleaseRent: !!v }))}
+                      data-testid="checkbox-update-rent"
+                    />
+                    <div className="space-y-0.5">
+                      <label htmlFor="update-rent" className="text-sm font-medium cursor-pointer">Zaktualizuj kwotę czynszu w umowie</label>
+                      {annexForm.rentAmount && (
+                        <p className="text-xs text-muted-foreground">Na {Number(annexForm.rentAmount).toFixed(2)} zł</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
-            <div>
-              <Label className="mb-1 block">Numer aneksu</Label>
-              <Input
-                value={annexForm.annexNumber}
-                onChange={e => setAnnexForm(f => ({ ...f, annexNumber: e.target.value }))}
-                data-testid="input-annex-number"
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Data zawarcia pierwotnej umowy</Label>
-              <Input
-                type="date"
-                value={annexForm.originalContractDate}
-                onChange={e => setAnnexForm(f => ({ ...f, originalContractDate: e.target.value }))}
-                data-testid="input-annex-original-date"
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Nowa data zakończenia umowy</Label>
-              <Input
-                type="date"
-                value={annexForm.newEndDate}
-                onChange={e => setAnnexForm(f => ({ ...f, newEndDate: e.target.value }))}
-                data-testid="input-annex-new-end-date"
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Nowa kwota czynszu (opcjonalnie)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={annexForm.newRentAmount}
-                onChange={e => setAnnexForm(f => ({ ...f, newRentAmount: e.target.value }))}
-                placeholder="Pozostaw puste jeśli bez zmian"
-                data-testid="input-annex-rent"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Anuluj</Button>
-            <LoadingButton onClick={handleGenerate} isPending={isGenerating} loadingText="Generowanie..." data-testid="button-confirm-generate-annex">
+          </ScrollArea>
+
+          <SheetFooter className="px-6 py-4 border-t gap-2">
+            <Button variant="outline" onClick={() => setShowSheet(false)} className="flex-1 sm:flex-none">Anuluj</Button>
+            <LoadingButton onClick={handleGenerate} isPending={isGenerating} loadingText="Generowanie..." className="flex-1 sm:flex-none" data-testid="button-confirm-generate-annex">
               <Download className="h-4 w-4 mr-1" /> Generuj i pobierz
             </LoadingButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -1191,6 +1540,7 @@ export function DocumentsTab({
       {section === "aneksy" && (
         <AnnexesTab
           subleaseId={subleaseId}
+          sublease={sublease}
           currentRentAmount={currentRentAmount}
           currentStartDate={currentStartDate}
         />

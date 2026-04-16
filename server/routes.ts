@@ -3468,7 +3468,15 @@ export async function registerRoutes(
       const subleaseId = parseInt(req.params.id, 10);
       if (isNaN(subleaseId)) return res.status(400).json({ message: "Nieprawidłowe ID umowy" });
 
-      const { templateId, annexNumber, originalContractDate, newEndDate, newRentAmount } = req.body;
+      const {
+        templateId, annexNumber, originalContractDate, newEndDate,
+        newRentAmount,
+        overrideTenantName, overrideStreet, overridePostalCode, overrideCity,
+        overridePesel, overrideIdNumber, overrideCompanyName, overrideNip,
+        overrideDeposit, overrideVatRate, overridePaymentDay,
+        updateSubleaseEndDate, updateSubleaseRent,
+        paymentSchedule,
+      } = req.body;
       if (!templateId || typeof templateId !== "number") return res.status(400).json({ message: "Brak ID szablonu" });
       const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
       if (!originalContractDate || !isoDateRe.test(originalContractDate)) return res.status(400).json({ message: "Nieprawidłowy format daty pierwotnej umowy (wymagany YYYY-MM-DD)" });
@@ -3508,11 +3516,21 @@ export async function registerRoutes(
         return `${dd}.${m}.${y}`;
       };
 
-      const fullName = `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
-      const fullAddress = [sublease.street, sublease.postalCode, sublease.city].filter(Boolean).join(", ");
+      const dbFullName = `${sublease.firstName || ""} ${sublease.lastName || ""}`.trim();
+      const fullName = overrideTenantName || dbFullName;
+      const tenantStreet = overrideStreet || sublease.street || "";
+      const tenantPostalCode = overridePostalCode || sublease.postalCode || "";
+      const tenantCity = overrideCity || sublease.city || "";
+      const fullAddress = [tenantStreet, tenantPostalCode, tenantCity].filter(Boolean).join(", ");
       const companyFullAddress = companyData ? [companyData.street, companyData.postalCode, companyData.city].filter(Boolean).join(", ") : "";
-      const paymentDayStr = sublease.paymentDay ? String(sublease.paymentDay) : "";
+      const effectivePaymentDay = overridePaymentDay ? String(overridePaymentDay) : (sublease.paymentDay ? String(sublease.paymentDay) : "10");
       const effectiveRent = newRentAmount || sublease.rentAmount || "";
+      const effectiveDeposit = overrideDeposit || sublease.depositAmount || "";
+      const effectiveVatRate = overrideVatRate || sublease.vatRate || "23%";
+      const effectivePesel = overridePesel || sublease.peselOrPassport || "";
+      const effectiveIdNumber = overrideIdNumber || sublease.idNumber || "";
+      const effectiveCompanyName = overrideCompanyName || sublease.companyName || "";
+      const effectiveNip = overrideNip || sublease.nip || "";
 
       const replacements: Record<string, string> = {
         "IMIĘ_I_NAZWISKO_NAJEMCY": fullName,
@@ -3526,15 +3544,15 @@ export async function registerRoutes(
         "STANOWISKO_WYNAJMUJĄCEGO": companyData?.representativeRole || "",
         "STANOWISKO_WYNAJMUJACEGO": companyData?.representativeRole || "",
         "ADRES_NAJEMCY": fullAddress,
-        "ULICA_NAJEMCY": sublease.street || "",
-        "KOD_POCZTOWY_NAJEMCY": sublease.postalCode || "",
-        "MIEJSCOWOŚĆ_NAJEMCY": sublease.city || "",
-        "MIEJSCOWOSC_NAJEMCY": sublease.city || "",
-        "PESEL": sublease.peselOrPassport || "",
-        "NR_DOWODU": sublease.idNumber || "",
-        "NUMER_DOWODU": sublease.idNumber || "",
-        "NAZWA_FIRMY_NAJEMCY": sublease.companyName || "",
-        "NIP_NAJEMCY": sublease.nip || "",
+        "ULICA_NAJEMCY": tenantStreet,
+        "KOD_POCZTOWY_NAJEMCY": tenantPostalCode,
+        "MIEJSCOWOŚĆ_NAJEMCY": tenantCity,
+        "MIEJSCOWOSC_NAJEMCY": tenantCity,
+        "PESEL": effectivePesel,
+        "NR_DOWODU": effectiveIdNumber,
+        "NUMER_DOWODU": effectiveIdNumber,
+        "NAZWA_FIRMY_NAJEMCY": effectiveCompanyName,
+        "NIP_NAJEMCY": effectiveNip,
         "REGON_NAJEMCY": "",
         "NAZWA_FIRMY_WYNAJMUJĄCEGO": companyData?.companyName || "",
         "NAZWA_FIRMY_WYNAJMUJACEGO": companyData?.companyName || "",
@@ -3564,12 +3582,12 @@ export async function registerRoutes(
         "DATA_ZAKONCZENIA": formatDatePL(newEndDate),
         "KWOTA_CZYNSZU": effectiveRent ? Number(effectiveRent).toFixed(2) : "",
         "KWOTA_CZYNSZU_NETTO": effectiveRent ? Number(effectiveRent).toFixed(2) : "",
-        "KWOTA_VAT": sublease.vatRate || "23%",
-        "KWOTA_KAUCJI": sublease.depositAmount ? Number(sublease.depositAmount).toFixed(2) : "",
+        "KWOTA_VAT": effectiveVatRate,
+        "KWOTA_KAUCJI": effectiveDeposit ? Number(effectiveDeposit).toFixed(2) : "",
         "NUMER_KONTA": companyData?.bankAccount || "",
         "NAZWA_BANKU": companyData?.bankName || "",
-        "DZIEŃ_PŁATNOŚCI": paymentDayStr,
-        "DZIEN_PLATNOSCI": paymentDayStr,
+        "DZIEŃ_PŁATNOŚCI": effectivePaymentDay,
+        "DZIEN_PLATNOSCI": effectivePaymentDay,
         "LICZBA_DNI_ZALEGŁOŚCI": "",
         "LICZBA_DNI_ZALEGLOSCI": "",
         "TELEFON_WYNAJMUJĄCEGO": companyData?.phone || "",
@@ -3643,7 +3661,7 @@ export async function registerRoutes(
         imie: sublease.firstName || "",
         nazwisko: sublease.lastName || "",
         imie_nazwisko: fullName,
-        nazwa_firmy: sublease.companyName || "",
+        nazwa_firmy: effectiveCompanyName,
         apartament: aptNames.join(", "),
         apartamenty: aptNames.join(", "),
         data_rozpoczecia: formatDatePL(sublease.startDate || ""),
@@ -3652,12 +3670,12 @@ export async function registerRoutes(
         data_do: formatDatePL(newEndDate),
         czynsz: effectiveRent ? Number(effectiveRent).toFixed(2) : "",
         kwota_czynszu: effectiveRent ? Number(effectiveRent).toFixed(2) : "",
-        kaucja: sublease.depositAmount ? Number(sublease.depositAmount).toFixed(2) : "",
+        kaucja: effectiveDeposit ? Number(effectiveDeposit).toFixed(2) : "",
         data_dzisiejsza: formatDatePL(today.toISOString().slice(0, 10)),
         data_umowy: formatDatePL(today.toISOString().slice(0, 10)),
-        nr_dowodu: sublease.idNumber || "",
-        numer_dowodu: sublease.idNumber || "",
-        dzien_platnosci: paymentDayStr,
+        nr_dowodu: effectiveIdNumber,
+        numer_dowodu: effectiveIdNumber,
+        dzien_platnosci: effectivePaymentDay,
         numer_konta: companyData?.bankAccount || "",
         nazwa_banku: companyData?.bankName || "",
         nazwa_firmy_wynajmujacego: companyData?.companyName || "",
@@ -3709,8 +3727,47 @@ export async function registerRoutes(
 
       logActivity(req, "create", "sublease_annex", subleaseId, fileName);
 
+      // Aktualizacja podnajmu (data zakończenia i/lub czynsz)
+      const subleaseUpdates: Record<string, any> = {};
+      if (updateSubleaseEndDate) subleaseUpdates.endDate = newEndDate;
+      if (updateSubleaseRent && newRentAmount) subleaseUpdates.rentAmount = String(newRentAmount);
+      if (Object.keys(subleaseUpdates).length > 0) {
+        await storage.updateSublease(subleaseId, subleaseUpdates);
+      }
+
+      // Generowanie płatności z harmonogramu
+      let totalPaymentsCreated = 0;
+      if (Array.isArray(paymentSchedule)) {
+        for (const entry of paymentSchedule) {
+          const { title, amount, periodFrom, periodTo } = entry as { title: string; amount: string; periodFrom: string; periodTo: string };
+          if (!title || !amount || !periodFrom || !periodTo) continue;
+          const [fromYear, fromMonth] = periodFrom.split('-').map(Number);
+          const [toYear, toMonth] = periodTo.split('-').map(Number);
+          const payDay = parseInt(effectivePaymentDay) || 10;
+          let y = fromYear, m = fromMonth;
+          while (y < toYear || (y === toYear && m <= toMonth)) {
+            const mm = String(m).padStart(2, '0');
+            const dd = String(payDay).padStart(2, '0');
+            await storage.createSubleasePayment({
+              subleaseId,
+              title,
+              category: "Czynsz",
+              amount: String(amount),
+              dueDate: `${y}-${mm}-${dd}`,
+              status: "do_oplacenia",
+              apartmentId: null,
+            });
+            totalPaymentsCreated++;
+            m++;
+            if (m > 12) { m = 1; y++; }
+          }
+        }
+      }
+
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("X-Payments-Created", String(totalPaymentsCreated));
+      res.setHeader("X-Sublease-Updated", updateSubleaseEndDate ? "1" : "0");
       res.send(buf);
     } catch (error: any) {
       console.error("Error generating annex:", error);
