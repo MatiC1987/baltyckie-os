@@ -224,10 +224,14 @@ function TransactionRow({
       const data = await res.json();
       return data;
     },
-    onSuccess: (data: { results?: { transactionId: number; success?: boolean; skipped?: boolean }[] }) => {
+    onSuccess: (data: { results?: { transactionId: number; success?: boolean; skipped?: boolean; duplicateWarning?: boolean }[] }) => {
       const result = data?.results?.[0];
       if (result?.skipped) {
         toast({ title: "Już przypisano", description: "Ta transakcja była już wcześniej przypisana" });
+      } else if (result?.success) {
+        toast({ title: "Przypisano", description: "Transakcja przypisana do kosztów" });
+      } else if (result?.duplicateWarning) {
+        toast({ title: "Duplikat", description: "Transakcja nie została przypisana — identyczna realizacja już istnieje", variant: "destructive" });
       } else {
         toast({ title: "Przypisano", description: "Transakcja przypisana do kosztów" });
       }
