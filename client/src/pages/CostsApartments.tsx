@@ -136,10 +136,11 @@ async function dbBulkSaveCells(cells: { year: number; entryId: string; category:
   if (cells.length === 0) return;
   const CHUNK = 500;
   for (let i = 0; i < cells.length; i += CHUNK) {
-    await fetch('/api/apt-cost-data/bulk', {
+    const res = await fetch('/api/apt-cost-data/bulk', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, credentials: 'include',
       body: JSON.stringify({ cells: cells.slice(i, i + CHUNK) }),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   }
 }
 async function dbSaveSettings(entryId: string, settings: Partial<{ categories: string[]; colors: Record<string, { color: string; archived?: boolean }>; entryColor: string; sortOrder: string[] }>) {
@@ -806,7 +807,9 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     setResetEntryDialog(null);
     try {
       await fetch(`/api/apt-cost-data?year=${year}&entryId=${entryId}`, { method: 'DELETE', credentials: 'include', headers: { ...getAuthHeaders() } });
+      await dbSaveSettings(entryId, { categories: [], colors: {}, sortOrder: [] });
       queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-data', year] });
+      queryClient.invalidateQueries({ queryKey: ['/api/apt-cost-settings'] });
     } catch (err) { console.error('Błąd resetu:', err); }
     toast({ title: "Zresetowano dane", description: "Koszty zostały usunięte dla wybranego apartamentu i roku" });
   }, [year, data, categoriesMap, queryClient, toast]);

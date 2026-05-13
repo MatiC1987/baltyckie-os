@@ -127,8 +127,8 @@ function apiRowsToCellData(rows: Array<{ catId: string; itemIdx: number; month: 
   for (const r of rows) {
     const p = Number(r.prognoza) || 0;
     const rv = Number(r.realized) || 0;
-    if (p !== 0) out[makeCellKey(r.catId, r.itemIdx, r.month, "prognoza")] = p;
-    if (rv !== 0) out[makeCellKey(r.catId, r.itemIdx, r.month, "rzeczywiste")] = rv;
+    out[makeCellKey(r.catId, r.itemIdx, r.month, "prognoza")] = p;
+    out[makeCellKey(r.catId, r.itemIdx, r.month, "rzeczywiste")] = rv;
   }
   return out;
 }
@@ -393,6 +393,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   }, [dbCategories]);
 
   useEffect(() => {
+    if (Object.keys(pendingCellsRef.current).length > 0) return;
     setCellData(baseDbCellData);
     if (Object.keys(baseDbCellData).length === 0 && !localStorage.getItem(`migrated-op-cost-to-db-v1-${selectedYear}`)) {
       const legacy = _legacyLoadData(selectedYear);
@@ -414,13 +415,22 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
   const pendingCellsRef = useRef<Record<CellKey, number>>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const flushPendingCells = useCallback((year: number) => {
+  const flushPendingCells = useCallback(async (year: number) => {
     const pending = { ...pendingCellsRef.current };
     if (Object.keys(pending).length === 0) return;
-    pendingCellsRef.current = {};
     const payload = cellDataToBulkPayload(year, pending);
-    fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, credentials: "include", body: JSON.stringify({ cells: payload }) })
-      .then(() => queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data", year] }));
+    try {
+      const res = await fetch("/api/op-cost-data/bulk", { method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, credentials: "include", body: JSON.stringify({ cells: payload }) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      for (const key of Object.keys(pending)) {
+        if (pendingCellsRef.current[key] === pending[key]) {
+          delete pendingCellsRef.current[key];
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data", year] });
+    } catch (err) {
+      console.error("Błąd zapisu komórek operacyjnych:", err);
+    }
   }, []);
 
   const queueCellSave = useCallback((key: CellKey, val: number, year: number) => {
@@ -658,9 +668,9 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     if (key.endsWith("__prognoza") && key in serverForecastLookup) {
       return serverForecastLookup[key];
     }
-    if (key in cellData && cellData[key] !== 0) return cellData[key];
+    if (key in cellData) return cellData[key];
     if (key in scheduleOverlay) return scheduleOverlay[key];
-    return cellData[key] || 0;
+    return 0;
   }, [cellData, scheduleOverlay, serverForecastLookup]);
 
   const parseCellKey = useCallback((key: CellKey) => {
@@ -675,7 +685,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
       return;
     }
     setEditingCell(key);
-    const currentValue = cellData[key] || scheduleOverlay[key] || 0;
+    const currentValue = key in cellData ? cellData[key] : (scheduleOverlay[key] || 0);
     setEditValue(currentValue ? currentValue.toString() : "");
   }, [cellData, serverForecastLookup, scheduleOverlay]);
 
@@ -721,11 +731,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
         return;
       }
       const newData = { ...cellData };
-      if (val === 0) {
-        delete newData[editingCell];
-      } else {
-        newData[editingCell] = val;
-      }
+      newData[editingCell] = val;
       setCellData(newData);
       queueCellSave(editingCell, val, selectedYear);
       if (val > 0 && editingCell.endsWith("__rzeczywiste")) {
@@ -854,6 +860,7 @@ export function CostsExpensesContent({ embedded = false, externalYear, onTotalsC
     fetch(`/api/op-cost-data/item/${encodeURIComponent(catId)}/${itemIdx}`, {
       method: "DELETE",
       credentials: "include",
+      headers: { ...getAuthHeaders() },
     }).then(() => {
       queryClient.invalidateQueries({ queryKey: ["/api/op-cost-data"] });
       queryClient.invalidateQueries({ queryKey: ["/api/operational-cost-forecasts"] });
