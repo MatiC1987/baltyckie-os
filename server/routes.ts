@@ -13029,7 +13029,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           const existing = opRows.find(r => r.catId === a.catId && r.itemIdx === a.itemIdx && r.month === txMonth);
           const currentRealized = Number(existing?.realized) || 0;
 
-          if (Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
+          if (!a.forceAmount && Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
             results.push({
               transactionId: a.transactionId,
               duplicateWarning: true,
@@ -13064,7 +13064,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           const existing = aptRows.find(r => r.entryId === a.entryId && r.category === a.category && r.month === txMonth);
           const currentRealized = Number(existing?.realized) || 0;
 
-          if (Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
+          if (!a.forceAmount && Math.abs(currentRealized - absAmount) < 0.01 && currentRealized > 0) {
             results.push({
               transactionId: a.transactionId,
               duplicateWarning: true,

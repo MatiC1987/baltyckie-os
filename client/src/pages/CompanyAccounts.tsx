@@ -209,7 +209,7 @@ function TransactionRow({
   const assignMutation = useMutation({
     mutationFn: async () => {
       if (!wizardSelection) throw new Error("Wybierz pozycję kosztową");
-      await apiRequest("POST", "/api/bank-transactions/import-to-targets", {
+      const res = await apiRequest("POST", "/api/bank-transactions/import-to-targets", {
         assignments: [{
           transactionId: tx.id,
           targetType: wizardSelection.targetType,
@@ -221,9 +221,16 @@ function TransactionRow({
           forceAmount: true,
         }],
       });
+      const data = await res.json();
+      return data;
     },
-    onSuccess: () => {
-      toast({ title: "Przypisano", description: "Transakcja przypisana do kosztów" });
+    onSuccess: (data: { results?: { transactionId: number; success?: boolean; skipped?: boolean }[] }) => {
+      const result = data?.results?.[0];
+      if (result?.skipped) {
+        toast({ title: "Już przypisano", description: "Ta transakcja była już wcześniej przypisana" });
+      } else {
+        toast({ title: "Przypisano", description: "Transakcja przypisana do kosztów" });
+      }
       setWizardSelection(null);
       onAssigned();
     },
