@@ -2207,7 +2207,7 @@ export class DatabaseStorage implements IStorage {
       const hasR = c.realized !== undefined && c.realized !== null;
       if (hasP && hasR) bothFields.push(c);
       else if (hasP) prognozaOnly.push({ ...c, realized: "0" });
-      else if (hasR) realizedOnly.push({ ...c, prognoza: "0" });
+      else if (hasR) realizedOnly.push({ ...c, prognoza: null });
       else bothFields.push({ ...c, prognoza: "0", realized: "0" });
     }
     const BATCH = 200;

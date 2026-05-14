@@ -4348,7 +4348,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           const newRealized = currentRealized + absAmount;
           await storage.upsertOpCostCells([{
             year: txYear, catId: a.catId, itemIdx: a.itemIdx, month: txMonth,
-            prognoza: existing?.prognoza ? Number(existing.prognoza) : undefined,
+            prognoza: existing?.prognoza != null ? Number(existing.prognoza) : undefined,
             realized: newRealized,
           }]);
 
@@ -4490,7 +4490,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           const newRealized = Math.max(0, (Number(existing.realized) || 0) - absAmount);
           await storage.upsertOpCostCells([{
             year: txYear, catId: entry.costTargetCatId, itemIdx: entry.costTargetItemIdx!, month: txMonth,
-            prognoza: existing.prognoza ? Number(existing.prognoza) : undefined,
+            prognoza: existing.prognoza != null ? Number(existing.prognoza) : undefined,
             realized: newRealized,
           }]);
         }
@@ -4549,7 +4549,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
           const newRealized = Math.max(0, (Number(existing.realized) || 0) - absAmount);
           await storage.upsertOpCostCells([{
             year: txYear, catId: tx.costTargetCatId!, itemIdx: tx.costTargetItemIdx!, month: txMonth,
-            prognoza: existing.prognoza ? Number(existing.prognoza) : undefined,
+            prognoza: existing.prognoza != null ? Number(existing.prognoza) : undefined,
             realized: newRealized,
           }]);
         }
@@ -13046,7 +13046,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
             catId: a.catId,
             itemIdx: a.itemIdx,
             month: txMonth,
-            prognoza: existing?.prognoza ? Number(existing.prognoza) : undefined,
+            prognoza: existing?.prognoza != null ? Number(existing.prognoza) : undefined,
             realized: newRealized,
           }]);
 
@@ -13192,7 +13192,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
 
           await storage.upsertOpCostCells([{
             year: txYear, catId: a.catId, itemIdx: a.itemIdx, month: txMonth,
-            prognoza: existing?.prognoza ? Number(existing.prognoza) : undefined,
+            prognoza: existing?.prognoza != null ? Number(existing.prognoza) : undefined,
             realized: newRealized,
           }]);
 

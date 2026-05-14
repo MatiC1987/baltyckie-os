@@ -125,10 +125,8 @@ function _legacyLoadCategories(): CostCategory[] {
 function apiRowsToCellData(rows: Array<{ catId: string; itemIdx: number; month: number; prognoza: string | null; realized: string | null }>): Record<CellKey, number> {
   const out: Record<CellKey, number> = {};
   for (const r of rows) {
-    const p = Number(r.prognoza) || 0;
-    const rv = Number(r.realized) || 0;
-    out[makeCellKey(r.catId, r.itemIdx, r.month, "prognoza")] = p;
-    out[makeCellKey(r.catId, r.itemIdx, r.month, "rzeczywiste")] = rv;
+    if (r.prognoza !== null) out[makeCellKey(r.catId, r.itemIdx, r.month, "prognoza")] = Number(r.prognoza);
+    if (r.realized !== null) out[makeCellKey(r.catId, r.itemIdx, r.month, "rzeczywiste")] = Number(r.realized);
   }
   return out;
 }
