@@ -36,8 +36,9 @@ import {
   Clock, Users, Coffee, AlertTriangle, ChevronLeft, ChevronRight,
   Check, X, Eye, EyeOff, RefreshCw, MapPin, Pencil, Trash2, Plus,
   KeyRound, CalendarRange, Palmtree, FileBarChart, Navigation,
-  Search, Award, BarChart3, ArrowUpDown,
+  Search, Award, BarChart3, ArrowUpDown, Car,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   BarChart,
@@ -1459,6 +1460,280 @@ function StatystykiTab() {
   );
 }
 
+function KilometrówkaTab() {
+  const { toast } = useToast();
+  const today = new Date().toISOString().slice(0, 10);
+  const firstOfMonth = today.slice(0, 7) + "-01";
+
+  const [filterEmpId, setFilterEmpId] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState(firstOfMonth);
+  const [dateTo, setDateTo] = useState(today);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editEntry, setEditEntry] = useState<any | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [form, setForm] = useState({ employeeId: "", date: today, fromLocation: "", toLocation: "", distanceKm: "", purpose: "" });
+
+  const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/employees"] });
+
+  const buildParams = () => {
+    const p = new URLSearchParams({ from: dateFrom, to: dateTo });
+    if (filterEmpId !== "all") p.set("employeeId", filterEmpId);
+    return p.toString();
+  };
+
+  const { data: entries = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/mileage-entries", filterEmpId, dateFrom, dateTo],
+    queryFn: async () => { const r = await apiRequest("GET", `/api/mileage-entries?${buildParams()}`); return r.json(); },
+  });
+
+  const totalKm = entries.reduce((acc, e) => acc + parseFloat(e.distanceKm || "0"), 0);
+  const empMap = new Map(employees.map(e => [e.id, e]));
+  const perEmployee = (employees as Employee[])
+    .map(emp => ({ emp, km: entries.filter(e => e.employeeId === emp.id).reduce((s, e) => s + parseFloat(e.distanceKm || "0"), 0) }))
+    .filter(x => x.km > 0)
+    .sort((a, b) => b.km - a.km);
+
+  const setThisMonth = () => {
+    const d = new Date();
+    setDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
+    setDateTo(today);
+  };
+  const setPrevMonth = () => {
+    const d = new Date(); d.setDate(0);
+    const last = d.toISOString().slice(0, 10);
+    d.setDate(1);
+    setDateFrom(d.toISOString().slice(0, 10));
+    setDateTo(last);
+  };
+  const setThisYear = () => { setDateFrom(`${new Date().getFullYear()}-01-01`); setDateTo(today); };
+
+  const openAdd = () => {
+    setEditEntry(null);
+    setForm({ employeeId: "", date: today, fromLocation: "", toLocation: "", distanceKm: "", purpose: "" });
+    setDialogOpen(true);
+  };
+  const openEdit = (entry: any) => {
+    setEditEntry(entry);
+    setForm({ employeeId: String(entry.employeeId), date: entry.date, fromLocation: entry.fromLocation, toLocation: entry.toLocation, distanceKm: String(entry.distanceKm), purpose: entry.purpose || "" });
+    setDialogOpen(true);
+  };
+
+  const saveMut = useMutation({
+    mutationFn: async (data: any) => {
+      const r = editEntry
+        ? await apiRequest("PUT", `/api/mileage-entries/${editEntry.id}`, data)
+        : await apiRequest("POST", "/api/mileage-entries", data);
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || "Błąd zapisu"); }
+      return r.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/mileage-entries"] }); setDialogOpen(false); toast({ title: editEntry ? "Wpis zaktualizowany" : "Wpis dodany" }); },
+    onError: (err: any) => toast({ title: "Błąd zapisu", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/mileage-entries/${id}`); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/mileage-entries"] }); setDeleteId(null); toast({ title: "Wpis usunięty" }); },
+  });
+
+  const handleSave = () => {
+    if (!form.employeeId || !form.date || !form.fromLocation || !form.toLocation || !form.distanceKm) {
+      toast({ title: "Uzupełnij wymagane pola", variant: "destructive" }); return;
+    }
+    saveMut.mutate({ employeeId: Number(form.employeeId), date: form.date, fromLocation: form.fromLocation, toLocation: form.toLocation, distanceKm: form.distanceKm, purpose: form.purpose || null });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 items-end">
+        <div className="flex gap-1">
+          <Button size="sm" variant="outline" onClick={setThisMonth} data-testid="button-km-this-month">Ten miesiąc</Button>
+          <Button size="sm" variant="outline" onClick={setPrevMonth} data-testid="button-km-prev-month">Poprzedni</Button>
+          <Button size="sm" variant="outline" onClick={setThisYear} data-testid="button-km-this-year">Ten rok</Button>
+        </div>
+        <div className="flex gap-2 items-center">
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36 h-8 text-sm" data-testid="input-km-date-from" />
+          <span className="text-muted-foreground text-sm">–</span>
+          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36 h-8 text-sm" data-testid="input-km-date-to" />
+        </div>
+        <Select value={filterEmpId} onValueChange={setFilterEmpId}>
+          <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-km-employee">
+            <SelectValue placeholder="Wszyscy pracownicy" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Wszyscy pracownicy</SelectItem>
+            {(employees as Employee[]).filter(e => e.status === "AKTYWNY").map(e => (
+              <SelectItem key={e.id} value={String(e.id)}>{e.firstName} {e.lastName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button size="sm" onClick={openAdd} data-testid="button-add-km">
+          <Plus className="h-4 w-4 mr-1" /> Dodaj wpis
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex items-center justify-center h-10 w-10 rounded-md bg-blue-500/10">
+              <Car className="h-5 w-5 text-blue-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Łączne km</p>
+              <p className="text-2xl font-bold" data-testid="text-km-total">{totalKm.toFixed(1)} km</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex items-center justify-center h-10 w-10 rounded-md bg-emerald-500/10">
+              <Navigation className="h-5 w-5 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Liczba przejazdów</p>
+              <p className="text-2xl font-bold" data-testid="text-km-count">{entries.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground mb-2">Podział per pracownik</p>
+            {perEmployee.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Brak danych</p>
+            ) : (
+              <div className="space-y-1">
+                {perEmployee.slice(0, 4).map(({ emp, km }) => (
+                  <div key={emp.id} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground truncate">{emp.firstName} {emp.lastName}</span>
+                    <span className="font-medium ml-2">{km.toFixed(1)} km</span>
+                  </div>
+                ))}
+                {perEmployee.length > 4 && <p className="text-xs text-muted-foreground">+{perEmployee.length - 4} więcej</p>}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Pracownik</TableHead>
+                  <TableHead>Skąd</TableHead>
+                  <TableHead>Dokąd</TableHead>
+                  <TableHead className="text-right">km</TableHead>
+                  <TableHead>Cel</TableHead>
+                  <TableHead className="text-right">Akcje</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                      <Car className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      Brak wpisów kilometrówki w wybranym okresie
+                    </TableCell>
+                  </TableRow>
+                ) : entries.map((entry: any) => {
+                  const emp = empMap.get(entry.employeeId) as Employee | undefined;
+                  return (
+                    <TableRow key={entry.id} data-testid={`row-km-${entry.id}`}>
+                      <TableCell className="text-sm">{entry.date}</TableCell>
+                      <TableCell className="text-sm font-medium">{emp ? `${emp.firstName} ${emp.lastName}` : `#${entry.employeeId}`}</TableCell>
+                      <TableCell className="text-sm">{entry.fromLocation}</TableCell>
+                      <TableCell className="text-sm">{entry.toLocation}</TableCell>
+                      <TableCell className="text-sm text-right font-medium">{parseFloat(entry.distanceKm).toFixed(1)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{entry.purpose || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(entry)} data-testid={`button-edit-km-${entry.id}`}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteId(entry.id)} data-testid={`button-delete-km-${entry.id}`}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editEntry ? "Edytuj wpis kilometrówki" : "Dodaj wpis kilometrówki"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium">Pracownik *</label>
+              <Select value={form.employeeId} onValueChange={v => setForm(f => ({ ...f, employeeId: v }))}>
+                <SelectTrigger data-testid="select-km-form-employee"><SelectValue placeholder="Wybierz pracownika" /></SelectTrigger>
+                <SelectContent>
+                  {(employees as Employee[]).filter(e => e.status === "AKTYWNY").map(e => (
+                    <SelectItem key={e.id} value={String(e.id)}>{e.firstName} {e.lastName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Data *</label>
+              <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} data-testid="input-km-form-date" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Skąd *</label>
+                <Input value={form.fromLocation} onChange={e => setForm(f => ({ ...f, fromLocation: e.target.value }))} placeholder="np. Gdańsk, biuro" data-testid="input-km-form-from" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Dokąd *</label>
+                <Input value={form.toLocation} onChange={e => setForm(f => ({ ...f, toLocation: e.target.value }))} placeholder="np. Gdynia" data-testid="input-km-form-to" />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Odległość (km) *</label>
+              <Input type="number" step="0.1" min="0" value={form.distanceKm} onChange={e => setForm(f => ({ ...f, distanceKm: e.target.value }))} placeholder="np. 25.5" data-testid="input-km-form-distance" />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Cel podróży</label>
+              <Input value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} placeholder="np. spotkanie z klientem" data-testid="input-km-form-purpose" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Anuluj</Button>
+            <Button onClick={handleSave} disabled={saveMut.isPending} data-testid="button-save-km">
+              {saveMut.isPending ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-1 inline-block" /> : null}
+              Zapisz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteId} onOpenChange={open => { if (!open) setDeleteId(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Usuń wpis</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Czy na pewno chcesz usunąć ten wpis kilometrówki? Operacja jest nieodwracalna.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Anuluj</Button>
+            <Button variant="destructive" onClick={() => deleteId && deleteMut.mutate(deleteId)} disabled={deleteMut.isPending} data-testid="button-confirm-delete-km">
+              Usuń
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function TimeAdmin() {
   const [activeTab, setActiveTab] = useState("dashboard");
 
@@ -1491,6 +1766,9 @@ export default function TimeAdmin() {
           <TabsTrigger value="statystyki" data-testid="tab-statystyki">
             <BarChart3 className="h-4 w-4 mr-1 hidden sm:inline" />Statystyki
           </TabsTrigger>
+          <TabsTrigger value="kilometrowka" data-testid="tab-kilometrowka">
+            <Car className="h-4 w-4 mr-1 hidden sm:inline" />Kilometrówka
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard" className="mt-4">
           <DashboardTab />
@@ -1518,6 +1796,9 @@ export default function TimeAdmin() {
         </TabsContent>
         <TabsContent value="statystyki" className="mt-4">
           <StatystykiTab />
+        </TabsContent>
+        <TabsContent value="kilometrowka" className="mt-4">
+          <KilometrówkaTab />
         </TabsContent>
       </Tabs>
     </div>

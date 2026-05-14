@@ -13,7 +13,7 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import GrafikEnhanced from "@/components/GrafikEnhanced";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp, Pencil, Navigation, CheckCircle, AlertTriangle, Eye, EyeOff, BarChart3, ArrowUpDown, Search, Award } from "lucide-react";
+import { Clock, Users, Calendar, FileText, MapPin, Key, Loader2, Check, X, ChevronLeft, ChevronRight, Trash2, Edit, Download, AlertCircle, Timer, TrendingUp, Pencil, Navigation, CheckCircle, AlertTriangle, Eye, EyeOff, BarChart3, ArrowUpDown, Search, Award, Car } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import {
   BarChart,
@@ -34,7 +34,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-type RCPTab = "dashboard" | "obecnosci" | "grafik" | "urlopy" | "raporty" | "lokalizacje" | "gps" | "piny" | "statystyki";
+type RCPTab = "dashboard" | "obecnosci" | "grafik" | "urlopy" | "raporty" | "lokalizacje" | "gps" | "piny" | "statystyki" | "kilometrowka";
 
 const TAB_ITEMS: { key: RCPTab; label: string; icon: any }[] = [
   { key: "dashboard", label: "Dashboard", icon: Clock },
@@ -46,6 +46,7 @@ const TAB_ITEMS: { key: RCPTab; label: string; icon: any }[] = [
   { key: "gps", label: "Śledzenie GPS", icon: Navigation },
   { key: "piny", label: "PINy", icon: Key },
   { key: "statystyki", label: "Statystyki", icon: BarChart3 },
+  { key: "kilometrowka", label: "Kilometrówka", icon: Car },
 ];
 
 export default function RecepcjaRCP() {
@@ -85,6 +86,7 @@ export default function RecepcjaRCP() {
       {tab === "gps" && <RCPGpsTracking />}
       {tab === "piny" && <RCPPiny />}
       {tab === "statystyki" && <RCPStatystyki />}
+      {tab === "kilometrowka" && <RCPKilometrowka />}
     </div>
   );
 }
@@ -1859,6 +1861,166 @@ function AddHourlyEmployeeDialog({ onSuccess }: { onSuccess: () => void }) {
         </div>
       )}
     </>
+  );
+}
+
+function RCPKilometrowka() {
+  const today = new Date().toISOString().slice(0, 10);
+  const firstOfMonth = today.slice(0, 7) + "-01";
+
+  const [filterEmpId, setFilterEmpId] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState(firstOfMonth);
+  const [dateTo, setDateTo] = useState(today);
+
+  const { data: employees = [] } = useQuery<any[]>({
+    queryKey: ["/api/recepcja/rcp/employees"],
+    queryFn: async () => { const r = await recepcjaFetch("GET", "/api/recepcja/rcp/employees"); return r.json(); },
+  });
+
+  const buildParams = () => {
+    const p = new URLSearchParams({ from: dateFrom, to: dateTo });
+    if (filterEmpId !== "all") p.set("employeeId", filterEmpId);
+    return p.toString();
+  };
+
+  const { data: entries = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/recepcja/mileage", filterEmpId, dateFrom, dateTo],
+    queryFn: async () => { const r = await recepcjaFetch("GET", `/api/recepcja/mileage?${buildParams()}`); return r.json(); },
+  });
+
+  const totalKm = entries.reduce((acc, e) => acc + parseFloat(e.distanceKm || "0"), 0);
+  const empMap = new Map(employees.map((e: any) => [e.id, e]));
+  const perEmployee = employees
+    .map((emp: any) => ({ emp, km: entries.filter(e => e.employeeId === emp.id).reduce((s, e) => s + parseFloat(e.distanceKm || "0"), 0) }))
+    .filter((x: any) => x.km > 0)
+    .sort((a: any, b: any) => b.km - a.km);
+
+  const setThisMonth = () => {
+    const d = new Date();
+    setDateFrom(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
+    setDateTo(today);
+  };
+  const setPrevMonth = () => {
+    const d = new Date(); d.setDate(0);
+    const last = d.toISOString().slice(0, 10);
+    d.setDate(1);
+    setDateFrom(d.toISOString().slice(0, 10));
+    setDateTo(last);
+  };
+  const setThisYear = () => { setDateFrom(`${new Date().getFullYear()}-01-01`); setDateTo(today); };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 items-end">
+        <div className="flex gap-1">
+          <Button size="sm" variant="outline" onClick={setThisMonth} data-testid="button-km-this-month">Ten miesiąc</Button>
+          <Button size="sm" variant="outline" onClick={setPrevMonth} data-testid="button-km-prev-month">Poprzedni</Button>
+          <Button size="sm" variant="outline" onClick={setThisYear} data-testid="button-km-this-year">Ten rok</Button>
+        </div>
+        <div className="flex gap-2 items-center">
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36 h-8 text-sm" data-testid="input-km-date-from" />
+          <span className="text-muted-foreground text-sm">–</span>
+          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36 h-8 text-sm" data-testid="input-km-date-to" />
+        </div>
+        <Select value={filterEmpId} onValueChange={setFilterEmpId}>
+          <SelectTrigger className="w-48 h-8 text-sm" data-testid="select-km-employee">
+            <SelectValue placeholder="Wszyscy pracownicy" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Wszyscy pracownicy</SelectItem>
+            {employees.map((e: any) => (
+              <SelectItem key={e.id} value={String(e.id)}>{e.firstName} {e.lastName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex items-center justify-center h-10 w-10 rounded-md bg-blue-500/10">
+              <Car className="h-5 w-5 text-blue-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Łączne km</p>
+              <p className="text-2xl font-bold" data-testid="text-km-total">{totalKm.toFixed(1)} km</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex items-center justify-center h-10 w-10 rounded-md bg-emerald-500/10">
+              <Navigation className="h-5 w-5 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Liczba przejazdów</p>
+              <p className="text-2xl font-bold" data-testid="text-km-count">{entries.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground mb-2">Podział per pracownik</p>
+            {perEmployee.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Brak danych</p>
+            ) : (
+              <div className="space-y-1">
+                {perEmployee.slice(0, 4).map(({ emp, km }: any) => (
+                  <div key={emp.id} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground truncate">{emp.firstName} {emp.lastName}</span>
+                    <span className="font-medium ml-2">{km.toFixed(1)} km</span>
+                  </div>
+                ))}
+                {perEmployee.length > 4 && <p className="text-xs text-muted-foreground">+{perEmployee.length - 4} więcej</p>}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Pracownik</TableHead>
+                  <TableHead>Skąd</TableHead>
+                  <TableHead>Dokąd</TableHead>
+                  <TableHead className="text-right">km</TableHead>
+                  <TableHead>Cel</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                      <Car className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      Brak wpisów kilometrówki w wybranym okresie
+                    </TableCell>
+                  </TableRow>
+                ) : entries.map((entry: any) => {
+                  const emp: any = empMap.get(entry.employeeId);
+                  return (
+                    <TableRow key={entry.id} data-testid={`row-km-${entry.id}`}>
+                      <TableCell className="text-sm">{entry.date}</TableCell>
+                      <TableCell className="text-sm font-medium">{emp ? `${emp.firstName} ${emp.lastName}` : `#${entry.employeeId}`}</TableCell>
+                      <TableCell className="text-sm">{entry.fromLocation}</TableCell>
+                      <TableCell className="text-sm">{entry.toLocation}</TableCell>
+                      <TableCell className="text-sm text-right font-medium">{parseFloat(entry.distanceKm).toFixed(1)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{entry.purpose || "—"}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
