@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -101,11 +101,12 @@ export default function Customers() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-  // Debounce search
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleSearchChange = (v: string) => {
     setSearch(v);
-    clearTimeout((handleSearchChange as any)._t);
-    (handleSearchChange as any)._t = setTimeout(() => setDebouncedSearch(v), 350);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(v), 350);
   };
 
   const queryParams = useMemo(() => {
@@ -139,9 +140,9 @@ export default function Customers() {
   });
 
   const { data: stayHistory, isLoading: isLoadingHistory } = useQuery<StayHistoryData>({
-    queryKey: ["/api/customers", selectedCustomer?.id, "stay-history"],
+    queryKey: ["/api/customers", selectedCustomer?.id, "reservations"],
     queryFn: async () => {
-      const res = await fetch(`/api/customers/${selectedCustomer!.id}/stay-history`, { credentials: "include" });
+      const res = await fetch(`/api/customers/${selectedCustomer!.id}/reservations`, { credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },

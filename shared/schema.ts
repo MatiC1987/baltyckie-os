@@ -50,7 +50,7 @@ export const reservations = pgTable("reservations", {
   status: text("status").notNull(), // 'DO_OPLACENIA', 'PRZYJETA', 'ANULOWANA'
   notes: text("notes"),
   source: text("source"),
-  customerId: integer("customer_id"),
+  customerId: integer("customer_id").references(() => customers.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1162,6 +1162,7 @@ export const customers = pgTable("customers", {
   totalRevenue: numeric("total_revenue", { precision: 12, scale: 2 }).default("0"),
   lastStayDate: date("last_stay_date"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const customersRelations = relations(customers, () => ({}));

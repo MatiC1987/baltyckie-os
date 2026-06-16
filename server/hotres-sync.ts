@@ -8,6 +8,11 @@ export interface HotResSyncResult {
   lastSync: string;
   error?: string;
   log: string[];
+  // Customer-specific stats
+  customersCreated: number;
+  customersUpdated: number;
+  reservationsLinked: number;
+  duplicates: number;
 }
 
 function normalizeApiStatus(val: string): string {
@@ -105,6 +110,10 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
   let updated = 0;
   let skipped = 0;
   let newApartments = 0;
+  let customersCreated = 0;
+  let customersUpdated = 0;
+  let reservationsLinked = 0;
+  let duplicates = 0;
   const log: string[] = [];
   const updatedCustomerIds = new Set<number>();
 
@@ -192,7 +201,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
     let customerId: number | null = null;
     if (firstName && lastName) {
       try {
-        const { customer } = await storage.upsertCustomer({
+        const { customer, isNew } = await storage.upsertCustomer({
           firstName,
           lastName,
           ...(phone && { phone }),
@@ -206,6 +215,12 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
         });
         customerId = customer.id;
         updatedCustomerIds.add(customer.id);
+        if (isNew) {
+          customersCreated++;
+        } else {
+          customersUpdated++;
+          duplicates++;
+        }
       } catch (e: any) {
         // Non-fatal: continue without customer link
         log.push(`Uwaga: nie udało się upsert klienta ${guestName}: ${e.message}`);
@@ -231,6 +246,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
           ...(customerId && { customerId }),
         });
         updated++;
+        if (customerId) reservationsLinked++;
       } else {
         await storage.createReservation({
           reservationNumber: resNumber,
@@ -249,6 +265,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
           ...(customerId && { customerId }),
         });
         imported++;
+        if (customerId) reservationsLinked++;
         if (isGroupReservation) {
           const names = resolvedAptIds.map(id => allApartments.find(a => a.id === id)?.name || `ID:${id}`).join(", ");
           log.push(`Rezerwacja grupowa ${resNumber}: ${names}`);
@@ -295,7 +312,10 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
     details: `API sync: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`,
   });
 
-  return { imported, updated, skipped, newApartments, lastSync, log };
+  return {
+    imported, updated, skipped, newApartments, lastSync, log,
+    customersCreated, customersUpdated, reservationsLinked, duplicates,
+  };
 }
 
 let syncInterval: ReturnType<typeof setInterval> | null = null;

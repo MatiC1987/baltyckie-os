@@ -8834,11 +8834,12 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     try {
       const { syncHotResReservations } = await import('./hotres-sync');
       const result = await syncHotResReservations();
-      const customers = await storage.getCustomers({ source: 'hotres' });
       res.json({
         success: true,
-        reservationsSynced: result.imported + result.updated,
-        customersTotal: customers.length,
+        created: result.customersCreated,
+        updated: result.customersUpdated,
+        linked: result.reservationsLinked,
+        duplicates: result.duplicates,
         error: result.error,
         log: result.log,
       });
@@ -13557,23 +13558,18 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
-  // ==================== CRM STAY HISTORY ====================
-  app.get("/api/customers/:id/stay-history", async (req, res) => {
+  // ==================== CRM CUSTOMER RESERVATIONS ====================
+  app.get("/api/customers/:id/reservations", isAuthenticated, async (req, res) => {
     try {
-      const customer = await storage.getCustomer(parseInt(req.params.id));
+      const customerId = parseInt(req.params.id);
+      const customer = await storage.getCustomer(customerId);
       if (!customer) return res.status(404).json({ message: "Nie znaleziono klienta" });
 
-      const allReservations = await storage.getReservations({});
-      const fullName = `${customer.firstName} ${customer.lastName}`.toLowerCase();
-      const matched = allReservations.filter(r => {
-        const gn = (r.guestName || "").toLowerCase();
-        return gn === fullName || gn.includes(customer.lastName.toLowerCase());
-      });
-
+      const linked = await storage.getCustomerReservations(customerId);
       const apartments = await storage.getApartments();
       const aptMap = new Map(apartments.map(a => [a.id, a.name]));
 
-      const history = matched.map(r => ({
+      const history = linked.map(r => ({
         id: r.id,
         reservationNumber: r.reservationNumber,
         apartmentId: r.apartmentId,
@@ -13583,15 +13579,21 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         price: r.price,
         status: r.status,
         source: r.source,
-      })).sort((a, b) => b.startDate.localeCompare(a.startDate));
+      }));
 
-      const totalRevenue = matched.reduce((s, r) => s + parseFloat(r.price || "0"), 0);
-      const totalStays = matched.length;
+      const confirmed = linked.filter(r => r.status !== "ANULOWANA");
+      const totalRevenue = confirmed.reduce((s, r) => s + parseFloat(r.price || "0"), 0);
+      const totalStays = confirmed.length;
 
       res.json({ history, totalRevenue, totalStays });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // Legacy alias kept for backwards compatibility
+  app.get("/api/customers/:id/stay-history", isAuthenticated, async (req, res) => {
+    res.redirect(307, `/api/customers/${req.params.id}/reservations`);
   });
 
   // ==================== RCP EMPLOYEE STATS ====================
@@ -14538,6 +14540,25 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           log.push(`Rez. ${hr.reservationNumber}: doliczono sprzątanie ${totalCleaningFee.toFixed(2)} zł (${basePrice.toFixed(2)} → ${adjustedPrice})`);
         }
 
+        // Upsert customer from CSV row
+        let csvCustomerId: number | null = null;
+        if (hr.guestName && hr.guestName.trim()) {
+          const parts = hr.guestName.trim().split(/\s+/);
+          const csvFirstName = parts.slice(0, -1).join(" ") || parts[0] || "";
+          const csvLastName = parts.length > 1 ? parts[parts.length - 1] : "";
+          if (csvFirstName && csvLastName) {
+            try {
+              const { customer } = await storage.upsertCustomer({
+                firstName: csvFirstName,
+                lastName: csvLastName,
+                source: "hotres_csv",
+                lastStayDate: hr.endDate || undefined,
+              });
+              csvCustomerId = customer.id;
+            } catch (_) { /* non-fatal */ }
+          }
+        }
+
         const existing = await storage.getReservationByNumber(hr.reservationNumber);
         if (existing) {
           await storage.updateReservation(existing.id, {
@@ -14552,6 +14573,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
             surcharge: cleaningSurcharge,
             status: hr.status,
             ...(hr.source && { source: hr.source }),
+            ...(csvCustomerId && { customerId: csvCustomerId }),
           });
           updated++;
           continue;
@@ -14571,6 +14593,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           surcharge: cleaningSurcharge,
           status: hr.status,
           ...(hr.source && { source: hr.source }),
+          ...(csvCustomerId && { customerId: csvCustomerId }),
         });
         imported++;
         if (isGroupReservation) {

@@ -427,6 +427,7 @@ export interface IStorage {
   // Customers (CRM)
   getCustomers(filters?: { search?: string; marketingConsent?: boolean; source?: string }): Promise<Customer[]>;
   getCustomer(id: number): Promise<Customer | undefined>;
+  getCustomerReservations(customerId: number): Promise<Reservation[]>;
   createCustomer(data: InsertCustomer): Promise<Customer>;
   updateCustomer(id: number, data: Partial<InsertCustomer>): Promise<Customer>;
   deleteCustomer(id: number): Promise<void>;
@@ -2152,6 +2153,12 @@ export class DatabaseStorage implements IStorage {
   async getCustomer(id: number): Promise<Customer | undefined> {
     const [customer] = await db.select().from(customers).where(eq(customers.id, id));
     return customer;
+  }
+
+  async getCustomerReservations(customerId: number): Promise<Reservation[]> {
+    return await db.select().from(reservations)
+      .where(eq(reservations.customerId, customerId))
+      .orderBy(desc(reservations.startDate));
   }
 
   async createCustomer(data: InsertCustomer): Promise<Customer> {
