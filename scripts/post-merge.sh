@@ -3,3 +3,4 @@ set -e
 npm install
 npm run db:push -- --force
 npx tsx scripts/migrate-bank-assignment.ts
+npx tsx scripts/backfill-customers.ts

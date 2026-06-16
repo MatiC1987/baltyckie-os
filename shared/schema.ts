@@ -50,6 +50,7 @@ export const reservations = pgTable("reservations", {
   status: text("status").notNull(), // 'DO_OPLACENIA', 'PRZYJETA', 'ANULOWANA'
   notes: text("notes"),
   source: text("source"),
+  customerId: integer("customer_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1149,8 +1150,14 @@ export const customers = pgTable("customers", {
   city: text("city"),
   postalCode: text("postal_code"),
   country: text("country").default("Polska"),
+  nationality: text("nationality"),
   segment: text("segment"),
   notes: text("notes"),
+  hotresId: text("hotres_id").unique(),
+  source: text("source").default("manual"),
+  marketingConsent: boolean("marketing_consent").default(true),
+  preferredLang: text("preferred_lang").default("pl"),
+  tags: text("tags").array(),
   totalStays: integer("total_stays").default(0),
   totalRevenue: numeric("total_revenue", { precision: 12, scale: 2 }).default("0"),
   lastStayDate: date("last_stay_date"),

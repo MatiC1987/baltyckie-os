@@ -106,6 +106,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
   let skipped = 0;
   let newApartments = 0;
   const log: string[] = [];
+  const updatedCustomerIds = new Set<number>();
 
   log.push(`Pobrano ${apiData.length} rezerwacji z HotRes API`);
 
@@ -180,6 +181,37 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
     const price = total.toFixed(2);
     const surcharge = addonsAmount.toFixed(2);
 
+    // Extract customer data from HotRes item
+    const phone = (item.phone || "").trim();
+    const email = (item.email || "").trim();
+    const nationality = (item.nationality || item.country || "").trim();
+    const street = (item.address || item.street || "").trim();
+    const city = (item.city || "").trim();
+    const hotresItemId = String(item.id || item.customer_id || "").trim();
+
+    let customerId: number | null = null;
+    if (firstName && lastName) {
+      try {
+        const { customer } = await storage.upsertCustomer({
+          firstName,
+          lastName,
+          ...(phone && { phone }),
+          ...(email && { email }),
+          ...(nationality && { nationality }),
+          ...(street && { street }),
+          ...(city && { city }),
+          ...(hotresItemId && { hotresId: `hotres_${hotresItemId}` }),
+          source: "hotres",
+          lastStayDate: endDate,
+        });
+        customerId = customer.id;
+        updatedCustomerIds.add(customer.id);
+      } catch (e: any) {
+        // Non-fatal: continue without customer link
+        log.push(`Uwaga: nie udało się upsert klienta ${guestName}: ${e.message}`);
+      }
+    }
+
     try {
       const existing = await storage.getReservationByNumber(resNumber);
       if (existing) {
@@ -196,6 +228,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
           surcharge,
           status,
           ...(source && { source }),
+          ...(customerId && { customerId }),
         });
         updated++;
       } else {
@@ -213,6 +246,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
           surcharge,
           status,
           ...(source && { source }),
+          ...(customerId && { customerId }),
         });
         imported++;
         if (isGroupReservation) {
@@ -228,6 +262,30 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
 
   if (updated > 0) log.push(`Zaktualizowano ${updated} istniejących rezerwacji`);
   log.push(`Podsumowanie: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}, nowe apt=${newApartments}`);
+
+  // Update customer stats in batch after all reservations processed
+  if (updatedCustomerIds.size > 0) {
+    try {
+      const allRes = await storage.getReservations({});
+      for (const customerId of updatedCustomerIds) {
+        const customerRes = allRes.filter(r => r.customerId === customerId);
+        const confirmed = customerRes.filter(r => r.status !== "ANULOWANA");
+        const totalStays = confirmed.length;
+        const totalRevenue = confirmed.reduce((s, r) => s + parseFloat(r.price || "0"), 0);
+        const latestStay = confirmed.map(r => r.endDate).sort().reverse()[0];
+        if (totalStays > 0) {
+          await storage.updateCustomer(customerId, {
+            totalStays,
+            totalRevenue: totalRevenue.toFixed(2),
+            ...(latestStay && { lastStayDate: latestStay }),
+          });
+        }
+      }
+      log.push(`Zaktualizowano statystyki dla ${updatedCustomerIds.size} klientów`);
+    } catch (e: any) {
+      log.push(`Uwaga: błąd aktualizacji statystyk klientów: ${e.message}`);
+    }
+  }
 
   await storage.saveImportMetadata({
     importType: "hotres_api",

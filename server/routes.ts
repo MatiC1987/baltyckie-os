@@ -8817,10 +8817,42 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
   // ==================== CUSTOMERS (CRM) ====================
   app.get('/api/customers', isAuthenticated, async (req, res) => {
     try {
-      const data = await storage.getCustomers();
+      const { search, marketingConsent, source } = req.query;
+      const filters: { search?: string; marketingConsent?: boolean; source?: string } = {};
+      if (search) filters.search = String(search);
+      if (marketingConsent === "true") filters.marketingConsent = true;
+      else if (marketingConsent === "false") filters.marketingConsent = false;
+      if (source) filters.source = String(source);
+      const data = await storage.getCustomers(filters);
       res.json(data);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/customers/import-all-hotres', isAuthenticated, async (req, res) => {
+    try {
+      const { syncHotResReservations } = await import('./hotres-sync');
+      const result = await syncHotResReservations();
+      const customers = await storage.getCustomers({ source: 'hotres' });
+      res.json({
+        success: true,
+        reservationsSynced: result.imported + result.updated,
+        customersTotal: customers.length,
+        error: result.error,
+        log: result.log,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post('/api/customers/upsert', isAuthenticated, async (req, res) => {
+    try {
+      const result = await storage.upsertCustomer(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
     }
   });
 

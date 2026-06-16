@@ -78,7 +78,7 @@ import {
   extraRevenues, ExtraRevenue, InsertExtraRevenue,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, ilike, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // Users (optional if auth handles it separately, but good to have)
@@ -425,11 +425,12 @@ export interface IStorage {
   getLoansBalance(): Promise<number>;
 
   // Customers (CRM)
-  getCustomers(): Promise<Customer[]>;
+  getCustomers(filters?: { search?: string; marketingConsent?: boolean; source?: string }): Promise<Customer[]>;
   getCustomer(id: number): Promise<Customer | undefined>;
   createCustomer(data: InsertCustomer): Promise<Customer>;
   updateCustomer(id: number, data: Partial<InsertCustomer>): Promise<Customer>;
   deleteCustomer(id: number): Promise<void>;
+  upsertCustomer(data: InsertCustomer): Promise<{ customer: Customer; isNew: boolean }>;
 
   // Stats
   getDashboardStats(): Promise<{
@@ -2123,8 +2124,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Customers (CRM)
-  async getCustomers(): Promise<Customer[]> {
-    return await db.select().from(customers).orderBy(customers.lastName);
+  async getCustomers(filters?: { search?: string; marketingConsent?: boolean; source?: string }): Promise<Customer[]> {
+    const conditions: any[] = [];
+    if (filters?.search) {
+      const term = `%${filters.search.toLowerCase()}%`;
+      conditions.push(or(
+        ilike(customers.firstName, term),
+        ilike(customers.lastName, term),
+        ilike(customers.email, term),
+        ilike(customers.phone, term),
+        ilike(customers.city, term),
+      ));
+    }
+    if (filters?.marketingConsent !== undefined) {
+      conditions.push(eq(customers.marketingConsent, filters.marketingConsent));
+    }
+    if (filters?.source) {
+      conditions.push(eq(customers.source, filters.source));
+    }
+    const query = db.select().from(customers);
+    const result = conditions.length > 0
+      ? await query.where(and(...conditions)).orderBy(customers.lastName, customers.firstName)
+      : await query.orderBy(customers.lastName, customers.firstName);
+    return result;
   }
 
   async getCustomer(id: number): Promise<Customer | undefined> {
@@ -2144,6 +2166,75 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCustomer(id: number): Promise<void> {
     await db.delete(customers).where(eq(customers.id, id));
+  }
+
+  async upsertCustomer(data: InsertCustomer): Promise<{ customer: Customer; isNew: boolean }> {
+    // Dedup priority: hotresId → phone → email → firstName+lastName
+    if (data.hotresId) {
+      const [byHotresId] = await db.select().from(customers).where(eq(customers.hotresId, data.hotresId));
+      if (byHotresId) {
+        const mergedData: Partial<InsertCustomer> = { ...data };
+        const updated = await this.updateCustomer(byHotresId.id, mergedData);
+        return { customer: updated, isNew: false };
+      }
+    }
+
+    if (data.phone && data.phone.replace(/\s+/g, "").length >= 7) {
+      const phoneNorm = data.phone.replace(/[\s\-\(\)]+/g, "");
+      const all = await db.select().from(customers).where(isNotNull(customers.phone));
+      const byPhone = all.find(c => c.phone && c.phone.replace(/[\s\-\(\)]+/g, "") === phoneNorm);
+      if (byPhone) {
+        const mergedData: Partial<InsertCustomer> = {
+          ...data,
+          email: data.email || byPhone.email || undefined,
+          phone: data.phone || byPhone.phone || undefined,
+        };
+        if (data.source === "csv" && byPhone.source === "hotres") {
+          mergedData.email = byPhone.email || data.email || undefined;
+          mergedData.phone = byPhone.phone || data.phone || undefined;
+        }
+        const updated = await this.updateCustomer(byPhone.id, mergedData);
+        return { customer: updated, isNew: false };
+      }
+    }
+
+    if (data.email && data.email.trim()) {
+      const [byEmail] = await db.select().from(customers).where(ilike(customers.email, data.email.trim()));
+      if (byEmail) {
+        const mergedData: Partial<InsertCustomer> = {
+          ...data,
+          email: byEmail.email || data.email || undefined,
+          phone: data.phone || byEmail.phone || undefined,
+        };
+        if (data.source === "csv" && byEmail.source === "hotres") {
+          mergedData.email = byEmail.email || data.email || undefined;
+          mergedData.phone = byEmail.phone || data.phone || undefined;
+        }
+        const updated = await this.updateCustomer(byEmail.id, mergedData);
+        return { customer: updated, isNew: false };
+      }
+    }
+
+    if (data.firstName && data.lastName) {
+      const [byName] = await db.select().from(customers).where(
+        and(
+          ilike(customers.firstName, data.firstName.trim()),
+          ilike(customers.lastName, data.lastName.trim())
+        )
+      );
+      if (byName) {
+        const mergedData: Partial<InsertCustomer> = {
+          ...data,
+          email: data.email || byName.email || undefined,
+          phone: data.phone || byName.phone || undefined,
+        };
+        const updated = await this.updateCustomer(byName.id, mergedData);
+        return { customer: updated, isNew: false };
+      }
+    }
+
+    const created = await this.createCustomer(data);
+    return { customer: created, isNew: true };
   }
 
   async clearAptCostData(year: number, entryId?: string): Promise<void> {
