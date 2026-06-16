@@ -12616,10 +12616,10 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
       } else if (bankFormat === "pekao") {
         let headerIdx = -1;
-        let colDate = -1, colAmount = -1, colBalance = -1, colDesc = -1, colCounterparty = -1;
+        let colDate = -1, colAmount = -1, colDebit = -1, colCredit = -1, colBalance = -1, colDesc = -1, colCounterparty = -1;
         for (let i = 0; i < Math.min(lines.length, 10); i++) {
           const lower = lines[i].toLowerCase();
-          if (lower.includes("data") && (lower.includes("kwota") || lower.includes("operacj"))) {
+          if (lower.includes("data") && (lower.includes("kwota") || lower.includes("operacj") || lower.includes("obci") || lower.includes("uznan"))) {
             headerIdx = i;
             const cols = parseCsvLine(lines[i], ";").map(cleanStr);
             for (let c = 0; c < cols.length; c++) {
@@ -12627,6 +12627,8 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
               if (cl.includes("data") && cl.includes("operacj")) colDate = c;
               else if (cl.includes("data") && cl.includes("ksieg")) { if (colDate < 0) colDate = c; }
               else if (cl.includes("data") && colDate < 0) colDate = c;
+              else if (cl.includes("obci")) colDebit = c;
+              else if (cl.includes("uznan")) colCredit = c;
               else if (cl.includes("kwota")) colAmount = c;
               else if (cl.includes("saldo")) colBalance = c;
               else if (cl.includes("tytuł") || cl.includes("tytul") || cl.includes("opis")) { if (colDesc < 0) colDesc = c; }
@@ -12637,7 +12639,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
         if (headerIdx < 0) headerIdx = 0;
         if (colDate < 0) colDate = 0;
-        if (colAmount < 0) colAmount = 3;
+        if (colDebit < 0 && colCredit < 0 && colAmount < 0) colAmount = 3;
         if (colDesc < 0) colDesc = 2;
 
         for (let i = headerIdx + 1; i < lines.length; i++) {
@@ -12655,12 +12657,21 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           }
           if (!dateStr.match(/\d{4}-\d{2}-\d{2}/)) continue;
 
-          const amount = colAmount >= 0 && parts[colAmount] ? cleanNum(parts[colAmount]) : "0";
+          let amount: string;
+          if (colDebit >= 0 || colCredit >= 0) {
+            const debitVal = colDebit >= 0 && parts[colDebit] ? Math.abs(parseFloat(cleanNum(parts[colDebit]))) : 0;
+            const creditVal = colCredit >= 0 && parts[colCredit] ? Math.abs(parseFloat(cleanNum(parts[colCredit]))) : 0;
+            if (debitVal === 0 && creditVal === 0) continue;
+            const net = creditVal - debitVal;
+            amount = net.toFixed(2);
+          } else {
+            amount = colAmount >= 0 && parts[colAmount] ? cleanNum(parts[colAmount]) : "0";
+            if (amount === "0" && !parts[colAmount]) continue;
+          }
+
           const balance = colBalance >= 0 && parts[colBalance] ? cleanNum(parts[colBalance]) : null;
           const description = colDesc >= 0 ? (parts[colDesc] || "Transakcja") : "Transakcja";
           const counterparty = colCounterparty >= 0 ? (parts[colCounterparty] || null) : null;
-
-          if (amount === "0" && !parts[colAmount]) continue;
 
           transactions.push({
             date: dateStr,
