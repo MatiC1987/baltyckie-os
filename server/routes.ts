@@ -12419,12 +12419,17 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     try {
       const accountId = parseInt(req.query.accountId as string);
       if (!accountId) return res.status(400).json({ message: "Brak accountId" });
+      const rawStatus = req.query.costStatus as string;
+      const rawAmountType = req.query.amountType as string;
+      const costStatus = (["all", "categorized", "skipped", "pending"].includes(rawStatus) ? rawStatus as "all" | "categorized" | "skipped" | "pending" : "all");
+      const amountType = (["all", "expense", "income"].includes(rawAmountType) ? rawAmountType as "all" | "expense" | "income" : "all");
       const result = await storage.getBankTransactionHistory({
         accountId,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
         search: req.query.search as string | undefined,
-        costStatus: (["all", "categorized", "skipped", "pending"].includes(req.query.costStatus as string) ? req.query.costStatus as "all" | "categorized" | "skipped" | "pending" : "all"),
+        costStatus,
+        amountType,
         offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 30,
       });

@@ -42,7 +42,7 @@ import { Link, useSearch } from "wouter";
 import type { Account, BankTransaction } from "@shared/schema";
 import { CostTargetWizard, type WizardSelection } from "@/components/CostTargetWizard";
 
-type CostStatus = "all" | "categorized" | "skipped" | "pending";
+type CostStatus = "all" | "categorized" | "skipped" | "pending" | "expenses-pending";
 
 interface TransactionWithMeta extends BankTransaction {
   statementFileName?: string;
@@ -601,7 +601,12 @@ function AccountTab({
     if (dateRange.dateFrom) p.set("dateFrom", dateRange.dateFrom);
     if (dateRange.dateTo) p.set("dateTo", dateRange.dateTo);
     if (debouncedSearch) p.set("search", debouncedSearch);
-    if (costStatus !== "all") p.set("costStatus", costStatus);
+    if (costStatus === "expenses-pending") {
+      p.set("costStatus", "pending");
+      p.set("amountType", "expense");
+    } else if (costStatus !== "all") {
+      p.set("costStatus", costStatus);
+    }
     p.set("limit", "30");
     return p;
   }, [account.id, dateRange, debouncedSearch, costStatus]);
@@ -906,6 +911,7 @@ function AccountTab({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Wszystkie</SelectItem>
+                <SelectItem value="expenses-pending">Koszty do kategoryzacji</SelectItem>
                 <SelectItem value="pending">Do skategoryzowania</SelectItem>
                 <SelectItem value="categorized">Skategoryzowane</SelectItem>
                 <SelectItem value="skipped">Pominięte</SelectItem>
@@ -1153,7 +1159,7 @@ function AccountTab({
 export default function CompanyAccounts() {
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
-  const initialStatus = (["all", "categorized", "skipped", "pending"].includes(params.get("status") || "") ? params.get("status") : null) as CostStatus | null;
+  const initialStatus = (["all", "categorized", "skipped", "pending", "expenses-pending"].includes(params.get("status") || "") ? params.get("status") : null) as CostStatus | null;
   const importId = params.get("importId") ? parseInt(params.get("importId")!) : undefined;
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<Account[]>({

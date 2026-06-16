@@ -2482,6 +2482,7 @@ export class DatabaseStorage implements IStorage {
     dateTo?: string;
     search?: string;
     costStatus?: "all" | "categorized" | "skipped" | "pending";
+    amountType?: "all" | "expense" | "income";
     offset?: number;
     limit?: number;
   }): Promise<{ transactions: (BankTransaction & { statementFileName?: string })[]; total: number }> {
@@ -2508,6 +2509,11 @@ export class DatabaseStorage implements IStorage {
         eq(bankTransactions.costSkipped, false),
         isNull(bankTransactions.costSkipped)
       )!);
+    }
+    if (params.amountType === "expense") {
+      conditions.push(sql`${bankTransactions.amount}::numeric < 0`);
+    } else if (params.amountType === "income") {
+      conditions.push(sql`${bankTransactions.amount}::numeric > 0`);
     }
 
     const whereClause = and(...conditions)!;
