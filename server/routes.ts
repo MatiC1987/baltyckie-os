@@ -14551,7 +14551,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
               const { customer } = await storage.upsertCustomer({
                 firstName: csvFirstName,
                 lastName: csvLastName,
-                source: "hotres_csv",
+                source: "csv",
                 lastStayDate: hr.endDate || undefined,
               });
               csvCustomerId = customer.id;

@@ -208,7 +208,7 @@ export default function Customers() {
       qc.invalidateQueries({ queryKey: ["/api/customers"] });
       toast({
         title: "Import HotRes zakończony",
-        description: `${data.customersTotal} klientów w bazie · ${data.reservationsSynced} rezerwacji zaktualizowanych`,
+        description: `+${data.created ?? 0} nowych · ${data.updated ?? 0} zaktualizowanych · ${data.linked ?? 0} powiązanych rezerwacji`,
       });
     } catch (e: any) {
       toast({ title: "Błąd importu HotRes", description: e.message, variant: "destructive" });

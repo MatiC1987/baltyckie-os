@@ -97,8 +97,7 @@ async function main() {
     const name = `${customer.lastName} ${customer.firstName}`.toUpperCase();
     const customerRes = allRes.filter(r =>
       r.customerId === customer.id ||
-      (r.guestName || "").toUpperCase() === name ||
-      (r.guestName || "").toUpperCase().includes(customer.lastName.toUpperCase())
+      (r.guestName || "").toUpperCase() === name
     );
     const confirmed = customerRes.filter(r => r.status !== "ANULOWANA");
     const totalStays = confirmed.length;
