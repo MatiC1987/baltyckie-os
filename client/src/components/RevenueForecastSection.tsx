@@ -118,7 +118,7 @@ export default function RevenueForecastSection({ forecastData }: { forecastData:
                       </span>
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      Pozostało {c.daysRemaining} dni · brakuje {c.remaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                      {c.daysRemaining} dni od dziś · suma do wynajęcia: {c.remaining.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
                     </div>
                   </div>
                 )}

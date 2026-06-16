@@ -6004,8 +6004,18 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     const result = months.map(m => {
       const daysInMonth = new Date(m.year, m.month + 1, 0).getDate();
       const isCurrentMonth = m.year === currentYear && m.month === currentMonth;
-      const dayOfMonth = isCurrentMonth ? now.getDate() : (m.year < currentYear || (m.year === currentYear && m.month < currentMonth) ? daysInMonth : 0);
-      const daysRemaining = Math.max(0, daysInMonth - dayOfMonth);
+      const isPastMonth = m.year < currentYear || (m.year === currentYear && m.month < currentMonth);
+      const dayOfMonth = isCurrentMonth ? now.getDate() : (isPastMonth ? daysInMonth : 0);
+      let daysRemaining: number;
+      if (isPastMonth) {
+        daysRemaining = 0;
+      } else if (isCurrentMonth) {
+        daysRemaining = Math.max(0, daysInMonth - dayOfMonth);
+      } else {
+        const endOfMonth = new Date(m.year, m.month + 1, 0);
+        const today = new Date(currentYear, currentMonth, now.getDate());
+        daysRemaining = Math.ceil((endOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      }
 
       let reservationRevenue = 0;
       for (const r of reservations) {
