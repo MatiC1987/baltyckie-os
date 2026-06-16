@@ -6012,9 +6012,9 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       } else if (isCurrentMonth) {
         daysRemaining = Math.max(0, daysInMonth - dayOfMonth);
       } else {
-        const endOfMonth = new Date(m.year, m.month + 1, 0);
+        const firstOfNextMonth = new Date(m.year, m.month + 1, 1);
         const today = new Date(currentYear, currentMonth, now.getDate());
-        daysRemaining = Math.ceil((endOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        daysRemaining = Math.round((firstOfNextMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       }
 
       let reservationRevenue = 0;
