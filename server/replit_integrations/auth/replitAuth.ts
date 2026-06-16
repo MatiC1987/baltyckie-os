@@ -192,6 +192,38 @@ export async function setupAuth(app: Express) {
     }
   });
 
+  app.put("/api/auth/change-password", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims?.sub || req.user.id;
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Wszystkie pola są wymagane" });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "Nowe hasło musi mieć co najmniej 8 znaków" });
+      }
+
+      const user = await authStorage.getUser(userId);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ message: "Nie można zweryfikować użytkownika" });
+      }
+
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ message: "Aktualne hasło jest nieprawidłowe" });
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 12);
+      await authStorage.updatePasswordHash(userId, newHash);
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[AUTH] Change password error:", err);
+      res.status(500).json({ message: "Błąd serwera" });
+    }
+  });
+
   app.post("/api/logout", async (req: any, res) => {
     const authToken = req.headers['x-auth-token'] as string || req.body?.token;
     if (authToken) {

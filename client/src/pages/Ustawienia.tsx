@@ -17,6 +17,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Building2, Users, UserCog, MapPin, Briefcase, Files,
   FileText, FileDown, History, ScrollText, Building, ArrowUpDown,
@@ -24,7 +26,7 @@ import {
   Monitor, Shield, Bell, BellOff, BellRing, Loader2,
   Download, Upload, Mail, CalendarClock, CreditCard,
   Clock, Fingerprint, Smartphone, Trash2, Plus, ShieldCheck,
-  GripVertical,
+  GripVertical, KeyRound, Eye, EyeOff,
 } from "lucide-react";
 import {
   DndContext,
@@ -926,6 +928,155 @@ function ForceMenuButton() {
   );
 }
 
+function ChangePasswordCard() {
+  const { toast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const changeMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PUT", "/api/auth/change-password", { currentPassword, newPassword });
+    },
+    onSuccess: () => {
+      toast({ title: "Hasło zmienione", description: "Twoje hasło zostało zaktualizowane pomyślnie" });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    },
+    onError: (err: any) => {
+      let msg = "Nie udało się zmienić hasła";
+      try {
+        const raw = err?.message || "";
+        const jsonPart = raw.replace(/^\d+:\s*/, "");
+        const parsed = JSON.parse(jsonPart);
+        if (parsed?.message) msg = parsed.message;
+      } catch {}
+      toast({ title: "Błąd", description: msg, variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      toast({ title: "Błąd", description: "Nowe hasło musi mieć co najmniej 8 znaków", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Błąd", description: "Nowe hasło i potwierdzenie muszą być identyczne", variant: "destructive" });
+      return;
+    }
+    changeMutation.mutate();
+  };
+
+  return (
+    <Card data-testid="card-change-password">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+            <KeyRound className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0 space-y-3">
+            <div>
+              <p className="font-medium text-sm">Zmiana hasła</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Zaktualizuj hasło do swojego konta</p>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="current-password" className="text-xs">Aktualne hasło</Label>
+                <div className="relative">
+                  <Input
+                    id="current-password"
+                    type={showCurrent ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                    className="pr-9 text-sm"
+                    data-testid="input-current-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowCurrent(!showCurrent)}
+                    data-testid="button-toggle-current-password"
+                    tabIndex={-1}
+                  >
+                    {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-password" className="text-xs">Nowe hasło</Label>
+                <div className="relative">
+                  <Input
+                    id="new-password"
+                    type={showNew ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    className="pr-9 text-sm"
+                    data-testid="input-new-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowNew(!showNew)}
+                    data-testid="button-toggle-new-password"
+                    tabIndex={-1}
+                  >
+                    {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Minimum 8 znaków</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="confirm-password" className="text-xs">Powtórz nowe hasło</Label>
+                <div className="relative">
+                  <Input
+                    id="confirm-password"
+                    type={showConfirm ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                    className="pr-9 text-sm"
+                    data-testid="input-confirm-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    data-testid="button-toggle-confirm-password"
+                    tabIndex={-1}
+                  >
+                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <Button
+                type="submit"
+                size="sm"
+                className="gap-2 w-full"
+                disabled={changeMutation.isPending || !currentPassword || !newPassword || !confirmPassword}
+                data-testid="button-change-password-submit"
+              >
+                {changeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                Zmień hasło
+              </Button>
+            </form>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function WebAuthnCard() {
   const { toast } = useToast();
   const [isRegistering, setIsRegistering] = useState(false);
@@ -1076,6 +1227,7 @@ export default function Ustawienia() {
       <div className="space-y-3">
         <h2 className="text-sm font-bold tracking-wide text-muted-foreground uppercase" data-testid="section-Bezpieczeństwo">Bezpieczeństwo</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <ChangePasswordCard />
           <WebAuthnCard />
         </div>
       </div>
