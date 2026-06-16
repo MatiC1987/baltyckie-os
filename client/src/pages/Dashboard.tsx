@@ -149,12 +149,6 @@ export default function Dashboard() {
     }
   };
 
-  const hotresReminderKey = `hotres-import-reminder-${format(new Date(), "yyyy-MM-dd")}`;
-  const [hotresReminderDismissed, setHotresReminderDismissed] = useState(() => !!localStorage.getItem(hotresReminderKey));
-  const dismissHotresReminder = () => {
-    localStorage.setItem(hotresReminderKey, "1");
-    setHotresReminderDismissed(true);
-  };
 
   const handlePrefsChange = (prefs: WidgetPrefs) => {
     saveWidgetPrefs(prefs);
@@ -467,28 +461,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {!hotresReminderDismissed && (
-        <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800" data-testid="alert-hotres-reminder">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Upload className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
-                Pamiętaj o codziennym imporcie rezerwacji z HotRes
-              </AlertDescription>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link href="/import-export">
-                <Button variant="outline" size="sm" className="h-7 text-xs border-amber-300 dark:border-amber-700" data-testid="button-hotres-import">
-                  Przejdź do importu
-                </Button>
-              </Link>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={dismissHotresReminder} data-testid="button-hotres-dismiss">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </Alert>
-      )}
 
       <DndContext
         sensors={sensors}

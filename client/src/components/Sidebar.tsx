@@ -24,6 +24,11 @@ import {
   Eye,
   Monitor,
   Bell,
+  RefreshCw,
+  Loader2,
+  Clock,
+  Landmark,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/ThemeProvider";
@@ -176,6 +181,8 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
   const { theme, mode, setMode, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const csvSidebarRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handler = () => setIsOpen(prev => !prev);
@@ -229,13 +236,52 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
   const contextAction = CONTEXT_LABELS[location];
 
   const handleQuickAction = useCallback(() => {
-    if (contextAction) {
-      navigate(contextAction.href);
-      setIsOpen(false);
-    } else {
-      setShowQuickActions(true);
+    setShowQuickActions(true);
+  }, [setShowQuickActions]);
+
+  const handleHotResSync = useCallback(async () => {
+    setIsSyncing(true);
+    setShowQuickActions(false);
+    setIsOpen(false);
+    try {
+      const res = await fetch("/api/hotres/sync", { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Błąd synchronizacji");
+      toast({
+        title: "Rezerwacje zaktualizowane",
+        description: `+${data.created ?? 0} nowych, ~${data.updated ?? 0} zaktualizowanych`,
+      });
+    } catch (err: any) {
+      toast({ title: "Błąd synchronizacji", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSyncing(false);
     }
-  }, [contextAction, navigate, setIsOpen, setShowQuickActions]);
+  }, [toast, setIsOpen]);
+
+  const handleBankCsvChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setShowQuickActions(false);
+    setIsOpen(false);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("bankFormat", "pekao");
+      const res = await fetch("/api/bank-statements/parse-csv", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      sessionStorage.setItem("bank-csv-preload", JSON.stringify({ transactions: data.transactions, rowCount: data.rowCount, bankFormat: "pekao" }));
+      toast({ title: "Plik wczytany", description: `Znaleziono ${data.rowCount} transakcji. Otwieranie importu...` });
+    } catch (err: any) {
+      toast({ title: "Błąd odczytu CSV", description: err.message, variant: "destructive" });
+    }
+    navigate("/import-bankowy");
+    if (csvSidebarRef.current) csvSidebarRef.current.value = "";
+  }, [toast, navigate, setIsOpen]);
 
   const sidebarWidth = compact ? "w-16" : "w-64";
 
@@ -416,7 +462,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                       <Plus className="h-4 w-4" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs">{contextAction?.label || "Dodaj"}</TooltipContent>
+                  <TooltipContent side="right" className="text-xs">Szybkie Akcje</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
@@ -426,7 +472,7 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
                 data-testid="button-quick-actions"
               >
                 <Plus className="h-3.5 w-3.5" />
-                <span>{contextAction?.label || "Dodaj"}</span>
+                <span>Szybkie Akcje</span>
               </button>
             )}
           </div>
@@ -626,40 +672,89 @@ export function Sidebar({ style }: { style?: React.CSSProperties }) {
       <Dialog open={showQuickActions} onOpenChange={setShowQuickActions}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Dodaj</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-[#5ADBFA]" />
+              Szybkie Akcje
+            </DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 pt-2">
-            {[
-              { label: "Nowa rezerwacja", description: "Dodaj rezerwację krótkoterminową", icon: CalendarDays, href: "/reservations?action=new", color: "text-blue-500", bg: "bg-blue-500/10" },
-              { label: "Nowy podnajem", description: "Utwórz umowę podnajmu", icon: FileSignature, href: "/podnajem?action=new", color: "text-violet-500", bg: "bg-violet-500/10" },
-              { label: "Nowy koszt", description: "Dodaj wydatek operacyjny", icon: Receipt, href: "/koszty-operacyjne?action=new", color: "text-red-500", bg: "bg-red-500/10" },
-              { label: "Faktura kosztowa", description: "Dodaj dokument księgowy", icon: FileText, href: "/dokumenty-ksiegowe", color: "text-amber-500", bg: "bg-amber-500/10" },
-              { label: "Importuj rezerwacje", description: "Import z Excel / HotRes", icon: Upload, href: "/import-export", color: "text-emerald-500", bg: "bg-emerald-500/10" },
-            ].map((action) => (
-              <Card
-                key={action.href}
-                className="card-interactive hover-elevate"
-                onClick={() => {
-                  setShowQuickActions(false);
-                  setIsOpen(false);
-                  navigate(action.href);
-                }}
-                data-testid={`quick-action-${action.label.toLowerCase().replace(/\s+/g, "-")}`}
-              >
-                <CardContent className="p-3 flex flex-col items-center text-center gap-2">
-                  <div className={cn("rounded-lg p-2.5", action.bg)}>
-                    <action.icon className={cn("h-5 w-5", action.color)} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium leading-tight">{action.label}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{action.description}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            <Card
+              className="card-interactive hover-elevate cursor-pointer"
+              onClick={handleHotResSync}
+              data-testid="quick-action-zaktualizuj-rezerwacje"
+            >
+              <CardContent className="p-3 flex flex-col items-center text-center gap-2">
+                <div className="rounded-lg p-2.5 bg-emerald-500/10">
+                  {isSyncing
+                    ? <Loader2 className="h-5 w-5 text-emerald-500 animate-spin" />
+                    : <RefreshCw className="h-5 w-5 text-emerald-500" />
+                  }
+                </div>
+                <div>
+                  <p className="text-sm font-medium leading-tight">Zaktualizuj rezerwacje</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">Pobierz z HotRes API</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="card-interactive hover-elevate cursor-pointer"
+              onClick={() => { setShowQuickActions(false); setIsOpen(false); navigate("/podnajem?action=new"); }}
+              data-testid="quick-action-dodaj-podnajem"
+            >
+              <CardContent className="p-3 flex flex-col items-center text-center gap-2">
+                <div className="rounded-lg p-2.5 bg-violet-500/10">
+                  <FileSignature className="h-5 w-5 text-violet-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium leading-tight">Dodaj Podnajem</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">Nowa umowa podnajmu</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="card-interactive hover-elevate cursor-pointer"
+              onClick={() => csvSidebarRef.current?.click()}
+              data-testid="quick-action-importuj-wyciag"
+            >
+              <CardContent className="p-3 flex flex-col items-center text-center gap-2">
+                <div className="rounded-lg p-2.5 bg-amber-500/10">
+                  <Landmark className="h-5 w-5 text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium leading-tight">Importuj Wyciąg</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">Wczytaj CSV bankowy</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="card-interactive hover-elevate cursor-pointer"
+              onClick={() => { setShowQuickActions(false); setIsOpen(false); navigate("/rcp/admin"); }}
+              data-testid="quick-action-sprawdz-rcp"
+            >
+              <CardContent className="p-3 flex flex-col items-center text-center gap-2">
+                <div className="rounded-lg p-2.5 bg-blue-500/10">
+                  <Clock className="h-5 w-5 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium leading-tight">Sprawdź RCP</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">Status pracy pracowników</p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </DialogContent>
       </Dialog>
+
+      <input
+        ref={csvSidebarRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={handleBankCsvChange}
+      />
     </>
   );
 }

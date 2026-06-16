@@ -261,6 +261,19 @@ export default function BankStatementImport() {
     });
   };
 
+  useEffect(() => {
+    const preload = sessionStorage.getItem("bank-csv-preload");
+    if (!preload) return;
+    sessionStorage.removeItem("bank-csv-preload");
+    try {
+      const { transactions, bankFormat: fmt } = JSON.parse(preload);
+      if (fmt) setBankFormat(fmt as BankFormat);
+      setParsedTransactions(applyCategorizationRules(transactions));
+      setShowPreview(true);
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const parseCsvMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();

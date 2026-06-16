@@ -14406,6 +14406,25 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.get("/api/hotres/sync-status", isAuthenticated, async (req, res) => {
+    try {
+      const last = await storage.getLastImport("hotres_api");
+      res.json(last || null);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/hotres/sync", isAuthenticated, async (req, res) => {
+    try {
+      const { syncHotResReservations } = await import("./hotres-sync");
+      const result = await syncHotResReservations();
+      res.json({ success: !result.error, ...result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: `Błąd synchronizacji: ${e.message}` });
+    }
+  });
+
   app.post("/api/hotres/import-csv", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {

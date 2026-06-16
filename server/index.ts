@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { registerRecepcjaRoutes, seedRecepcjaUser } from "./recepcja-routes";
+import { startHotResSyncScheduler } from "./hotres-sync";
 
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -69,6 +70,7 @@ app.use((req, res, next) => {
   await registerRoutes(httpServer, app);
   registerRecepcjaRoutes(app);
   await seedRecepcjaUser();
+  startHotResSyncScheduler();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

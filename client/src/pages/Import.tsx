@@ -1,10 +1,14 @@
 import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Download, Users, Briefcase, FileText, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw, Download, Users, Briefcase, FileText, Loader2, Zap } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { format, parseISO } from "date-fns";
+import { pl } from "date-fns/locale";
 
 interface ImportResult {
   message: string;
@@ -389,6 +393,146 @@ function UniversalImporter() {
   );
 }
 
+interface ApiSyncStatus {
+  importedAt?: string;
+  recordsImported?: number;
+  recordsUpdated?: number;
+  recordsSkipped?: number;
+  details?: string;
+}
+
+interface ApiSyncResponse {
+  success: boolean;
+  imported: number;
+  updated: number;
+  skipped: number;
+  newApartments: number;
+  lastSync: string;
+  error?: string;
+  log: string[];
+}
+
+function HotResApiSyncCard() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [syncResult, setSyncResult] = useState<ApiSyncResponse | null>(null);
+  const [showLog, setShowLog] = useState(false);
+
+  const { data: syncStatus } = useQuery<ApiSyncStatus | null>({
+    queryKey: ["/api/hotres/sync-status"],
+    refetchInterval: false,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hotres/sync"),
+    onSuccess: async (res) => {
+      const data: ApiSyncResponse = await res.json();
+      setSyncResult(data);
+      if (!data.error) {
+        toast({
+          title: "Synchronizacja zakończona",
+          description: `+${data.imported} nowych, ~${data.updated} zaktualizowanych`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/apartments"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/stats/dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/hotres/sync-status"] });
+      } else {
+        toast({ title: "Błąd synchronizacji", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (e: any) => {
+      toast({ title: "Błąd", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const isSyncing = syncMutation.isPending;
+
+  const statusBadge = () => {
+    if (isSyncing) return <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" data-testid="badge-sync-status">Synchronizacja...</Badge>;
+    if (syncResult?.error) return <Badge variant="destructive" data-testid="badge-sync-status">Błąd</Badge>;
+    if (syncResult && !syncResult.error) return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" data-testid="badge-sync-status">OK</Badge>;
+    if (syncStatus?.importedAt) return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" data-testid="badge-sync-status">OK</Badge>;
+    return null;
+  };
+
+  const formatSyncDate = (isoDate: string) => {
+    try {
+      return format(parseISO(isoDate), "d MMM yyyy HH:mm", { locale: pl });
+    } catch {
+      return isoDate;
+    }
+  };
+
+  const lastSyncInfo = syncResult
+    ? `${formatSyncDate(syncResult.lastSync)} — ${syncResult.imported} dodanych, ${syncResult.updated} zaktualizowanych, ${syncResult.skipped} pominiętych`
+    : syncStatus?.importedAt
+    ? `${formatSyncDate(syncStatus.importedAt)} — ${syncStatus.recordsImported ?? 0} dodanych, ${syncStatus.recordsUpdated ?? 0} zaktualizowanych, ${syncStatus.recordsSkipped ?? 0} pominiętych`
+    : null;
+
+  return (
+    <div className="border rounded-lg p-4 space-y-4 bg-card">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-primary" />
+          <span className="font-medium text-sm">Synchronizacja API</span>
+          {statusBadge()}
+        </div>
+        <Button
+          size="sm"
+          onClick={() => syncMutation.mutate()}
+          disabled={isSyncing}
+          data-testid="button-hotres-api-sync"
+        >
+          {isSyncing ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          {isSyncing ? "Synchronizowanie..." : "Synchronizuj teraz"}
+        </Button>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Automatyczna synchronizacja z HotRes API — bez potrzeby eksportu CSV. Uruchamia się przy każdym starcie serwera i powtarza co godzinę.
+      </p>
+
+      {lastSyncInfo && (
+        <div className="text-xs text-muted-foreground flex items-start gap-1.5" data-testid="text-last-sync-info">
+          <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 text-green-600 shrink-0" />
+          <span>Ostatnia sync: {lastSyncInfo}</span>
+        </div>
+      )}
+
+      {syncResult?.error && (
+        <div className="flex items-start gap-1.5 text-xs text-destructive" data-testid="text-sync-error">
+          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>{syncResult.error}</span>
+        </div>
+      )}
+
+      {syncResult && !syncResult.error && syncResult.log.length > 0 && (
+        <div>
+          <button
+            className="text-xs text-muted-foreground underline"
+            onClick={() => setShowLog(v => !v)}
+            data-testid="button-toggle-sync-log"
+          >
+            {showLog ? "Ukryj log" : "Pokaż log"}
+          </button>
+          {showLog && (
+            <div className="mt-2 bg-muted rounded p-2 font-mono text-xs max-h-40 overflow-y-auto space-y-0.5" data-testid="text-api-sync-log">
+              {syncResult.log.map((entry, i) => (
+                <div key={i}>{entry}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HotResSection() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -447,18 +591,16 @@ function HotResSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RefreshCw className="h-5 w-5" />
-          Import z HotRes (CSV)
+          HotRes
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        <HotResApiSyncCard />
+
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Zaimportuj rezerwacje z pliku CSV wyeksportowanego z panelu HotRes
-            (Serwis &gt; Rezerwacje &gt; Eksport CSV).
-          </p>
+          <p className="text-sm font-medium">Import CSV (fallback)</p>
           <p className="text-xs text-muted-foreground">
-            Obsługiwane kolumny: numer rezerwacji, apartament/pokój, data przyjazdu/wyjazdu,
-            gość, cena, zaliczka, status. Separator: średnik, przecinek lub tabulator.
+            Ręczny import z pliku CSV wyeksportowanego z panelu HotRes (Serwis &gt; Rezerwacje &gt; Eksport CSV).
           </p>
         </div>
 
@@ -472,6 +614,7 @@ function HotResSection() {
             data-testid="input-hotres-csv-file"
           />
           <Button
+            variant="outline"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             data-testid="button-hotres-csv-import"
