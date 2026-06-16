@@ -37,7 +37,15 @@ import {
   ChevronDown,
   ChevronRight,
   RotateCcw,
+  Pencil,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Link, useSearch } from "wouter";
 import type { Account, BankTransaction } from "@shared/schema";
 import { CostTargetWizard, type WizardSelection } from "@/components/CostTargetWizard";
@@ -545,6 +553,10 @@ function AccountTab({
   const [bulkWizardSelection, setBulkWizardSelection] = useState<WizardSelection | null>(null);
   const [groupByCounterparty, setGroupByCounterparty] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [showBalanceDialog, setShowBalanceDialog] = useState(false);
+  const [balanceInput, setBalanceInput] = useState("");
+  const [balanceDateInput, setBalanceDateInput] = useState("");
+  const [balanceNoteInput, setBalanceNoteInput] = useState("");
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -812,12 +824,52 @@ function AccountTab({
     },
   });
 
+  const snapshotMutation = useMutation({
+    mutationFn: async ({ balance, date, notes }: { balance: string; date: string; notes?: string }) => {
+      await apiRequest("POST", "/api/snapshots", {
+        accountId: account.id,
+        balance,
+        date,
+        notes: notes || null,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Saldo zaktualizowane", description: "Korekta salda została zapisana." });
+      setShowBalanceDialog(false);
+      setBalanceInput("");
+      setBalanceNoteInput("");
+      handleRefresh();
+      queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    },
+  });
+
+  function openBalanceDialog() {
+    const today = new Date().toISOString().split("T")[0];
+    setBalanceDateInput(today);
+    setBalanceInput(summary?.currentBalance ?? "");
+    setBalanceNoteInput("");
+    setShowBalanceDialog(true);
+  }
+
   return (
     <div className="space-y-3">
       <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="pt-3 pb-2">
-            <p className="text-[10px] text-muted-foreground uppercase font-medium">Saldo konta</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium">Saldo konta</p>
+              <button
+                onClick={openBalanceDialog}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                title="Skoryguj saldo"
+                data-testid="button-correct-balance"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            </div>
             <p className={`text-base sm:text-lg font-bold mt-0.5 tabular-nums ${Number(summary?.currentBalance || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`} data-testid="text-account-balance">
               {summary ? formatPLN(summary.currentBalance) : <Skeleton className="h-5 w-24" />}
             </p>
@@ -828,6 +880,64 @@ function AccountTab({
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={showBalanceDialog} onOpenChange={setShowBalanceDialog}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Skoryguj saldo — {account.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-1">
+              <div>
+                <Label className="text-xs mb-1 block">Kwota (PLN)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={balanceInput}
+                  onChange={e => setBalanceInput(e.target.value)}
+                  data-testid="input-balance-amount"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <Label className="text-xs mb-1 block">Data</Label>
+                <Input
+                  type="date"
+                  value={balanceDateInput}
+                  onChange={e => setBalanceDateInput(e.target.value)}
+                  data-testid="input-balance-date"
+                />
+              </div>
+              <div>
+                <Label className="text-xs mb-1 block">Nota (opcjonalna)</Label>
+                <Input
+                  placeholder="Korekta ręczna"
+                  value={balanceNoteInput}
+                  onChange={e => setBalanceNoteInput(e.target.value)}
+                  data-testid="input-balance-note"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setShowBalanceDialog(false)}>
+                Anuluj
+              </Button>
+              <Button
+                size="sm"
+                disabled={!balanceInput || !balanceDateInput || snapshotMutation.isPending}
+                onClick={() => snapshotMutation.mutate({
+                  balance: parseFloat(balanceInput).toFixed(2),
+                  date: balanceDateInput,
+                  notes: balanceNoteInput || undefined,
+                })}
+                data-testid="button-save-balance"
+              >
+                {snapshotMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                Zapisz
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Card>
           <CardContent className="pt-3 pb-2">
             <div className="flex items-center gap-1">
