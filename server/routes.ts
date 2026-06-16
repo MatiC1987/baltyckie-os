@@ -12948,6 +12948,15 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       for (const r of aptRows) { aptEntryIds.add(r.entryId); }
       for (const eid of Object.keys(aptSettingsMap)) { aptEntryIds.add(eid); }
 
+      for (const apt of apartments) {
+        const alreadyCovered = aptEntryIds.has(apt.id.toString())
+          || aptEntryIds.has(`apt-${apt.id}`)
+          || aptEntryIds.has(apt.name);
+        if (!alreadyCovered) {
+          aptEntryIds.add(apt.id.toString());
+        }
+      }
+
       for (const entryId of aptEntryIds) {
         const settings = aptSettingsMap[entryId];
         const cats: string[] = settings?.categories || ["RATA DLA WŁAŚCICIELA", "CZYNSZ DO WSPÓLNOTY", "ENERGIA - ENERGA"];
