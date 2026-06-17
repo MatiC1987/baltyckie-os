@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, numeric, date, decimal, jsonb, varchar, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, numeric, date, decimal, jsonb, varchar, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -1163,7 +1163,12 @@ export const customers = pgTable("customers", {
   lastStayDate: date("last_stay_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("customers_last_name_idx").on(table.lastName),
+  index("customers_total_stays_idx").on(table.totalStays),
+  index("customers_total_revenue_idx").on(table.totalRevenue),
+  index("customers_last_stay_date_idx").on(table.lastStayDate),
+]);
 
 export const customersRelations = relations(customers, () => ({}));
 
