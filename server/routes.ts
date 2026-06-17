@@ -14655,6 +14655,8 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
                 lastName: csvLastName,
                 source: "csv",
                 lastStayDate: hr.endDate || undefined,
+                ...(hr.email ? { email: hr.email } : {}),
+                ...(hr.phone ? { phone: hr.phone } : {}),
               });
               csvCustomerId = customer.id;
             } catch (_) { /* non-fatal */ }

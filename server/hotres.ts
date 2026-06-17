@@ -10,6 +10,8 @@ export interface HotResReservation {
   paidAmount: string;
   status: string;
   source?: string;
+  email?: string;
+  phone?: string;
 }
 
 function normalizeDate(val: any): string {
@@ -94,6 +96,8 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
       prepayment: findCol(rawHeaders, ['zaliczka', 'przedpłata', 'przedplata', 'prepayment', 'deposit', 'advance']),
       status: findCol(rawHeaders, ['status', 'stan']),
       source: findCol(rawHeaders, ['source', 'źródło', 'zrodlo', 'source_portal', 'portal', 'kanał', 'kanal', 'channel']),
+      email: findCol(rawHeaders, ['email', 'e-mail', 'mail', 'adres email', 'adres e-mail']),
+      phone: findCol(rawHeaders, ['phone', 'telefon', 'tel', 'mobile', 'komórka', 'komorka', 'numer telefonu', 'nr telefonu']),
     };
 
     const results: HotResReservation[] = [];
@@ -126,6 +130,9 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
 
       const sourceVal = getValue(colMap.source);
 
+      const emailVal = getValue(colMap.email);
+      const phoneVal = getValue(colMap.phone);
+
       results.push({
         reservationNumber: resNumber,
         apartmentName: getValue(colMap.apartment),
@@ -138,6 +145,8 @@ export function parseHotResCsv(csvContent: string): HotResReservation[] {
         paidAmount: isNaN(Number(paidStr)) ? "0" : paidStr,
         status: normalizeStatus(getValue(colMap.status)),
         source: normalizeSource(sourceVal),
+        ...(emailVal ? { email: emailVal } : {}),
+        ...(phoneVal ? { phone: phoneVal } : {}),
       });
     }
 
