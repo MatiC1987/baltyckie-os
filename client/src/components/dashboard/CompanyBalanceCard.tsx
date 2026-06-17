@@ -359,7 +359,7 @@ export function CompanyBalanceCard({
   setEditingAccountId, setEditingBalance, updateBalanceMutation,
 }: any) {
   const [loansDialogOpen, setLoansDialogOpen] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(["KONTA_BANKOWE", "GOTOWKA"]));
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const toggleCategory = (cat: string) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
