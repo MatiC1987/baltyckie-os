@@ -562,6 +562,24 @@ function HotResSection() {
   const [repairResult, setRepairResult] = useState<{ success: boolean; message: string; fixed?: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const deepSyncMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hotres/deep-sync"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      if (data.success || data.imported >= 0) {
+        toast({ title: "Pełna synchronizacja zakończona", description: `Nowe: ${data.imported}, zaktualizowane: ${data.updated}, strony: ${data.pagesProcessed ?? "?"}` });
+        queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/import-metadata/last/hotres_api'] });
+      } else {
+        toast({ title: "Błąd", description: data.error || data.message || "Nieznany błąd", variant: "destructive" });
+      }
+    },
+    onError: (e: any) => {
+      toast({ title: "Błąd deep sync", description: e.message, variant: "destructive" });
+    },
+  });
+
   const repairMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hotres/repair-prices"),
     onSuccess: async (res) => {
@@ -664,6 +682,20 @@ function HotResSection() {
           </Button>
           <Button
             variant="outline"
+            onClick={() => deepSyncMutation.mutate()}
+            disabled={deepSyncMutation.isPending}
+            data-testid="button-hotres-deep-sync"
+            title="Pobiera WSZYSTKIE rezerwacje z HotRes API przez paginację (departure_date). Naprawia ceny: total + addons_amount. Może potrwać kilka minut."
+          >
+            {deepSyncMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Zap className="h-4 w-4 mr-2" />
+            )}
+            {deepSyncMutation.isPending ? "Synchronizacja..." : "Pełna synchronizacja API"}
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => repairMutation.mutate()}
             disabled={repairMutation.isPending}
             data-testid="button-hotres-repair-prices"
@@ -674,7 +706,7 @@ function HotResSection() {
             ) : (
               <RefreshCw className="h-4 w-4 mr-2" />
             )}
-            {repairMutation.isPending ? "Naprawianie..." : "Napraw ceny rezerwacji"}
+            {repairMutation.isPending ? "Naprawianie..." : "Napraw ceny (fallback)"}
           </Button>
         </div>
 

@@ -64,12 +64,13 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
 
   let apiData: any[];
   try {
-    // Add ?from param going back 3 years to ensure all historical reservations are fetched.
-    // HotRes API may cache or paginate recent-only results without this parameter.
-    const fromDate = new Date();
-    fromDate.setFullYear(fromDate.getFullYear() - 3);
-    const fromStr = fromDate.toISOString().split("T")[0]; // YYYY-MM-DD
-    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&from=${fromStr}`;
+    // Parametr: mod_date (format Y-m-d H:i:s), domyślnie -2h od teraz.
+    // Używamy 90 dni wstecz żeby złapać wszystkie ostatnio zmodyfikowane.
+    // UWAGA: `from` nie jest parametrem API HotRes — ignorowane przez serwer.
+    const modDate = new Date();
+    modDate.setDate(modDate.getDate() - 90);
+    const modDateStr = modDate.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&mod_date=${encodeURIComponent(modDateStr)}`;
     const response = await fetch(url, {
       headers: { "Accept": "application/json" },
       signal: AbortSignal.timeout(30000),
@@ -327,6 +328,170 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
     imported, updated, skipped, newApartments, lastSync, log,
     customersCreated, customersUpdated, reservationsLinked, duplicates,
   };
+}
+
+// Pomocnicza funkcja: przetwarza jedną rezerwację z API i upsertuje w DB.
+// Zwraca 'imported' | 'updated' | 'skipped'.
+async function processApiReservation(
+  item: any,
+  allApartments: any[],
+  apartmentMap: Map<string, number>,
+  hotresNameMap: Map<string, number>,
+  log: string[],
+): Promise<"imported" | "updated" | "skipped"> {
+  const resNumber = String(item.number || item.id || "").trim();
+  if (!resNumber) return "skipped";
+
+  const startDate = normalizeDate(item.arrival_date || item.start_date || "");
+  const endDate = normalizeDate(item.departure_date || item.end_date || "");
+  if (!startDate || !endDate) return "skipped";
+
+  const firstName = (item.first_name || "").trim();
+  const lastName = (item.last_name || "").trim();
+  const guestName = ([firstName, lastName].filter(Boolean).join(" ") || "Nieznany").toUpperCase();
+  const addDate = normalizeDate(item.add_date || "");
+
+  // W liście API: total = cena noclegu, addons_amount = dodatki (sprzątanie, podatek miejski, upsell)
+  const total = parseFloat(item.total || item.price || "0") || 0;
+  const addonsAmount = parseFloat(item.addons_amount || "0") || 0;
+  const price = (total + addonsAmount).toFixed(2);
+  const surcharge = addonsAmount.toFixed(2);
+
+  const status = normalizeApiStatus(item.status || "");
+  const source = normalizeApiSource(item.source || "");
+  const prepayment = String(parseFloat(item.deposit || "0") || 0);
+  const paidAmount = String(parseFloat(item.paid || "0") || 0);
+
+  const rooms: any[] = Array.isArray(item.rooms) ? item.rooms : [];
+  const apartmentNames: string[] = rooms.length > 0
+    ? rooms.map((r: any) => (r.code || r.title || "").trim()).filter(Boolean)
+    : [String(item.room || item.apartment || "").trim()].filter(Boolean);
+
+  const resolvedAptIds: number[] = [];
+  for (const aptName of apartmentNames) {
+    const key = aptName.toLowerCase();
+    let foundId = hotresNameMap.get(key) || apartmentMap.get(key);
+    if (!foundId) {
+      try {
+        const apt = await storage.createApartment({ name: aptName, location: "", address: "", ownerName: "", active: true });
+        apartmentMap.set(key, apt.id);
+        allApartments.push(apt);
+        foundId = apt.id;
+        log.push(`[NOWY APT] ${aptName}`);
+      } catch { return "skipped"; }
+    }
+    if (!resolvedAptIds.includes(foundId)) resolvedAptIds.push(foundId);
+  }
+
+  const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
+  const isGroup = resolvedAptIds.length > 1;
+
+  try {
+    const existing = await storage.getReservationByNumber(resNumber);
+    if (existing) {
+      await storage.updateReservation(existing.id, {
+        apartmentId: primaryAptId,
+        apartmentIds: isGroup ? resolvedAptIds : null,
+        addDate: addDate && /^\d{4}-\d{2}-\d{2}$/.test(addDate) ? addDate : undefined,
+        startDate, endDate, guestName, price, prepayment, paidAmount, surcharge, status,
+        ...(source && { source }),
+      });
+      return "updated";
+    } else {
+      await storage.createReservation({
+        reservationNumber: resNumber,
+        apartmentId: primaryAptId,
+        apartmentIds: isGroup ? resolvedAptIds : null,
+        addDate: addDate && /^\d{4}-\d{2}-\d{2}$/.test(addDate) ? addDate : null,
+        startDate, endDate, guestName, price, prepayment, paidAmount, surcharge, status,
+        ...(source && { source }),
+      });
+      return "imported";
+    }
+  } catch (e: any) {
+    log.push(`[BŁĄD] Rez. ${resNumber}: ${e.message}`);
+    return "skipped";
+  }
+}
+
+// Pełna synchronizacja historyczna: pobiera WSZYSTKIE rezerwacje przez paginację departure_date.
+// Jeden call = max 300 wyników → przy ~2474 rez. potrzeba ~9 wywołań.
+// Prawidłowa cena: total (nocleg) + addons_amount (sprzątanie + podatek + inne).
+export async function deepSyncHotResReservations(): Promise<HotResSyncResult & { pagesProcessed: number }> {
+  const authKey = process.env.HOTRES_AUTH_KEY;
+  const apiKey = process.env.HOTRES_API_KEY;
+  const lastSync = new Date().toISOString();
+  const baseResult = { lastSync, customersCreated: 0, customersUpdated: 0, reservationsLinked: 0, duplicates: 0 };
+
+  if (!authKey || !apiKey) {
+    return { ...baseResult, imported: 0, updated: 0, skipped: 0, newApartments: 0, pagesProcessed: 0,
+      error: "Brak kluczy API HotRes.", log: [] };
+  }
+
+  const allApartments = await storage.getApartments();
+  const apartmentMap = new Map(allApartments.map(a => [a.name.trim().toLowerCase(), a.id]));
+  const hotresNameMap = new Map(allApartments.filter(a => a.hotresName).map(a => [a.hotresName!.trim().toLowerCase(), a.id]));
+
+  let imported = 0, updated = 0, skipped = 0;
+  const log: string[] = [];
+  const seenNumbers = new Set<string>();
+
+  let depDate = "2020-01-01";
+  let pagesProcessed = 0;
+  const MAX_PAGES = 40;
+
+  while (pagesProcessed < MAX_PAGES) {
+    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&departure_date=${depDate}`;
+    let batch: any[];
+    try {
+      const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30000) });
+      if (!res.ok) { log.push(`Błąd HTTP ${res.status} przy departure_date=${depDate}`); break; }
+      const raw = await res.json();
+      batch = Array.isArray(raw) ? raw : (Array.isArray(raw?.reservations) ? raw.reservations : []);
+    } catch (e: any) {
+      log.push(`Błąd połączenia: ${e.message}`); break;
+    }
+
+    pagesProcessed++;
+    log.push(`Strona ${pagesProcessed}: departure >= ${depDate} → ${batch.length} rezerwacji`);
+
+    if (batch.length === 0) break;
+
+    // Find max departure_date BEFORE filtering duplicates (need it for pagination)
+    const departures = batch.map((r: any) => r.departure_date).filter(Boolean).sort();
+    const maxDep = departures[departures.length - 1] as string | undefined;
+
+    for (const item of batch) {
+      const num = String(item.number || item.id || "").trim();
+      if (!num || seenNumbers.has(num)) continue;
+      seenNumbers.add(num);
+      const result = await processApiReservation(item, allApartments, apartmentMap, hotresNameMap, log);
+      if (result === "imported") imported++;
+      else if (result === "updated") updated++;
+      else skipped++;
+    }
+
+    if (batch.length < 300) break; // ostatnia strona
+
+    // Paginacja: użyj max departure jako nowej dolnej granicy
+    if (!maxDep || maxDep <= depDate) {
+      log.push(`Paginacja zatrzymana: brak postępu (maxDep=${maxDep})`);
+      break;
+    }
+    depDate = maxDep;
+  }
+
+  log.push(`[PODSUMOWANIE DEEP SYNC] strony=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`);
+
+  await storage.saveImportMetadata({
+    importType: "hotres_api",
+    recordsImported: imported,
+    recordsUpdated: updated,
+    recordsSkipped: skipped,
+    details: `Deep sync: strony=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}`,
+  });
+
+  return { imported, updated, skipped, newApartments: 0, lastSync, log, pagesProcessed, ...baseResult };
 }
 
 let syncInterval: ReturnType<typeof setInterval> | null = null;

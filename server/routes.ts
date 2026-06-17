@@ -14469,6 +14469,17 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  // Pełna synchronizacja historyczna: departure_date pagination, naprawia ceny (total + addons_amount).
+  app.post("/api/hotres/deep-sync", isAuthenticated, async (req, res) => {
+    try {
+      const { deepSyncHotResReservations } = await import("./hotres-sync");
+      const result = await deepSyncHotResReservations();
+      res.json({ success: !result.error, ...result });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: `Błąd deep sync: ${e.message}` });
+    }
+  });
+
   // Naprawia ceny rezerwacji uszkodzone przez błędny import CSV (zgubione cleaning fee).
   // Wywnioskuje cleaning fee z istniejących rezerwacji z non-zero surcharge dla każdego apartamentu,
   // albo używa apartments.cleaningFee jeśli jest ustawione.

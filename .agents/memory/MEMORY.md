@@ -1,0 +1,1 @@
+- [HotRes API sync fix](hotres-api-sync.md) — `mod_date` (Y-m-d H:i:s) jest poprawnym param; `from` jest ignorowane przez API
