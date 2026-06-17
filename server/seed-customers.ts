@@ -40,13 +40,45 @@ async function upsertCustomerLocal(data: {
   return { id: created.id, isNew: true };
 }
 
+async function recalculateAllCustomerStats() {
+  const allCustomers = await db.select().from(customers);
+  const allRes = await db.select().from(reservations);
+
+  let statsUpdated = 0;
+  for (const customer of allCustomers) {
+    const nameA = `${customer.lastName} ${customer.firstName}`.toUpperCase();
+    const nameB = `${customer.firstName} ${customer.lastName}`.toUpperCase();
+    const customerRes = allRes.filter(r =>
+      r.customerId === customer.id ||
+      (r.guestName || "").toUpperCase() === nameA ||
+      (r.guestName || "").toUpperCase() === nameB
+    );
+    const confirmed = customerRes.filter(r => r.status !== "ANULOWANA");
+    const totalStays = confirmed.length;
+    const totalRevenue = confirmed.reduce((s, r) => s + parseFloat(r.price || "0"), 0);
+    const lastStay = confirmed.map(r => r.endDate).sort().reverse()[0];
+
+    await db.update(customers).set({
+      totalStays,
+      totalRevenue: totalRevenue.toFixed(2),
+      ...(lastStay && { lastStayDate: lastStay }),
+    }).where(eq(customers.id, customer.id));
+    if (totalStays > 0) statsUpdated++;
+  }
+  return statsUpdated;
+}
+
+export { recalculateAllCustomerStats };
+
 export async function seedCustomers() {
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(customers);
 
   if (Number(count) >= 50) {
-    console.log(`[seed-customers] Pominięto — już ${count} klientów w bazie`);
+    console.log(`[seed-customers] Klienci już istnieją (${count}) — przeliczam statystyki...`);
+    const updated = await recalculateAllCustomerStats();
+    console.log(`[seed-customers] Statystyki zaktualizowane dla ${updated} klientów`);
     return;
   }
 
@@ -89,30 +121,7 @@ export async function seedCustomers() {
     }
   }
 
-  const allCustomers = await db.select().from(customers);
-  const allRes = await db.select().from(reservations);
-
-  let statsUpdated = 0;
-  for (const customer of allCustomers) {
-    const name = `${customer.lastName} ${customer.firstName}`.toUpperCase();
-    const customerRes = allRes.filter(r =>
-      r.customerId === customer.id ||
-      (r.guestName || "").toUpperCase() === name
-    );
-    const confirmed = customerRes.filter(r => r.status !== "ANULOWANA");
-    const totalStays = confirmed.length;
-    const totalRevenue = confirmed.reduce((s, r) => s + parseFloat(r.price || "0"), 0);
-    const lastStay = confirmed.map(r => r.endDate).sort().reverse()[0];
-
-    if (totalStays > 0) {
-      await db.update(customers).set({
-        totalStays,
-        totalRevenue: totalRevenue.toFixed(2),
-        ...(lastStay && { lastStayDate: lastStay }),
-      }).where(eq(customers.id, customer.id));
-      statsUpdated++;
-    }
-  }
+  const statsUpdated = await recalculateAllCustomerStats();
 
   console.log(`[seed-customers] Zakończono: nowi=${created}, powiązani=${linked}, pominięci=${skipped}, statystyki=${statsUpdated}`);
 }

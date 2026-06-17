@@ -6,7 +6,7 @@ import {
   Search, RefreshCw, Download, Users, Mail, Phone, Globe,
   CheckCircle2, XCircle, ChevronRight, Tag, X, Building2,
   CalendarDays, Loader2, MoreHorizontal, Pencil, Trash2,
-  Filter, ArrowUpDown, Plus
+  Filter, ArrowUpDown, Plus, BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +99,7 @@ export default function Customers() {
   const [tagInput, setTagInput] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -198,6 +199,24 @@ export default function Customers() {
     },
     onError: (e: any) => toast({ title: "Błąd usuwania", description: e.message, variant: "destructive" }),
   });
+
+  const handleRecalculateStats = async () => {
+    setIsRecalculating(true);
+    try {
+      const res = await fetch("/api/customers/recalculate-stats", { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Błąd przeliczania");
+      qc.invalidateQueries({ queryKey: ["/api/customers"] });
+      toast({
+        title: "Statystyki przeliczone",
+        description: `Zaktualizowano ${data.updated ?? 0} klientów`,
+      });
+    } catch (e: any) {
+      toast({ title: "Błąd przeliczania statystyk", description: e.message, variant: "destructive" });
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
 
   const handleHotResSync = async () => {
     setIsSyncing(true);
@@ -311,6 +330,17 @@ export default function Customers() {
           >
             {isSyncing ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
             Importuj z HotRes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRecalculateStats}
+            disabled={isRecalculating}
+            className="text-xs"
+            data-testid="button-recalculate-stats"
+          >
+            {isRecalculating ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5 mr-1.5" />}
+            Przelicz statystyki
           </Button>
           <Button
             variant="outline"

@@ -8848,6 +8848,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     }
   });
 
+  app.post('/api/customers/recalculate-stats', isAuthenticated, async (req, res) => {
+    try {
+      const { recalculateAllCustomerStats } = await import('./seed-customers');
+      const updated = await recalculateAllCustomerStats();
+      res.json({ success: true, updated });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/customers/upsert', isAuthenticated, async (req, res) => {
     try {
       const result = await storage.upsertCustomer(req.body);
