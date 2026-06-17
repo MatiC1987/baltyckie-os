@@ -14833,18 +14833,17 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         return result;
       };
 
-      // Detect if file is actually HTML (HotRes exports HTML tables with .xls extension)
-      const fileHeadXls = req.file.buffer.slice(0, 500).toString("utf-8");
-      const isHtmlXls = /<!DOCTYPE|<html|<HTML|<table|<TABLE/i.test(fileHeadXls);
-
       let rows: any[][];
-      if (isHtmlXls) {
-        rows = parseHtmlTableXls(req.file.buffer.toString("utf-8"));
-      } else {
+      try {
+        // Try binary XLS/XLSX first
         const XLSX = await import("xlsx");
         const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
+      } catch {
+        // xlsx failed → fall back to HTML table parsing (HotRes uses HTML-as-XLS)
+        console.log("HotRes XLS list: xlsx parse failed, falling back to HTML table parser");
+        rows = parseHtmlTableXls(req.file.buffer.toString("utf-8"));
       }
 
       if (rows.length < 2) {
@@ -14994,27 +14993,25 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       };
 
       const isXls = /\.xlsx?$/i.test(req.file.originalname);
-      // Detect if file is actually HTML (HotRes exports HTML tables with .xls extension)
-      const fileHead = req.file.buffer.slice(0, 500).toString("utf-8");
-      const isHtmlTable = /<!DOCTYPE|<html|<HTML|<table|<TABLE/i.test(fileHead);
 
-      if (isXls && !isHtmlTable) {
-        // Real binary XLS/XLSX
-        const XLSX = await import("xlsx");
-        const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const raw: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
-        const firstRow = raw[0] ? raw[0].map((c: any) => String(c ?? "").toLowerCase().trim()) : [];
-        const hasHeader = firstRow.includes("name") || firstRow.includes("added");
-        rows = (hasHeader ? raw.slice(1) : raw).map((r: any[]) => r.map((c: any) => String(c ?? "").trim()));
-      } else if (isXls && isHtmlTable) {
-        // HTML table disguised as XLS (typical HotRes export)
-        const html = req.file.buffer.toString("utf-8");
-        const allRows = parseHtmlTable(html);
-        // Skip header row (contains column names like "added", "name", etc.)
-        const firstRow = allRows[0] ? allRows[0].map(c => c.toLowerCase()) : [];
-        const hasHeader = firstRow.some(c => c === "name" || c === "added" || c === "last name");
-        rows = hasHeader ? allRows.slice(1) : allRows;
+      if (isXls) {
+        // Try binary XLS/XLSX first; fall back to HTML table (HotRes exports HTML-as-XLS)
+        try {
+          const XLSX = await import("xlsx");
+          const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const raw: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
+          const firstRow = raw[0] ? raw[0].map((c: any) => String(c ?? "").toLowerCase().trim()) : [];
+          const hasHeader = firstRow.includes("name") || firstRow.includes("added");
+          rows = (hasHeader ? raw.slice(1) : raw).map((r: any[]) => r.map((c: any) => String(c ?? "").trim()));
+        } catch {
+          console.log("HotRes guests: xlsx parse failed, falling back to HTML table parser");
+          const html = req.file.buffer.toString("utf-8");
+          const allRows = parseHtmlTable(html);
+          const firstRow = allRows[0] ? allRows[0].map(c => c.toLowerCase()) : [];
+          const hasHeader = firstRow.some(c => c === "name" || c === "added" || c === "last name");
+          rows = hasHeader ? allRows.slice(1) : allRows;
+        }
       } else {
         // CSV: semicolon-separated, no header row, UTF-8
         const content = req.file.buffer.toString("utf-8");
