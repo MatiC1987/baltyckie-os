@@ -575,6 +575,37 @@ function HotResSection() {
   const [deepSyncResult, setDeepSyncResult] = useState<DeepSyncResult | null>(null);
   const [showDeepSyncLog, setShowDeepSyncLog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const xlsFileInputRef = useRef<HTMLInputElement>(null);
+  const [xlsUploading, setXlsUploading] = useState(false);
+  const [xlsResult, setXlsResult] = useState<{ success: boolean; message: string; updated?: number; notFound?: number; skipped?: number; log?: string[] } | null>(null);
+  const [showXlsLog, setShowXlsLog] = useState(false);
+
+  const handleXlsImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setXlsUploading(true);
+    setXlsResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/hotres/import-xls-list", { method: "POST", body: formData, credentials: "include" });
+      const data = await res.json();
+      setXlsResult(data);
+      if (data.success) {
+        toast({ title: "Import XLS zakończony", description: data.message });
+        queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
+      } else {
+        toast({ title: "Problem", description: data.message, variant: "destructive" });
+      }
+    } catch (e: any) {
+      setXlsResult({ success: false, message: e.message });
+      toast({ title: "Błąd", description: e.message, variant: "destructive" });
+    } finally {
+      setXlsUploading(false);
+      if (xlsFileInputRef.current) xlsFileInputRef.current.value = "";
+    }
+  };
 
   const deepSyncMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hotres/deep-sync"),
@@ -752,6 +783,69 @@ function HotResSection() {
                           }>{entry}</div>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Import listy XLS z HotRes */}
+        <div className="border rounded-lg p-4 space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-green-600" />
+              Import listy XLS z HotRes — pełna historia
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Wyeksportuj listę rezerwacji z HotRes (panel &gt; lista &gt; eksport XLS) — każdy plik zawiera do 300 rez.
+              Importuj pliki po kolei aby zaktualizować ceny i dane wszystkich rezerwacji historycznych.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              ref={xlsFileInputRef}
+              type="file"
+              accept=".xls,.xlsx"
+              onChange={handleXlsImport}
+              className="hidden"
+              data-testid="input-hotres-xls-file"
+            />
+            <Button
+              variant="outline"
+              onClick={() => xlsFileInputRef.current?.click()}
+              disabled={xlsUploading}
+              data-testid="button-hotres-xls-import"
+              className="border-green-500 text-green-700 hover:bg-green-50 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-950/30"
+            >
+              <Upload className={`h-4 w-4 mr-2 ${xlsUploading ? "animate-spin" : ""}`} />
+              {xlsUploading ? "Importowanie..." : "Wybierz plik XLS z HotRes"}
+            </Button>
+          </div>
+          {xlsResult && (
+            <div className={`rounded-lg p-3 space-y-2 ${xlsResult.success ? "bg-green-50 dark:bg-green-950/30" : "bg-destructive/10"}`}>
+              <div className="flex items-center gap-2">
+                {xlsResult.success ? <CheckCircle2 className="h-4 w-4 text-green-700 shrink-0" /> : <AlertCircle className="h-4 w-4 text-destructive shrink-0" />}
+                <span className="text-sm font-medium">{xlsResult.message}</span>
+              </div>
+              {xlsResult.success && (
+                <div className="grid grid-cols-3 gap-2">
+                  <StatBox label="Zaktualizowane" value={xlsResult.updated ?? 0} />
+                  <StatBox label="Nie znalezione" value={xlsResult.notFound ?? 0} />
+                  <StatBox label="Pominięte" value={xlsResult.skipped ?? 0} />
+                </div>
+              )}
+              {xlsResult.log && xlsResult.log.length > 0 && (
+                <div>
+                  <button className="text-xs text-muted-foreground underline" onClick={() => setShowXlsLog(v => !v)}>
+                    {showXlsLog ? "Ukryj log" : `Pokaż log (${xlsResult.log.length} wpisów)`}
+                  </button>
+                  {showXlsLog && (
+                    <div className="mt-2 bg-muted rounded p-2 font-mono text-xs max-h-48 overflow-y-auto space-y-0.5">
+                      {xlsResult.log.map((entry, i) => (
+                        <div key={i} className={entry.startsWith("[NIE") ? "text-amber-600 dark:text-amber-400" : entry.startsWith("[OK]") ? "text-green-700 dark:text-green-400" : entry.startsWith("[PODSUMOWANIE]") ? "font-semibold" : "text-muted-foreground"}>{entry}</div>
+                      ))}
                     </div>
                   )}
                 </div>

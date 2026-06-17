@@ -14804,6 +14804,129 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  // Import listy rezerwacji z XLS wyeksportowanego z panelu HotRes (lista po 300 rekordów)
+  // Kolumny: Imię | Nazwisko | Nr | Źródło | Status | Przyjazd | Wyjazd | Kwota | PLN | ... | mod_date
+  app.post("/api/hotres/import-xls-list", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: "Nie przesłano pliku XLS" });
+      }
+
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
+
+      if (rows.length < 2) {
+        return res.json({ success: false, message: "Plik pusty lub brak danych", updated: 0, skipped: 0, notFound: 0, log: [] });
+      }
+
+      // Detect header row — find column indices dynamically
+      const headerRow = rows[0].map((c: any) => String(c ?? "").toLowerCase().trim());
+      const findCol = (...names: string[]) => {
+        for (const n of names) {
+          const idx = headerRow.findIndex((h: string) => h.includes(n));
+          if (idx >= 0) return idx;
+        }
+        return -1;
+      };
+      // Fallback to positional if no headers match
+      const colFirstName  = findCol("imię", "first", "name") >= 0 ? findCol("imię", "first", "name") : 0;
+      const colLastName   = findCol("nazwisk", "last") >= 0 ? findCol("nazwisk", "last") : 1;
+      const colNumber     = findCol("nr", "numer", "number", "rezerwac") >= 0 ? findCol("nr", "numer", "number", "rezerwac") : 2;
+      const colSource     = findCol("źródło", "zrodlo", "source", "kanal") >= 0 ? findCol("źródło", "zrodlo", "source", "kanal") : 3;
+      const colStatus     = findCol("status") >= 0 ? findCol("status") : 4;
+      const colArrival    = findCol("przyjazd", "arrival", "od", "from") >= 0 ? findCol("przyjazd", "arrival", "od", "from") : 5;
+      const colDeparture  = findCol("wyjazd", "departure", "do", "till") >= 0 ? findCol("wyjazd", "departure", "do", "till") : 6;
+      const colPrice      = findCol("kwota", "wartość", "price", "amount", "suma") >= 0 ? findCol("kwota", "wartość", "price", "amount", "suma") : 7;
+
+      const parseXlsDate = (val: any): string | null => {
+        if (!val) return null;
+        if (val instanceof Date) return val.toISOString().split("T")[0];
+        const str = String(val).trim();
+        const ddmmyyyy = str.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
+        if (ddmmyyyy) {
+          const [, d, m, y] = ddmmyyyy;
+          return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+        const num = Number(val);
+        if (!isNaN(num) && num > 40000) {
+          return new Date((num - 25569) * 86400 * 1000).toISOString().split("T")[0];
+        }
+        return null;
+      };
+
+      const normalizeSource = (s: string) => {
+        const l = s.toLowerCase();
+        if (l.includes("booking")) return "BOOKING";
+        if (l.includes("airbnb")) return "AIRBNB";
+        if (l.includes("expedia")) return "EXPEDIA";
+        if (l.includes("web") || l.includes("strona")) return "STRONA";
+        if (l.includes("recep") || l.includes("panel")) return "PANEL";
+        return s.toUpperCase() || "PANEL";
+      };
+
+      const normalizeStatus = (s: string) => {
+        const l = s.toLowerCase();
+        if (l === "new") return "OCZEKUJACA";
+        if (l === "confirmed") return "PRZYJETA";
+        if (l === "checkout" || l === "completed" || l === "checkedout") return "PRZYJETA";
+        if (l === "cancelled" || l === "anulowana") return "ANULOWANA";
+        return undefined;
+      };
+
+      let updated = 0, skipped = 0, notFound = 0;
+      const log: string[] = [];
+      const dataRows = rows.slice(1);
+      log.push(`Wierszy danych: ${dataRows.length}`);
+
+      for (const row of dataRows) {
+        if (!row || row.every((c: any) => c === "" || c === null || c === undefined)) continue;
+
+        const rawNumber = String(row[colNumber] ?? "").trim();
+        if (!rawNumber || rawNumber === "0") { skipped++; continue; }
+
+        const firstName  = String(row[colFirstName] ?? "").trim();
+        const lastName   = String(row[colLastName] ?? "").trim();
+        const guestName  = ([firstName, lastName].filter(Boolean).join(" ") || "").toUpperCase() || undefined;
+        const startDate  = parseXlsDate(row[colArrival]);
+        const endDate    = parseXlsDate(row[colDeparture]);
+        const rawPrice   = parseFloat(String(row[colPrice] ?? "0").replace(",", ".")) || 0;
+        const source     = normalizeSource(String(row[colSource] ?? ""));
+        const statusRaw  = normalizeStatus(String(row[colStatus] ?? ""));
+
+        const existing = await storage.getReservationByNumber(rawNumber);
+        if (!existing) {
+          notFound++;
+          log.push(`[NIE ZNALEZIONO] ${rawNumber} ${guestName ?? ""}`);
+          continue;
+        }
+
+        const updates: any = {};
+        if (rawPrice > 0) updates.price = rawPrice.toFixed(2);
+        if (startDate) updates.startDate = startDate;
+        if (endDate) updates.endDate = endDate;
+        if (guestName) updates.guestName = guestName;
+        if (source) updates.source = source;
+        if (statusRaw) updates.status = statusRaw;
+
+        await storage.updateReservation(existing.id, updates);
+        updated++;
+        if (updated <= 10) log.push(`[OK] ${rawNumber} ${guestName ?? ""} → ${rawPrice > 0 ? rawPrice.toFixed(2) + " PLN" : "brak kwoty"}`);
+      }
+
+      if (updated > 10) log.push(`... i ${updated - 10} kolejnych zaktualizowanych`);
+      log.push(`[PODSUMOWANIE] zaktualizowano=${updated}, nieznalezione=${notFound}, pominięte=${skipped}`);
+
+      res.json({ success: true, message: `XLS: ${updated} zaktualizowanych, ${notFound} nie znalezionych, ${skipped} pominiętych`, updated, notFound, skipped, log });
+    } catch (e: any) {
+      console.error("HotRes XLS import error:", e);
+      res.status(500).json({ success: false, message: `Błąd importu XLS: ${e.message}` });
+    }
+  });
+
   // ============ EMPLOYEE TASKS ============
   app.get('/api/employee-tasks', isAuthenticated, async (req, res) => {
     try {
