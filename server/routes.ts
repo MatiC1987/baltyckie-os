@@ -14956,8 +14956,9 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
   });
 
   // ============ HOTRES GUESTS IMPORT ============
-  app.post("/api/hotres/import-guests-csv", isAuthenticated, upload.single("file"), async (req, res) => {
+  app.post("/api/hotres/import-guests-csv", isAuthenticated, upload.single("file"), async (req, res, next) => {
     try {
+      console.log("[guests-import] START, file:", req.file?.originalname, "size:", req.file?.size);
       if (!req.file) {
         return res.status(400).json({ success: false, message: "Nie przesłano pliku" });
       }
@@ -14993,10 +14994,12 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       };
 
       const isXls = /\.xlsx?$/i.test(req.file.originalname);
+      console.log("[guests-import] isXls:", isXls, "originalname:", req.file.originalname);
 
       if (isXls) {
         // Try binary XLS/XLSX first; fall back to HTML table (HotRes exports HTML-as-XLS)
         try {
+          console.log("[guests-import] trying xlsx.read...");
           const XLSX = await import("xlsx");
           const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
           const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -15004,20 +15007,24 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           const firstRow = raw[0] ? raw[0].map((c: any) => String(c ?? "").toLowerCase().trim()) : [];
           const hasHeader = firstRow.includes("name") || firstRow.includes("added");
           rows = (hasHeader ? raw.slice(1) : raw).map((r: any[]) => r.map((c: any) => String(c ?? "").trim()));
-        } catch {
-          console.log("HotRes guests: xlsx parse failed, falling back to HTML table parser");
+          console.log("[guests-import] xlsx.read OK, rows:", rows.length);
+        } catch (xlsErr: any) {
+          console.log("[guests-import] xlsx.read threw:", xlsErr.message, "→ falling back to HTML parser");
           const html = req.file.buffer.toString("utf-8");
           const allRows = parseHtmlTable(html);
           const firstRow = allRows[0] ? allRows[0].map(c => c.toLowerCase()) : [];
           const hasHeader = firstRow.some(c => c === "name" || c === "added" || c === "last name");
           rows = hasHeader ? allRows.slice(1) : allRows;
+          console.log("[guests-import] HTML fallback rows:", rows.length);
         }
       } else {
         // CSV: semicolon-separated, no header row, UTF-8
+        console.log("[guests-import] parsing as CSV...");
         const content = req.file.buffer.toString("utf-8");
         rows = content.split(/\r?\n/).filter(l => l.trim()).map(line =>
           line.split(";").map(c => c.trim())
         );
+        console.log("[guests-import] CSV rows:", rows.length);
       }
 
       let created = 0, updated = 0, skipped = 0;
@@ -15096,7 +15103,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         log,
       });
     } catch (e: any) {
-      console.error("HotRes guests import error:", e);
+      console.error("[guests-import] OUTER CATCH stack:", e.stack || e);
       res.status(500).json({ success: false, message: `Błąd importu klientów: ${e.message}` });
     }
   });
