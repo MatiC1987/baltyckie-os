@@ -133,6 +133,7 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
   profitability: { id: "profitability", href: "/profitability", label: "Rentowność", iconName: "TrendingUp" },
   "year-comparison": { id: "year-comparison", href: "/year-comparison", label: "Porównanie r/r", iconName: "BarChart3" },
   "apartment-comparison": { id: "apartment-comparison", href: "/apartment-comparison", label: "Porównanie apartamentów", iconName: "ArrowUpDown" },
+  "cennik": { id: "cennik", href: "/cennik", label: "Cennik", iconName: "Tag" },
   "price-seasonality": { id: "price-seasonality", href: "/price-seasonality", label: "Sezonowość cen", iconName: "Thermometer" },
   "source-comparison": { id: "source-comparison", href: "/source-comparison", label: "Porównanie źródeł", iconName: "GitCompareArrows" },
   "sprawy-sadowe": { id: "sprawy-sadowe", href: "/sprawy-sadowe", label: "Sprawy sądowe", iconName: "Gavel" },
@@ -141,7 +142,7 @@ export const DEFAULT_ITEMS: Record<string, NavItem> = {
 
 export const DEFAULT_SECTIONS: NavSection[] = [
   { id: "main", itemIds: ["kokpit"] },
-  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "customers", "podnajem"], color: "cyan" },
+  { id: "rezerwacje", title: "REZERWACJE", itemIds: ["calendar", "reservations", "customers", "podnajem", "cennik"], color: "cyan" },
   { id: "nieruchomosci", title: "NIERUCHOMOŚCI", itemIds: ["apartments", "owners"], color: "orange" },
   { id: "finanse", title: "FINANSE", itemIds: ["saldo-firmowe", "v2-przychody", "v2-koszty", "salda", "konta-firmowe", "import-bankowy", "dokumenty-ksiegowe", "contracts-services", "sprawy-sadowe"], color: "emerald" },
   { id: "kadry", title: "KADRY", itemIds: ["rcp", "pracownicy"], color: "pink" },

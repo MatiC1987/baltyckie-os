@@ -50,6 +50,7 @@ const BankStatementImport = lazy(() => import("@/pages/BankStatementImport"));
 const BankConnections = lazy(() => import("@/pages/BankConnections"));
 const SprawySadowe = lazy(() => import("@/pages/SprawySadowe"));
 const CompanyAccounts = lazy(() => import("@/pages/CompanyAccounts"));
+const Cennik = lazy(() => import("@/pages/Cennik"));
 
 function LazyFallback() {
   return (
@@ -231,6 +232,7 @@ function AuthenticatedRouter() {
       <Route path="/bank-connections" component={() => <AuthenticatedRoute component={BankConnections} />} />
       <Route path="/sprawy-sadowe" component={() => <AuthenticatedRoute component={SprawySadowe} />} />
       <Route path="/konta-firmowe" component={() => <AuthenticatedRoute component={CompanyAccounts} />} />
+      <Route path="/cennik" component={() => <AuthenticatedRoute component={Cennik} />} />
 
       <Route path="/locations" component={() => <NavRedirect to="/apartments" tab="lokalizacje" />} />
       <Route path="/przeglady" component={() => <NavRedirect to="/apartments" tab="przeglady" />} />

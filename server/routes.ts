@@ -9,7 +9,7 @@ import { api } from "@shared/routes";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema, employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema, mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between } from "drizzle-orm";
-import { db } from "./db";
+import { db, pool as pgPool } from "./db";
 import { z } from "zod";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -15211,6 +15211,811 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+
+  // ============ PRICING (CENNIK) ============
+
+  // GET /api/pricing/daily — pobierz ceny dla zakresu dat
+  app.get('/api/pricing/daily', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to, apartmentId } = req.query;
+      let q = `SELECT dp.*, a.name as apartment_name FROM daily_prices dp LEFT JOIN apartments a ON dp.apartment_id = a.id WHERE 1=1`;
+      const params: any[] = [];
+      if (from) { params.push(from); q += ` AND dp.date >= $${params.length}`; }
+      if (to) { params.push(to); q += ` AND dp.date <= $${params.length}`; }
+      if (apartmentId) { params.push(Number(apartmentId)); q += ` AND dp.apartment_id = $${params.length}`; }
+      q += ` ORDER BY dp.apartment_id, dp.date`;
+      const { rows } = await pgPool.query(q, params);
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/daily — upsert jednej ceny
+  app.post('/api/pricing/daily', isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, date, price, minStay, maxStay, isBlocked, closedToArrival, closedToDeparture, note } = req.body;
+      if (!apartmentId || !date || price === undefined) return res.status(400).json({ message: 'apartmentId, date, price są wymagane' });
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      // Get old price for history
+      const [existing] = (await pgPool.query(`SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [apartmentId, date])).rows;
+      const [row] = (await pgPool.query(
+        `INSERT INTO daily_prices (apartment_id, date, price, min_stay, max_stay, is_blocked, closed_to_arrival, closed_to_departure, note, source, created_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual', $10, NOW())
+         ON CONFLICT (apartment_id, date) DO UPDATE SET
+           price = EXCLUDED.price, min_stay = EXCLUDED.min_stay, max_stay = EXCLUDED.max_stay,
+           is_blocked = EXCLUDED.is_blocked, closed_to_arrival = EXCLUDED.closed_to_arrival,
+           closed_to_departure = EXCLUDED.closed_to_departure, note = EXCLUDED.note,
+           source = 'manual', updated_at = NOW()
+         RETURNING *`,
+        [apartmentId, date, price, minStay || 1, maxStay || null, isBlocked || false, closedToArrival || false, closedToDeparture || false, note || null, user]
+      )).rows;
+      // Record history
+      await pgPool.query(
+        `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source) VALUES ($1, $2, $3, $4, $5, 'manual')`,
+        [apartmentId, date, existing?.price || null, price, user]
+      );
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/daily/batch — bulk upsert
+  app.post('/api/pricing/daily/batch', isAuthenticated, async (req, res) => {
+    try {
+      const { entries, overwrite = true } = req.body; // entries: [{apartmentId, date, price, minStay, isBlocked, note}]
+      if (!Array.isArray(entries) || entries.length === 0) return res.status(400).json({ message: 'entries jest wymagane' });
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      const batchId = `batch-${Date.now()}`;
+      let inserted = 0;
+      for (const e of entries) {
+        if (!e.apartmentId || !e.date || e.price === undefined) continue;
+        if (!overwrite) {
+          const [ex] = (await pgPool.query(`SELECT id FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [e.apartmentId, e.date])).rows;
+          if (ex) continue;
+        }
+        const [existing] = (await pgPool.query(`SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [e.apartmentId, e.date])).rows;
+        await pgPool.query(
+          `INSERT INTO daily_prices (apartment_id, date, price, min_stay, max_stay, is_blocked, closed_to_arrival, closed_to_departure, note, source, created_by, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+           ON CONFLICT (apartment_id, date) DO UPDATE SET
+             price = EXCLUDED.price, min_stay = EXCLUDED.min_stay, max_stay = EXCLUDED.max_stay,
+             is_blocked = EXCLUDED.is_blocked, note = EXCLUDED.note, source = EXCLUDED.source, updated_at = NOW()
+           RETURNING id`,
+          [e.apartmentId, e.date, e.price, e.minStay || 1, e.maxStay || null, e.isBlocked || false, e.closedToArrival || false, e.closedToDeparture || false, e.note || null, e.source || 'manual', user]
+        );
+        await pgPool.query(
+          `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source, batch_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [e.apartmentId, e.date, existing?.price || null, e.price, user, e.source || 'manual', batchId]
+        );
+        inserted++;
+      }
+      res.json({ inserted, batchId });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // DELETE /api/pricing/daily/:id
+  app.delete('/api/pricing/daily/:id', isAuthenticated, async (req, res) => {
+    try {
+      await pgPool.query(`DELETE FROM daily_prices WHERE id = $1`, [Number(req.params.id)]);
+      res.status(204).send();
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/daily/copy — kopiuj ceny między apartamentami
+  app.post('/api/pricing/daily/copy', isAuthenticated, async (req, res) => {
+    try {
+      const { fromApartmentId, toApartmentIds, from, to, overwrite = false } = req.body;
+      if (!fromApartmentId || !Array.isArray(toApartmentIds) || !from || !to) return res.status(400).json({ message: 'Brak wymaganych parametrów' });
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      const sourceRows = (await pgPool.query(
+        `SELECT * FROM daily_prices WHERE apartment_id = $1 AND date >= $2 AND date <= $3 ORDER BY date`,
+        [fromApartmentId, from, to]
+      )).rows;
+      let copied = 0;
+      const batchId = `copy-${Date.now()}`;
+      for (const targetAptId of toApartmentIds) {
+        for (const row of sourceRows) {
+          if (!overwrite) {
+            const [ex] = (await pgPool.query(`SELECT id FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [targetAptId, row.date])).rows;
+            if (ex) continue;
+          }
+          const [existing] = (await pgPool.query(`SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [targetAptId, row.date])).rows;
+          await pgPool.query(
+            `INSERT INTO daily_prices (apartment_id, date, price, min_stay, max_stay, is_blocked, closed_to_arrival, closed_to_departure, note, source, created_by, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'copy', $10, NOW())
+             ON CONFLICT (apartment_id, date) DO UPDATE SET price = EXCLUDED.price, min_stay = EXCLUDED.min_stay, max_stay = EXCLUDED.max_stay, is_blocked = EXCLUDED.is_blocked, note = EXCLUDED.note, source = 'copy', updated_at = NOW()`,
+            [targetAptId, row.date, row.price, row.min_stay, row.max_stay, row.is_blocked, row.closed_to_arrival, row.closed_to_departure, row.note, user]
+          );
+          await pgPool.query(
+            `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source, batch_id) VALUES ($1, $2, $3, $4, $5, 'copy', $6)`,
+            [targetAptId, row.date, existing?.price || null, row.price, user, batchId]
+          );
+          copied++;
+        }
+      }
+      res.json({ copied, batchId });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/alerts — alerty o brakujących cenach
+  app.get('/api/pricing/alerts', isAuthenticated, async (req, res) => {
+    try {
+      const today = new Date();
+      const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
+      const todayStr = today.toISOString().split('T')[0];
+      const in30Str = in30.toISOString().split('T')[0];
+      // Get all active apartments
+      const apts = (await pgPool.query(`SELECT id, name FROM apartments WHERE active = true ORDER BY name`)).rows;
+      // For each, count how many days in next 30 have prices set
+      const alerts = [];
+      for (const apt of apts) {
+        const { rows } = await pgPool.query(
+          `SELECT COUNT(*) as cnt FROM daily_prices WHERE apartment_id = $1 AND date >= $2 AND date <= $3 AND is_blocked = false`,
+          [apt.id, todayStr, in30Str]
+        );
+        const cnt = Number(rows[0]?.cnt || 0);
+        const total = 30;
+        const healthScore = Math.round((cnt / total) * 100);
+        if (healthScore < 100) {
+          alerts.push({ apartmentId: apt.id, apartmentName: apt.name, healthScore, missingDays: total - cnt, totalDays: total });
+        }
+      }
+      res.json(alerts);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/rules
+  app.get('/api/pricing/rules', isAuthenticated, async (req, res) => {
+    try {
+      const rows = (await pgPool.query(`SELECT * FROM pricing_rules ORDER BY priority DESC, created_at ASC`)).rows;
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/rules
+  app.post('/api/pricing/rules', isAuthenticated, async (req, res) => {
+    try {
+      const { name, type, dateFrom, dateTo, dayOfWeek, modifier, modifierType, priority, active, minStayRule, maxStayRule, apartmentIds, seasonType } = req.body;
+      if (!name || !type || modifier === undefined) return res.status(400).json({ message: 'name, type, modifier są wymagane' });
+      const [row] = (await pgPool.query(
+        `INSERT INTO pricing_rules (name, type, season_type, date_from, date_to, day_of_week, modifier, modifier_type, priority, active, min_stay_rule, max_stay_rule, apartment_ids)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+        [name, type, seasonType || null, dateFrom || null, dateTo || null, dayOfWeek ? `{${dayOfWeek.join(',')}}` : null, modifier, modifierType || 'percentage', priority || 0, active !== false, minStayRule || null, maxStayRule || null, apartmentIds ? `{${apartmentIds.join(',')}}` : null]
+      )).rows;
+      res.status(201).json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // PUT /api/pricing/rules/:id
+  app.put('/api/pricing/rules/:id', isAuthenticated, async (req, res) => {
+    try {
+      const { name, type, dateFrom, dateTo, dayOfWeek, modifier, modifierType, priority, active, minStayRule, maxStayRule, apartmentIds, seasonType } = req.body;
+      const [row] = (await pgPool.query(
+        `UPDATE pricing_rules SET name=$1, type=$2, season_type=$3, date_from=$4, date_to=$5, day_of_week=$6, modifier=$7, modifier_type=$8, priority=$9, active=$10, min_stay_rule=$11, max_stay_rule=$12, apartment_ids=$13, updated_at=NOW()
+         WHERE id=$14 RETURNING *`,
+        [name, type, seasonType || null, dateFrom || null, dateTo || null, dayOfWeek ? `{${dayOfWeek.join(',')}}` : null, modifier, modifierType || 'percentage', priority || 0, active !== false, minStayRule || null, maxStayRule || null, apartmentIds ? `{${apartmentIds.join(',')}}` : null, Number(req.params.id)]
+      )).rows;
+      if (!row) return res.status(404).json({ message: 'Nie znaleziono reguły' });
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // DELETE /api/pricing/rules/:id
+  app.delete('/api/pricing/rules/:id', isAuthenticated, async (req, res) => {
+    try {
+      await pgPool.query(`DELETE FROM pricing_rules WHERE id = $1`, [Number(req.params.id)]);
+      res.status(204).send();
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/rules/:id/apply — zastosuj regułę do zakresu dat
+  app.post('/api/pricing/rules/:id/apply', isAuthenticated, async (req, res) => {
+    try {
+      const rule = (await pgPool.query(`SELECT * FROM pricing_rules WHERE id = $1`, [Number(req.params.id)])).rows[0];
+      if (!rule) return res.status(404).json({ message: 'Nie znaleziono reguły' });
+      const { from, to, basePrices, overwrite = true } = req.body; // basePrices: {apartmentId: price}
+      if (!from || !to || !basePrices) return res.status(400).json({ message: 'from, to, basePrices są wymagane' });
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      const batchId = `rule-${rule.id}-${Date.now()}`;
+      const entries: any[] = [];
+      // Generate dates in range
+      const start = new Date(from), end = new Date(to);
+      const aptIds = Object.keys(basePrices).map(Number);
+      for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+        const dateStr = date.toISOString().split('T')[0];
+        const dow = date.getDay(); // 0=Sun, 6=Sat
+        // Check rule type applicability
+        if (rule.type === 'day_of_week' && rule.day_of_week) {
+          const ruleDays = Array.isArray(rule.day_of_week) ? rule.day_of_week : JSON.parse(rule.day_of_week);
+          if (!ruleDays.includes(dow)) continue;
+        }
+        for (const aptId of aptIds) {
+          // Filter by apartment_ids if set
+          if (rule.apartment_ids && Array.isArray(rule.apartment_ids) && rule.apartment_ids.length > 0) {
+            if (!rule.apartment_ids.includes(aptId)) continue;
+          }
+          const base = Number(basePrices[aptId] || 0);
+          let price = base;
+          if (rule.modifier_type === 'percentage') {
+            price = Math.round(base * (1 + Number(rule.modifier) / 100));
+          } else {
+            price = base + Number(rule.modifier);
+          }
+          if (price < 0) price = 0;
+          entries.push({ apartmentId: aptId, date: dateStr, price, minStay: rule.min_stay_rule || 1, source: `rule:${rule.id}` });
+        }
+      }
+      // Batch upsert
+      let inserted = 0;
+      for (const e of entries) {
+        if (!overwrite) {
+          const [ex] = (await pgPool.query(`SELECT id FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [e.apartmentId, e.date])).rows;
+          if (ex) continue;
+        }
+        const [existing] = (await pgPool.query(`SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [e.apartmentId, e.date])).rows;
+        await pgPool.query(
+          `INSERT INTO daily_prices (apartment_id, date, price, min_stay, source, rule_id, created_by, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+           ON CONFLICT (apartment_id, date) DO UPDATE SET price = EXCLUDED.price, min_stay = EXCLUDED.min_stay, source = EXCLUDED.source, rule_id = EXCLUDED.rule_id, updated_at = NOW()`,
+          [e.apartmentId, e.date, e.price, e.minStay, e.source, rule.id, user]
+        );
+        await pgPool.query(
+          `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source, rule_id, batch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [e.apartmentId, e.date, existing?.price || null, e.price, user, e.source, rule.id, batchId]
+        );
+        inserted++;
+      }
+      res.json({ inserted, batchId, entries: entries.length });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/history
+  app.get('/api/pricing/history', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to, apartmentId, limit = 100, offset = 0 } = req.query;
+      let q = `SELECT pch.*, a.name as apartment_name FROM price_change_history pch LEFT JOIN apartments a ON pch.apartment_id = a.id WHERE 1=1`;
+      const params: any[] = [];
+      if (from) { params.push(from); q += ` AND pch.created_at >= $${params.length}`; }
+      if (to) { params.push(to); q += ` AND pch.created_at <= $${params.length}`; }
+      if (apartmentId) { params.push(Number(apartmentId)); q += ` AND pch.apartment_id = $${params.length}`; }
+      q += ` ORDER BY pch.created_at DESC`;
+      params.push(Number(limit)); q += ` LIMIT $${params.length}`;
+      params.push(Number(offset)); q += ` OFFSET $${params.length}`;
+      const rows = (await pgPool.query(q, params)).rows;
+      // Count total
+      let cq = `SELECT COUNT(*) as total FROM price_change_history pch WHERE 1=1`;
+      const cparams: any[] = [];
+      if (from) { cparams.push(from); cq += ` AND pch.created_at >= $${cparams.length}`; }
+      if (to) { cparams.push(to); cq += ` AND pch.created_at <= $${cparams.length}`; }
+      if (apartmentId) { cparams.push(Number(apartmentId)); cq += ` AND pch.apartment_id = $${cparams.length}`; }
+      const [{ total }] = (await pgPool.query(cq, cparams)).rows as any[];
+      res.json({ data: rows, total: Number(total), offset: Number(offset), limit: Number(limit) });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/templates
+  app.get('/api/pricing/templates', isAuthenticated, async (req, res) => {
+    try {
+      const rows = (await pgPool.query(`SELECT * FROM price_templates ORDER BY created_at DESC`)).rows;
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/templates
+  app.post('/api/pricing/templates', isAuthenticated, async (req, res) => {
+    try {
+      const { name, description, config } = req.body;
+      if (!name) return res.status(400).json({ message: 'name jest wymagane' });
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      const [row] = (await pgPool.query(
+        `INSERT INTO price_templates (name, description, config, created_by) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [name, description || null, JSON.stringify(config || {}), user]
+      )).rows;
+      res.status(201).json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // PUT /api/pricing/templates/:id
+  app.put('/api/pricing/templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      const { name, description, config } = req.body;
+      const [row] = (await pgPool.query(
+        `UPDATE price_templates SET name=$1, description=$2, config=$3, updated_at=NOW() WHERE id=$4 RETURNING *`,
+        [name, description || null, JSON.stringify(config || {}), Number(req.params.id)]
+      )).rows;
+      if (!row) return res.status(404).json({ message: 'Nie znaleziono szablonu' });
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // DELETE /api/pricing/templates/:id
+  app.delete('/api/pricing/templates/:id', isAuthenticated, async (req, res) => {
+    try {
+      await pgPool.query(`DELETE FROM price_templates WHERE id = $1`, [Number(req.params.id)]);
+      res.status(204).send();
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/templates/:id/apply — zastosuj szablon do apartamentów
+  app.post('/api/pricing/templates/:id/apply', isAuthenticated, async (req, res) => {
+    try {
+      const [tmpl] = (await pgPool.query(`SELECT * FROM price_templates WHERE id = $1`, [Number(req.params.id)])).rows;
+      if (!tmpl) return res.status(404).json({ message: 'Nie znaleziono szablonu' });
+      const { apartmentIds, from, to, overwrite = false } = req.body;
+      if (!Array.isArray(apartmentIds) || !from || !to) return res.status(400).json({ message: 'apartmentIds, from, to są wymagane' });
+      const cfg = typeof tmpl.config === 'string' ? JSON.parse(tmpl.config) : tmpl.config;
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      const entries: any[] = [];
+      const start = new Date(from), end = new Date(to);
+      for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+        const dateStr = date.toISOString().split('T')[0];
+        for (const aptId of apartmentIds) {
+          const price = cfg.prices?.[aptId] || cfg.basePrice || null;
+          if (price) entries.push({ apartmentId: aptId, date: dateStr, price, minStay: cfg.minStay || 1, source: `template:${tmpl.id}` });
+        }
+      }
+      let inserted = 0;
+      const batchId = `tmpl-${tmpl.id}-${Date.now()}`;
+      for (const e of entries) {
+        if (!overwrite) {
+          const [ex] = (await pgPool.query(`SELECT id FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [e.apartmentId, e.date])).rows;
+          if (ex) continue;
+        }
+        const [existing] = (await pgPool.query(`SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [e.apartmentId, e.date])).rows;
+        await pgPool.query(
+          `INSERT INTO daily_prices (apartment_id, date, price, min_stay, source, created_by, updated_at) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+           ON CONFLICT (apartment_id, date) DO UPDATE SET price = EXCLUDED.price, min_stay = EXCLUDED.min_stay, source = EXCLUDED.source, updated_at = NOW()`,
+          [e.apartmentId, e.date, e.price, e.minStay, e.source, user]
+        );
+        await pgPool.query(
+          `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source, batch_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [e.apartmentId, e.date, existing?.price || null, e.price, user, e.source, batchId]
+        );
+        inserted++;
+      }
+      res.json({ inserted });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/config/:apartmentId
+  app.get('/api/pricing/config/:apartmentId', isAuthenticated, async (req, res) => {
+    try {
+      const [row] = (await pgPool.query(`SELECT * FROM apartment_pricing_config WHERE apartment_id = $1`, [Number(req.params.apartmentId)])).rows;
+      res.json(row || { apartmentId: Number(req.params.apartmentId) });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // PUT /api/pricing/config/:apartmentId
+  app.put('/api/pricing/config/:apartmentId', isAuthenticated, async (req, res) => {
+    try {
+      const aptId = Number(req.params.apartmentId);
+      const { derivedFromApartmentId, derivedMultiplier, derivedOffset, templateId, leadTimeRules, orphanDayThreshold, orphanDayDiscount } = req.body;
+      const [row] = (await pgPool.query(
+        `INSERT INTO apartment_pricing_config (apartment_id, derived_from_apartment_id, derived_multiplier, derived_offset, template_id, lead_time_rules, orphan_day_threshold, orphan_day_discount, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         ON CONFLICT (apartment_id) DO UPDATE SET derived_from_apartment_id=$2, derived_multiplier=$3, derived_offset=$4, template_id=$5, lead_time_rules=$6, orphan_day_threshold=$7, orphan_day_discount=$8, updated_at=NOW()
+         RETURNING *`,
+        [aptId, derivedFromApartmentId || null, derivedMultiplier || null, derivedOffset || null, templateId || null, JSON.stringify(leadTimeRules || []), orphanDayThreshold || 2, orphanDayDiscount || null]
+      )).rows;
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/derived/apply — przelicz ceny pochodne dla apartamentu
+  app.post('/api/pricing/derived/apply', isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, from, to } = req.body;
+      if (!apartmentId || !from || !to) return res.status(400).json({ message: 'apartmentId, from, to są wymagane' });
+      const [cfg] = (await pgPool.query(`SELECT * FROM apartment_pricing_config WHERE apartment_id = $1`, [apartmentId])).rows;
+      if (!cfg || !cfg.derived_from_apartment_id) return res.status(400).json({ message: 'Brak konfiguracji cen pochodnych' });
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      // Get source prices
+      const sourceRows = (await pgPool.query(
+        `SELECT * FROM daily_prices WHERE apartment_id = $1 AND date >= $2 AND date <= $3`,
+        [cfg.derived_from_apartment_id, from, to]
+      )).rows;
+      let updated = 0;
+      const batchId = `derived-${Date.now()}`;
+      const multiplier = Number(cfg.derived_multiplier || 1);
+      const offset = Number(cfg.derived_offset || 0);
+      for (const src of sourceRows) {
+        const derivedPrice = Math.round(Number(src.price) * multiplier + offset);
+        const [existing] = (await pgPool.query(`SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`, [apartmentId, src.date])).rows;
+        await pgPool.query(
+          `INSERT INTO daily_prices (apartment_id, date, price, min_stay, source, created_by, updated_at)
+           VALUES ($1, $2, $3, $4, 'derived', $5, NOW())
+           ON CONFLICT (apartment_id, date) DO UPDATE SET price = EXCLUDED.price, source = 'derived', updated_at = NOW()`,
+          [apartmentId, src.date, derivedPrice, src.min_stay, user]
+        );
+        await pgPool.query(
+          `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source, batch_id) VALUES ($1, $2, $3, $4, $5, 'derived', $6)`,
+          [apartmentId, src.date, existing?.price || null, derivedPrice, user, batchId]
+        );
+        updated++;
+      }
+      res.json({ updated });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/hotres/pull — pobierz ceny z HotRes
+  app.get('/api/pricing/hotres/pull', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to } = req.query;
+      if (!from || !to) return res.status(400).json({ message: 'from i to są wymagane' });
+      const authKey = process.env.HOTRES_AUTH_KEY;
+      const apiKey = process.env.HOTRES_API_KEY;
+      if (!authKey || !apiKey) return res.status(400).json({ message: 'Brak kluczy API HotRes' });
+      // Get apartments with hotres IDs
+      const apts = (await pgPool.query(`SELECT id, name, hotres_type_id, hotres_rate_id FROM apartments WHERE active = true AND hotres_type_id IS NOT NULL`)).rows;
+      if (apts.length === 0) return res.json({ data: [], warning: 'Brak apartamentów z ustawionym hotresTypeId' });
+      // Get our prices for the range
+      const ourPrices = (await pgPool.query(
+        `SELECT apartment_id, date, price FROM daily_prices WHERE date >= $1 AND date <= $2`,
+        [from, to]
+      )).rows;
+      const ourMap: Record<string, Record<string, number>> = {};
+      for (const p of ourPrices) {
+        const aptId = String(p.apartment_id);
+        if (!ourMap[aptId]) ourMap[aptId] = {};
+        ourMap[aptId][String(p.date)] = Number(p.price);
+      }
+      // Fetch from HotRes for each apartment
+      const results: any[] = [];
+      for (const apt of apts) {
+        try {
+          const url = `https://panel.hotres.pl/api_prices?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&from=${from}&till=${to}&type_id=${apt.hotres_type_id}${apt.hotres_rate_id ? `&rate_id=${apt.hotres_rate_id}` : ''}`;
+          const resp = await fetch(url);
+          const data = await resp.json() as any;
+          const hotresPrices = Array.isArray(data) ? data : (data.prices || data.data || []);
+          for (const hp of hotresPrices) {
+            const date = hp.date || hp.day;
+            if (!date) continue;
+            const hotresPrice = Number(hp.price || hp.baseprice || 0);
+            const ourPrice = ourMap[String(apt.id)]?.[date] || null;
+            results.push({
+              apartmentId: apt.id,
+              apartmentName: apt.name,
+              date,
+              ourPrice,
+              hotresPrice,
+              diff: ourPrice !== null ? ourPrice - hotresPrice : null,
+            });
+          }
+        } catch (e) {
+          results.push({ apartmentId: apt.id, apartmentName: apt.name, error: 'Błąd pobierania z HotRes' });
+        }
+      }
+      res.json({ data: results });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/hotres/push — wyślij ceny do HotRes
+  app.post('/api/pricing/hotres/push', isAuthenticated, async (req, res) => {
+    try {
+      const { from, to, apartmentIds } = req.body;
+      if (!from || !to || !Array.isArray(apartmentIds)) return res.status(400).json({ message: 'from, to, apartmentIds są wymagane' });
+      const authKey = process.env.HOTRES_AUTH_KEY;
+      const apiKey = process.env.HOTRES_API_KEY;
+      if (!authKey || !apiKey) return res.status(400).json({ message: 'Brak kluczy API HotRes' });
+      const results: any[] = [];
+      for (const aptId of apartmentIds) {
+        const [apt] = (await pgPool.query(`SELECT id, name, hotres_type_id, hotres_rate_id FROM apartments WHERE id = $1`, [aptId])).rows;
+        if (!apt) { results.push({ apartmentId: aptId, error: 'Nie znaleziono apartamentu' }); continue; }
+        if (!apt.hotres_type_id) { results.push({ apartmentId: aptId, apartmentName: apt.name, error: 'Brak hotresTypeId' }); continue; }
+        // Get prices for this apartment in range - group into continuous periods
+        const prices = (await pgPool.query(
+          `SELECT date, price, min_stay, max_stay, closed_to_arrival, closed_to_departure FROM daily_prices WHERE apartment_id = $1 AND date >= $2 AND date <= $3 ORDER BY date`,
+          [aptId, from, to]
+        )).rows;
+        if (prices.length === 0) { results.push({ apartmentId: aptId, apartmentName: apt.name, sent: 0 }); continue; }
+        // Build HotRes price entries (one per day or grouped by same price)
+        const priceEntries = prices.map((p: any) => ({
+          from: p.date, till: p.date,
+          baseprice: Number(p.price),
+          min: p.min_stay || 1,
+          ...(p.max_stay ? { max: p.max_stay } : {}),
+          cta: p.closed_to_arrival ? 1 : 0,
+          ctd: p.closed_to_departure ? 1 : 0,
+        }));
+        const payload = {
+          type_id: apt.hotres_type_id,
+          ...(apt.hotres_rate_id ? { rate_id: apt.hotres_rate_id } : {}),
+          mode: 'delta',
+          prices: priceEntries,
+        };
+        try {
+          const url = `https://panel.hotres.pl/api_updateprices?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}`;
+          const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          const data = await resp.json() as any;
+          results.push({ apartmentId: aptId, apartmentName: apt.name, sent: priceEntries.length, result: data?.result || data });
+        } catch (e: any) {
+          results.push({ apartmentId: aptId, apartmentName: apt.name, error: e.message });
+        }
+        // Rate limit between apartments
+        await new Promise(r => setTimeout(r, 300));
+      }
+      res.json({ results });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/holidays
+  app.get('/api/pricing/holidays', isAuthenticated, async (req, res) => {
+    try {
+      const rows = (await pgPool.query(`SELECT * FROM holidays ORDER BY date`)).rows;
+      res.json(rows);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/holidays
+  app.post('/api/pricing/holidays', isAuthenticated, async (req, res) => {
+    try {
+      const { date, name, type, isRecurring } = req.body;
+      if (!date || !name) return res.status(400).json({ message: 'date i name są wymagane' });
+      const [row] = (await pgPool.query(
+        `INSERT INTO holidays (date, name, type, is_recurring) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [date, name, type || 'holiday', isRecurring || false]
+      )).rows;
+      res.status(201).json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // DELETE /api/pricing/holidays/:id
+  app.delete('/api/pricing/holidays/:id', isAuthenticated, async (req, res) => {
+    try {
+      await pgPool.query(`DELETE FROM holidays WHERE id = $1`, [Number(req.params.id)]);
+      res.status(204).send();
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ============ PRICING AI (CENNIK AI) ============
+
+  // GET /api/pricing/ai/config/:apartmentId
+  app.get('/api/pricing/ai/config/:apartmentId', isAuthenticated, async (req, res) => {
+    try {
+      const { rows: [cfg] } = await pgPool.query(
+        `SELECT * FROM ai_pricing_config WHERE apartment_id = $1`,
+        [Number(req.params.apartmentId)]
+      );
+      res.json(cfg || null);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // PUT /api/pricing/ai/config/:apartmentId
+  app.put('/api/pricing/ai/config/:apartmentId', isAuthenticated, async (req, res) => {
+    try {
+      const aptId = Number(req.params.apartmentId);
+      const { autoMode, maxChangePercent, minPrice, maxPrice, daysAhead } = req.body;
+      const { rows: [row] } = await pgPool.query(
+        `INSERT INTO ai_pricing_config (apartment_id, auto_mode, max_change_percent, min_price, max_price, days_ahead, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (apartment_id) DO UPDATE SET
+           auto_mode = EXCLUDED.auto_mode, max_change_percent = EXCLUDED.max_change_percent,
+           min_price = EXCLUDED.min_price, max_price = EXCLUDED.max_price,
+           days_ahead = EXCLUDED.days_ahead, updated_at = NOW()
+         RETURNING *`,
+        [aptId, autoMode ?? false, maxChangePercent ?? 10, minPrice || null, maxPrice || null, daysAhead ?? 90]
+      );
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/pricing/ai/recommendations — lista rekomendacji
+  app.get('/api/pricing/ai/recommendations', isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, status, from, to, limit = 50, offset = 0 } = req.query;
+      let q = `SELECT r.*, a.name as apartment_name FROM ai_recommendations r
+               LEFT JOIN apartments a ON r.apartment_id = a.id WHERE 1=1`;
+      const params: any[] = [];
+      if (apartmentId) { params.push(Number(apartmentId)); q += ` AND r.apartment_id = $${params.length}`; }
+      if (status) { params.push(status); q += ` AND r.status = $${params.length}`; }
+      if (from) { params.push(from); q += ` AND r.date >= $${params.length}`; }
+      if (to) { params.push(to); q += ` AND r.date <= $${params.length}`; }
+      const cq = q.replace('r.*, a.name as apartment_name', 'COUNT(*) as total');
+      const { rows: [{ total }] } = await pgPool.query(cq, params);
+      q += ` ORDER BY r.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+      params.push(Number(limit), Number(offset));
+      const { rows } = await pgPool.query(q, params);
+      res.json({ data: rows, total: Number(total) });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/ai/recommend — generuj rekomendacje AI dla apartamentu i zakresu dat
+  app.post('/api/pricing/ai/recommend', isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, from, to } = req.body;
+      if (!apartmentId || !from || !to) return res.status(400).json({ message: 'apartmentId, from, to są wymagane' });
+
+      // Pobierz dane kontekstowe
+      const { rows: [apt] } = await pgPool.query(
+        `SELECT * FROM apartments WHERE id = $1`, [apartmentId]
+      );
+      if (!apt) return res.status(404).json({ message: 'Apartament nie znaleziony' });
+
+      const { rows: currentPrices } = await pgPool.query(
+        `SELECT * FROM daily_prices WHERE apartment_id = $1 AND date >= $2 AND date <= $3 ORDER BY date`,
+        [apartmentId, from, to]
+      );
+      const { rows: reservations } = await pgPool.query(
+        `SELECT start_date, end_date, price FROM reservations WHERE apartment_id = $1
+         AND start_date >= $2 AND end_date <= $3 ORDER BY start_date`,
+        [apartmentId, from, to]
+      );
+      const { rows: holidays } = await pgPool.query(
+        `SELECT * FROM holidays WHERE date >= $1 AND date <= $2 ORDER BY date`,
+        [from, to]
+      );
+      const { rows: [cfg] } = await pgPool.query(
+        `SELECT * FROM ai_pricing_config WHERE apartment_id = $1`, [apartmentId]
+      );
+
+      // Przygotuj prompt dla GPT-4o
+      const priceList = currentPrices.map(p => `${p.date}: ${p.price} PLN`).join('\n');
+      const resList = reservations.map(r => `${r.start_date}–${r.end_date}: ${r.price || '?'} PLN`).join('\n');
+      const holList = holidays.map(h => `${h.date}: ${h.name}`).join('\n');
+      const minP = cfg?.min_price || apt.min_price || null;
+      const maxP = cfg?.max_price || apt.max_price || null;
+      const maxChange = Number(cfg?.max_change_percent || 20);
+
+      const prompt = `Jesteś ekspertem od revenue management dla apartamentów w Polsce.
+Apartament: ${apt.name} (lokalizacja: ${apt.location || 'nieznana'})
+Zakres dat: ${from} – ${to}
+${minP ? `Minimalna cena: ${minP} PLN` : ''}${maxP ? `, Maksymalna cena: ${maxP} PLN` : ''}
+Maks. zmiana względem aktualnej ceny: ±${maxChange}%
+
+Aktualne ceny dzienne:
+${priceList || '(brak ustawionych cen)'}
+
+Rezerwacje w tym okresie:
+${resList || '(brak)'}
+
+Święta i ważne daty:
+${holList || '(brak)'}
+
+Na podstawie tych danych zaproponuj optymalne ceny dla każdego dnia w zakresie ${from}–${to}.
+Uwzględnij sezonowość, dni tygodnia (weekendy droższe), święta, i historię rezerwacji.
+Odpowiedz TYLKO w formacie JSON (tablica):
+[
+  {
+    "date": "YYYY-MM-DD",
+    "current_price": 350,
+    "recommended_price": 380,
+    "confidence": 0.85,
+    "reasoning": "Krótki powód po polsku (max 1 zdanie)",
+    "factors": "weekend,wakacje"
+  },
+  ...
+]
+Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu — tylko JSON.`;
+
+      // Wywołaj OpenAI
+      const openaiModule = await import("openai");
+      const openai = new openaiModule.default({ apiKey: process.env.OPENAI_API_KEY });
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      let parsed: any[] = [];
+      try {
+        const raw = completion.choices[0].message.content || "{}";
+        const obj = JSON.parse(raw);
+        parsed = Array.isArray(obj) ? obj : (Array.isArray(obj.recommendations) ? obj.recommendations : Object.values(obj)[0] as any[]);
+        if (!Array.isArray(parsed)) parsed = [];
+      } catch {
+        return res.status(500).json({ message: 'Błąd parsowania odpowiedzi AI' });
+      }
+
+      // Zapisz rekomendacje do DB
+      const inserted: any[] = [];
+      for (const rec of parsed) {
+        if (!rec.date || rec.recommended_price === undefined) continue;
+        const currentP = currentPrices.find(p => p.date === rec.date)?.price || rec.current_price || 0;
+        // Ogranicz zmianę
+        const current = Number(currentP);
+        let recommended = Number(rec.recommended_price);
+        if (current > 0) {
+          const maxUp = current * (1 + maxChange / 100);
+          const maxDown = current * (1 - maxChange / 100);
+          recommended = Math.min(maxUp, Math.max(maxDown, recommended));
+        }
+        if (minP && recommended < Number(minP)) recommended = Number(minP);
+        if (maxP && recommended > Number(maxP)) recommended = Number(maxP);
+        recommended = Math.round(recommended);
+
+        const { rows: [row] } = await pgPool.query(
+          `INSERT INTO ai_recommendations (apartment_id, date, current_price, recommended_price, confidence, reasoning, factors, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING *`,
+          [apartmentId, rec.date, current, recommended, rec.confidence || 0.7, rec.reasoning || '', rec.factors || '']
+        );
+        inserted.push(row);
+      }
+
+      res.json({ recommendations: inserted, count: inserted.length });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/ai/recommendations/:id/apply — zastosuj rekomendację
+  app.post('/api/pricing/ai/recommendations/:id/apply', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      const { rows: [rec] } = await pgPool.query(`SELECT * FROM ai_recommendations WHERE id = $1`, [id]);
+      if (!rec) return res.status(404).json({ message: 'Rekomendacja nie znaleziona' });
+
+      const { rows: [existing] } = await pgPool.query(
+        `SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`,
+        [rec.apartment_id, rec.date]
+      );
+      await pgPool.query(
+        `INSERT INTO daily_prices (apartment_id, date, price, source, created_by, updated_at)
+         VALUES ($1, $2, $3, 'ai-auto', $4, NOW())
+         ON CONFLICT (apartment_id, date) DO UPDATE SET price = EXCLUDED.price, source = 'ai-auto', updated_at = NOW()`,
+        [rec.apartment_id, rec.date, rec.recommended_price, user]
+      );
+      await pgPool.query(
+        `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source)
+         VALUES ($1, $2, $3, $4, $5, 'ai-auto')`,
+        [rec.apartment_id, rec.date, existing?.price || null, rec.recommended_price, user]
+      );
+      const { rows: [updated] } = await pgPool.query(
+        `UPDATE ai_recommendations SET status = 'applied', applied_at = NOW() WHERE id = $1 RETURNING *`, [id]
+      );
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/ai/recommendations/:id/dismiss — odrzuć rekomendację
+  app.post('/api/pricing/ai/recommendations/:id/dismiss', isAuthenticated, async (req, res) => {
+    try {
+      const { rows: [row] } = await pgPool.query(
+        `UPDATE ai_recommendations SET status = 'dismissed' WHERE id = $1 RETURNING *`,
+        [Number(req.params.id)]
+      );
+      if (!row) return res.status(404).json({ message: 'Nie znaleziono' });
+      res.json(row);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/pricing/ai/recommendations/apply-batch — zastosuj wszystkie pending
+  app.post('/api/pricing/ai/recommendations/apply-batch', isAuthenticated, async (req, res) => {
+    try {
+      const { apartmentId, ids } = req.body;
+      const user = (req as any).user?.username || (req as any).user?.email || 'system';
+      let q = `SELECT * FROM ai_recommendations WHERE status = 'pending'`;
+      const params: any[] = [];
+      if (ids && Array.isArray(ids) && ids.length > 0) {
+        params.push(ids);
+        q += ` AND id = ANY($${params.length})`;
+      } else if (apartmentId) {
+        params.push(Number(apartmentId));
+        q += ` AND apartment_id = $${params.length}`;
+      }
+      const { rows: recs } = await pgPool.query(q, params);
+      let applied = 0;
+      for (const rec of recs) {
+        const { rows: [existing] } = await pgPool.query(
+          `SELECT price FROM daily_prices WHERE apartment_id = $1 AND date = $2`,
+          [rec.apartment_id, rec.date]
+        );
+        await pgPool.query(
+          `INSERT INTO daily_prices (apartment_id, date, price, source, created_by, updated_at)
+           VALUES ($1, $2, $3, 'ai-auto', $4, NOW())
+           ON CONFLICT (apartment_id, date) DO UPDATE SET price = EXCLUDED.price, source = 'ai-auto', updated_at = NOW()`,
+          [rec.apartment_id, rec.date, rec.recommended_price, user]
+        );
+        await pgPool.query(
+          `INSERT INTO price_change_history (apartment_id, date, old_price, new_price, changed_by, source)
+           VALUES ($1, $2, $3, $4, $5, 'ai-auto')`,
+          [rec.apartment_id, rec.date, existing?.price || null, rec.recommended_price, user]
+        );
+        await pgPool.query(`UPDATE ai_recommendations SET status = 'applied', applied_at = NOW() WHERE id = $1`, [rec.id]);
+        applied++;
+      }
+      res.json({ applied });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   return httpServer;
 }
+
 
