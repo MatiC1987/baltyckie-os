@@ -187,7 +187,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
     const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
     const isGroupReservation = resolvedAptIds.length > 1;
 
-    const price = total.toFixed(2);
+    const price = (total + addonsAmount).toFixed(2);
     const surcharge = addonsAmount.toFixed(2);
 
     // Extract customer data from HotRes item
