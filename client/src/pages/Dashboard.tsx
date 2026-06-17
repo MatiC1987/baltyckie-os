@@ -63,6 +63,7 @@ import { HrSummaryWidget } from "@/components/dashboard/HrSummaryWidget";
 import { RcpSummaryWidget } from "@/components/dashboard/RcpSummaryWidget";
 import { RecentActivityWidget } from "@/components/dashboard/RecentActivityWidget";
 import { BalanceForecastChartWidget } from "@/components/dashboard/BalanceForecastChartWidget";
+import { TodayReservationsWidget } from "@/components/dashboard/TodayReservationsWidget";
 
 function SortableWidget({ id, isEditMode, children }: { id: string; isEditMode: boolean; children: React.ReactNode }) {
   const {
@@ -378,6 +379,13 @@ export default function Dashboard() {
         ) : null;
       case "quick-actions":
         return <QuickActions />;
+      case "today-reservations":
+        return (
+          <TodayReservationsWidget
+            reservations={reservations || []}
+            forecastData={forecastData || []}
+          />
+        );
       case "balance":
         return (
           <CompanyBalanceCard

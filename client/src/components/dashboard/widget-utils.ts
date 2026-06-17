@@ -10,6 +10,7 @@ export type WidgetDef = {
 
 export const WIDGET_REGISTRY: WidgetDef[] = [
   { id: "kpi", label: "Wskaźniki KPI", category: "financial", defaultVisible: true, description: "Przychód, rezerwacje, nieopłacone, saldo" },
+  { id: "today-reservations", label: "Rezerwacje dzisiaj", category: "operational", defaultVisible: true, description: "Suma rezerwacji dodanych dziś wg miesiąca + brakująca kwota/dzień" },
   { id: "balance", label: "Saldo firmowe", category: "financial", defaultVisible: true, description: "Salda kont bankowych" },
   { id: "forecast", label: "Prognoza przychodów", category: "financial", defaultVisible: true, description: "Realizacja prognozy miesięcznej" },
   { id: "balance-forecast-chart", label: "Saldo firmowe — prognoza", category: "financial", defaultVisible: true, description: "Wykres salda firmowego na 36 miesięcy" },
