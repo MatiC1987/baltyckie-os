@@ -511,20 +511,41 @@ function HotResApiSyncCard() {
         </div>
       )}
 
-      {syncResult && !syncResult.error && syncResult.log.length > 0 && (
+      {syncResult && syncResult.log.length > 0 && (
         <div>
           <button
             className="text-xs text-muted-foreground underline"
             onClick={() => setShowLog(v => !v)}
             data-testid="button-toggle-sync-log"
           >
-            {showLog ? "Ukryj log" : "Pokaż log"}
+            {showLog ? "Ukryj log" : `Pokaż log (${syncResult.log.length} wpisów)`}
           </button>
           {showLog && (
-            <div className="mt-2 bg-muted rounded p-2 font-mono text-xs max-h-40 overflow-y-auto space-y-0.5" data-testid="text-api-sync-log">
-              {syncResult.log.map((entry, i) => (
-                <div key={i}>{entry}</div>
-              ))}
+            <div className="mt-2 bg-muted rounded p-2 font-mono text-xs max-h-64 overflow-y-auto space-y-0.5" data-testid="text-api-sync-log">
+              {syncResult.log.map((entry, i) => {
+                const isSkipped = entry.startsWith("[POMINIĘTO]");
+                const isError = entry.startsWith("[BŁĄD]");
+                const isNew = entry.startsWith("[NOWA]");
+                const isUpdate = entry.startsWith("[AKTUALIZACJA]");
+                const isSummary = entry.startsWith("[PODSUMOWANIE]");
+                const isNewApt = entry.startsWith("[NOWY APT]");
+                return (
+                  <div
+                    key={i}
+                    className={
+                      isError ? "text-red-600 dark:text-red-400" :
+                      isSkipped ? "text-orange-500 dark:text-orange-400" :
+                      isNew ? "text-green-700 dark:text-green-400" :
+                      isUpdate ? "text-blue-600 dark:text-blue-400" :
+                      isSummary ? "text-foreground font-semibold" :
+                      isNewApt ? "text-purple-600 dark:text-purple-400" :
+                      "text-muted-foreground"
+                    }
+                  >
+                    {entry}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

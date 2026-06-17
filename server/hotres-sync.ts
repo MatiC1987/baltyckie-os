@@ -58,12 +58,18 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
       imported: 0, updated: 0, skipped: 0, newApartments: 0, lastSync,
       error: "Brak kluczy API HotRes (HOTRES_AUTH_KEY, HOTRES_API_KEY). Skonfiguruj je w ustawieniach.",
       log: [],
+      customersCreated: 0, customersUpdated: 0, reservationsLinked: 0, duplicates: 0,
     };
   }
 
   let apiData: any[];
   try {
-    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}`;
+    // Add ?from param going back 3 years to ensure all historical reservations are fetched.
+    // HotRes API may cache or paginate recent-only results without this parameter.
+    const fromDate = new Date();
+    fromDate.setFullYear(fromDate.getFullYear() - 3);
+    const fromStr = fromDate.toISOString().split("T")[0]; // YYYY-MM-DD
+    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&from=${fromStr}`;
     const response = await fetch(url, {
       headers: { "Accept": "application/json" },
       signal: AbortSignal.timeout(30000),
@@ -123,6 +129,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
     const resNumber = String(item.number || item.id || "").trim();
     if (!resNumber) {
       skipped++;
+      log.push(`[POMINIĘTO] Rezerwacja bez numeru: ${JSON.stringify(item).slice(0, 120)}`);
       continue;
     }
 
@@ -131,7 +138,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
 
     if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
       skipped++;
-      log.push(`Pominięto rez. ${resNumber}: nieprawidłowe daty (${item.arrival_date} → ${item.departure_date})`);
+      log.push(`[POMINIĘTO] Rez. ${resNumber}: nieprawidłowe daty (przyjazd="${item.arrival_date || item.start_date}", wyjazd="${item.departure_date || item.end_date}")`);
       continue;
     }
 
@@ -172,10 +179,10 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
           allApartments.push(apt);
           foundId = apt.id;
           newApartments++;
-          log.push(`Utworzono apartament: ${aptName}`);
+          log.push(`[NOWY APT] Utworzono apartament: ${aptName} (rez. ${resNumber})`);
         } catch {
           skipped++;
-          log.push(`Pominięto rez. ${resNumber}: nie można utworzyć apartamentu '${aptName}'`);
+          log.push(`[POMINIĘTO] Rez. ${resNumber}: nie można utworzyć apartamentu '${aptName}'`);
           continue;
         }
       }
@@ -227,6 +234,10 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
       }
     }
 
+    const aptLabel = primaryAptId
+      ? (allApartments.find(a => a.id === primaryAptId)?.name || `apt#${primaryAptId}`)
+      : (apartmentNames[0] || "brak apartamentu");
+
     try {
       const existing = await storage.getReservationByNumber(resNumber);
       if (existing) {
@@ -247,6 +258,7 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
         });
         updated++;
         if (customerId) reservationsLinked++;
+        log.push(`[AKTUALIZACJA] Rez. ${resNumber} | ${guestName} | ${startDate}–${endDate} | ${aptLabel} | ${status}`);
       } else {
         await storage.createReservation({
           reservationNumber: resNumber,
@@ -266,19 +278,18 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
         });
         imported++;
         if (customerId) reservationsLinked++;
-        if (isGroupReservation) {
-          const names = resolvedAptIds.map(id => allApartments.find(a => a.id === id)?.name || `ID:${id}`).join(", ");
-          log.push(`Rezerwacja grupowa ${resNumber}: ${names}`);
-        }
+        const groupInfo = isGroupReservation
+          ? ` [GRUPOWA: ${resolvedAptIds.map(id => allApartments.find(a => a.id === id)?.name || `ID:${id}`).join(", ")}]`
+          : "";
+        log.push(`[NOWA] Rez. ${resNumber} | ${guestName} | ${startDate}–${endDate} | ${aptLabel} | ${status}${groupInfo}`);
       }
     } catch (e: any) {
       skipped++;
-      log.push(`Błąd zapisu rez. ${resNumber}: ${e.message}`);
+      log.push(`[BŁĄD] Rez. ${resNumber} | ${guestName} | ${startDate}–${endDate}: ${e.message}`);
     }
   }
 
-  if (updated > 0) log.push(`Zaktualizowano ${updated} istniejących rezerwacji`);
-  log.push(`Podsumowanie: nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}, nowe apt=${newApartments}`);
+  log.push(`[PODSUMOWANIE] nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}, nowe apt=${newApartments}`);
 
   // Update customer stats in batch after all reservations processed
   if (updatedCustomerIds.size > 0) {
