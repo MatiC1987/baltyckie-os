@@ -554,20 +554,34 @@ function HotResApiSyncCard() {
   );
 }
 
+interface DeepSyncResult {
+  success: boolean;
+  imported: number;
+  updated: number;
+  skipped: number;
+  pagesProcessed: number;
+  log: string[];
+  error?: string;
+  message?: string;
+}
+
 function HotResSection() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [importResult, setImportResult] = useState<HotResSyncResult | null>(null);
   const [repairResult, setRepairResult] = useState<{ success: boolean; message: string; fixed?: number } | null>(null);
+  const [deepSyncResult, setDeepSyncResult] = useState<DeepSyncResult | null>(null);
+  const [showDeepSyncLog, setShowDeepSyncLog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const deepSyncMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hotres/deep-sync"),
     onSuccess: async (res) => {
-      const data = await res.json();
+      const data: DeepSyncResult = await res.json();
+      setDeepSyncResult(data);
       if (data.success || data.imported >= 0) {
-        toast({ title: "Pełna synchronizacja zakończona", description: `Nowe: ${data.imported}, zaktualizowane: ${data.updated}, strony: ${data.pagesProcessed ?? "?"}` });
+        toast({ title: "Deep Sync zakończony", description: `Nowe: ${data.imported}, zaktualizowane: ${data.updated}, stron: ${data.pagesProcessed ?? "?"}` });
         queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
         queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
         queryClient.invalidateQueries({ queryKey: ['/api/import-metadata/last/hotres_api'] });
@@ -655,6 +669,84 @@ function HotResSection() {
       <CardContent className="space-y-6">
         <HotResApiSyncCard />
 
+        {/* Deep Sync section */}
+        <div className="border rounded-lg p-4 space-y-3 border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20">
+          <div className="flex items-start gap-2">
+            <Zap className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="space-y-1 flex-1">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Deep Sync — jednorazowa naprawa historycznych rezerwacji</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Pobiera <strong>wszystkie</strong> rezerwacje z HotRes API od 2020 roku (paginacja po dacie wyjazdu) i nadpisuje kwoty zgodnie z aktualną logiką (total + addons_amount). Naprawia historyczne rekordy, których nie obejmuje regularna synchronizacja. <strong>Operacja jednorazowa — może potrwać kilka minut.</strong>
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => { setDeepSyncResult(null); deepSyncMutation.mutate(); }}
+            disabled={deepSyncMutation.isPending}
+            data-testid="button-hotres-deep-sync"
+            className="border-amber-400 text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-950/50"
+          >
+            {deepSyncMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Zap className="h-4 w-4 mr-2" />
+            )}
+            {deepSyncMutation.isPending ? "Deep Sync — trwa (kilka minut)..." : "Uruchom Deep Sync"}
+          </Button>
+
+          {deepSyncResult && (
+            <div className={`rounded-lg p-3 space-y-3 ${deepSyncResult.success || deepSyncResult.imported >= 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-destructive/10"}`} data-testid="panel-deep-sync-result">
+              <div className="flex items-center gap-2">
+                {deepSyncResult.success || deepSyncResult.imported >= 0 ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-700 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                )}
+                <span className="text-sm font-medium text-green-800 dark:text-green-200" data-testid="text-deep-sync-message">
+                  Deep Sync zakończony
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <StatBox label="Stron API" value={deepSyncResult.pagesProcessed ?? 0} />
+                <StatBox label="Nowe" value={deepSyncResult.imported ?? 0} />
+                <StatBox label="Zaktualizowane" value={deepSyncResult.updated ?? 0} />
+                <StatBox label="Pominięte" value={deepSyncResult.skipped ?? 0} />
+              </div>
+              {deepSyncResult.log && deepSyncResult.log.length > 0 && (
+                <div>
+                  <button
+                    className="text-xs text-muted-foreground underline"
+                    onClick={() => setShowDeepSyncLog(v => !v)}
+                    data-testid="button-toggle-deep-sync-log"
+                  >
+                    {showDeepSyncLog ? "Ukryj log" : `Pokaż log (${deepSyncResult.log.length} wpisów)`}
+                  </button>
+                  {showDeepSyncLog && (
+                    <div className="mt-2 bg-muted rounded p-2 font-mono text-xs max-h-64 overflow-y-auto space-y-0.5" data-testid="text-deep-sync-log">
+                      {deepSyncResult.log.map((entry, i) => {
+                        const isError = entry.startsWith("[BŁĄD]");
+                        const isNew = entry.startsWith("[NOWA]");
+                        const isUpdate = entry.startsWith("[AKTUALIZACJA]");
+                        const isSummary = entry.startsWith("[PODSUMOWANIE]") || entry.startsWith("Strona");
+                        return (
+                          <div key={i} className={
+                            isError ? "text-red-600 dark:text-red-400" :
+                            isNew ? "text-green-700 dark:text-green-400" :
+                            isUpdate ? "text-blue-600 dark:text-blue-400" :
+                            isSummary ? "text-foreground font-semibold" :
+                            "text-muted-foreground"
+                          }>{entry}</div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="space-y-3">
           <p className="text-sm font-medium">Import CSV (fallback)</p>
           <p className="text-xs text-muted-foreground">
@@ -679,20 +771,6 @@ function HotResSection() {
           >
             <Upload className={`h-4 w-4 mr-2 ${uploading ? "animate-spin" : ""}`} />
             {uploading ? "Importowanie..." : "Wybierz plik CSV z HotRes"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => deepSyncMutation.mutate()}
-            disabled={deepSyncMutation.isPending}
-            data-testid="button-hotres-deep-sync"
-            title="Pobiera WSZYSTKIE rezerwacje z HotRes API przez paginację (departure_date). Naprawia ceny: total + addons_amount. Może potrwać kilka minut."
-          >
-            {deepSyncMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Zap className="h-4 w-4 mr-2" />
-            )}
-            {deepSyncMutation.isPending ? "Synchronizacja..." : "Pełna synchronizacja API"}
           </Button>
           <Button
             variant="outline"
