@@ -14927,6 +14927,120 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  // ============ HOTRES GUESTS IMPORT ============
+  app.post("/api/hotres/import-guests-csv", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: "Nie przesłano pliku" });
+      }
+
+      const isProxyEmail = (email: string) =>
+        email.includes("@guest.booking.com") ||
+        email.includes("@m.expediapartnercentral.com") ||
+        email.includes("@guest.airbnb.com") ||
+        email.includes("@expedia.com");
+
+      let rows: string[][] = [];
+
+      const isXls = /\.xlsx?$/i.test(req.file.originalname);
+      if (isXls) {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const raw: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
+        // Skip XLS header row (first row = column names like "added", "name", etc.)
+        const firstRow = raw[0] ? raw[0].map((c: any) => String(c ?? "").toLowerCase().trim()) : [];
+        const hasHeader = firstRow.includes("name") || firstRow.includes("added");
+        rows = (hasHeader ? raw.slice(1) : raw).map((r: any[]) => r.map((c: any) => String(c ?? "").trim()));
+      } else {
+        // CSV: semicolon-separated, no header row, UTF-8
+        const content = req.file.buffer.toString("utf-8");
+        rows = content.split(/\r?\n/).filter(l => l.trim()).map(line =>
+          line.split(";").map(c => c.trim())
+        );
+      }
+
+      let created = 0, updated = 0, skipped = 0;
+      const log: string[] = [];
+
+      for (const row of rows) {
+        if (!row || row.length < 4) { skipped++; continue; }
+
+        // Columns: 0=added, 1=lang, 2=name(firstName), 3=lastName, 4=email,
+        //          5=phonePrefix, 6=phone, 7=address, 8=city, 9=zip, 10=country,
+        //          11=coName, 12=coNip, 13=coAddress, 14=coCity, 15=coZip,
+        //          16=coCountry, 17=birthday, 18=identity, 19=passport,
+        //          20=newsletter, 21=abuse, 22=invoice, 23=tags, 24=comment
+        const firstName  = row[2] || "";
+        const lastName   = row[3] || "";
+        if (!firstName || !lastName || firstName === lastName) { skipped++; continue; }
+
+        const rawEmail   = row[4] || "";
+        const prefix     = (row[5] || "").replace(/\D/g, "");
+        const number     = (row[6] || "").replace(/[\s\-]/g, "");
+        const address    = row[7] || "";
+        const city       = row[8] || "";
+        const zip        = row[9] || "";
+        const country    = row[10] || "";
+        const coName     = row[11] || "";
+        const coNip      = row[12] || "";
+        const newsletter = row[20] || "0";
+
+        const email = (rawEmail && !isProxyEmail(rawEmail)) ? rawEmail : undefined;
+        const phone = (number.length >= 6)
+          ? (prefix ? `+${prefix}${number}` : number)
+          : undefined;
+
+        // Skip rows with no useful contact data (no real email AND no phone)
+        if (!email && !phone) { skipped++; continue; }
+
+        try {
+          const customerData: any = {
+            firstName,
+            lastName,
+            source: "hotres",
+            marketingConsent: newsletter === "1",
+            ...(email && { email }),
+            ...(phone && { phone }),
+            ...(address && { street: address }),
+            ...(city && { city }),
+            ...(zip && { postalCode: zip }),
+            ...(country && { country }),
+            ...(coName && { companyName: coName }),
+            ...(coNip && { nip: coNip }),
+          };
+
+          const { isNew } = await storage.upsertCustomer(customerData);
+          if (isNew) {
+            created++;
+            if (created + updated <= 15) log.push(`[NOWY] ${firstName} ${lastName}${phone ? " tel:" + phone : ""}${email ? " email:" + email : ""}`);
+          } else {
+            updated++;
+            if (created + updated <= 15) log.push(`[OK] ${firstName} ${lastName}${phone ? " tel:" + phone : ""}${email ? " email:" + email : ""}`);
+          }
+        } catch (e: any) {
+          log.push(`[BŁĄD] ${firstName} ${lastName}: ${e.message}`);
+          skipped++;
+        }
+      }
+
+      if (created + updated > 15) log.push(`... i ${created + updated - 15} więcej`);
+      log.push(`[PODSUMOWANIE] nowych=${created}, zaktualizowanych=${updated}, pominiętych=${skipped}`);
+
+      res.json({
+        success: true,
+        message: `Klienci: ${created} nowych, ${updated} zaktualizowanych, ${skipped} pominiętych (adresy proxy Booking pominięte)`,
+        created,
+        updated,
+        skipped,
+        log,
+      });
+    } catch (e: any) {
+      console.error("HotRes guests import error:", e);
+      res.status(500).json({ success: false, message: `Błąd importu klientów: ${e.message}` });
+    }
+  });
+
   // ============ EMPLOYEE TASKS ============
   app.get('/api/employee-tasks', isAuthenticated, async (req, res) => {
     try {

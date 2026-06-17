@@ -580,6 +580,37 @@ function HotResSection() {
   const [xlsResult, setXlsResult] = useState<{ success: boolean; message: string; updated?: number; notFound?: number; skipped?: number; log?: string[] } | null>(null);
   const [showXlsLog, setShowXlsLog] = useState(false);
 
+  const guestsFileInputRef = useRef<HTMLInputElement>(null);
+  const [guestsUploading, setGuestsUploading] = useState(false);
+  const [guestsResult, setGuestsResult] = useState<{ success: boolean; message: string; created?: number; updated?: number; skipped?: number; log?: string[] } | null>(null);
+  const [showGuestsLog, setShowGuestsLog] = useState(false);
+
+  const handleGuestsImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setGuestsUploading(true);
+    setGuestsResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/hotres/import-guests-csv", { method: "POST", body: formData, credentials: "include" });
+      const data = await res.json();
+      setGuestsResult(data);
+      if (data.success) {
+        toast({ title: "Import klientów zakończony", description: data.message });
+        queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
+      } else {
+        toast({ title: "Problem", description: data.message, variant: "destructive" });
+      }
+    } catch (e: any) {
+      setGuestsResult({ success: false, message: e.message });
+      toast({ title: "Błąd", description: e.message, variant: "destructive" });
+    } finally {
+      setGuestsUploading(false);
+      if (guestsFileInputRef.current) guestsFileInputRef.current.value = "";
+    }
+  };
+
   const handleXlsImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -845,6 +876,75 @@ function HotResSection() {
                     <div className="mt-2 bg-muted rounded p-2 font-mono text-xs max-h-48 overflow-y-auto space-y-0.5">
                       {xlsResult.log.map((entry, i) => (
                         <div key={i} className={entry.startsWith("[NIE") ? "text-amber-600 dark:text-amber-400" : entry.startsWith("[OK]") ? "text-green-700 dark:text-green-400" : entry.startsWith("[PODSUMOWANIE]") ? "font-semibold" : "text-muted-foreground"}>{entry}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Import klientów z HotRes (plik Goście) */}
+        <div className="border rounded-lg p-4 space-y-3 border-blue-200 bg-blue-50/30 dark:border-blue-800 dark:bg-blue-950/20">
+          <div className="space-y-1">
+            <p className="text-sm font-medium flex items-center gap-2">
+              <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              Import klientów z HotRes — uzupełnienie danych kontaktowych
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Eksport z HotRes: panel &gt; <strong>Goście</strong> &gt; Eksportuj CSV lub XLS (~7200 rekordów).
+              Aktualizuje telefony i emaile istniejących klientów. Adresy proxy Booking.com (<em>@guest.booking.com</em>) są automatycznie pomijane.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              ref={guestsFileInputRef}
+              type="file"
+              accept=".csv,.xls,.xlsx"
+              onChange={handleGuestsImport}
+              className="hidden"
+              data-testid="input-hotres-guests-file"
+            />
+            <Button
+              variant="outline"
+              onClick={() => guestsFileInputRef.current?.click()}
+              disabled={guestsUploading}
+              data-testid="button-hotres-guests-import"
+              className="border-blue-400 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-950/30"
+            >
+              <Upload className={`h-4 w-4 mr-2 ${guestsUploading ? "animate-spin" : ""}`} />
+              {guestsUploading ? "Importowanie klientów..." : "Wybierz plik Gości z HotRes (CSV lub XLS)"}
+            </Button>
+          </div>
+          {guestsResult && (
+            <div className={`rounded-lg p-3 space-y-2 ${guestsResult.success ? "bg-green-50 dark:bg-green-950/30" : "bg-destructive/10"}`}>
+              <div className="flex items-center gap-2">
+                {guestsResult.success ? <CheckCircle2 className="h-4 w-4 text-green-700 shrink-0" /> : <AlertCircle className="h-4 w-4 text-destructive shrink-0" />}
+                <span className="text-sm font-medium">{guestsResult.message}</span>
+              </div>
+              {guestsResult.success && (
+                <div className="grid grid-cols-3 gap-2">
+                  <StatBox label="Nowi klienci" value={guestsResult.created ?? 0} />
+                  <StatBox label="Zaktualizowani" value={guestsResult.updated ?? 0} />
+                  <StatBox label="Pominięci" value={guestsResult.skipped ?? 0} />
+                </div>
+              )}
+              {guestsResult.log && guestsResult.log.length > 0 && (
+                <div>
+                  <button className="text-xs text-muted-foreground underline" onClick={() => setShowGuestsLog(v => !v)}>
+                    {showGuestsLog ? "Ukryj log" : `Pokaż log (${guestsResult.log.length} wpisów)`}
+                  </button>
+                  {showGuestsLog && (
+                    <div className="mt-2 bg-muted rounded p-2 font-mono text-xs max-h-48 overflow-y-auto space-y-0.5">
+                      {guestsResult.log.map((entry, i) => (
+                        <div key={i} className={
+                          entry.startsWith("[NOWY]") ? "text-green-700 dark:text-green-400" :
+                          entry.startsWith("[OK]") ? "text-blue-600 dark:text-blue-400" :
+                          entry.startsWith("[BŁĄD]") ? "text-red-600 dark:text-red-400" :
+                          entry.startsWith("[PODSUMOWANIE]") ? "font-semibold" :
+                          "text-muted-foreground"
+                        }>{entry}</div>
                       ))}
                     </div>
                   )}
