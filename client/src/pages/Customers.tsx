@@ -7,7 +7,7 @@ import {
   Search, RefreshCw, Download, Users, Mail, Phone, Globe,
   CheckCircle2, XCircle, ChevronRight, Tag, X, Building2,
   CalendarDays, Loader2, MoreHorizontal, Pencil, Trash2,
-  Filter, ArrowUpDown, Plus, BarChart3, ArrowUp, ArrowDown
+  Filter, ArrowUpDown, Plus, BarChart3, ArrowUp, ArrowDown, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,6 +115,10 @@ export default function Customers() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [backfillDialogOpen, setBackfillDialogOpen] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ updated: number; skipped: number; total: number } | null>(null);
+  const backfillFileRef = useRef<HTMLInputElement | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
@@ -271,6 +275,28 @@ export default function Customers() {
     }
   };
 
+  const handleBackfillContacts = async (file: File) => {
+    setIsBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/customers/backfill-contacts-csv", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Błąd backfill");
+      setBackfillResult({ updated: data.updated, skipped: data.skipped, total: data.total });
+      qc.invalidateQueries({ queryKey: ["/api/customers"] });
+    } catch (e: any) {
+      toast({ title: "Błąd uzupełniania danych", description: e.message, variant: "destructive" });
+    } finally {
+      setIsBackfilling(false);
+    }
+  };
+
   const handleExportCSV = async () => {
     try {
       const p = new URLSearchParams();
@@ -398,6 +424,16 @@ export default function Customers() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => { setBackfillResult(null); setBackfillDialogOpen(true); }}
+            className="text-xs"
+            data-testid="button-backfill-contacts"
+          >
+            <Upload className="h-3.5 w-3.5 mr-1.5" />
+            Uzupełnij kontakty
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleExportCSV}
             className="text-xs"
             data-testid="button-export-csv"
@@ -407,6 +443,55 @@ export default function Customers() {
           </Button>
         </div>
       </div>
+
+      {/* Backfill contacts dialog */}
+      <Dialog open={backfillDialogOpen} onOpenChange={o => { setBackfillDialogOpen(o); if (!o) setBackfillResult(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Uzupełnij dane kontaktowe z CSV</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Wgraj plik CSV z HotRes (ten sam format co przy imporcie rezerwacji). System dopasuje klientów po nazwisku i imieniu, a następnie uzupełni brakujące adresy email i numery telefonu — bez tworzenia duplikatów ani nowych rezerwacji.
+            </p>
+            {!backfillResult ? (
+              <>
+                <input
+                  ref={backfillFileRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  data-testid="input-backfill-file"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleBackfillContacts(file);
+                  }}
+                />
+                <Button
+                  className="w-full"
+                  onClick={() => backfillFileRef.current?.click()}
+                  disabled={isBackfilling}
+                  data-testid="button-backfill-upload"
+                >
+                  {isBackfilling
+                    ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Przetwarzanie…</>
+                    : <><Upload className="h-4 w-4 mr-2" />Wybierz plik CSV</>}
+                </Button>
+              </>
+            ) : (
+              <div className="rounded-xl border border-border/60 p-4 space-y-2 text-sm">
+                <p className="font-semibold text-green-500">Gotowe!</p>
+                <p>Wierszy w pliku: <span className="font-medium">{backfillResult.total}</span></p>
+                <p>Zaktualizowanych klientów: <span className="font-medium text-green-500">{backfillResult.updated}</span></p>
+                <p>Pominiętych (brak danych / już uzupełnione): <span className="font-medium text-muted-foreground">{backfillResult.skipped}</span></p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBackfillDialogOpen(false)}>Zamknij</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-2">

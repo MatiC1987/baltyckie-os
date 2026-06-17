@@ -1493,10 +1493,13 @@ function HotresTab({ apartments }: { apartments: Apartment[] }) {
   return (
     <div className="space-y-6">
       {aptyWithout.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-          <AlertTriangle className="h-4 w-4 inline mr-1" />
-          Brak hotresTypeId: {aptyWithout.map(a => a.name).join(", ")}
-        </div>
+        <details className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+          <summary className="cursor-pointer list-none flex items-center gap-1.5 select-none">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{aptyWithout.length} apartamentów bez hotresTypeId — kliknij aby zobaczyć listę</span>
+          </summary>
+          <p className="mt-2 text-xs opacity-80">{aptyWithout.map(a => a.name).join(", ")}</p>
+        </details>
       )}
 
       {/* Pull section */}

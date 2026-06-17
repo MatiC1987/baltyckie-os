@@ -8924,6 +8924,45 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     }
   });
 
+  app.post('/api/customers/backfill-contacts-csv', isAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Brak pliku CSV" });
+      const { parseHotResCsv } = await import("./hotres");
+      const rows = parseHotResCsv(req.file.buffer);
+      let updated = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        const hasContact = (row.email && row.email.trim()) || (row.phone && row.phone.trim());
+        if (!hasContact) { skipped++; continue; }
+        const rawName = (row.guestName || "").trim();
+        const parts = rawName.split(/\s+/);
+        const lastName = parts[0] || "";
+        const firstName = parts.slice(1).join(" ") || "";
+        if (!lastName) { skipped++; continue; }
+        const matches = await db.select().from(customers).where(
+          and(
+            ilike(customers.lastName, lastName),
+            firstName ? ilike(customers.firstName, firstName) : sql`1=1`
+          )
+        ).limit(1);
+        if (matches.length === 0) { skipped++; continue; }
+        const c = matches[0];
+        const updates: Record<string, string> = {};
+        if (row.email && row.email.trim() && !c.email) updates.email = row.email.trim();
+        if (row.phone && row.phone.trim() && !c.phone) updates.phone = row.phone.trim();
+        if (Object.keys(updates).length > 0) {
+          await db.update(customers).set(updates).where(eq(customers.id, c.id));
+          updated++;
+        } else {
+          skipped++;
+        }
+      }
+      res.json({ success: true, updated, skipped, total: rows.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.delete('/api/customers/:id', isAuthenticated, async (req, res) => {
     try {
       await storage.deleteCustomer(Number(req.params.id));
