@@ -501,7 +501,7 @@ let syncInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startHotResSyncScheduler(): void {
   if (syncInterval) return;
-  const INTERVAL_MS = 60 * 60 * 1000;
+  const INTERVAL_MS = 15 * 60 * 1000;
 
   const runSync = async () => {
     console.log("[hotres-sync] Automatyczna synchronizacja...");
@@ -518,6 +518,6 @@ export function startHotResSyncScheduler(): void {
   };
 
   syncInterval = setInterval(runSync, INTERVAL_MS);
-  console.log("[hotres-sync] Harmonogram automatyczny uruchomiony (co 60 min), startuje natychmiast...");
+  console.log("[hotres-sync] Harmonogram automatyczny uruchomiony (co 15 min), startuje natychmiast...");
   runSync();
 }
