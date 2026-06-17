@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { pl } from "date-fns/locale";
@@ -116,7 +117,7 @@ export default function Customers() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
 
   const handleSearchChange = (v: string) => {
     setSearch(v);
@@ -176,34 +177,22 @@ export default function Customers() {
   const consentCount = stats?.consentCount ?? 0;
   const withEmailCount = stats?.withEmailCount ?? 0;
 
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  const setupSentinel = useCallback((el: HTMLDivElement | null) => {
-    (sentinelRef as any).current = el;
-    if (observerRef.current) observerRef.current.disconnect();
-    if (!el) return;
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
-          fetchNextPage();
-        }
-      },
-      { rootMargin: "200px" }
-    );
-    observerRef.current.observe(el);
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const rowVirtualizer = useVirtualizer({
+    count: customers.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 60,
+    overscan: 12,
+    measureElement: (el) => el?.getBoundingClientRect().height ?? 60,
+  });
 
   useEffect(() => {
-    return () => { observerRef.current?.disconnect(); };
-  }, []);
-
-  useEffect(() => {
-    if (!sentinelRef.current || !observerRef.current) return;
-    observerRef.current.disconnect();
-    if (hasNextPage && !isFetchingNextPage) {
-      observerRef.current.observe(sentinelRef.current);
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    if (!virtualItems.length) return;
+    const lastVirtualItem = virtualItems[virtualItems.length - 1];
+    if (lastVirtualItem.index >= customers.length - 1 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
     }
-  }, [hasNextPage, isFetchingNextPage]);
+  }, [rowVirtualizer.getVirtualItems(), hasNextPage, isFetchingNextPage, fetchNextPage, customers.length]);
 
   const { data: stayHistory, isLoading: isLoadingHistory } = useQuery<StayHistoryData>({
     queryKey: ["/api/customers", selectedCustomer?.id, "reservations"],
@@ -462,10 +451,14 @@ export default function Customers() {
 
       {/* Table */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div
+          ref={tableContainerRef}
+          className="overflow-auto"
+          style={{ height: "calc(100vh - 310px)", minHeight: 320 }}
+        >
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/50">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-border bg-card">
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground whitespace-nowrap" onClick={() => toggleSort("lastName")} data-testid="th-sort-name">
                   Klient <SortIcon field="lastName" />
                 </th>
@@ -502,66 +495,84 @@ export default function Customers() {
                     )}
                   </td>
                 </tr>
-              ) : (
-                customers.map(c => {
-                  const srcInfo = SOURCE_LABELS[c.source || "manual"] || SOURCE_LABELS.manual;
-                  return (
-                    <tr
-                      key={c.id}
-                      className="border-b border-border hover:bg-muted/40 cursor-pointer transition-colors group"
-                      onClick={() => openPanel(c)}
-                      data-testid={`row-customer-${c.id}`}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-foreground" data-testid={`text-customer-name-${c.id}`}>{c.lastName} {c.firstName}</div>
-                        {c.city && <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Building2 className="h-2.5 w-2.5" />{c.city}</div>}
-                        {c.tags && c.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {c.tags.slice(0, 3).map(t => (
-                              <span key={t} className="text-[10px] bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded px-1 py-0.5">{t}</span>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="space-y-0.5">
-                          {c.email && <div className="flex items-center gap-1.5 text-xs text-foreground/70"><Mail className="h-3 w-3 text-muted-foreground shrink-0" /><span className="truncate max-w-[180px]">{c.email}</span></div>}
-                          {c.phone && <div className="flex items-center gap-1.5 text-xs text-foreground/70"><Phone className="h-3 w-3 text-muted-foreground shrink-0" />{c.phone}</div>}
-                          {!c.email && !c.phone && <span className="text-xs text-muted-foreground">—</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <span className={`text-[11px] font-medium border rounded-full px-2 py-0.5 ${srcInfo.color}`}>{srcInfo.label}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {c.marketingConsent
-                          ? <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
-                          : <XCircle className="h-4 w-4 text-muted-foreground/40 mx-auto" />}
-                      </td>
-                      <td className="px-4 py-3 text-right hidden lg:table-cell">
-                        <span className="font-medium text-foreground" data-testid={`text-stays-${c.id}`}>{c.totalStays || 0}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right hidden lg:table-cell">
-                        <span className="font-medium text-emerald-500" data-testid={`text-revenue-${c.id}`}>{fmtMoney(c.totalRevenue)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right hidden xl:table-cell text-muted-foreground text-xs">
-                        {fmtDate(c.lastStayDate)}
-                      </td>
-                      <td className="px-2 py-3">
-                        <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+              ) : (() => {
+                const virtualItems = rowVirtualizer.getVirtualItems();
+                const paddingTop = virtualItems.length > 0 ? (virtualItems[0]?.start ?? 0) : 0;
+                const paddingBottom = virtualItems.length > 0
+                  ? rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end ?? 0)
+                  : 0;
+                return (
+                  <>
+                    {paddingTop > 0 && (
+                      <tr><td colSpan={8} style={{ height: paddingTop }} /></tr>
+                    )}
+                    {virtualItems.map(virtualRow => {
+                      const c = customers[virtualRow.index];
+                      if (!c) return null;
+                      const srcInfo = SOURCE_LABELS[c.source || "manual"] || SOURCE_LABELS.manual;
+                      return (
+                        <tr
+                          key={c.id}
+                          data-index={virtualRow.index}
+                          ref={rowVirtualizer.measureElement}
+                          className="border-b border-border hover:bg-muted/40 cursor-pointer transition-colors group"
+                          onClick={() => openPanel(c)}
+                          data-testid={`row-customer-${c.id}`}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-foreground" data-testid={`text-customer-name-${c.id}`}>{c.lastName} {c.firstName}</div>
+                            {c.city && <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Building2 className="h-2.5 w-2.5" />{c.city}</div>}
+                            {c.tags && c.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {c.tags.slice(0, 3).map(t => (
+                                  <span key={t} className="text-[10px] bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded px-1 py-0.5">{t}</span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <div className="space-y-0.5">
+                              {c.email && <div className="flex items-center gap-1.5 text-xs text-foreground/70"><Mail className="h-3 w-3 text-muted-foreground shrink-0" /><span className="truncate max-w-[180px]">{c.email}</span></div>}
+                              {c.phone && <div className="flex items-center gap-1.5 text-xs text-foreground/70"><Phone className="h-3 w-3 text-muted-foreground shrink-0" />{c.phone}</div>}
+                              {!c.email && !c.phone && <span className="text-xs text-muted-foreground">—</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <span className={`text-[11px] font-medium border rounded-full px-2 py-0.5 ${srcInfo.color}`}>{srcInfo.label}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {c.marketingConsent
+                              ? <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
+                              : <XCircle className="h-4 w-4 text-muted-foreground/40 mx-auto" />}
+                          </td>
+                          <td className="px-4 py-3 text-right hidden lg:table-cell">
+                            <span className="font-medium text-foreground" data-testid={`text-stays-${c.id}`}>{c.totalStays || 0}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right hidden lg:table-cell">
+                            <span className="font-medium text-emerald-500" data-testid={`text-revenue-${c.id}`}>{fmtMoney(c.totalRevenue)}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right hidden xl:table-cell text-muted-foreground text-xs">
+                            {fmtDate(c.lastStayDate)}
+                          </td>
+                          <td className="px-2 py-3">
+                            <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {paddingBottom > 0 && (
+                      <tr><td colSpan={8} style={{ height: paddingBottom }} /></tr>
+                    )}
+                  </>
+                );
+              })()}
             </tbody>
           </table>
         </div>
 
-        {/* Infinite scroll sentinel */}
+        {/* Footer bar */}
         {customers.length > 0 && (
           <div
-            ref={setupSentinel}
             className="px-4 py-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-500"
             data-testid="customers-footer"
           >
@@ -577,8 +588,8 @@ export default function Customers() {
                 Ładowanie kolejnych...
               </span>
             )}
-            {!hasNextPage && customers.length < totalFiltered && (
-              <span className="text-slate-600">Koniec listy</span>
+            {!hasNextPage && customers.length > 0 && customers.length >= totalFiltered && (
+              <span className="text-slate-600">Wszystkie załadowane</span>
             )}
           </div>
         )}
