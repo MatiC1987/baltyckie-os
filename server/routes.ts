@@ -14536,9 +14536,19 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
         const isGroupReservation = resolvedAptIds.length > 1;
 
-        // HotRes "Wartość" = pełna suma końcowa (wszystkie opłaty wliczone).
-        // Używamy ceny 1:1 z HotRes bez żadnych dodatkowych obliczeń.
-        const finalPrice = (Number(hr.price) || 0).toFixed(2);
+        // Cena z HotRes CSV: "Wartość" = pełna suma w panelu HotRes.
+        // Dla istniejących rezerwacji używamy jej 1:1 (bez dodatków).
+        // Dla nowych rezerwacji dodajemy opłatę za sprzątanie z apartamentu.
+        const basePrice = Number(hr.price) || 0;
+        let totalCleaningFee = 0;
+        for (const aptId of resolvedAptIds) {
+          const apt = apartments.find(a => a.id === aptId);
+          if (apt && apt.cleaningFee) {
+            totalCleaningFee += Number(apt.cleaningFee);
+          }
+        }
+        const adjustedPrice = (basePrice + totalCleaningFee).toFixed(2);
+        const cleaningSurcharge = totalCleaningFee.toFixed(2);
 
         // Upsert customer from CSV row
         let csvCustomerId: number | null = null;
@@ -14561,13 +14571,14 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
 
         const existing = await storage.getReservationByNumber(hr.reservationNumber);
         if (existing) {
+          // Istniejące rezerwacje: cena 1:1 z HotRes (pełna suma, bez doliczania cleaning fee)
           await storage.updateReservation(existing.id, {
             apartmentId: primaryAptId,
             apartmentIds: isGroupReservation ? resolvedAptIds : null,
             startDate: hr.startDate,
             endDate: hr.endDate,
             guestName: hr.guestName,
-            price: finalPrice,
+            price: basePrice.toFixed(2),
             prepayment: hr.prepayment || "0",
             paidAmount: hr.paidAmount || "0",
             surcharge: "0.00",
@@ -14579,6 +14590,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           continue;
         }
 
+        // Nowe rezerwacje: dodajemy cleaning fee z ustawień apartamentu
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
           apartmentId: primaryAptId,
@@ -14587,10 +14599,10 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           startDate: hr.startDate,
           endDate: hr.endDate,
           guestName: hr.guestName,
-          price: finalPrice,
+          price: adjustedPrice,
           prepayment: hr.prepayment || "0",
           paidAmount: hr.paidAmount || "0",
-          surcharge: "0.00",
+          surcharge: cleaningSurcharge,
           status: hr.status,
           ...(hr.source && { source: hr.source }),
           ...(csvCustomerId && { customerId: csvCustomerId }),
