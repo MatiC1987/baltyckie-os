@@ -14536,19 +14536,9 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
         const isGroupReservation = resolvedAptIds.length > 1;
 
-        let totalCleaningFee = 0;
-        for (const aptId of resolvedAptIds) {
-          const apt = apartments.find(a => a.id === aptId);
-          if (apt && apt.cleaningFee) {
-            totalCleaningFee += Number(apt.cleaningFee);
-          }
-        }
-        const basePrice = Number(hr.price) || 0;
-        const adjustedPrice = (basePrice + totalCleaningFee).toFixed(2);
-        const cleaningSurcharge = totalCleaningFee.toFixed(2);
-        if (totalCleaningFee > 0) {
-          log.push(`Rez. ${hr.reservationNumber}: doliczono sprzątanie ${totalCleaningFee.toFixed(2)} zł (${basePrice.toFixed(2)} → ${adjustedPrice})`);
-        }
+        // HotRes "Wartość" = pełna suma końcowa (wszystkie opłaty wliczone).
+        // Używamy ceny 1:1 z HotRes bez żadnych dodatkowych obliczeń.
+        const finalPrice = (Number(hr.price) || 0).toFixed(2);
 
         // Upsert customer from CSV row
         let csvCustomerId: number | null = null;
@@ -14577,10 +14567,10 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
             startDate: hr.startDate,
             endDate: hr.endDate,
             guestName: hr.guestName,
-            price: adjustedPrice,
+            price: finalPrice,
             prepayment: hr.prepayment || "0",
             paidAmount: hr.paidAmount || "0",
-            surcharge: cleaningSurcharge,
+            surcharge: "0.00",
             status: hr.status,
             ...(hr.source && { source: hr.source }),
             ...(csvCustomerId && { customerId: csvCustomerId }),
@@ -14597,10 +14587,10 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           startDate: hr.startDate,
           endDate: hr.endDate,
           guestName: hr.guestName,
-          price: adjustedPrice,
+          price: finalPrice,
           prepayment: hr.prepayment || "0",
           paidAmount: hr.paidAmount || "0",
-          surcharge: cleaningSurcharge,
+          surcharge: "0.00",
           status: hr.status,
           ...(hr.source && { source: hr.source }),
           ...(csvCustomerId && { customerId: csvCustomerId }),
