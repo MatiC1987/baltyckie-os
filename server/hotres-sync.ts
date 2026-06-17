@@ -195,7 +195,9 @@ export async function syncHotResReservations(): Promise<HotResSyncResult> {
     const primaryAptId = resolvedAptIds.length > 0 ? resolvedAptIds[0] : null;
     const isGroupReservation = resolvedAptIds.length > 1;
 
-    const price = (total + addonsAmount).toFixed(2);
+    // total = pełna wartość rezerwacji (nocleg + sprzątanie + podatek) = "Wartość" w HotRes
+    // addons_amount = składowe dodatki (sprzątanie + podatek) — podzbiór total, NIE coś ekstra
+    const price = total.toFixed(2);
     const surcharge = addonsAmount.toFixed(2);
 
     // Extract customer data from HotRes item
@@ -351,10 +353,11 @@ async function processApiReservation(
   const guestName = ([firstName, lastName].filter(Boolean).join(" ") || "Nieznany").toUpperCase();
   const addDate = normalizeDate(item.add_date || "");
 
-  // W liście API: total = cena noclegu, addons_amount = dodatki (sprzątanie, podatek miejski, upsell)
+  // total = pełna wartość rezerwacji (nocleg + sprzątanie + podatek) = "Wartość" w HotRes
+  // addons_amount = składowe dodatki (sprzątanie + podatek) — podzbiór total, NIE coś ekstra
   const total = parseFloat(item.total || item.price || "0") || 0;
   const addonsAmount = parseFloat(item.addons_amount || "0") || 0;
-  const price = (total + addonsAmount).toFixed(2);
+  const price = total.toFixed(2);
   const surcharge = addonsAmount.toFixed(2);
 
   const status = normalizeApiStatus(item.status || "");
