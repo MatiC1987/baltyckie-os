@@ -397,24 +397,24 @@ export default function Customers() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-white/10 bg-slate-900/50 overflow-hidden">
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 bg-slate-800/40">
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 cursor-pointer hover:text-slate-200 whitespace-nowrap" onClick={() => toggleSort("lastName")} data-testid="th-sort-name">
+              <tr className="border-b border-border bg-muted/50">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground whitespace-nowrap" onClick={() => toggleSort("lastName")} data-testid="th-sort-name">
                   Klient <SortIcon field="lastName" />
                 </th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 hidden md:table-cell">Kontakt</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400 hidden sm:table-cell">Źródło</th>
-                <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-400 whitespace-nowrap">Zgoda</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-400 cursor-pointer hover:text-slate-200 whitespace-nowrap hidden lg:table-cell" onClick={() => toggleSort("totalStays")} data-testid="th-sort-stays">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">Kontakt</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground hidden sm:table-cell">Źródło</th>
+                <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">Zgoda</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground whitespace-nowrap hidden lg:table-cell" onClick={() => toggleSort("totalStays")} data-testid="th-sort-stays">
                   Pobyty <SortIcon field="totalStays" />
                 </th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-400 cursor-pointer hover:text-slate-200 whitespace-nowrap hidden lg:table-cell" onClick={() => toggleSort("totalRevenue")} data-testid="th-sort-revenue">
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground whitespace-nowrap hidden lg:table-cell" onClick={() => toggleSort("totalRevenue")} data-testid="th-sort-revenue">
                   Przychód <SortIcon field="totalRevenue" />
                 </th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-400 cursor-pointer hover:text-slate-200 whitespace-nowrap hidden xl:table-cell" onClick={() => toggleSort("lastStayDate")} data-testid="th-sort-last-stay">
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground whitespace-nowrap hidden xl:table-cell" onClick={() => toggleSort("lastStayDate")} data-testid="th-sort-last-stay">
                   Ostatni pobyt <SortIcon field="lastStayDate" />
                 </th>
                 <th className="w-8 px-2" />
@@ -423,18 +423,18 @@ export default function Customers() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     Ładowanie...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                     <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     <p>Brak klientów{search || consentFilter !== "all" || sourceFilter !== "all" ? " spełniających kryteria" : ""}</p>
                     {!search && consentFilter === "all" && sourceFilter === "all" && (
-                      <p className="text-xs mt-1 text-slate-600">Kliknij <strong className="text-slate-400">Importuj z HotRes</strong> aby zasilić bazę</p>
+                      <p className="text-xs mt-1 text-muted-foreground/60">Kliknij <strong className="text-foreground">Importuj z HotRes</strong> aby zasilić bazę</p>
                     )}
                   </td>
                 </tr>
@@ -444,13 +444,13 @@ export default function Customers() {
                   return (
                     <tr
                       key={c.id}
-                      className="border-b border-white/5 hover:bg-white/[0.03] cursor-pointer transition-colors group"
+                      className="border-b border-border hover:bg-muted/40 cursor-pointer transition-colors group"
                       onClick={() => openPanel(c)}
                       data-testid={`row-customer-${c.id}`}
                     >
                       <td className="px-4 py-3">
-                        <div className="font-medium text-white" data-testid={`text-customer-name-${c.id}`}>{c.lastName} {c.firstName}</div>
-                        {c.city && <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><Building2 className="h-2.5 w-2.5" />{c.city}</div>}
+                        <div className="font-medium text-foreground" data-testid={`text-customer-name-${c.id}`}>{c.lastName} {c.firstName}</div>
+                        {c.city && <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><Building2 className="h-2.5 w-2.5" />{c.city}</div>}
                         {c.tags && c.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {c.tags.slice(0, 3).map(t => (
@@ -461,9 +461,9 @@ export default function Customers() {
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <div className="space-y-0.5">
-                          {c.email && <div className="flex items-center gap-1.5 text-xs text-slate-300"><Mail className="h-3 w-3 text-slate-500 shrink-0" /><span className="truncate max-w-[180px]">{c.email}</span></div>}
-                          {c.phone && <div className="flex items-center gap-1.5 text-xs text-slate-300"><Phone className="h-3 w-3 text-slate-500 shrink-0" />{c.phone}</div>}
-                          {!c.email && !c.phone && <span className="text-xs text-slate-500">—</span>}
+                          {c.email && <div className="flex items-center gap-1.5 text-xs text-foreground/70"><Mail className="h-3 w-3 text-muted-foreground shrink-0" /><span className="truncate max-w-[180px]">{c.email}</span></div>}
+                          {c.phone && <div className="flex items-center gap-1.5 text-xs text-foreground/70"><Phone className="h-3 w-3 text-muted-foreground shrink-0" />{c.phone}</div>}
+                          {!c.email && !c.phone && <span className="text-xs text-muted-foreground">—</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
@@ -471,20 +471,20 @@ export default function Customers() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {c.marketingConsent
-                          ? <CheckCircle2 className="h-4 w-4 text-emerald-400 mx-auto" />
-                          : <XCircle className="h-4 w-4 text-slate-600 mx-auto" />}
+                          ? <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
+                          : <XCircle className="h-4 w-4 text-muted-foreground/40 mx-auto" />}
                       </td>
                       <td className="px-4 py-3 text-right hidden lg:table-cell">
-                        <span className="font-medium text-slate-200" data-testid={`text-stays-${c.id}`}>{c.totalStays || 0}</span>
+                        <span className="font-medium text-foreground" data-testid={`text-stays-${c.id}`}>{c.totalStays || 0}</span>
                       </td>
                       <td className="px-4 py-3 text-right hidden lg:table-cell">
-                        <span className="font-medium text-emerald-400" data-testid={`text-revenue-${c.id}`}>{fmtMoney(c.totalRevenue)}</span>
+                        <span className="font-medium text-emerald-500" data-testid={`text-revenue-${c.id}`}>{fmtMoney(c.totalRevenue)}</span>
                       </td>
-                      <td className="px-4 py-3 text-right hidden xl:table-cell text-slate-400 text-xs">
+                      <td className="px-4 py-3 text-right hidden xl:table-cell text-muted-foreground text-xs">
                         {fmtDate(c.lastStayDate)}
                       </td>
                       <td className="px-2 py-3">
-                        <ChevronRight className="h-4 w-4 text-slate-600 group-hover:text-slate-400 transition-colors" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                       </td>
                     </tr>
                   );
