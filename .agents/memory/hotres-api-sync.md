@@ -3,55 +3,39 @@ name: HotRes API sync fix
 description: Poprawna konfiguracja synchronizacji HotRes API — parametry, format, formuła cenowa, paginacja Deep Sync
 ---
 
-## Problem
-Sync HotRes API zawsze zwracał 0 wyników bo kod używał `&from=YYYY-MM-DD`, który nie istnieje w API.
-
-## Poprawny parametr
+## Poprawny parametr dla regularnego syncu
 `mod_date` (format: `Y-m-d H:i:s`, np. `2026-03-18 00:00:00`)
-- Domyślna wartość: -2 godziny od teraz
-- Regularna synchronizacja: 90 dni wstecz
+- Regularna synchronizacja: 90 dni wstecz, co 60 minut
 - URL: `&mod_date=${encodeURIComponent(modDateStr)}`
 
-**Why:** Dokumentacja API HotRes (api_reservations) wymienia `mod_date`, nie `from`. Nieznane parametry są ignorowane przez serwer HotRes.
-
 ## Formuła cenowa (API list endpoint)
-- `total` = pełna wartość rezerwacji (nocleg + addony) — zmienione po inspekcji danych
+- `total` = pełna wartość rezerwacji (nocleg + addony)
 - `addons_amount` = wszystkie dodatki (sprzątanie + podatek miejski + upsell)
-- `price` w DB = total (całość)
-- `surcharge` w DB = addons_amount
+- `price` w DB = total, `surcharge` = addons_amount
 
-**Uwaga:** W `api_reservationdetails` (single endpoint) `total` = PEŁNA suma (nocleg + addons). Inne semantyki niż list!
+## Paginacja Deep Sync — DEFINITYWNA DIAGNOZA (wyczerpane wszystkie opcje)
 
-## Paginacja Deep Sync — DEFINITYWNE WYNIKI TESTÓW
-
-### Potwierdzone IGNOROWANE parametry (każde wywołanie zwraca IDENTYCZNY zestaw):
-- `page=1, 2, 3...` — ignorowany
-- `from=YYYY-MM-DD&till=YYYY-MM-DD` — ignorowany (78 wywołań miesiąc-po-miesiącu, każde zwróciło te same 9 rez.)
+### WSZYSTKIE przetestowane parametry są IGNOROWANE przez HotRes:
+- `page=1, 2, 3...` — ignorowany (zwraca te same rekordy)
+- `from=YYYY-MM-DD&till=YYYY-MM-DD` — ignorowany (78 testów miesiąc-po-miesiącu, każdy = te same 9 rez.)
 - `departure_date=YYYY-MM-DD` — ignorowany
-- `arrival_date` — nie testowany, ale prawdopodobnie ignorowany
+- `number=X` — ignorowany (test: `?number=9222` zwrócił te same 300 rez. co bez filtru)
 
-### Jedyny działający parametr: `mod_date`
-- Bez `mod_date`: zwraca ~9 najnowszych rez. (ostatnio dodane)
-- Z `mod_date=2020-01-01 00:00:00`: zwraca 300 najnowiej **zmodyfikowanych** rez.
-- Zawsze sortuje DESC po mod_date → zawsze te same 300, nie da się pagować
+### JEDYNY działający parametr: `mod_date`
+- Bez `mod_date`: zwraca ~9 najnowszych rez.
+- Z `mod_date=2020-01-01 00:00:00`: zwraca 300 najnowiej **zmodyfikowanych** rez. (DESC sort)
+- Limit 300 jest twardy i niepomijalny przez API
 
-**Why:** HotRes `api_reservations` to prosty endpoint z jednym filtrem. Nie ma mechanizmu paginacji.
+**Why:** HotRes `api_reservations` to prosty endpoint z jednym filtrem mod_date. Brak mechanizmu paginacji po stronie serwera. Żadne dodatkowe parametry GET nie są rozpoznawane.
 
-### Aktualna strategia Deep Sync (v5): DB-driven + test number=
-```
-1. Pobierz wszystkie numery rezerwacji z lokalnej bazy
-2. TEST: sprawdź czy ?number=X zawęża wyniki (2 API calle diagnostyczne)
-3a. Jeśli number= działa → batch po 5 równoległych lookupów dla każdej rez. z DB (~550 calle)
-3b. Jeśli number= ignorowany → fallback do 300 najnowszych (mod_date=2020-01-01)
-```
+### Aktualna strategia Deep Sync (v5 — finalna):
+- Wywołuje `mod_date=2020-01-01` → przetwarza 300 najnowiej zmodyfikowanych rez.
+- Informuje użytkownika żeby użył "Napraw ceny (fallback)" przez CSV dla pełnej historii
+- Test `number=` przeprowadzany przy każdym uruchomieniu (2 API calle diagnostyczne) — wynik w logu
 
-**Why:** Jedyny sposób ominąć limit 300 bez paginacji — indywidualny lookup po numerze. Jeśli też ignorowany, jedynym rozwiązaniem dla pełnej historii jest CSV import.
+### Dla pełnej historii (wszystkie ~2762 rez.): użyj CSV import + "Napraw ceny (fallback)"
 
 ## CSV import
-- CSV `amount` = nocleg only (jak `total` z API)
-- Dla istniejących rezerwacji: NIE nadpisuj price/surcharge (mogą mieć poprawne z API)
+- CSV `amount` = nocleg only
+- Dla istniejących rez: NIE nadpisuj price/surcharge (mogą mieć poprawne z API)
 - Dla nowych: price = CSV.amount + apartment.cleaningFee (jeśli ustawione)
-
-## Harmonogram auto-sync
-- Co 60 minut, 90 dni wstecz
-- Limit 300/hour API rate limit

@@ -675,9 +675,9 @@ function HotResSection() {
           <div className="flex items-start gap-2">
             <Zap className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <div className="space-y-1 flex-1">
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Deep Sync — jednorazowa naprawa historycznych rezerwacji</p>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Deep Sync — naprawa 300 ostatnich rezerwacji z HotRes API</p>
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                Pobiera <strong>wszystkie</strong> rezerwacje z HotRes API od 2020 roku (paginacja stronicowana: mod_date + page=1,2,3…) i nadpisuje kwoty zgodnie z aktualną logiką (total + addons_amount). Naprawia historyczne rekordy, których nie obejmuje regularna synchronizacja. <strong>Operacja jednorazowa — może potrwać kilka minut.</strong>
+                Pobiera <strong>300 najnowiej zmodyfikowanych</strong> rezerwacji z HotRes API i nadpisuje kwoty zgodnie z aktualną logiką (total + addons_amount). API HotRes nie obsługuje paginacji — limit 300 jest techniczny i nie do obejścia. Dla naprawy cen <strong>wszystkich</strong> rezerwacji historycznych użyj <em>Napraw ceny (fallback)</em> poniżej.
               </p>
             </div>
           </div>
