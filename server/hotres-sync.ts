@@ -441,7 +441,7 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
 
   let modDate = "2020-01-01 00:00:00";
   let pagesProcessed = 0;
-  const MAX_PAGES = 40;
+  const MAX_PAGES = parseInt(process.env.HOTRES_DEEP_SYNC_MAX_PAGES || "200", 10);
 
   while (pagesProcessed < MAX_PAGES) {
     const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&mod_date=${encodeURIComponent(modDate)}`;
@@ -484,7 +484,8 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
     modDate = maxModDate;
   }
 
-  log.push(`[PODSUMOWANIE DEEP SYNC] strony=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`);
+  const limitReached = pagesProcessed >= MAX_PAGES;
+  log.push(`[PODSUMOWANIE DEEP SYNC] strony=${pagesProcessed}/${MAX_PAGES}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}${limitReached ? " ⚠️ OSIĄGNIĘTO LIMIT STRON — mogą istnieć niepobranie rezerwacje!" : ""}`);
 
   await storage.saveImportMetadata({
     importType: "hotres_api",
