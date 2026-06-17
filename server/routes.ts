@@ -15248,7 +15248,7 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
   app.get('/api/pricing/daily', isAuthenticated, async (req, res) => {
     try {
       const { from, to, apartmentId } = req.query;
-      let q = `SELECT dp.id, dp.apartment_id, dp.date::text as date, dp.price, dp.min_stay, dp.max_stay, dp.is_blocked, dp.closed_to_arrival, dp.closed_to_departure, dp.note, dp.source, dp.created_at, dp.updated_at, a.name as apartment_name FROM daily_prices dp LEFT JOIN apartments a ON dp.apartment_id = a.id WHERE 1=1`;
+      let q = `SELECT dp.*, dp.date::text as date_str, a.name as apartment_name FROM daily_prices dp LEFT JOIN apartments a ON dp.apartment_id = a.id WHERE 1=1`;
       const params: any[] = [];
       if (from) { params.push(from); q += ` AND dp.date >= $${params.length}`; }
       if (to) { params.push(to); q += ` AND dp.date <= $${params.length}`; }
