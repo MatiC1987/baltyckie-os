@@ -87,11 +87,13 @@ export default function Cennik() {
   }), [apartments, locationFilter, searchFilter]);
 
   // Build price map: aptId → date → price
+  // node-postgres returns DATE as full ISO string ("2026-06-01T00:00:00.000Z"), normalize to "2026-06-01"
   const priceMap = useMemo(() => {
     const m: Record<number, Record<string, DailyPrice>> = {};
     for (const p of dailyPrices) {
       if (!m[p.apartment_id]) m[p.apartment_id] = {};
-      m[p.apartment_id][p.date] = p;
+      const key = String(p.date).substring(0, 10);
+      m[p.apartment_id][key] = { ...p, date: key };
     }
     return m;
   }, [dailyPrices]);
@@ -592,7 +594,7 @@ function CalendarTab({ apartments, priceMap, reservedMap, aptPriceRange, alertMa
   // Bulk save
   const batchMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/pricing/daily/batch", data),
-    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); qc.invalidateQueries({ queryKey: ["/api/pricing/alerts"] }); toast({ title: `Zapisano ${r.inserted} cen` }); setSelectedCells(new Set()); setBulkDialogOpen(false); },
+    onSuccess: async (res: any) => { const r = await res.json(); qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); qc.invalidateQueries({ queryKey: ["/api/pricing/alerts"] }); toast({ title: `Zapisano ${r.inserted} cen` }); setSelectedCells(new Set()); setBulkDialogOpen(false); },
     onError: (e: any) => toast({ title: "Błąd", description: e.message, variant: "destructive" }),
   });
 
@@ -605,7 +607,7 @@ function CalendarTab({ apartments, priceMap, reservedMap, aptPriceRange, alertMa
   // Copy prices
   const copyMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/pricing/daily/copy", data),
-    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); toast({ title: `Skopiowano ${r.copied} cen` }); setCopySourceId(null); setCopyDialogData(null); },
+    onSuccess: async (res: any) => { const r = await res.json(); qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); toast({ title: `Skopiowano ${r.copied} cen` }); setCopySourceId(null); setCopyDialogData(null); },
     onError: (e: any) => toast({ title: "Błąd", description: e.message, variant: "destructive" }),
   });
 
@@ -748,7 +750,32 @@ function CalendarTab({ apartments, priceMap, reservedMap, aptPriceRange, alertMa
               </tr>
             </thead>
             <tbody>
-              {apartments.map(apt => {
+              {(() => {
+                // Group apartments by location for display
+                const locationMap: Record<string, typeof apartments> = {};
+                const groupOrder: string[] = [];
+                for (const apt of apartments) {
+                  const loc = apt.location?.trim() || "Pozostałe";
+                  if (!locationMap[loc]) { locationMap[loc] = []; groupOrder.push(loc); }
+                  locationMap[loc].push(apt);
+                }
+                // Named locations alphabetically, "Pozostałe" always last
+                groupOrder.sort((a, b) => {
+                  if (a === "Pozostałe") return 1;
+                  if (b === "Pozostałe") return -1;
+                  return a.localeCompare(b, "pl");
+                });
+                const showGroupHeaders = groupOrder.length > 1 || (groupOrder.length === 1 && groupOrder[0] !== "Pozostałe");
+                return groupOrder.flatMap(location => [
+                  ...(showGroupHeaders ? [
+                    <tr key={`loc-header-${location}`}>
+                      <td className="sticky left-0 z-10 bg-muted/40 pt-2 pb-1 pr-2">
+                        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">{location}</span>
+                      </td>
+                      <td colSpan={days.length} className="bg-muted/40 pt-2 pb-1 border-b border-border/30" />
+                    </tr>
+                  ] : []),
+                  ...locationMap[location].map(apt => {
                 const { min, max } = aptPriceRange[apt.id] || { min: 0, max: 0 };
                 const health = alertMap[apt.id];
                 const isCopySource = copySourceId === apt.id;
@@ -828,7 +855,9 @@ function CalendarTab({ apartments, priceMap, reservedMap, aptPriceRange, alertMa
                     })}
                   </tr>
                 );
-              })}
+                  })
+                ]);
+              })()}
             </tbody>
           </table>
         </div>
@@ -1218,7 +1247,7 @@ function ApplyRuleDialog({ open, rule, apartments, onClose }: any) {
 
   const applyMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/pricing/rules/${rule.id}/apply`, { from, to, basePrices: Object.fromEntries(Object.entries(basePrices).map(([k, v]) => [k, Number(v)])) }),
-    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); toast({ title: `Zastosowano: ${r.inserted} cen` }); onClose(); },
+    onSuccess: async (res: any) => { const r = await res.json(); qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); toast({ title: `Zastosowano: ${r.inserted} cen` }); onClose(); },
     onError: (e: any) => toast({ title: "Błąd", description: e.message, variant: "destructive" }),
   });
 
@@ -1386,7 +1415,7 @@ function ApplyTemplateDialog({ open, template, apartments, onClose }: any) {
 
   const applyMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/pricing/templates/${template.id}/apply`, { apartmentIds: selApts, from, to, overwrite }),
-    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); toast({ title: `Zastosowano: ${r.inserted} cen` }); onClose(); },
+    onSuccess: async (res: any) => { const r = await res.json(); qc.invalidateQueries({ queryKey: ["/api/pricing/daily"] }); toast({ title: `Zastosowano: ${r.inserted} cen` }); onClose(); },
     onError: (e: any) => toast({ title: "Błąd", description: e.message, variant: "destructive" }),
   });
 
