@@ -495,7 +495,7 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
     details: `Deep sync: strony=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}`,
   });
 
-  return { imported, updated, skipped, newApartments: 0, lastSync, log, pagesProcessed, ...baseResult };
+  return { imported, updated, skipped, newApartments: 0, lastSync, log, pagesProcessed, limitReached, ...baseResult };
 }
 
 let syncInterval: ReturnType<typeof setInterval> | null = null;

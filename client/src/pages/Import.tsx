@@ -560,6 +560,7 @@ interface DeepSyncResult {
   updated: number;
   skipped: number;
   pagesProcessed: number;
+  limitReached?: boolean;
   log: string[];
   error?: string;
   message?: string;
@@ -713,6 +714,18 @@ function HotResSection() {
                 <StatBox label="Zaktualizowane" value={deepSyncResult.updated ?? 0} />
                 <StatBox label="Pominięte" value={deepSyncResult.skipped ?? 0} />
               </div>
+              {deepSyncResult.limitReached && (
+                <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 px-3 py-2" data-testid="banner-deep-sync-limit-reached">
+                  <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Osiągnięto limit stron ({deepSyncResult.pagesProcessed})</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Synchronizacja zatrzymała się przed pobraniem wszystkich rezerwacji — część danych może być niekompletna.
+                      Aby pobrać więcej, zwiększ wartość zmiennej środowiskowej <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">HOTRES_DEEP_SYNC_MAX_PAGES</code> (obecnie: {deepSyncResult.pagesProcessed}).
+                    </p>
+                  </div>
+                </div>
+              )}
               {deepSyncResult.log && deepSyncResult.log.length > 0 && (
                 <div>
                   <button
