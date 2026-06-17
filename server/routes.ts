@@ -14812,11 +14812,40 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
         return res.status(400).json({ success: false, message: "Nie przesłano pliku XLS" });
       }
 
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
+      // Helper: parse HTML table (HotRes exports .xls files as HTML tables)
+      const parseHtmlTableXls = (html: string): string[][] => {
+        const result: string[][] = [];
+        const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        let trMatch: RegExpExecArray | null;
+        while ((trMatch = trRe.exec(html)) !== null) {
+          const cells: string[] = [];
+          const tdRe = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+          let tdMatch: RegExpExecArray | null;
+          while ((tdMatch = tdRe.exec(trMatch[1])) !== null) {
+            const text = tdMatch[1]
+              .replace(/<[^>]+>/g, "")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+              .replace(/&nbsp;/g, " ").replace(/&#[0-9]+;/g, "").trim();
+            cells.push(text);
+          }
+          if (cells.length > 0) result.push(cells);
+        }
+        return result;
+      };
+
+      // Detect if file is actually HTML (HotRes exports HTML tables with .xls extension)
+      const fileHeadXls = req.file.buffer.slice(0, 500).toString("utf-8");
+      const isHtmlXls = /<!DOCTYPE|<html|<HTML|<table|<TABLE/i.test(fileHeadXls);
+
+      let rows: any[][];
+      if (isHtmlXls) {
+        rows = parseHtmlTableXls(req.file.buffer.toString("utf-8"));
+      } else {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
+      }
 
       if (rows.length < 2) {
         return res.json({ success: false, message: "Plik pusty lub brak danych", updated: 0, skipped: 0, notFound: 0, log: [] });
@@ -14942,16 +14971,50 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
 
       let rows: string[][] = [];
 
+      // Helper: parse HTML table (HotRes exports .xls files that are actually HTML tables)
+      const parseHtmlTable = (html: string): string[][] => {
+        const result: string[][] = [];
+        const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        let trMatch: RegExpExecArray | null;
+        while ((trMatch = trRe.exec(html)) !== null) {
+          const rowHtml = trMatch[1];
+          const cells: string[] = [];
+          const tdRe = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+          let tdMatch: RegExpExecArray | null;
+          while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
+            const text = tdMatch[1]
+              .replace(/<[^>]+>/g, "")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+              .replace(/&nbsp;/g, " ").replace(/&#[0-9]+;/g, "").trim();
+            cells.push(text);
+          }
+          if (cells.length > 0) result.push(cells);
+        }
+        return result;
+      };
+
       const isXls = /\.xlsx?$/i.test(req.file.originalname);
-      if (isXls) {
+      // Detect if file is actually HTML (HotRes exports HTML tables with .xls extension)
+      const fileHead = req.file.buffer.slice(0, 500).toString("utf-8");
+      const isHtmlTable = /<!DOCTYPE|<html|<HTML|<table|<TABLE/i.test(fileHead);
+
+      if (isXls && !isHtmlTable) {
+        // Real binary XLS/XLSX
         const XLSX = await import("xlsx");
         const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const raw: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", blankrows: false });
-        // Skip XLS header row (first row = column names like "added", "name", etc.)
         const firstRow = raw[0] ? raw[0].map((c: any) => String(c ?? "").toLowerCase().trim()) : [];
         const hasHeader = firstRow.includes("name") || firstRow.includes("added");
         rows = (hasHeader ? raw.slice(1) : raw).map((r: any[]) => r.map((c: any) => String(c ?? "").trim()));
+      } else if (isXls && isHtmlTable) {
+        // HTML table disguised as XLS (typical HotRes export)
+        const html = req.file.buffer.toString("utf-8");
+        const allRows = parseHtmlTable(html);
+        // Skip header row (contains column names like "added", "name", etc.)
+        const firstRow = allRows[0] ? allRows[0].map(c => c.toLowerCase()) : [];
+        const hasHeader = firstRow.some(c => c === "name" || c === "added" || c === "last name");
+        rows = hasHeader ? allRows.slice(1) : allRows;
       } else {
         // CSV: semicolon-separated, no header row, UTF-8
         const content = req.file.buffer.toString("utf-8");
