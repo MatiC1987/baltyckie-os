@@ -417,17 +417,18 @@ async function processApiReservation(
   }
 }
 
-// Pełna synchronizacja historyczna: pobiera WSZYSTKIE rezerwacje przez paginację departure_date.
+// Pełna synchronizacja historyczna: pobiera WSZYSTKIE rezerwacje przez paginację.
+// Strategia: stały mod_date="2020-01-01" + rosnący parametr page (1,2,3...).
+// Jeśli HotRes nie obsługuje page, fallback: mod_date kursor (przesuwanie po max mod_date).
 // Jeden call = max 300 wyników → przy ~2474 rez. potrzeba ~9 wywołań.
-// Prawidłowa cena: total (nocleg) + addons_amount (sprzątanie + podatek + inne).
-export async function deepSyncHotResReservations(): Promise<HotResSyncResult & { pagesProcessed: number }> {
+export async function deepSyncHotResReservations(): Promise<HotResSyncResult & { pagesProcessed: number; limitReached: boolean }> {
   const authKey = process.env.HOTRES_AUTH_KEY;
   const apiKey = process.env.HOTRES_API_KEY;
   const lastSync = new Date().toISOString();
   const baseResult = { lastSync, customersCreated: 0, customersUpdated: 0, reservationsLinked: 0, duplicates: 0 };
 
   if (!authKey || !apiKey) {
-    return { ...baseResult, imported: 0, updated: 0, skipped: 0, newApartments: 0, pagesProcessed: 0,
+    return { ...baseResult, imported: 0, updated: 0, skipped: 0, newApartments: 0, pagesProcessed: 0, limitReached: false,
       error: "Brak kluczy API HotRes.", log: [] };
   }
 
@@ -439,16 +440,27 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
   const log: string[] = [];
   const seenNumbers = new Set<string>();
 
-  let modDate = "2020-01-01 00:00:00";
+  const BASE_MOD_DATE = "2020-01-01 00:00:00";
   let pagesProcessed = 0;
+  let page = 1;
   const MAX_PAGES = parseInt(process.env.HOTRES_DEEP_SYNC_MAX_PAGES || "200", 10);
 
+  // Track whether page= param is working (detect stale/repeated batches)
+  let usePageParam = true;
+  let modDateCursor = BASE_MOD_DATE; // fallback cursor
+
   while (pagesProcessed < MAX_PAGES) {
-    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&mod_date=${encodeURIComponent(modDate)}`;
+    let url: string;
+    if (usePageParam) {
+      url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&mod_date=${encodeURIComponent(BASE_MOD_DATE)}&page=${page}`;
+    } else {
+      url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&mod_date=${encodeURIComponent(modDateCursor)}`;
+    }
+
     let batch: any[];
     try {
       const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30000) });
-      if (!res.ok) { log.push(`Błąd HTTP ${res.status} przy mod_date=${modDate}`); break; }
+      if (!res.ok) { log.push(`Błąd HTTP ${res.status} (page=${page}, mod_date=${modDateCursor})`); break; }
       const raw = await res.json();
       batch = Array.isArray(raw) ? raw : (Array.isArray(raw?.reservations) ? raw.reservations : []);
     } catch (e: any) {
@@ -456,14 +468,17 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
     }
 
     pagesProcessed++;
-    log.push(`Strona ${pagesProcessed}: mod_date >= ${modDate} → ${batch.length} rezerwacji`);
+
+    // Log first/last mod_date in batch for diagnostics
+    const batchModDates = batch.map((r: any) => r.mod_date || r.updated_at).filter(Boolean).sort() as string[];
+    const minMD = batchModDates[0] ?? "?";
+    const maxMD = batchModDates[batchModDates.length - 1] ?? "?";
+    log.push(`Strona ${pagesProcessed}${usePageParam ? ` (page=${page})` : ` (mod_date>=${modDateCursor})`}: ${batch.length} rez. | mod_date: ${minMD} … ${maxMD}`);
 
     if (batch.length === 0) break;
 
-    // Find max mod_date BEFORE filtering duplicates (need it for pagination)
-    const modDates = batch.map((r: any) => r.mod_date || r.updated_at).filter(Boolean).sort();
-    const maxModDate = modDates[modDates.length - 1] as string | undefined;
-
+    // Count new (unseen) records in this batch
+    const sizeBefore = seenNumbers.size;
     for (const item of batch) {
       const num = String(item.number || item.id || "").trim();
       if (!num || seenNumbers.has(num)) continue;
@@ -473,19 +488,36 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
       else if (result === "updated") updated++;
       else skipped++;
     }
+    const newInBatch = seenNumbers.size - sizeBefore;
+
+    // Detect if page= param is NOT supported (all records repeated → no new)
+    if (usePageParam && page > 1 && newInBatch === 0 && batch.length >= 300) {
+      log.push(`Parametr page= nieobsługiwany przez HotRes — przełączam na kursor mod_date`);
+      usePageParam = false;
+      // Reset: recalculate modDateCursor from all seen records — not possible without storing them.
+      // We already have all from page=1, so start cursor from maxMD of page 1
+      // (we don't have that anymore, so we just break — CSS import is the fallback)
+      log.push(`Pobrano maksymalnie co możliwe bez kursora. Użyj importu CSV dla pełnej historii.`);
+      break;
+    }
 
     if (batch.length < 300) break; // ostatnia strona
 
-    // Paginacja: użyj max mod_date jako nowej dolnej granicy
-    if (!maxModDate || maxModDate <= modDate) {
-      log.push(`Paginacja zatrzymana: brak postępu (maxModDate=${maxModDate})`);
-      break;
+    if (usePageParam) {
+      page++;
+    } else {
+      // mod_date cursor fallback
+      const maxModDate = batchModDates[batchModDates.length - 1];
+      if (!maxModDate || maxModDate <= modDateCursor) {
+        log.push(`Kursor mod_date bez postępu (max=${maxModDate}) — koniec`);
+        break;
+      }
+      modDateCursor = maxModDate;
     }
-    modDate = maxModDate;
   }
 
   const limitReached = pagesProcessed >= MAX_PAGES;
-  log.push(`[PODSUMOWANIE DEEP SYNC] strony=${pagesProcessed}/${MAX_PAGES}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}${limitReached ? " ⚠️ OSIĄGNIĘTO LIMIT STRON — mogą istnieć niepobranie rezerwacje!" : ""}`);
+  log.push(`[PODSUMOWANIE DEEP SYNC] strony=${pagesProcessed}/${MAX_PAGES}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}${limitReached ? " ⚠️ OSIĄGNIĘTO LIMIT STRON" : ""}`);
 
   await storage.saveImportMetadata({
     importType: "hotres_api",

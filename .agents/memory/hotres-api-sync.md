@@ -1,6 +1,6 @@
 ---
 name: HotRes API sync fix
-description: Poprawna konfiguracja synchronizacji HotRes API — parametry, format, formuła cenowa
+description: Poprawna konfiguracja synchronizacji HotRes API — parametry, format, formuła cenowa, paginacja Deep Sync
 ---
 
 ## Problem
@@ -22,13 +22,20 @@ Sync HotRes API zawsze zwracał 0 wyników bo kod używał `&from=YYYY-MM-DD`, k
 
 **Uwaga:** W `api_reservationdetails` (single endpoint) `total` = PEŁNA suma (nocleg + addons). Inne semantyki niż list!
 
-## Paginacja (deep sync)
+## Paginacja Deep Sync — WAŻNE
 - Endpoint limit: 300 wyników per call
-- Parametr do paginacji: `mod_date` (format: `Y-m-d H:i:s`, np. `2020-01-01 00:00:00`)
-- `departure_date` NIE działa jako filtr paginacji — zwraca tylko ~8 wyników zamiast ~2474
-- Strategia: startuj od `2020-01-01 00:00:00`, posuń do max `mod_date` (pole `mod_date` lub `updated_at`) z każdej strony
-- Zabezpieczenia: max 40 iteracji, Set<string> deduplikacja, brak postępu = stop
-- Endpoint: POST /api/hotres/deep-sync
+- `departure_date` NIE działa jako filtr — zwraca tylko ~8 wyników (ignorowany przez serwer)
+- `mod_date` jako kursor NIE działa: HotRes zwraca 300 NAJNOWSZYCH rez. niezależnie od daty → max(mod_date) z page 1 = dziś → page 2 = 0 wyników
+
+### Aktualna strategia (v3): stały mod_date + page=X
+```
+URL: mod_date=2020-01-01 00:00:00 + &page=1, &page=2, &page=3...
+```
+- Jeśli `page=` jest obsługiwany przez HotRes → pobiera wszystkie strony historyczne
+- Jeśli `page=` jest ignorowany (page 2 zwraca te same rekordy co page 1) → wykrywa brak postępu i informuje użytkownika aby użył importu CSV
+- Każda strona loguje minimalny i maksymalny mod_date dla diagnostyki
+
+**Why:** mod_date cursor zwraca 300 newest records (desc), więc cursor advancement nie daje dostępu do starszych rekordów. Page-based pagination omija ten problem jeśli HotRes to obsługuje.
 
 ## CSV import
 - CSV `amount` = nocleg only (jak `total` z API)
