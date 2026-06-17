@@ -15,27 +15,37 @@ Sync HotRes API zawsze zwracał 0 wyników bo kod używał `&from=YYYY-MM-DD`, k
 **Why:** Dokumentacja API HotRes (api_reservations) wymienia `mod_date`, nie `from`. Nieznane parametry są ignorowane przez serwer HotRes.
 
 ## Formuła cenowa (API list endpoint)
-- `total` = cena noclegu (accommodation only)
+- `total` = pełna wartość rezerwacji (nocleg + addony) — zmienione po inspekcji danych
 - `addons_amount` = wszystkie dodatki (sprzątanie + podatek miejski + upsell)
-- `price` w DB = total + addons_amount
+- `price` w DB = total (całość)
 - `surcharge` w DB = addons_amount
 
 **Uwaga:** W `api_reservationdetails` (single endpoint) `total` = PEŁNA suma (nocleg + addons). Inne semantyki niż list!
 
-## Paginacja Deep Sync — WAŻNE
-- Endpoint limit: 300 wyników per call
-- `departure_date` NIE działa jako filtr — zwraca tylko ~8 wyników (ignorowany przez serwer)
-- `mod_date` jako kursor NIE działa: HotRes zwraca 300 NAJNOWSZYCH rez. niezależnie od daty → max(mod_date) z page 1 = dziś → page 2 = 0 wyników
+## Paginacja Deep Sync — DEFINITYWNE WYNIKI TESTÓW
 
-### Aktualna strategia (v3): stały mod_date + page=X
-```
-URL: mod_date=2020-01-01 00:00:00 + &page=1, &page=2, &page=3...
-```
-- Jeśli `page=` jest obsługiwany przez HotRes → pobiera wszystkie strony historyczne
-- Jeśli `page=` jest ignorowany (page 2 zwraca te same rekordy co page 1) → wykrywa brak postępu i informuje użytkownika aby użył importu CSV
-- Każda strona loguje minimalny i maksymalny mod_date dla diagnostyki
+### Potwierdzone IGNOROWANE parametry (każde wywołanie zwraca IDENTYCZNY zestaw):
+- `page=1, 2, 3...` — ignorowany
+- `from=YYYY-MM-DD&till=YYYY-MM-DD` — ignorowany (78 wywołań miesiąc-po-miesiącu, każde zwróciło te same 9 rez.)
+- `departure_date=YYYY-MM-DD` — ignorowany
+- `arrival_date` — nie testowany, ale prawdopodobnie ignorowany
 
-**Why:** mod_date cursor zwraca 300 newest records (desc), więc cursor advancement nie daje dostępu do starszych rekordów. Page-based pagination omija ten problem jeśli HotRes to obsługuje.
+### Jedyny działający parametr: `mod_date`
+- Bez `mod_date`: zwraca ~9 najnowszych rez. (ostatnio dodane)
+- Z `mod_date=2020-01-01 00:00:00`: zwraca 300 najnowiej **zmodyfikowanych** rez.
+- Zawsze sortuje DESC po mod_date → zawsze te same 300, nie da się pagować
+
+**Why:** HotRes `api_reservations` to prosty endpoint z jednym filtrem. Nie ma mechanizmu paginacji.
+
+### Aktualna strategia Deep Sync (v5): DB-driven + test number=
+```
+1. Pobierz wszystkie numery rezerwacji z lokalnej bazy
+2. TEST: sprawdź czy ?number=X zawęża wyniki (2 API calle diagnostyczne)
+3a. Jeśli number= działa → batch po 5 równoległych lookupów dla każdej rez. z DB (~550 calle)
+3b. Jeśli number= ignorowany → fallback do 300 najnowszych (mod_date=2020-01-01)
+```
+
+**Why:** Jedyny sposób ominąć limit 300 bez paginacji — indywidualny lookup po numerze. Jeśli też ignorowany, jedynym rozwiązaniem dla pełnej historii jest CSV import.
 
 ## CSV import
 - CSV `amount` = nocleg only (jak `total` z API)

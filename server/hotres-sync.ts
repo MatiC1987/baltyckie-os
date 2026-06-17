@@ -417,11 +417,10 @@ async function processApiReservation(
   }
 }
 
-// Pełna synchronizacja historyczna — 4 strategie w kolejności prób:
-// 1. year-by-year z parametrami from/till (jak api_prices)
-// 2. departure_date kursor (>= semantics, startując od 2020-01-01)
-// 3. arrival_date kursor
-// 4. mod_date kursor (ostateczność — zwraca tylko newest 300)
+// Pełna synchronizacja historyczna — podejście DB-driven:
+// 1. TEST: sprawdź czy ?number=X zwraca konkretną rezerwację (a nie ignoruje parametr)
+// 2a. Jeśli number= działa: pobierz każdą rez. z bazy po kolei (batche po 5 równolegle)
+// 2b. Jeśli number= ignorowany: fallback do mod_date=2020-01-01 (max 300 najnowszych)
 export async function deepSyncHotResReservations(): Promise<HotResSyncResult & { pagesProcessed: number; limitReached: boolean }> {
   const authKey = process.env.HOTRES_AUTH_KEY;
   const apiKey = process.env.HOTRES_API_KEY;
@@ -439,106 +438,136 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
 
   let imported = 0, updated = 0, skipped = 0;
   const log: string[] = [];
-  const seenNumbers = new Set<string>();
   let pagesProcessed = 0;
-  const MAX_PAGES = parseInt(process.env.HOTRES_DEEP_SYNC_MAX_PAGES || "200", 10);
   const base = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}`;
 
-  // ── Pomocnicza: fetchuj jeden URL i przetwarzaj batch ──────────────────────
-  const fetchBatch = async (url: string, label: string): Promise<{ count: number; newCount: number; maxDep: string; maxArr: string; maxMod: string }> => {
+  // ── Pomocnicza: pobierz jeden URL → zwróć tablicę rekordów ───────────────
+  const fetchRaw = async (url: string): Promise<any[]> => {
     const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.json();
-    const batch: any[] = Array.isArray(raw) ? raw : (Array.isArray(raw?.reservations) ? raw.reservations : []);
-
-    const depDates = batch.map((r: any) => normalizeDate(r.departure_date || r.end_date || "")).filter(Boolean).sort();
-    const arrDates = batch.map((r: any) => normalizeDate(r.arrival_date || r.start_date || "")).filter(Boolean).sort();
-    const modDates = batch.map((r: any) => r.mod_date || r.updated_at || "").filter(Boolean).sort() as string[];
-
-    const sizeBefore = seenNumbers.size;
-    for (const item of batch) {
-      const num = String(item.number || item.id || "").trim();
-      if (!num || seenNumbers.has(num)) continue;
-      seenNumbers.add(num);
-      const result = await processApiReservation(item, allApartments, apartmentMap, hotresNameMap, log);
-      if (result === "imported") imported++;
-      else if (result === "updated") updated++;
-      else skipped++;
-    }
-    pagesProcessed++;
-    const newCount = seenNumbers.size - sizeBefore;
-    log.push(`${label}: ${batch.length} rez., ${newCount} nowych | dep: ${depDates[0] ?? "?"}-${depDates[depDates.length - 1] ?? "?"} | mod: ${modDates[0] ?? "?"}-${modDates[modDates.length - 1] ?? "?"}`);
-    return {
-      count: batch.length,
-      newCount,
-      maxDep: depDates[depDates.length - 1] ?? "",
-      maxArr: arrDates[arrDates.length - 1] ?? "",
-      maxMod: modDates[modDates.length - 1] ?? "",
-    };
+    return Array.isArray(raw) ? raw : (Array.isArray(raw?.reservations) ? raw.reservations : []);
   };
 
-  // ── Strategia 1: year-by-year z from/till ─────────────────────────────────
-  log.push("=== Strategia 1: from/till rok-po-roku ===");
-  const currentYear = new Date().getFullYear();
-  let strategy1Total = 0;
-  let strategy1Works = false;
+  // ── Krok 1: TEST parametru ?number= ──────────────────────────────────────
+  log.push("=== TEST: czy parametr number= działa? ===");
 
-  for (let year = 2020; year <= currentYear && pagesProcessed < MAX_PAGES; year++) {
-    // Try month-by-month for each year (safe — ensures < 300 per call for most months)
-    for (let month = 1; month <= 12 && pagesProcessed < MAX_PAGES; month++) {
-      const from = `${year}-${String(month).padStart(2, "0")}-01`;
-      const lastDay = new Date(year, month, 0).getDate();
-      const till = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
-      if (new Date(from) > new Date()) break; // don't query future months
-      try {
-        const url = `${base}&from=${from}&till=${till}`;
-        const { count, newCount } = await fetchBatch(url, `rok ${year} m${month} (from/till)`);
-        strategy1Total += count;
-        if (count > 0) strategy1Works = true;
-        // If we got a full page on a month, try day-by-day for that month
-        if (count >= 300) {
-          log.push(`Miesiąc ${from} pełny (${count}) — próba dzień-po-dniu`);
-          for (let day = 1; day <= lastDay && pagesProcessed < MAX_PAGES; day++) {
-            const d = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-            if (new Date(d) > new Date()) break;
-            const dayUrl = `${base}&from=${d}&till=${d}`;
-            await fetchBatch(dayUrl, `  dzień ${d}`);
-          }
+  const allDbReservations = await storage.getReservations();
+  const dbNumbers = allDbReservations
+    .map(r => r.reservationNumber)
+    .filter((n): n is string => !!n && n.trim() !== "");
+
+  if (dbNumbers.length === 0) {
+    log.push("Brak rezerwacji w bazie — nie można testować number=");
+    return { ...baseResult, imported: 0, updated: 0, skipped: 0, newApartments: 0, pagesProcessed: 0, limitReached: false, log };
+  }
+
+  const testNumber = dbNumbers[0];
+  const MOD_FROM = "2020-01-01 00:00:00";
+  let numberParamWorks = false;
+  let baselineCount = 0;
+
+  try {
+    const baselineUrl = `${base}&mod_date=${encodeURIComponent(MOD_FROM)}`;
+    const baseline = await fetchRaw(baselineUrl);
+    baselineCount = baseline.length;
+    pagesProcessed++;
+
+    const testUrl = `${base}&mod_date=${encodeURIComponent(MOD_FROM)}&number=${encodeURIComponent(testNumber)}`;
+    const testBatch = await fetchRaw(testUrl);
+    pagesProcessed++;
+
+    const testNums = testBatch.map((r: any) => String(r.number || r.id || "").trim());
+    log.push(`Baseline (bez number=): ${baselineCount} rez.`);
+    log.push(`Test z number=${testNumber}: ${testBatch.length} rez. | zawiera target: ${testNums.includes(testNumber)}`);
+
+    if (testBatch.length === 1 && testNums[0] === testNumber) {
+      log.push("✅ number= DZIAŁA — zwraca dokładnie 1 rez. Uruchamiam tryb DB-driven.");
+      numberParamWorks = true;
+    } else if (testBatch.length === baselineCount) {
+      log.push(`❌ number= IGNOROWANY — te same ${testBatch.length} rez. co bez filtru. Fallback do mod_date.`);
+    } else if (testBatch.length < baselineCount && testNums.includes(testNumber)) {
+      log.push(`⚠️ number= częściowo filtruje (${testBatch.length} < ${baselineCount}) i zawiera target — traktuję jako działający.`);
+      numberParamWorks = true;
+    } else {
+      log.push(`⚠️ number= niejednoznaczny (${testBatch.length} rez., target ${testNums.includes(testNumber) ? "obecny" : "nieobecny"}). Fallback.`);
+    }
+  } catch (e: any) {
+    log.push(`Błąd testu: ${e.message}. Fallback do mod_date.`);
+  }
+
+  // ── Krok 2a: DB-driven — individual lookup po numerze ────────────────────
+  if (numberParamWorks) {
+    log.push(`=== Tryb DB-driven: ${allDbReservations.length} rez. w bazie ===`);
+    const BATCH_SIZE = 5;
+    let done = 0;
+
+    for (let i = 0; i < allDbReservations.length; i += BATCH_SIZE) {
+      const chunk = allDbReservations.slice(i, i + BATCH_SIZE)
+        .filter(r => r.reservationNumber && r.reservationNumber.trim() !== "");
+
+      const results = await Promise.allSettled(
+        chunk.map(async (dbRes) => {
+          const num = dbRes.reservationNumber!;
+          const url = `${base}&mod_date=${encodeURIComponent(MOD_FROM)}&number=${encodeURIComponent(num)}`;
+          const batch = await fetchRaw(url);
+          pagesProcessed++;
+          const item = batch.find((r: any) => String(r.number || r.id || "").trim() === num) ?? batch[0];
+          if (!item) return "skipped" as const;
+          return processApiReservation(item, allApartments, apartmentMap, hotresNameMap, log);
+        })
+      );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          if (r.value === "imported") imported++;
+          else if (r.value === "updated") updated++;
+          else skipped++;
+        } else {
+          skipped++;
         }
-      } catch (e: any) {
-        log.push(`Błąd rok ${year} m${month}: ${e.message}`);
+      }
+
+      done += chunk.length;
+      if (done % 100 === 0 || done >= allDbReservations.length) {
+        log.push(`Postęp: ${done}/${allDbReservations.length} | nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`);
+      }
+      if (i > 0 && i % (BATCH_SIZE * 50) === 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
-  }
-
-  // ── Jeśli from/till nie przyniosło wyników, próbuj departure_date kursor ──
-  if (!strategy1Works) {
-    log.push("=== Strategia 2: departure_date kursor ===");
-    let depCursor = "2020-01-01";
-    while (pagesProcessed < MAX_PAGES) {
-      try {
-        const url = `${base}&mod_date=${encodeURIComponent("2020-01-01 00:00:00")}&departure_date=${depCursor}`;
-        const { count, maxDep } = await fetchBatch(url, `dep>=${depCursor}`);
-        if (count === 0) break;
-        if (count < 300) break;
-        if (!maxDep || maxDep <= depCursor) { log.push("Kursor dep bez postępu"); break; }
-        depCursor = maxDep;
-      } catch (e: any) { log.push(`Błąd dep kursor: ${e.message}`); break; }
+  } else {
+    // ── Krok 2b: Fallback — mod_date=2020-01-01, max 300 rekordów ────────────
+    log.push(`=== Fallback: mod_date=2020-01-01 (max ${baselineCount} rez.) ===`);
+    try {
+      const url = `${base}&mod_date=${encodeURIComponent(MOD_FROM)}`;
+      const batch = await fetchRaw(url);
+      pagesProcessed++;
+      for (const item of batch) {
+        const result = await processApiReservation(item, allApartments, apartmentMap, hotresNameMap, log);
+        if (result === "imported") imported++;
+        else if (result === "updated") updated++;
+        else skipped++;
+      }
+      log.push(`Fallback zakończony: ${batch.length} rez. przetworzonych.`);
+      log.push(`⚠️ API HotRes nie obsługuje paginacji — zaktualizowano ${batch.length} najnowiej zmodyfikowanych.`);
+      log.push(`Aby naprawić ceny wszystkich rezerwacji historycznych, użyj "Napraw ceny (fallback)" przez CSV.`);
+    } catch (e: any) {
+      log.push(`Błąd fallback: ${e.message}`);
     }
   }
 
-  const limitReached = pagesProcessed >= MAX_PAGES;
-  log.push(`[PODSUMOWANIE] strony=${pagesProcessed}/${MAX_PAGES}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}${limitReached ? " ⚠️ LIMIT STRON" : ""}`);
+  log.push(`[PODSUMOWANIE] wywołania_API=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`);
 
   await storage.saveImportMetadata({
     importType: "hotres_api",
     recordsImported: imported,
     recordsUpdated: updated,
     recordsSkipped: skipped,
-    details: `Deep sync v4: strony=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}`,
+    details: `Deep sync v5 (${numberParamWorks ? "DB-driven" : "fallback-300"}): API_calls=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}`,
   });
 
-  return { imported, updated, skipped, newApartments: 0, lastSync, log, pagesProcessed, limitReached, ...baseResult };
+  return { imported, updated, skipped, newApartments: 0, lastSync, log, pagesProcessed, limitReached: false, ...baseResult };
 }
 
 let syncInterval: ReturnType<typeof setInterval> | null = null;
