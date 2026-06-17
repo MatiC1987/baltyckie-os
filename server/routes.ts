@@ -14469,6 +14469,87 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  // Naprawia ceny rezerwacji uszkodzone przez błędny import CSV (zgubione cleaning fee).
+  // Wywnioskuje cleaning fee z istniejących rezerwacji z non-zero surcharge dla każdego apartamentu,
+  // albo używa apartments.cleaningFee jeśli jest ustawione.
+  app.post("/api/hotres/repair-prices", isAuthenticated, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+
+      // 1. Zbierz opłaty sprzątania per apartament:
+      //    priorytet: apartments.cleaning_fee > mediana z istniejących non-zero surcharge
+      const apartments = await storage.getApartments();
+      const aptFeeFromSettings = new Map<number, number>(
+        apartments
+          .filter(a => Number(a.cleaningFee) > 0)
+          .map(a => [a.id, Number(a.cleaningFee)])
+      );
+
+      // Zbierz surcharges z istniejących rezerwacji z non-zero surcharge per apartament
+      const { rows: surchargeRows } = await pool.query(
+        `SELECT apartment_id, surcharge FROM reservations
+         WHERE surcharge > 0 AND apartment_id IS NOT NULL`
+      );
+      const aptSurchargeMap = new Map<number, number[]>();
+      for (const row of surchargeRows) {
+        const aptId = row.apartment_id as number;
+        const val = Number(row.surcharge);
+        if (!aptSurchargeMap.has(aptId)) aptSurchargeMap.set(aptId, []);
+        aptSurchargeMap.get(aptId)!.push(val);
+      }
+      // Użyj minimum (najniższa wartość = najpewniej samo sprzątanie bez podatku miejskiego)
+      const aptInferredFee = new Map<number, number>();
+      for (const [aptId, vals] of aptSurchargeMap.entries()) {
+        aptInferredFee.set(aptId, Math.min(...vals));
+      }
+
+      // Finalny map: ustawienia mają priorytet, potem wywnioskowane
+      const aptFeeMap = new Map<number, number>();
+      for (const [id, fee] of aptInferredFee) aptFeeMap.set(id, fee);
+      for (const [id, fee] of aptFeeFromSettings) aptFeeMap.set(id, fee); // override
+
+      if (aptFeeMap.size === 0) {
+        return res.json({
+          success: false,
+          fixed: 0,
+          skipped: 0,
+          message: "Brak danych o opłatach sprzątania — skonfiguruj je w ustawieniach apartamentów lub wykonaj synchronizację API HotRes.",
+        });
+      }
+
+      // 2. Zaktualizuj rezerwacje z surcharge=0
+      const { rows: damaged } = await pool.query(
+        `SELECT id, apartment_id, price FROM reservations
+         WHERE (surcharge IS NULL OR surcharge = 0) AND apartment_id IS NOT NULL`
+      );
+
+      let fixed = 0;
+      let skipped = 0;
+      for (const row of damaged) {
+        const cleaningFee = aptFeeMap.get(row.apartment_id as number);
+        if (!cleaningFee || cleaningFee <= 0) { skipped++; continue; }
+        const newPrice = (Number(row.price) + cleaningFee).toFixed(2);
+        await pool.query(
+          `UPDATE reservations SET price = $1, surcharge = $2 WHERE id = $3`,
+          [newPrice, cleaningFee.toFixed(2), row.id]
+        );
+        fixed++;
+      }
+
+      const aptNames = apartments.reduce((m, a) => { m.set(a.id, a.name); return m; }, new Map<number, string>());
+      const usedApts = [...aptFeeMap.entries()].map(([id, fee]) => `${aptNames.get(id) ?? id}: ${fee} PLN`).join(", ");
+
+      res.json({
+        success: true,
+        fixed,
+        skipped,
+        message: `Naprawiono ${fixed} rezerwacji. Pominięto ${skipped} (brak danych o sprzątaniu). Użyte stawki: ${usedApts || "brak"}.`,
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: `Błąd: ${e.message}` });
+    }
+  });
+
   app.post("/api/hotres/import-csv", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
@@ -14571,17 +14652,17 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
 
         const existing = await storage.getReservationByNumber(hr.reservationNumber);
         if (existing) {
-          // Istniejące rezerwacje: cena 1:1 z HotRes (pełna suma, bez doliczania cleaning fee)
+          // Dla istniejących rezerwacji NIE nadpisujemy ceny ani surcharge
+          // (mogły zostać poprawnie ustawione przez synchronizację API z addons_amount).
+          // Aktualizujemy tylko dane operacyjne: daty, gość, status, płatności.
           await storage.updateReservation(existing.id, {
             apartmentId: primaryAptId,
             apartmentIds: isGroupReservation ? resolvedAptIds : null,
             startDate: hr.startDate,
             endDate: hr.endDate,
             guestName: hr.guestName,
-            price: basePrice.toFixed(2),
             prepayment: hr.prepayment || "0",
             paidAmount: hr.paidAmount || "0",
-            surcharge: "0.00",
             status: hr.status,
             ...(hr.source && { source: hr.source }),
             ...(csvCustomerId && { customerId: csvCustomerId }),
@@ -14589,8 +14670,6 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
           updated++;
           continue;
         }
-
-        // Nowe rezerwacje: dodajemy cleaning fee z ustawień apartamentu
         await storage.createReservation({
           reservationNumber: hr.reservationNumber,
           apartmentId: primaryAptId,

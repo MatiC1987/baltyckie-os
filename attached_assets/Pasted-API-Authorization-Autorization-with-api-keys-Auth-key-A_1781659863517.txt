@@ -1,0 +1,565 @@
+API Authorization
+Autorization with api keys
+Auth key 
+API key 
+Send with request variables :
+auth - Object private key
+apikey - Api key
+Autorization with user credentials
+User 
+Password 
+Object id 
+Send with request variables :
+user - User e-mail to login
+password - User password to login
+oid - Object id
+Cache results
+We're strongly recommend to cache common GET requests like roomtypes and rates.
+We limit requests per hour so is good idea to optimize your code and cache results.
+Sample code in PHP
+
+Addons
+Function to read property addons
+1 request GET
+https://panel.hotres.pl/api_addons?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Rooms
+Function to read rooms.
+1 request GET
+https://panel.hotres.pl/api_rooms?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Add room
+Function to add room
+1 request POST
+Required parameters :
+payload request - json data send in body
+Required data parameters :
+type_id - room type idenifier
+code - alphanumeric identifier
+single - single beds
+double - double beds
+Optional data parameters :
+sofa / extra_bed / state / max_persons / no_persons / priority / forchannel / floor / comment / online / active / custom1 / custom2 / custom3 / custom4 / custom5 / custom6
+https://panel.hotres.pl/api_addroom?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success", "message": "Room created", "params": { "room_id": 60689 } }
+Room update
+Function to update room
+1 requests POST
+Required parameters :
+payload request - json data send in body
+Required data parameters :
+room_id - Hotres room identifier in Rooms
+Optional data parameters :
+type_id / code / state / single / double / sofa / extra_bed / max_persons / no_persons / priority / forchannel / floor / comment / online / active / custom1 / custom2 / custom3 / custom4 / custom5 / custom6
+https://panel.hotres.pl/api_updateroom?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Rooms types
+Function to read rooms standards / types.
+1 request GET
+Optional parameters :
+lang - Results language / default is : en / special value : all ( include all translations )
+tag - Filter results by tag
+uid - User id 
+https://panel.hotres.pl/api_roomstypes?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Room type details
+Function to read rooms type details by type_id.
+1 request GET
+Required parameters :
+type_id - unique identifier
+Optional parameters :
+lang - Results language / dafault is : en
+uid - User id 
+https://panel.hotres.pl/api_roomtype?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Rates
+Function to read rate plans.
+1 request GET
+Optional parameters :
+lang - Results language / dafault is : en
+packages - Get only special offers / packages (set param to "true" value)
+uid - User id 
+https://panel.hotres.pl/api_rates?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Rate details
+Function to read rate plan details by rate_id.
+1 request GET
+Required parameters :
+rate_id - unique identifier
+Optional parameters :
+lang - Results language / dafault is : en
+https://panel.hotres.pl/api_rate?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Reservations
+Return last modified (new / modified / cancelled) reservations / limited to 300 results.
+1 request GET
+Optional parameters :
+mod_date - Last modification date [format : Y-m-d H:i:s], default is : -2 hours from now
+departure_date - Get reservations where departure is later than parameter [format : Y-m-d ]
+arrival_date - Get reservations where arrival is later than parameter [format : Y-m-d ]
+status - Filter results by status [new, confirmed, canceled, checkin, checkout, complete]
+mode - ['changes' = ( default value) list recently changed reservations, 'reception' = list unsynchronized reservations]
+https://panel.hotres.pl/api_reservations?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Get reservation details
+Function to read single reservation
+1 request GET
+Required parameters :
+reservations_id / reservations_number - Hotres reservation identifier or number
+https://panel.hotres.pl/api_reservationdetails?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Add / update reservation
+Function to add / update / cancel reservation
+3 requests POST
+Required parameters :
+payload request - json data send in body
+Optional parameters :
+sendemailtoguest - send reservation details to guest's email address
+Required data parameters :
+rate_id - rate plan id
+status - [ new / modified / cancelled ]
+lang - [ pl / de / en / es / cz / fr / ua / ru / sk / it / lt / ar / pt ]
+currency - [ PLN / EUR / USD ]
+source - [ web / reception / booking / expedia / airbnb / trivago / tripadvisor / agoda / yieldplanet / noclegowo / google / facebook / noclegi / nocowanie / holidaycheck / zoover / slowhop / alohacamp / naodludziu / triverna / hotelepl / slevomat / vrbo / tripsomnia / belvilla / atraveo / fewo / lushspot / groupon / travelist / owner / profitroom / slowpolska / aiagent / other ]
+first_name - Guest data
+last_name - Guest data
+phone - Guest data
+email - Guest data
+rooms - [ array ]
+arrival_date - [ yyyy-mm-dd ]
+departure_date - [ yyyy-mm-dd ]
+type_id - room type id
+price - accommodation price
+amount - total price with addons
+adults - no of adult persons
+child{1-3} - no of children
+Optional data parameters :
+reference_number - Internal reservation identifier from your system
+id - Hotres reservation identifier for update / cancel
+address - Guest data
+city - Guest data
+countries_id - Guest data
+phone_prefix - Guest data
+company_name - Guest data
+company_nip - Guest data
+company_address - Guest data
+company_city - Guest data
+company_countries_id - Guest data
+company_zip - Guest data
+message - Guest comment
+invoice - [ 0/1 ] Guest needs invoice ?
+time_of_arrival - [ hh:mm ]
+https://panel.hotres.pl/api_reservation?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success", "id": "12345465", "number": "2056" }
+Reservation modify
+Function to simple modify reservation
+1 requests POST
+Required parameters :
+payload request - json data send in body
+Required data parameters :
+reservations_id - Hotres reservation identifier
+Optional data parameters :
+lang / rate_id / currency / source / status / first_name / last_name / phone / phone_prefix / email / address / city / zip / countries_id / invoice / newsletter / company_name / company_nip / company_address / company_city / company_zip / company_countries_id / arrival_hour / departure_hour / time_of_arrival / checkin_online_date / checkin_online_signature / checkin_online / synch_reception
+https://panel.hotres.pl/api_reservationmodify?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Reservation room update
+Function to simple update room in reservation
+1 requests POST
+Required parameters :
+payload request - json data send in body
+Required data parameters :
+internal_id - Hotres room identifier in Reservation Details
+Optional data parameters :
+first_name / last_name / phone / phone_prefix / email / address / city / zip / key_code / checkin_date / checkout_date / identity / passport / birthday
+https://panel.hotres.pl/api_reservationroomupdate?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Add addon
+Function to add addon / upsellig to reservation (reservations_id)
+1 request POST
+Required parameters :
+payload request - json data send in body
+Data parameters :
+reservations_id - Hotres reservation id
+title - Name / title
+price - Item price
+quantity - Quantity of addon items
+included - [ 0 / 1 ] If addon is included [1], is't free of charge
+tax - [ 23 / 19 / 20 / 13 / 10 / 9 / 8 / 7 / 5 / 0 / zw / np / dis ]
+room_id - Addon should be linked to the room in reservation
+currency - [ PLN / EUR / USD ] (optional)
+https://panel.hotres.pl/api_addaddon?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Delete addon
+Function to remove addon from reservation (reservations_id)
+1 request POST
+Required parameters :
+payload request - json data send in body
+Data parameters :
+reservations_id - Hotres reservation id
+addon_id - Addon id from reservation details
+https://panel.hotres.pl/api_deladdon?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Reviews
+Function to read public guests reviews.
+1 request GET
+Optional parameters :
+withdesc=1 - get only reviews with description
+limit - how many reviews to return (max. 300)
+https://panel.hotres.pl/api_reviews?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Vouchers
+Function to read vouchers.
+1 request GET
+Optional parameters :
+lang - Results language / dafault is : en
+uid - User id 
+https://panel.hotres.pl/api_vouchers?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Voucher details
+Function to read voucher details by voucher_id.
+1 request GET
+Required parameters :
+voucher_id - unique identifier
+Optional parameters :
+lang - Results language / dafault is : en
+uid - User id 
+https://panel.hotres.pl/api_voucher?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Tickets
+Function to read tickets.
+1 request GET
+Optional parameters :
+lang - Results language / dafault is : en
+uid - User id 
+https://panel.hotres.pl/api_tickets?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Ticket details
+Function to read ticket details by ticket_id.
+1 request GET
+Required parameters :
+ticket_id - unique identifier
+Optional parameters :
+lang - Results language / dafault is : en
+uid - User id 
+https://panel.hotres.pl/api_ticket?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Blocks
+Function to read blocks.
+1 request GET
+https://panel.hotres.pl/api_blocks?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Availability
+Function to read availability.
+3 requests GET
+Optional parameters :
+from - get results from date [format : yyyy-mm-dd], default is today
+till - get results till date [format : yyyy-mm-dd], default next 2 months
+type_id - Filter results to defined room type
+https://panel.hotres.pl/api_availability?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Update availability
+Function to update availability
+5 request POST
+Required parameters :
+payload request - json data send in body
+Data parameters :
+type_id - room type id
+date - to update [ yyyy-mm-dd ]
+avb - availability
+https://panel.hotres.pl/api_updateavb?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Prices
+Function to read prices.
+3 requests GET
+Optional parameters :
+from - get results from date [format : yyyy-mm-dd], default is today
+till - get results till date [format : yyyy-mm-dd], default next 2 months
+type_id - Filter results to defined room type
+rate_id - Filter results to defined rate plan
+https://panel.hotres.pl/api_prices?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Update prices
+Function to update prices / restrictions
+5 request POST
+Required parameters :
+payload request - json data send in body
+Data parameters :
+type_id - room type id
+rate_id - rate plan id
+mode - [delta - update prices / clear - clear also previous prices]
+prices - [array]
+from - [ yyyy-mm-dd ]
+till - [ yyyy-mm-dd ]
+baseprice - required
+pers{1-8} - price for {1-8} person in room
+child{1-3} - price for {1-3} child
+cta - [ 0/1 ] closed to arrival ?
+ctd - [ 0/1 ] closed to departure ?
+min - minimum lenght of stay
+max - maximum lenght of stay
+https://panel.hotres.pl/api_updateprices?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Payments
+Function to read last payments limited to 300 results.
+1 request GET
+Optional parameters :
+type - List only documents with type [ bank, cc, cash, blik, przelewy24, dotpay, eservice, payu, paypal, paynow, paylane, tpay, paytel, jcc, elavon, planetpay, zen, polcard, imoje, pep, axepta, sofort, booking, airbnb, slevomat, expedia, triverna, noclegi, mybenefit, voucher, compensation, barter, other ]
+reservations_id - List only documents assigned to the reservation
+payment_date_from / payment_date_till - limit list to selected payment_date
+https://panel.hotres.pl/api_payments?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Add payment
+Function to add payment to reservation (reservations_id)
+1 request POST
+Required parameters :
+payload request - json data send in body
+Data parameters :
+paid - [ 0 / 1 ]
+amount - Amount of payment transaction
+reservations_id - Hotres reservation id
+payment_type - [ bank / cc / cash / blik / przelewy24 / dotpay / eservice / payu / paypal / paynow / paylane / tpay / paytel / jcc / elavon / planetpay / zen / polcard / imoje / pep / axepta / sofort / booking / airbnb / slevomat / expedia / triverna / noclegi / mybenefit / voucher / compensation / barter / other ]
+payment_transaction - transaction identifier
+https://panel.hotres.pl/api_addpayment?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Invoices
+Function to read last invoices / limited to 300 results.
+1 request GET
+Optional parameters :
+type - List only documents with type [ vatinvoice, receipt, invoice, bill, proforma, prepayment, correction, final, vatinvoice_ext, receipt_ext ]
+paymentstatus - List only documents with payment [ paid, partially, nonpaid, expired ]
+reservations_id - List only documents assigned to the reservation
+https://panel.hotres.pl/api_invoices?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Invoice details
+Function to read invoice details by invoice_id.
+1 request GET
+Required parameters :
+invoice_id - unique identifier
+https://panel.hotres.pl/api_invoice?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Add invoice
+Function to add invoice / receipt document
+1 request POST
+Required parameters :
+payload request - json data send in body
+Data parameters :
+type - [ vatinvoice / receipt / invoice / bill / proforma / prepayment / correction / final / vatinvoice_ext / receipt_ext ]
+status - [ issued / paid / partial / rejected ] default : issued
+number - optional, auto-generated by defined pattern
+correction_number - optional, used with type : correction
+prepayment_number - optional, used with type : prepayment
+reservations_id - assign document to reservation ( optional )
+date - issued date [yyyy-mm-dd] default : today
+sale_date - sale date [yyyy-mm-dd] default : today
+city - issued in city (optional) default : object's city
+brutto - all items gross amount
+netto - all items net amount
+vat - all items vat amount
+paid - already paid amount ( optional ) default : 0
+currency - PLN, EUR, USD ( optional ) default : object currency
+payment_until - payment deadline [yyyy-mm-dd]
+payment_method - [ bank / cc / cash / blik / przelewy24 / dotpay / eservice / payu / paypal / paynow / paylane / tpay / paytel / jcc / elavon / planetpay / zen / polcard / imoje / pep / axepta / sofort / booking / airbnb / slevomat / expedia / triverna / noclegi / mybenefit / voucher / compensation / barter / other ]
+object_name - seller name ( optional )
+object_address, object_zip, object_city, object_countries_id - seller address ( optional )
+object_nip - seller NIP ( optional )
+object_bank - seller bank account number ( optional )
+object_bank2 - seller second bank account number ( optional )
+company_name - document recipient
+company_address, company_zip, company_city, company_countries_id - recipient address
+company_nip - recipient NIP ( optional )
+company_email - recipient e-mail ( optional )
+comment ( optional )
+items[] - array of document items
+description
+unit
+netto_price
+netto_amount
+vat_amount
+brutto
+tax - [ 23 / 19 / 20 / 13 / 10 / 9 / 8 / 7 / 5 / 0 / zw / np / dis ]
+quantity
+pkwiu - optional
+gtu - optional
+https://panel.hotres.pl/api_addinvoice?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Messages
+Read messages /chat conversation
+1 request GET
+Optional parameters :
+sender - filter results by [ host / guest]
+reservations_id - filter messages to a single reservation
+https://panel.hotres.pl/api_messages?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Send message
+Function to send message to reservations from B.com and AirBnb
+3 requests POST
+Required parameters :
+payload request - json data send in body
+Required data parameters :
+reservations_id - Hotres reservation identifier
+message - text to send
+https://panel.hotres.pl/api_sendmessage?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success", "message": "The message has been sent", "params": { "reference_id": "99d1f0b0-e7cd-11f0-accd-1f5800c99a57" } }
+Notification
+Function to send email / text message via template engine
+3 request POST
+Required parameters :
+reservations_id - Hotres reservation identifier
+template - type / name of the template
+offers_email / E-mail offers
+new_reservation_email / New reservation e-mail
+confirmation_email / Confirmation e-mail
+additional_payment_email / Additional payment e-mail
+payment_email / Payment e-mail
+cancellation_email / Cancellation e-mail
+checkin_form / Check-in formular
+reservation_print_guest / Reservation printable for guest
+cc_email / Credit card e-mail
+msg_keys_sms / Generate key sms message
+msg_keys_email / Generate key e-mail message
+new_request_email / New request e-mail
+new_ticket_email / New ticket e-mail
+new_voucher_email / New voucher e-mail
+newsletter_email_confirm / Newsletter confirm email
+newsletter_message_welcome / Newsletter welcome message
+newsletter_message_final / Newsletter final message
+discount_code / Discount code e-mail
+raport_owner_email / E-mail with raport to room owner
+channelmanager_welcome_email / Welcome e-mail in ChannelManager
+invoice_email / Invoice e-mail
+parking_card / Parking card
+guest_account / New guest account
+Optional parameters :
+email - Define email address ( default is guest email in reservation )
+mobile - Define mobile ( default is guest mobile in reservation )
+payload request - JSON array-object (key => value) with placeholders send in body
+{"%keyCode%":"12982","%paymentAmount%":1200}
+https://panel.hotres.pl/api_notification?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Success response
+{ "result": "success" }
+Informator Plugin
+Function to get informations for guests.
+1 request GET
+Optional parameters :
+lang - Results language / dafault is : en
+https://panel.hotres.pl/api_informator?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Object details
+Function to read property details.
+1 request GET
+Optional parameters :
+lang - Results language / dafault is : en
+https://panel.hotres.pl/api_object?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Guests
+List guests / limited to 300 results
+1 request GET
+Optional parameters :
+search - Search guest by : e-mail / phone / last name
+offset - Result list pointer
+https://panel.hotres.pl/api_guests?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Update guest
+Function to modify guest data
+1 requests POST
+Required parameters :
+payload request - json data send in body
+Required data parameters :
+guest_id - Hotres guest identifier
+Optional data parameters :
+first_name / last_name / phone / phone_prefix / email / tags / lang / identity / passport / birthday / address / city / zip / countries_id / invoice / newsletter / abuse / company_name / company_nip / company_address / company_city / company_zip / company_countries_id
+https://panel.hotres.pl/api_updateguest?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Users
+List users with access to object.
+1 request GET
+https://panel.hotres.pl/api_users?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Parameters
+Function to read parameters.
+1 requests GET
+https://panel.hotres.pl/api_params?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+
+Update parameter
+Function to update object parameter
+1 request POST
+Required parameters :
+payload request - json data send in body
+Array key:value parameters :
+key - name of parameter
+value - new value of parameter
+https://panel.hotres.pl/api_updateparam?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample request
+
+Success response
+{ "result": "success" }
+Definitions
+Function to read data definitions and dictionaries.
+1 request GET
+https://panel.hotres.pl/api_definitions?auth=a40c3d74e87dac3623043ebd85c55e87&apikey=f37c4fc855a9da3157279a900be5dfa0
+Sample response
+

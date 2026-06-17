@@ -559,7 +559,26 @@ function HotResSection() {
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [importResult, setImportResult] = useState<HotResSyncResult | null>(null);
+  const [repairResult, setRepairResult] = useState<{ success: boolean; message: string; fixed?: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const repairMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/hotres/repair-prices"),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setRepairResult(data);
+      if (data.success) {
+        toast({ title: "Naprawiono ceny", description: data.message });
+        queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
+      } else {
+        toast({ title: "Błąd", description: data.message, variant: "destructive" });
+      }
+    },
+    onError: (e: any) => {
+      toast({ title: "Błąd", description: e.message, variant: "destructive" });
+    },
+  });
 
   const handleCsvImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -643,7 +662,28 @@ function HotResSection() {
             <Upload className={`h-4 w-4 mr-2 ${uploading ? "animate-spin" : ""}`} />
             {uploading ? "Importowanie..." : "Wybierz plik CSV z HotRes"}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => repairMutation.mutate()}
+            disabled={repairMutation.isPending}
+            data-testid="button-hotres-repair-prices"
+            title="Przywraca opłatę za sprzątanie do rezerwacji, w których została błędnie usunięta podczas importu CSV"
+          >
+            {repairMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            {repairMutation.isPending ? "Naprawianie..." : "Napraw ceny rezerwacji"}
+          </Button>
         </div>
+
+        {repairResult && (
+          <div className={`rounded-lg p-3 text-sm flex items-start gap-2 ${repairResult.success ? "bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-200" : "bg-destructive/10 text-destructive"}`}>
+            {repairResult.success ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+            <span data-testid="text-repair-result">{repairResult.message}</span>
+          </div>
+        )}
 
         {importResult && (
           <div className={`rounded-lg p-4 space-y-3 ${importResult.success ? "bg-muted" : "bg-destructive/10"}`}>
