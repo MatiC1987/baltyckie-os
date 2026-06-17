@@ -25,9 +25,11 @@ function buildCards(
 ) {
   return months.map(({ year, month }, idx) => {
     const matched = reservations.filter(r => {
-      if (!r.createdAt || !r.startDate) return false;
-      const createdDate = new Date(r.createdAt).toISOString().split("T")[0];
-      if (createdDate !== dateStr) return false;
+      if (!r.startDate) return false;
+      const addedDate = r.addDate
+        ? (r.addDate as string).split("T")[0]
+        : (r.createdAt ? new Date(r.createdAt).toISOString().split("T")[0] : null);
+      if (!addedDate || addedDate !== dateStr) return false;
       const start = new Date(r.startDate);
       return start.getFullYear() === year && start.getMonth() === month;
     });
