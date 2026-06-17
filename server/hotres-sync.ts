@@ -439,16 +439,16 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
   const log: string[] = [];
   const seenNumbers = new Set<string>();
 
-  let depDate = "2020-01-01";
+  let modDate = "2020-01-01 00:00:00";
   let pagesProcessed = 0;
   const MAX_PAGES = 40;
 
   while (pagesProcessed < MAX_PAGES) {
-    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&departure_date=${depDate}`;
+    const url = `https://panel.hotres.pl/api_reservations?auth=${encodeURIComponent(authKey)}&apikey=${encodeURIComponent(apiKey)}&mod_date=${encodeURIComponent(modDate)}`;
     let batch: any[];
     try {
       const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30000) });
-      if (!res.ok) { log.push(`Błąd HTTP ${res.status} przy departure_date=${depDate}`); break; }
+      if (!res.ok) { log.push(`Błąd HTTP ${res.status} przy mod_date=${modDate}`); break; }
       const raw = await res.json();
       batch = Array.isArray(raw) ? raw : (Array.isArray(raw?.reservations) ? raw.reservations : []);
     } catch (e: any) {
@@ -456,13 +456,13 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
     }
 
     pagesProcessed++;
-    log.push(`Strona ${pagesProcessed}: departure >= ${depDate} → ${batch.length} rezerwacji`);
+    log.push(`Strona ${pagesProcessed}: mod_date >= ${modDate} → ${batch.length} rezerwacji`);
 
     if (batch.length === 0) break;
 
-    // Find max departure_date BEFORE filtering duplicates (need it for pagination)
-    const departures = batch.map((r: any) => r.departure_date).filter(Boolean).sort();
-    const maxDep = departures[departures.length - 1] as string | undefined;
+    // Find max mod_date BEFORE filtering duplicates (need it for pagination)
+    const modDates = batch.map((r: any) => r.mod_date || r.updated_at).filter(Boolean).sort();
+    const maxModDate = modDates[modDates.length - 1] as string | undefined;
 
     for (const item of batch) {
       const num = String(item.number || item.id || "").trim();
@@ -476,12 +476,12 @@ export async function deepSyncHotResReservations(): Promise<HotResSyncResult & {
 
     if (batch.length < 300) break; // ostatnia strona
 
-    // Paginacja: użyj max departure jako nowej dolnej granicy
-    if (!maxDep || maxDep <= depDate) {
-      log.push(`Paginacja zatrzymana: brak postępu (maxDep=${maxDep})`);
+    // Paginacja: użyj max mod_date jako nowej dolnej granicy
+    if (!maxModDate || maxModDate <= modDate) {
+      log.push(`Paginacja zatrzymana: brak postępu (maxModDate=${maxModDate})`);
       break;
     }
-    depDate = maxDep;
+    modDate = maxModDate;
   }
 
   log.push(`[PODSUMOWANIE DEEP SYNC] strony=${pagesProcessed}, nowe=${imported}, zaktualizowane=${updated}, pominięte=${skipped}`);

@@ -24,8 +24,9 @@ Sync HotRes API zawsze zwracał 0 wyników bo kod używał `&from=YYYY-MM-DD`, k
 
 ## Paginacja (deep sync)
 - Endpoint limit: 300 wyników per call
-- Parametr do paginacji: `departure_date` (departure >= X)
-- Strategia: startuj od 2020-01-01, posuń do max departure_date z każdej strony
+- Parametr do paginacji: `mod_date` (format: `Y-m-d H:i:s`, np. `2020-01-01 00:00:00`)
+- `departure_date` NIE działa jako filtr paginacji — zwraca tylko ~8 wyników zamiast ~2474
+- Strategia: startuj od `2020-01-01 00:00:00`, posuń do max `mod_date` (pole `mod_date` lub `updated_at`) z każdej strony
 - Zabezpieczenia: max 40 iteracji, Set<string> deduplikacja, brak postępu = stop
 - Endpoint: POST /api/hotres/deep-sync
 
