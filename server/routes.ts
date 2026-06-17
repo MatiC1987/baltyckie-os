@@ -8815,16 +8815,44 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
   });
 
   // ==================== CUSTOMERS (CRM) ====================
-  app.get('/api/customers', isAuthenticated, async (req, res) => {
+  app.get('/api/customers/stats', isAuthenticated, async (req, res) => {
+    try {
+      const stats = await storage.getCustomersStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/customers/export', isAuthenticated, async (req, res) => {
     try {
       const { search, marketingConsent, source } = req.query;
-      const filters: { search?: string; marketingConsent?: boolean; source?: string } = {};
+      const filters: { search?: string; marketingConsent?: boolean; source?: string; limit: number } = { limit: 0 };
       if (search) filters.search = String(search);
       if (marketingConsent === "true") filters.marketingConsent = true;
       else if (marketingConsent === "false") filters.marketingConsent = false;
       if (source) filters.source = String(source);
-      const data = await storage.getCustomers(filters);
-      res.json(data);
+      const result = await storage.getCustomers(filters);
+      res.json(result.data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get('/api/customers', isAuthenticated, async (req, res) => {
+    try {
+      const { search, marketingConsent, source, limit, offset, sortBy, sortDir } = req.query;
+      const filters: { search?: string; marketingConsent?: boolean; source?: string; limit?: number; offset?: number; sortBy?: string; sortDir?: 'asc' | 'desc' } = {};
+      if (search) filters.search = String(search);
+      if (marketingConsent === "true") filters.marketingConsent = true;
+      else if (marketingConsent === "false") filters.marketingConsent = false;
+      if (source) filters.source = String(source);
+      if (limit) filters.limit = parseInt(String(limit), 10);
+      if (offset) filters.offset = parseInt(String(offset), 10);
+      if (sortBy) filters.sortBy = String(sortBy);
+      if (sortDir === 'asc' || sortDir === 'desc') filters.sortDir = sortDir;
+      const result = await storage.getCustomers(filters);
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

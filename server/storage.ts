@@ -425,7 +425,8 @@ export interface IStorage {
   getLoansBalance(): Promise<number>;
 
   // Customers (CRM)
-  getCustomers(filters?: { search?: string; marketingConsent?: boolean; source?: string }): Promise<Customer[]>;
+  getCustomers(filters?: { search?: string; marketingConsent?: boolean; source?: string; limit?: number; offset?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<{ data: Customer[]; total: number }>;
+  getCustomersStats(): Promise<{ total: number; consentCount: number; withEmailCount: number }>;
   getCustomer(id: number): Promise<Customer | undefined>;
   getCustomerReservations(customerId: number): Promise<Reservation[]>;
   createCustomer(data: InsertCustomer): Promise<Customer>;
@@ -2125,7 +2126,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Customers (CRM)
-  async getCustomers(filters?: { search?: string; marketingConsent?: boolean; source?: string }): Promise<Customer[]> {
+  async getCustomers(filters?: { search?: string; marketingConsent?: boolean; source?: string; limit?: number; offset?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }): Promise<{ data: Customer[]; total: number }> {
     const conditions: any[] = [];
     if (filters?.search) {
       const term = `%${filters.search.toLowerCase()}%`;
@@ -2143,11 +2144,46 @@ export class DatabaseStorage implements IStorage {
     if (filters?.source) {
       conditions.push(eq(customers.source, filters.source));
     }
-    const query = db.select().from(customers);
-    const result = conditions.length > 0
-      ? await query.where(and(...conditions)).orderBy(customers.lastName, customers.firstName)
-      : await query.orderBy(customers.lastName, customers.firstName);
-    return result;
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const sortBy = filters?.sortBy || 'lastName';
+    const sortDir = filters?.sortDir || 'asc';
+
+    const sortColMap: Record<string, any> = {
+      lastName: customers.lastName,
+      totalStays: customers.totalStays,
+      totalRevenue: customers.totalRevenue,
+      lastStayDate: customers.lastStayDate,
+    };
+    const sortCol = sortColMap[sortBy] ?? customers.lastName;
+    const orderExpr = sortDir === 'desc' ? desc(sortCol) : sortCol;
+    const secondaryOrder = sortDir === 'desc' ? desc(customers.firstName) : customers.firstName;
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(customers).where(whereClause);
+    const total = Number(countResult?.count ?? 0);
+
+    const limit = filters?.limit ?? 50;
+    const offset = filters?.offset ?? 0;
+
+    let dataQuery = db.select().from(customers).where(whereClause).orderBy(orderExpr, secondaryOrder);
+    if (limit > 0) {
+      (dataQuery as any) = (dataQuery as any).limit(limit).offset(offset);
+    }
+    const data = await dataQuery;
+
+    return { data, total };
+  }
+
+  async getCustomersStats(): Promise<{ total: number; consentCount: number; withEmailCount: number }> {
+    const [totalRow] = await db.select({ count: sql<number>`count(*)` }).from(customers);
+    const [consentRow] = await db.select({ count: sql<number>`count(*)` }).from(customers).where(eq(customers.marketingConsent, true));
+    const [emailRow] = await db.select({ count: sql<number>`count(*)` }).from(customers).where(isNotNull(customers.email));
+    return {
+      total: Number(totalRow?.count ?? 0),
+      consentCount: Number(consentRow?.count ?? 0),
+      withEmailCount: Number(emailRow?.count ?? 0),
+    };
   }
 
   async getCustomer(id: number): Promise<Customer | undefined> {

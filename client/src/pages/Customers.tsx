@@ -1,12 +1,12 @@
-import { useState, useMemo, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
   Search, RefreshCw, Download, Users, Mail, Phone, Globe,
   CheckCircle2, XCircle, ChevronRight, Tag, X, Building2,
   CalendarDays, Loader2, MoreHorizontal, Pencil, Trash2,
-  Filter, ArrowUpDown, Plus, BarChart3
+  Filter, ArrowUpDown, Plus, BarChart3, ArrowUp, ArrowDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer, InsertCustomer } from "@shared/schema";
+
+const PAGE_SIZE = 50;
 
 const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   hotres: { label: "HotRes", color: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30" },
@@ -82,6 +84,17 @@ interface StayHistoryData {
   totalStays: number;
 }
 
+interface CustomerPage {
+  data: Customer[];
+  total: number;
+}
+
+interface CustomerStats {
+  total: number;
+  consentCount: number;
+  withEmailCount: number;
+}
+
 export default function Customers() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -103,6 +116,7 @@ export default function Customers() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const handleSearchChange = (v: string) => {
     setSearch(v);
@@ -116,29 +130,80 @@ export default function Customers() {
     if (consentFilter === "true") p.set("marketingConsent", "true");
     if (consentFilter === "false") p.set("marketingConsent", "false");
     if (sourceFilter !== "all") p.set("source", sourceFilter);
-    return p.toString();
-  }, [debouncedSearch, consentFilter, sourceFilter]);
+    p.set("sortBy", sortField);
+    p.set("sortDir", sortDir);
+    p.set("limit", String(PAGE_SIZE));
+    return p;
+  }, [debouncedSearch, consentFilter, sourceFilter, sortField, sortDir]);
 
-  const { data: rawCustomers = [], isLoading } = useQuery<Customer[]>({
-    queryKey: ["/api/customers", queryParams],
-    queryFn: async () => {
-      const url = `/api/customers${queryParams ? `?${queryParams}` : ""}`;
-      const res = await fetch(url, { credentials: "include" });
+  const {
+    data: infiniteData,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery<CustomerPage>({
+    queryKey: ["/api/customers", queryParams.toString()],
+    queryFn: async ({ pageParam }) => {
+      const p = new URLSearchParams(queryParams);
+      p.set("offset", String(pageParam));
+      const res = await fetch(`/api/customers?${p.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, page) => sum + page.data.length, 0);
+      if (loaded >= lastPage.total) return undefined;
+      return loaded;
     },
     staleTime: 1000 * 60,
   });
 
-  const { data: allCustomers = [] } = useQuery<Customer[]>({
-    queryKey: ["/api/customers", ""],
-    queryFn: async () => {
-      const res = await fetch("/api/customers", { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
+  const { data: stats } = useQuery<CustomerStats>({
+    queryKey: ["/api/customers/stats"],
     staleTime: 1000 * 60 * 2,
   });
+
+  const customers = useMemo(() => {
+    if (!infiniteData) return [];
+    return infiniteData.pages.flatMap(p => p.data);
+  }, [infiniteData]);
+
+  const totalFiltered = infiniteData?.pages[0]?.total ?? 0;
+
+  const totalCount = stats?.total ?? 0;
+  const consentCount = stats?.consentCount ?? 0;
+  const withEmailCount = stats?.withEmailCount ?? 0;
+
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const setupSentinel = useCallback((el: HTMLDivElement | null) => {
+    (sentinelRef as any).current = el;
+    if (observerRef.current) observerRef.current.disconnect();
+    if (!el) return;
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observerRef.current.observe(el);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  useEffect(() => {
+    return () => { observerRef.current?.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    if (!sentinelRef.current || !observerRef.current) return;
+    observerRef.current.disconnect();
+    if (hasNextPage && !isFetchingNextPage) {
+      observerRef.current.observe(sentinelRef.current);
+    }
+  }, [hasNextPage, isFetchingNextPage]);
 
   const { data: stayHistory, isLoading: isLoadingHistory } = useQuery<StayHistoryData>({
     queryKey: ["/api/customers", selectedCustomer?.id, "reservations"],
@@ -149,25 +214,6 @@ export default function Customers() {
     },
     enabled: !!selectedCustomer,
   });
-
-  const customers = useMemo(() => {
-    const list = [...rawCustomers];
-    list.sort((a, b) => {
-      let av: any, bv: any;
-      if (sortField === "lastName") { av = `${a.lastName} ${a.firstName}`; bv = `${b.lastName} ${b.firstName}`; }
-      else if (sortField === "totalStays") { av = a.totalStays ?? 0; bv = b.totalStays ?? 0; }
-      else if (sortField === "totalRevenue") { av = parseFloat(String(a.totalRevenue ?? "0")); bv = parseFloat(String(b.totalRevenue ?? "0")); }
-      else if (sortField === "lastStayDate") { av = a.lastStayDate ?? ""; bv = b.lastStayDate ?? ""; }
-      if (av === bv) return 0;
-      const cmp = av < bv ? -1 : 1;
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return list;
-  }, [rawCustomers, sortField, sortDir]);
-
-  const consentCount = allCustomers.filter(c => c.marketingConsent).length;
-  const withEmailCount = allCustomers.filter(c => c.email).length;
-  const totalCount = allCustomers.length;
 
   const updateMutation = useMutation({
     mutationFn: (vars: { id: number; data: Partial<Customer> }) =>
@@ -236,26 +282,39 @@ export default function Customers() {
     }
   };
 
-  const handleExportCSV = () => {
-    const headers = ["Imię", "Nazwisko", "Email", "Telefon", "Miasto", "Kraj", "Narodowość", "Źródło", "Zgoda marketingowa", "Język", "Tagi", "Liczba pobytów", "Przychód", "Ostatni pobyt", "Notatki"];
-    const rows = customers.map(c => [
-      c.firstName, c.lastName, c.email || "", c.phone || "",
-      c.city || "", c.country || "", c.nationality || "",
-      c.source || "manual",
-      c.marketingConsent ? "tak" : "nie",
-      c.preferredLang || "pl",
-      (c.tags || []).join(";"),
-      String(c.totalStays || 0),
-      String(c.totalRevenue || "0"),
-      c.lastStayDate || "",
-      (c.notes || "").replace(/\n/g, " "),
-    ]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "klienci.csv"; a.click();
-    URL.revokeObjectURL(url);
+  const handleExportCSV = async () => {
+    try {
+      const p = new URLSearchParams();
+      if (debouncedSearch.trim()) p.set("search", debouncedSearch.trim());
+      if (consentFilter === "true") p.set("marketingConsent", "true");
+      if (consentFilter === "false") p.set("marketingConsent", "false");
+      if (sourceFilter !== "all") p.set("source", sourceFilter);
+      const res = await fetch(`/api/customers/export?${p.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+      const all: Customer[] = await res.json();
+
+      const headers = ["Imię", "Nazwisko", "Email", "Telefon", "Miasto", "Kraj", "Narodowość", "Źródło", "Zgoda marketingowa", "Język", "Tagi", "Liczba pobytów", "Przychód", "Ostatni pobyt", "Notatki"];
+      const rows = all.map(c => [
+        c.firstName, c.lastName, c.email || "", c.phone || "",
+        c.city || "", c.country || "", c.nationality || "",
+        c.source || "manual",
+        c.marketingConsent ? "tak" : "nie",
+        c.preferredLang || "pl",
+        (c.tags || []).join(";"),
+        String(c.totalStays || 0),
+        String(c.totalRevenue || "0"),
+        c.lastStayDate || "",
+        (c.notes || "").replace(/\n/g, " "),
+      ]);
+      const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "klienci.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: "Błąd eksportu", description: e.message, variant: "destructive" });
+    }
   };
 
   const openPanel = (c: Customer) => {
@@ -292,9 +351,12 @@ export default function Customers() {
     else { setSortField(field); setSortDir("asc"); }
   };
 
-  const SortIcon = ({ field }: { field: typeof sortField }) => (
-    <ArrowUpDown className={`h-3 w-3 ml-1 inline ${sortField === field ? "text-[#5ADBFA]" : "text-slate-500"}`} />
-  );
+  const SortIcon = ({ field }: { field: typeof sortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 inline text-slate-500" />;
+    return sortDir === "asc"
+      ? <ArrowUp className="h-3 w-3 ml-1 inline text-[#5ADBFA]" />
+      : <ArrowDown className="h-3 w-3 ml-1 inline text-[#5ADBFA]" />;
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-full">
@@ -306,7 +368,9 @@ export default function Customers() {
             Baza klientów
           </h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            {isLoading && totalCount === 0 ? "Ładowanie..." : `${totalCount} klientów · ${consentCount} ze zgodą marketingową · ${withEmailCount} z emailem`}
+            {totalCount === 0 && isLoading
+              ? "Ładowanie..."
+              : `${totalCount} klientów · ${consentCount} ze zgodą marketingową · ${withEmailCount} z emailem`}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -493,9 +557,29 @@ export default function Customers() {
             </tbody>
           </table>
         </div>
+
+        {/* Infinite scroll sentinel */}
         {customers.length > 0 && (
-          <div className="px-4 py-2 border-t border-white/5 text-xs text-slate-500">
-            Wyświetlono {customers.length} z {totalCount} klientów
+          <div
+            ref={setupSentinel}
+            className="px-4 py-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-500"
+            data-testid="customers-footer"
+          >
+            <span>
+              Wyświetlono {customers.length} z {totalFiltered} klientów
+              {(debouncedSearch || consentFilter !== "all" || sourceFilter !== "all") && totalFiltered !== totalCount
+                ? ` (z ${totalCount} łącznie)`
+                : ""}
+            </span>
+            {isFetchingNextPage && (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Ładowanie kolejnych...
+              </span>
+            )}
+            {!hasNextPage && customers.length < totalFiltered && (
+              <span className="text-slate-600">Koniec listy</span>
+            )}
           </div>
         )}
       </div>
