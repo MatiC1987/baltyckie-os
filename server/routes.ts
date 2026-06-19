@@ -14224,6 +14224,21 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.post('/api/admin/fix-duplicate-apartments', async (req, res) => {
+    try {
+      const key = req.headers['x-bootstrap-key'];
+      if (key !== 'BaltFinBootstrap2026!') {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+      const { fixDuplicateApartments } = await import('./fix-duplicate-apartments');
+      await fixDuplicateApartments();
+      res.json({ success: true, message: 'Fix completed — check server logs for details' });
+    } catch (err: any) {
+      console.error('[fix-duplicates-endpoint]', err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ==================== GOCARDLESS — INTEGRACJA BANKOWA ====================
 
   app.get("/api/gocardless/status", isAuthenticated, async (_req, res) => {
