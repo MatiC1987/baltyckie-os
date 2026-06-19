@@ -9694,7 +9694,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     try {
       const yearParam = req.query.year ? Number(req.query.year) : new Date().getFullYear();
 
-      const allApartments = await storage.getApartments();
+      const allApartments = (await storage.getApartments()).filter(a => a.active !== false);
       const allLocations = await storage.getLocations();
       const forecasts = await storage.getRevenueForecasts(yearParam);
       const allReservations = await storage.getReservations();
