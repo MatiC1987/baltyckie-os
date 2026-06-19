@@ -1,3 +1,4 @@
 - [HotRes API sync fix](hotres-api-sync.md) — `mod_date` (Y-m-d H:i:s) jest poprawnym param; `from` jest ignorowane przez API
 - [pgPool vs db.execute](pgpool-vs-db-execute.md) — parameteryzowane SQL w routes.ts: zawsze pgPool.query(q,params), nigdy db.execute(sql.raw(q,params))
 - [Cennik module](cennik-module.md) — architektura modułu cennika (#154/#155): tabele DB, routes, komponenty UI, zakładka AI
+- [executeSql vs DATABASE_URL](executesql-vs-database-url.md) — executeSql NIE łączy się z Neon; jedyna droga do prod Neon to endpoint + curl
