@@ -1248,6 +1248,17 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                       <span className="text-muted-foreground">R: {formatNumCompact(yearTot.r)} / P: {formatNumCompact(yearTot.p)}</span>
                       <span className={`font-semibold ${saldoColor(saldo)}`}>{saldo >= 0 ? "+" : ""}{formatNumCompact(saldo)}</span>
                     </div>
+                    {(() => {
+                      const mTot = getEntrySums(entry, currentMonth);
+                      const mSaldo = mTot.p - mTot.r;
+                      if (mTot.p === 0 && mTot.r === 0) return null;
+                      return (
+                        <div className="flex justify-between text-[10px] pt-1 border-t border-dashed border-border/40">
+                          <span className="text-muted-foreground">{MONTHS[currentMonth]}: R:{formatNumCompact(mTot.r)} / P:{formatNumCompact(mTot.p)}</span>
+                          <span className={`font-semibold ${saldoColor(mSaldo)}`}>{mSaldo >= 0 ? "+" : ""}{formatNumCompact(mSaldo)}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </CardContent>
               </Card>
