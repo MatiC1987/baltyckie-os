@@ -24,14 +24,34 @@ export async function fixDuplicateApartments() {
 
     console.log(`[fix-duplicates] Found ${duplicates.length} unassigned active apartments — fixing…`);
 
-    // Name-based mapping (lowercase) to the correct hotres_name that should be
-    // set on the existing original apartment.
-    const nameToHotresName: Record<string, string> = {
+    // The duplicate apartment names (lowercased) and the hotres_name prefix
+    // to use when searching for the correct original.
+    // ILIKE prefix match handles suffix differences like "mini" vs "min", "6os" vs "6".
+    const nameToHotresPrefix: Record<string, string> = {
       "109 - 4os studio min": "109 - 4os Studio min",
       "208 - 4os studio min": "208 - 4os Studio min",
       "209 - 4os studio min": "209 - 4os Studio min",
       "słoneczna oaza 2 - 6":  "Słoneczna Oaza 2 - 6",
     };
+
+    // The final hotres_name that HotRes actually sends for each prefix.
+    // After moving reservations we must set this exactly on the original.
+    const hotresPrefix: string[] = [
+      "109 - 4os Studio min",
+      "208 - 4os Studio min",
+      "209 - 4os Studio min",
+      "Słoneczna Oaza 2 - 6",
+    ];
+
+    // Log what originals look like before any changes (helps debug)
+    for (const prefix of hotresPrefix) {
+      const { rows } = await client.query(
+        `SELECT id, name, location, hotres_name FROM apartments
+         WHERE hotres_name ILIKE $1 AND (location IS NOT NULL AND location <> '') AND active = true`,
+        [prefix + "%"]
+      );
+      console.log(`[fix-duplicates]  Original for prefix "${prefix}":`, rows);
+    }
 
     await client.query("BEGIN");
 
@@ -39,27 +59,25 @@ export async function fixDuplicateApartments() {
 
     for (const dup of duplicates) {
       const key = dup.name.toLowerCase().trim();
-      const correctHotresName = nameToHotresName[key];
-      if (!correctHotresName) {
+      const hotresPrefix = nameToHotresPrefix[key];
+      if (!hotresPrefix) {
         console.log(`[fix-duplicates]  Apt ${dup.id} "${dup.name}": no mapping, skipping.`);
         continue;
       }
 
-      // Find the "original" apartment: has the same hotres_name pattern,
-      // a real location set, and is active.
-      const { rows: originals } = await client.query<{ id: number; name: string; location: string }>(
-        `SELECT id, name, location
+      // Find the original using ILIKE prefix — handles "mini" vs "min", "6os" vs "6"
+      const { rows: originals } = await client.query<{ id: number; name: string; location: string; hotres_name: string }>(
+        `SELECT id, name, location, hotres_name
          FROM apartments
-         WHERE LOWER(hotres_name) = LOWER($1)
+         WHERE hotres_name ILIKE $1
            AND (location IS NOT NULL AND location <> '')
            AND active = true
          LIMIT 1`,
-        [correctHotresName]
+        [hotresPrefix + "%"]
       );
 
       if (originals.length === 0) {
-        // No match by hotres_name yet — try partial name match as fallback
-        console.log(`[fix-duplicates]  Apt ${dup.id}: no original by hotres_name "${correctHotresName}", skipping.`);
+        console.log(`[fix-duplicates]  Apt ${dup.id}: no original found for prefix "${hotresPrefix}%", skipping.`);
         continue;
       }
 
@@ -72,12 +90,12 @@ export async function fixDuplicateApartments() {
       );
       console.log(`[fix-duplicates]  Moved ${moved.rowCount} reservations: apt ${dup.id} → ${original.id} (${original.name})`);
 
-      // Ensure original's hotres_name exactly matches what HotRes sends
+      // Set hotres_name on original to the EXACT value HotRes sends (the prefix itself)
       await client.query(
         "UPDATE apartments SET hotres_name = $1 WHERE id = $2",
-        [correctHotresName, original.id]
+        [hotresPrefix, original.id]
       );
-      console.log(`[fix-duplicates]  Set hotres_name on apt ${original.id} → "${correctHotresName}"`);
+      console.log(`[fix-duplicates]  Set hotres_name on apt ${original.id} → "${hotresPrefix}"`);
 
       toDeactivate.push(dup.id);
     }
