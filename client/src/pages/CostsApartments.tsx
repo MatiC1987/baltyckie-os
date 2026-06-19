@@ -1063,22 +1063,6 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     return { p, r, s: p - r };
   }, [costEntries, getLocationSums, currentMonth]);
 
-  const displayTotal = useMemo(() => {
-    if (selectedLocationGroup) {
-      const tot = getLocationYearTotal(selectedLocationGroup.items);
-      return { p: tot.p, r: tot.r, s: tot.p - tot.r };
-    }
-    return grandTotal;
-  }, [selectedLocationGroup, getLocationYearTotal, grandTotal]);
-
-  const displayMonthTotal = useMemo(() => {
-    if (selectedLocationGroup) {
-      const tot = getLocationSums(selectedLocationGroup.items, currentMonth);
-      return { p: tot.p, r: tot.r, s: tot.p - tot.r };
-    }
-    return currentMonthTotals;
-  }, [selectedLocationGroup, getLocationSums, currentMonth, currentMonthTotals]);
-
   const getEntrySparklineData = useCallback((entry: CostEntry): number[] => {
     return Array.from({ length: 12 }, (_, m) => getEntrySums(entry, m).r);
   }, [getEntrySums]);
@@ -1095,6 +1079,22 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     if (!selectedLocation) return null;
     return costEntries.find(g => g.location === selectedLocation) || null;
   }, [selectedLocation, costEntries]);
+
+  const displayTotal = useMemo(() => {
+    if (selectedLocationGroup) {
+      const tot = getLocationYearTotal(selectedLocationGroup.items);
+      return { p: tot.p, r: tot.r, s: tot.p - tot.r };
+    }
+    return grandTotal;
+  }, [selectedLocationGroup, getLocationYearTotal, grandTotal]);
+
+  const displayMonthTotal = useMemo(() => {
+    if (selectedLocationGroup) {
+      const tot = getLocationSums(selectedLocationGroup.items, currentMonth);
+      return { p: tot.p, r: tot.r, s: tot.p - tot.r };
+    }
+    return currentMonthTotals;
+  }, [selectedLocationGroup, getLocationSums, currentMonth, currentMonthTotals]);
 
   const navigateToLocation = (loc: string) => {
     setSelectedLocation(loc);
