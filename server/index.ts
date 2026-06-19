@@ -9,6 +9,7 @@ import { runProdDataMigration } from "./prod-data-migrate";
 import { runProdSchemaMigration } from "./prod-schema-migrate";
 import { seedAneksTemplate } from "./seed-aneks-template";
 import { seedCustomers } from "./seed-customers";
+import { fixDuplicateApartments } from "./fix-duplicate-apartments";
 
 const app = express();
 const httpServer = createServer(app);
@@ -129,6 +130,11 @@ app.use((req, res, next) => {
           await seedCustomers();
         } catch (e) {
           console.error("[seed-customers] Seed error (non-fatal):", e);
+        }
+        try {
+          await fixDuplicateApartments();
+        } catch (e) {
+          console.error("[fix-duplicates] Migration error (non-fatal):", e);
         }
       }
     },
