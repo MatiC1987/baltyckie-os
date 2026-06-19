@@ -1063,6 +1063,22 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
     return { p, r, s: p - r };
   }, [costEntries, getLocationSums, currentMonth]);
 
+  const displayTotal = useMemo(() => {
+    if (selectedLocationGroup) {
+      const tot = getLocationYearTotal(selectedLocationGroup.items);
+      return { p: tot.p, r: tot.r, s: tot.p - tot.r };
+    }
+    return grandTotal;
+  }, [selectedLocationGroup, getLocationYearTotal, grandTotal]);
+
+  const displayMonthTotal = useMemo(() => {
+    if (selectedLocationGroup) {
+      const tot = getLocationSums(selectedLocationGroup.items, currentMonth);
+      return { p: tot.p, r: tot.r, s: tot.p - tot.r };
+    }
+    return currentMonthTotals;
+  }, [selectedLocationGroup, getLocationSums, currentMonth, currentMonthTotals]);
+
   const getEntrySparklineData = useCallback((entry: CostEntry): number[] => {
     return Array.from({ length: 12 }, (_, m) => getEntrySums(entry, m).r);
   }, [getEntrySums]);
@@ -1696,24 +1712,24 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card className="border-l-4 border-l-indigo-500 shadow-sm">
             <CardContent className="pt-4 pb-3 px-4">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Prognoza roczna</p>
-              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{grandTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Prognoza roczna{selectedLocationGroup ? ` (${selectedLocation})` : ""}</p>
+              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-prognoza">{displayTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
             </CardContent>
           </Card>
           <Card className="border-l-4 border-l-cyan-500 shadow-sm">
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Zrealizowane</p>
-              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-rzeczywiste">{grandTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
-              {grandTotal.p > 0 && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">{Math.round(grandTotal.r / grandTotal.p * 100)}% planu</p>
+              <p className="text-xl font-bold mt-1 tabular-nums" data-testid="text-total-rzeczywiste">{displayTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              {displayTotal.p > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">{Math.round(displayTotal.r / displayTotal.p * 100)}% planu</p>
               )}
             </CardContent>
           </Card>
-          <Card className={`border-l-4 shadow-sm ${grandTotal.s >= 0 ? "border-l-emerald-500" : "border-l-red-500"}`}>
+          <Card className={`border-l-4 shadow-sm ${displayTotal.s >= 0 ? "border-l-emerald-500" : "border-l-red-500"}`}>
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Saldo</p>
-              <p className={`text-xl font-bold mt-1 tabular-nums ${saldoColor(grandTotal.s)}`} data-testid="text-total-saldo">
-                {grandTotal.s >= 0 ? "+" : ""}{grandTotal.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+              <p className={`text-xl font-bold mt-1 tabular-nums ${saldoColor(displayTotal.s)}`} data-testid="text-total-saldo">
+                {displayTotal.s >= 0 ? "+" : ""}{displayTotal.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
               </p>
             </CardContent>
           </Card>
@@ -1725,23 +1741,23 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
           <Card className="bg-gradient-to-br from-indigo-50/50 to-transparent dark:from-indigo-950/20 dark:to-transparent shadow-sm">
             <CardContent className="pt-3 pb-3 px-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{MONTHS_PL[currentMonth]} — Prognoza</p>
-              <p className="text-lg font-bold mt-1 tabular-nums">{currentMonthTotals.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              <p className="text-lg font-bold mt-1 tabular-nums">{displayMonthTotal.p.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-cyan-50/50 to-transparent dark:from-cyan-950/20 dark:to-transparent shadow-sm">
             <CardContent className="pt-3 pb-3 px-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{MONTHS_PL[currentMonth]} — Zrealizowane</p>
-              <p className="text-lg font-bold mt-1 tabular-nums">{currentMonthTotals.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
-              {currentMonthTotals.p > 0 && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">{Math.round(currentMonthTotals.r / currentMonthTotals.p * 100)}% planu</p>
+              <p className="text-lg font-bold mt-1 tabular-nums">{displayMonthTotal.r.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł</p>
+              {displayMonthTotal.p > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">{Math.round(displayMonthTotal.r / displayMonthTotal.p * 100)}% planu</p>
               )}
             </CardContent>
           </Card>
-          <Card className={`bg-gradient-to-br shadow-sm ${currentMonthTotals.s >= 0 ? "from-emerald-50/50 dark:from-emerald-950/20" : "from-red-50/50 dark:from-red-950/20"} to-transparent dark:to-transparent`}>
+          <Card className={`bg-gradient-to-br shadow-sm ${displayMonthTotal.s >= 0 ? "from-emerald-50/50 dark:from-emerald-950/20" : "from-red-50/50 dark:from-red-950/20"} to-transparent dark:to-transparent`}>
             <CardContent className="pt-3 pb-3 px-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{MONTHS_PL[currentMonth]} — Saldo</p>
-              <p className={`text-lg font-bold mt-1 tabular-nums ${saldoColor(currentMonthTotals.s)}`}>
-                {currentMonthTotals.s >= 0 ? "+" : ""}{currentMonthTotals.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+              <p className={`text-lg font-bold mt-1 tabular-nums ${saldoColor(displayMonthTotal.s)}`}>
+                {displayMonthTotal.s >= 0 ? "+" : ""}{displayMonthTotal.s.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
               </p>
             </CardContent>
           </Card>
