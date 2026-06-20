@@ -184,9 +184,11 @@ function formatCurrency(val: number | string | null | undefined): string {
 }
 
 function daysUntil(dateStr: string): number {
+  if (!dateStr) return Infinity;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const target = new Date(dateStr);
+  if (isNaN(target.getTime())) return Infinity;
   target.setHours(0, 0, 0, 0);
   return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }

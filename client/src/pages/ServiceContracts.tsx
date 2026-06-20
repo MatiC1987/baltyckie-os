@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { differenceInDays, parseISO } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -172,7 +173,15 @@ export default function ServiceContracts() {
                     </TableCell>
                     <TableCell>{contract.signDate || "—"}</TableCell>
                     <TableCell>{contract.duration || "—"}</TableCell>
-                    <TableCell>{contract.endDate || "—"}</TableCell>
+                    <TableCell>
+                      {(() => {
+                        if (!contract.endDate) return "—";
+                        const days = differenceInDays(parseISO(contract.endDate), new Date());
+                        const cls = days < 0 ? "text-red-600 dark:text-red-400 font-medium" : days <= 30 ? "text-orange-500 dark:text-orange-400 font-medium" : "";
+                        const label = days < 0 ? ` (wygasła ${Math.abs(days)}d temu)` : days <= 30 ? ` (za ${days}d)` : "";
+                        return <span className={cls}>{contract.endDate}{label}</span>;
+                      })()}
+                    </TableCell>
                     <TableCell>{contract.serviceAddress || "—"}</TableCell>
                     <TableCell className="font-semibold">
                       {(() => { const p = Number(contract.monthlyPrice); return contract.monthlyPrice && !isNaN(p) ? `${p.toFixed(2)} PLN` : "—"; })()}

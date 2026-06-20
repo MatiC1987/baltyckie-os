@@ -160,6 +160,7 @@ function CostInvoicesTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isZipDownloading, setIsZipDownloading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<CostInvoice | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -250,6 +251,7 @@ function CostInvoicesTab() {
     mutationFn: async ({ id, status }: { id: number; status: string }) =>
       apiRequest("PATCH", `/api/cost-invoices/${id}`, { status }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/cost-invoices"] }),
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message || "Nie udało się zmienić statusu", variant: "destructive" }),
   });
 
   const bulkStatusMutation = useMutation({
@@ -260,6 +262,7 @@ function CostInvoicesTab() {
       setSelectedIds(new Set());
       toast({ title: "Statusy zaktualizowane" });
     },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message || "Nie udało się zaktualizować statusów", variant: "destructive" }),
   });
 
   const linkExpenseMutation = useMutation({
@@ -363,6 +366,7 @@ function CostInvoicesTab() {
       toast({ title: "Zaznacz faktury", description: "Wybierz faktury do pobrania", variant: "destructive" });
       return;
     }
+    setIsZipDownloading(true);
     try {
       const resp = await fetch("/api/cost-invoices/download-zip", {
         method: "POST",
@@ -386,6 +390,8 @@ function CostInvoicesTab() {
       toast({ title: "Paczka ZIP pobrana" });
     } catch (err: any) {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setIsZipDownloading(false);
     }
   };
 
@@ -490,8 +496,8 @@ function CostInvoicesTab() {
 
         {selectedIds.size > 0 && (
           <>
-            <Button onClick={handleZipDownload} data-testid="button-download-zip">
-              <Package className="h-4 w-4 mr-1" />
+            <Button onClick={handleZipDownload} disabled={isZipDownloading} data-testid="button-download-zip">
+              {isZipDownloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Package className="h-4 w-4 mr-1" />}
               Pobierz ZIP ({selectedIds.size})
             </Button>
             <Select onValueChange={val => bulkStatusMutation.mutate({ ids: [...selectedIds], status: val })}>
@@ -1242,6 +1248,7 @@ function AccountingNotesTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isZipDownloading, setIsZipDownloading] = useState(false);
 
   const { data: notes = [], isLoading } = useQuery<AccountingNote[]>({ queryKey: ["/api/accounting-notes"] });
 
@@ -1249,6 +1256,7 @@ function AccountingNotesTab() {
     mutationFn: async ({ id, status }: { id: number; status: string }) =>
       apiRequest("PATCH", `/api/accounting-notes/${id}/status`, { status }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/accounting-notes"] }),
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message || "Nie udało się zmienić statusu", variant: "destructive" }),
   });
 
   const bulkStatusMutation = useMutation({
@@ -1259,6 +1267,7 @@ function AccountingNotesTab() {
       setSelectedIds(new Set());
       toast({ title: "Statusy zaktualizowane" });
     },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message || "Nie udało się zaktualizować statusów", variant: "destructive" }),
   });
 
   const deleteNoteMutation = useMutation({
@@ -1292,6 +1301,7 @@ function AccountingNotesTab() {
       toast({ title: "Zaznacz noty", description: "Wybierz noty do pobrania", variant: "destructive" });
       return;
     }
+    setIsZipDownloading(true);
     try {
       const resp = await fetch("/api/accounting-notes/download-zip", {
         method: "POST",
@@ -1314,6 +1324,8 @@ function AccountingNotesTab() {
       toast({ title: "Paczka ZIP pobrana" });
     } catch (err: any) {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setIsZipDownloading(false);
     }
   };
 
@@ -1380,8 +1392,8 @@ function AccountingNotesTab() {
 
         {selectedIds.size > 0 && (
           <>
-            <Button onClick={handleZipDownload} data-testid="button-download-notes-zip">
-              <Package className="h-4 w-4 mr-1" />
+            <Button onClick={handleZipDownload} disabled={isZipDownloading} data-testid="button-download-notes-zip">
+              {isZipDownloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Package className="h-4 w-4 mr-1" />}
               Pobierz ZIP ({selectedIds.size})
             </Button>
             <Select onValueChange={val => bulkStatusMutation.mutate({ noteIds: [...selectedIds], status: val })}>
@@ -1632,6 +1644,7 @@ export function AirbnbInvoicesTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isZipDownloading, setIsZipDownloading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<AirbnbInvoice | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -1677,6 +1690,7 @@ export function AirbnbInvoicesTab() {
     mutationFn: async ({ id, status }: { id: number; status: string }) =>
       apiRequest("PATCH", `/api/airbnb-invoices/${id}`, { status }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/airbnb-invoices"] }),
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message || "Nie udało się zmienić statusu", variant: "destructive" }),
   });
 
   const bulkStatusMutation = useMutation({
@@ -1687,6 +1701,7 @@ export function AirbnbInvoicesTab() {
       setSelectedIds(new Set());
       toast({ title: "Statusy zaktualizowane" });
     },
+    onError: (err: Error) => toast({ title: "Błąd", description: err.message || "Nie udało się zaktualizować statusów", variant: "destructive" }),
   });
 
   const updateInvoiceMutation = useMutation({
@@ -1761,6 +1776,7 @@ export function AirbnbInvoicesTab() {
       toast({ title: "Zaznacz faktury", description: "Wybierz faktury do pobrania", variant: "destructive" });
       return;
     }
+    setIsZipDownloading(true);
     try {
       const resp = await fetch("/api/airbnb-invoices/download-zip", {
         method: "POST",
@@ -1783,6 +1799,8 @@ export function AirbnbInvoicesTab() {
       toast({ title: "Paczka ZIP pobrana" });
     } catch (err: any) {
       toast({ title: "Błąd", description: err.message, variant: "destructive" });
+    } finally {
+      setIsZipDownloading(false);
     }
   };
 
@@ -1874,8 +1892,8 @@ export function AirbnbInvoicesTab() {
 
         {selectedIds.size > 0 && (
           <>
-            <Button onClick={handleZipDownload} data-testid="button-airbnb-download-zip">
-              <Package className="h-4 w-4 mr-1" />
+            <Button onClick={handleZipDownload} disabled={isZipDownloading} data-testid="button-airbnb-download-zip">
+              {isZipDownloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Package className="h-4 w-4 mr-1" />}
               Pobierz ZIP ({selectedIds.size})
             </Button>
             <Select onValueChange={val => bulkStatusMutation.mutate({ ids: [...selectedIds], status: val })}>

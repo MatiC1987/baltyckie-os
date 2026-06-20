@@ -222,6 +222,9 @@ function DashboardTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/rcp/dashboard"] });
       toast({ title: "Wpis zaakceptowany" });
     },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message || "Nie udało się zaakceptować wpisu", variant: "destructive" });
+    },
   });
 
   const rejectMut = useMutation({
@@ -231,6 +234,9 @@ function DashboardTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rcp/dashboard"] });
       toast({ title: "Wpis odrzucony" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Błąd", description: err.message || "Nie udało się odrzucić wpisu", variant: "destructive" });
     },
   });
 
