@@ -23,10 +23,13 @@ function formatNum(v: number): string {
   return v.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+const COST_WARN_THRESHOLD = 0.85;
+const COST_EXCEEDED_THRESHOLD = 1.0;
+
 function costPctColor(pct: number) {
   if (pct <= 0) return { text: "text-muted-foreground", bar: "bg-muted", exceeded: false };
-  if (pct < 0.85) return { text: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500", exceeded: false };
-  if (pct < 1.0) return { text: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500", exceeded: false };
+  if (pct < COST_WARN_THRESHOLD) return { text: "text-emerald-600 dark:text-emerald-400", bar: "bg-emerald-500", exceeded: false };
+  if (pct < COST_EXCEEDED_THRESHOLD) return { text: "text-amber-600 dark:text-amber-400", bar: "bg-amber-500", exceeded: false };
   return { text: "text-red-600 dark:text-red-400", bar: "bg-red-500", exceeded: true };
 }
 

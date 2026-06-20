@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePullRefresh } from "@/hooks/use-pull-refresh";
@@ -106,6 +107,7 @@ function useCompanyBalance() {
 }
 
 export default function Dashboard() {
+  const { toast } = useToast();
   const { user } = useAuth();
   const { data: reservations, isLoading: reservationsLoading } = useReservations();
   const { data: apartments } = useApartments();
@@ -177,6 +179,9 @@ export default function Dashboard() {
       setEditingAccountId(null);
       setEditingBalance("");
     },
+    onError: () => {
+      toast({ title: "Błąd", description: "Nie udało się zaktualizować salda", variant: "destructive" });
+    },
   });
 
   const kpiStats = useMemo(() => {
@@ -208,12 +213,14 @@ export default function Dashboard() {
   }, [reservations, forecastData]);
 
   const occupancyPct = useMemo(() => {
-    if (!reservations || !apartments || apartments.length === 0) return 0;
+    if (!reservations || !apartments) return 0;
+    const activeApts = apartments.filter(a => a.active !== false);
+    if (activeApts.length === 0) return 0;
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const totalAptNights = apartments.length * daysInMonth;
+    const totalAptNights = activeApts.length * daysInMonth;
     if (totalAptNights === 0) return 0;
 
     let occupiedNights = 0;

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -97,12 +97,14 @@ export default function PriceSeasonality() {
     return data.byApartment.sort((a, b) => a.apartmentName.localeCompare(b.apartmentName, "pl"));
   }, [data?.byApartment]);
 
-  const selectedApartment = useMemo(() => {
+  useEffect(() => {
     if (!selectedApartmentId && apartments.length > 0) {
       setSelectedApartmentId(String(apartments[0].apartmentId));
-      return apartments[0];
     }
-    return apartments.find((a) => String(a.apartmentId) === selectedApartmentId) || null;
+  }, [apartments, selectedApartmentId]);
+
+  const selectedApartment = useMemo(() => {
+    return apartments.find((a) => String(a.apartmentId) === selectedApartmentId) ?? apartments[0] ?? null;
   }, [selectedApartmentId, apartments]);
 
   const heatmapMinMax = useMemo(() => {
