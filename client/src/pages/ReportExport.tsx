@@ -113,11 +113,11 @@ export default function ReportExport() {
     const title = `Raport miesieczny - ${monthName} ${selectedYear}`;
     addHeader(doc, title);
 
-    const filteredReservations = filterByMonth(reservations, "checkIn");
+    const filteredReservations = filterByMonth(reservations, "startDate");
     const filteredExpenses = filterByMonth(expenses, "date");
 
     const totalRevenue = filteredReservations.reduce((sum: number, r: any) => {
-      const amount = parseFloat(r.totalAmount || r.amount || "0");
+      const amount = parseFloat(r.price || "0");
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
 
@@ -152,9 +152,9 @@ export default function ReportExport() {
           i + 1,
           removeDiacritics(apartmentMap[r.apartmentId] || `#${r.apartmentId}`),
           removeDiacritics(r.guestName || r.guest || "-"),
-          r.checkIn ? new Date(r.checkIn).toLocaleDateString("pl-PL") : "-",
-          r.checkOut ? new Date(r.checkOut).toLocaleDateString("pl-PL") : "-",
-          formatPLN(r.totalAmount || r.amount),
+          r.startDate ? new Date(r.startDate).toLocaleDateString("pl-PL") : "-",
+          r.endDate ? new Date(r.endDate).toLocaleDateString("pl-PL") : "-",
+          formatPLN(r.price),
         ]),
         styles: { font: "helvetica", fontSize: 8 },
         headStyles: { fillColor: [90, 219, 250], textColor: [255, 255, 255] },
@@ -196,7 +196,7 @@ export default function ReportExport() {
     const title = `Lista rezerwacji - ${monthName} ${selectedYear}`;
     addHeader(doc, title);
 
-    const filteredReservations = filterByMonth(reservations, "checkIn");
+    const filteredReservations = filterByMonth(reservations, "startDate");
 
     (doc as any).autoTable({
       startY: 50,
@@ -205,9 +205,9 @@ export default function ReportExport() {
         i + 1,
         removeDiacritics(apartmentMap[r.apartmentId] || `#${r.apartmentId}`),
         removeDiacritics(r.guestName || r.guest || "-"),
-        r.checkIn ? new Date(r.checkIn).toLocaleDateString("pl-PL") : "-",
-        r.checkOut ? new Date(r.checkOut).toLocaleDateString("pl-PL") : "-",
-        formatPLN(r.totalAmount || r.amount),
+        r.startDate ? new Date(r.startDate).toLocaleDateString("pl-PL") : "-",
+        r.endDate ? new Date(r.endDate).toLocaleDateString("pl-PL") : "-",
+        formatPLN(r.price),
         removeDiacritics(r.status || "-"),
       ]),
       styles: { font: "helvetica", fontSize: 8 },
@@ -229,7 +229,7 @@ export default function ReportExport() {
     const year = parseInt(selectedYear);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    const filteredReservations = filterByMonth(reservations, "checkIn");
+    const filteredReservations = filterByMonth(reservations, "startDate");
 
     const aptOccupancy: { name: string; days: number; rate: string; revenue: string }[] = [];
 
@@ -239,11 +239,11 @@ export default function ReportExport() {
       let totalRev = 0;
 
       aptReservations.forEach((r: any) => {
-        const checkIn = new Date(r.checkIn);
-        const checkOut = r.checkOut ? new Date(r.checkOut) : checkIn;
+        const checkIn = new Date(r.startDate);
+        const checkOut = r.endDate ? new Date(r.endDate) : checkIn;
         const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
         occupiedDays += nights;
-        totalRev += parseFloat(r.totalAmount || r.amount || "0") || 0;
+        totalRev += parseFloat(r.price || "0") || 0;
       });
 
       const rate = daysInMonth > 0 ? ((occupiedDays / daysInMonth) * 100).toFixed(1) : "0.0";

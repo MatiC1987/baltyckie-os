@@ -8,7 +8,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema, employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema, mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema } from "@shared/schema";
-import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between } from "drizzle-orm";
+import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between, isNull } from "drizzle-orm";
 import { db, pool as pgPool } from "./db";
 import { z } from "zod";
 import multer from "multer";
@@ -872,7 +872,7 @@ export async function registerRoutes(
         .from(subleases)
         .where(and(
           lte(subleases.startDate, endDate),
-          gte(subleases.endDate, startDate),
+          or(isNull(subleases.endDate), gte(subleases.endDate, startDate)),
           ne(subleases.status, "ANULOWANA"),
         ));
 
@@ -890,7 +890,7 @@ export async function registerRoutes(
       const subleaseOccByApt: Record<number, Set<number>> = {};
       for (const s of activeSubleases) {
         const subStart = new Date(s.startDate);
-        const subEnd = new Date(s.endDate);
+        const subEnd = s.endDate ? new Date(s.endDate) : occPeriodEnd;
 
         const baseIds: number[] = s.apartmentIds && s.apartmentIds.length > 0
           ? [...s.apartmentIds]
@@ -1000,7 +1000,7 @@ export async function registerRoutes(
 
       const yearSubleases = await db.select().from(subleases).where(and(
         lte(subleases.startDate, endDate),
-        gte(subleases.endDate, startDate),
+        or(isNull(subleases.endDate), gte(subleases.endDate, startDate)),
         ne(subleases.status, "ZAKONCZONA"),
       ));
 
@@ -1023,7 +1023,7 @@ export async function registerRoutes(
 
       for (const sub of yearSubleases) {
         const subStart = new Date(sub.startDate);
-        const subEnd = new Date(sub.endDate);
+        const subEnd = sub.endDate ? new Date(sub.endDate) : yearEndDate;
         const totalDays = Math.max(0, Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1);
         if (totalDays === 0) continue;
 
@@ -1169,15 +1169,16 @@ export async function registerRoutes(
           .from(subleases)
           .where(and(
             lte(subleases.startDate, `${year}-12-31`),
-            gte(subleases.endDate, `${year}-01-01`),
+            or(isNull(subleases.endDate), gte(subleases.endDate, `${year}-01-01`)),
             ne(subleases.status, "ZAKONCZONA"),
           ));
 
+        const yearEndBoundary = new Date(year, 11, 31);
         for (const sub of yearSubleases) {
           const monthlyRent = Number(sub.rentAmount || 0);
           if (monthlyRent <= 0) continue;
           const subStart = new Date(sub.startDate);
-          const subEnd = new Date(sub.endDate);
+          const subEnd = sub.endDate ? new Date(sub.endDate) : yearEndBoundary;
 
           for (let m = 0; m < 12; m++) {
             const monthStart = new Date(year, m, 1);
@@ -6604,7 +6605,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         .from(subleases)
         .where(and(
           lte(subleases.startDate, endDate),
-          gte(subleases.endDate, startDate),
+          or(isNull(subleases.endDate), gte(subleases.endDate, startDate)),
           ne(subleases.status, "ZAKONCZONA"),
         ));
 
@@ -6621,7 +6622,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
       for (const sub of yearSubleases) {
         const subStart = new Date(sub.startDate);
-        const subEnd = new Date(sub.endDate);
+        const subEnd = sub.endDate ? new Date(sub.endDate) : compYearEnd;
         const totalDays = Math.max(0, Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1);
         if (totalDays === 0) continue;
 
