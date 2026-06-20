@@ -836,7 +836,7 @@ export async function registerRoutes(
       const year = Number(req.query.year) || new Date().getFullYear();
       const month = req.query.month ? Number(req.query.month) : undefined;
 
-      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments).where(ne(apartments.active, false));
 
       let startDate: string, endDate: string;
       if (month) {
@@ -985,7 +985,7 @@ export async function registerRoutes(
       const startDate = `${year}-01-01`;
       const endDate = `${year}-12-31`;
 
-      const allApartments = await db.select({ id: apartments.id, name: apartments.name, location: apartments.location }).from(apartments);
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name, location: apartments.location }).from(apartments).where(ne(apartments.active, false));
 
       const yearReservations = await db.select({
         apartmentId: reservations.apartmentId,
@@ -6562,7 +6562,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
       const endDate = `${year}-12-31`;
       const daysInYear = ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) ? 366 : 365;
 
-      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments).where(ne(apartments.active, false));
 
       const yearReservations = await db.select({
         apartmentId: reservations.apartmentId,
@@ -6704,7 +6704,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
   // Price Seasonality
   app.get('/api/price-seasonality', isAuthenticated, async (req, res) => {
     try {
-      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments);
+      const allApartments = await db.select({ id: apartments.id, name: apartments.name }).from(apartments).where(ne(apartments.active, false));
 
       const allReservations = await db.select({
         apartmentId: reservations.apartmentId,
@@ -9284,7 +9284,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const yearsToAverage: number[] = [];
       for (let i = 1; i <= lookbackYears; i++) yearsToAverage.push(targetYear - i);
 
-      const allApartments = await storage.getApartments();
+      const allApartments = (await storage.getApartments()).filter(a => a.active !== false);
       const allForecasts: any[] = [];
       for (const y of yearsToAverage) {
         allForecasts.push(...await storage.getRevenueForecasts(y));
@@ -9441,7 +9441,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const yearA = Number(req.query.yearA) || new Date().getFullYear() - 1;
       const yearB = Number(req.query.yearB) || new Date().getFullYear();
 
-      const allApartments = await storage.getApartments();
+      const allApartments = (await storage.getApartments()).filter(a => a.active !== false);
       const allLocations = await storage.getLocations();
       const allReservations = await storage.getReservations();
       const forecastsA = await storage.getRevenueForecasts(yearA);
@@ -9829,7 +9829,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     try {
       const yearParam = req.query.year ? Number(req.query.year) : new Date().getFullYear();
 
-      const allApartments = await storage.getApartments();
+      const allApartments = (await storage.getApartments()).filter(a => a.active !== false);
       const allLocations = await storage.getLocations();
       const costFcasts = await storage.getCostForecasts(yearParam);
       const opCosts = await storage.getOperationalCostForecasts(yearParam);
@@ -9894,7 +9894,7 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
     try {
       const yearParam = req.query.year ? Number(req.query.year) : new Date().getFullYear();
 
-      const allApartments = await storage.getApartments();
+      const allApartments = (await storage.getApartments()).filter(a => a.active !== false);
       const allLocations = await storage.getLocations();
       const forecasts = await storage.getRevenueForecasts(yearParam);
       const costFcasts = await storage.getCostForecasts(yearParam);
