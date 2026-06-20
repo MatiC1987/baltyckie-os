@@ -367,6 +367,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       toast({ title: "Zapisano saldo początkowe" });
       setEditingInitialBalance(false);
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się zapisać salda", variant: "destructive" }),
   });
 
   const { data: categories = [] } = useQuery<string[]>({
@@ -411,6 +412,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       toast({ title: "Zmieniono nazwę kategorii" });
       setEditingCat(null);
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się zmienić nazwy kategorii", variant: "destructive" }),
   });
 
   const deleteCategoryMutation = useMutation({
@@ -421,6 +423,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Usunięto kategorię" });
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się usunąć kategorii", variant: "destructive" }),
   });
 
   const bulkDeleteCategoryMutation = useMutation({
@@ -432,6 +435,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       setSelectedCats(new Set());
       toast({ title: "Usunięto wybrane kategorie" });
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się usunąć kategorii", variant: "destructive" }),
   });
 
   const [newCatName, setNewCatName] = useState("");
@@ -444,6 +448,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       toast({ title: "Dodano kategorię" });
       setNewCatName("");
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się dodać kategorii", variant: "destructive" }),
   });
 
   const createMutation = useMutation({
@@ -453,6 +458,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       toast({ title: "Dodano wpis" });
       setShowAddDialog(false);
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się dodać wpisu", variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
@@ -463,6 +469,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       setEditEntry(null);
       setPreviewEntry(null);
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się zaktualizować wpisu", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -471,6 +478,7 @@ export default function Saldo({ personName: personNameProp }: { personName?: str
       queryClient.invalidateQueries({ queryKey: ["/api/saldo", { personName }] });
       toast({ title: "Usunięto wpis" });
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się usunąć wpisu", variant: "destructive" }),
   });
 
   const addRule = (pattern: string, category?: string, targetKey?: string) => {

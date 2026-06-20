@@ -27,8 +27,20 @@ import { insertLeaseSchema, type InsertLease, type Apartment, type Owner } from 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { z } from "zod";
 
 const LOCATIONS = ["BULWAR PORTOWY", "NA WYDMIE", "WCZASOWA", "GRAND BALTIC", "PRZEWŁOKA", "INNE"];
+
+const leaseFormSchema = insertLeaseSchema.refine(
+  (data) => {
+    if (data.startDate && data.endDate) {
+      return data.endDate >= data.startDate;
+    }
+    return true;
+  },
+  { message: "Data końca musi być późniejsza niż data początku", path: ["endDate"] }
+);
+type LeaseFormValues = z.infer<typeof leaseFormSchema>;
 
 export default function Leases() {
   const { data: leases, isLoading: leasesLoading } = useLeases();
@@ -489,8 +501,8 @@ function LeaseForm({ onSuccess }: { onSuccess: () => void }) {
   const createLease = useCreateLease();
   const { data: apartments } = useApartments();
 
-  const form = useForm<InsertLease>({
-    resolver: zodResolver(insertLeaseSchema),
+  const form = useForm<LeaseFormValues>({
+    resolver: zodResolver(leaseFormSchema),
     defaultValues: {
       rentAmount: "0",
       communityFee: "0",
@@ -499,8 +511,8 @@ function LeaseForm({ onSuccess }: { onSuccess: () => void }) {
     }
   });
 
-  const onSubmit = (data: InsertLease) => {
-    createLease.mutate(data, {
+  const onSubmit = (data: LeaseFormValues) => {
+    createLease.mutate(data as InsertLease, {
       onSuccess: () => onSuccess()
     });
   };
@@ -544,6 +556,9 @@ function LeaseForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="space-y-2">
           <Label>Data końca (opcjonalnie)</Label>
           <Input type="date" {...form.register("endDate")} data-testid="input-lease-end" />
+          {form.formState.errors.endDate && (
+            <p className="text-xs text-destructive">{form.formState.errors.endDate.message as string}</p>
+          )}
         </div>
 
         <div className="space-y-2">

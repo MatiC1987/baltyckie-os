@@ -105,6 +105,7 @@ export default function UserAccounts() {
       queryClient.invalidateQueries({ queryKey: ["/api/app-users"] });
       toast({ title: "Użytkownik został usunięty" });
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się usunąć użytkownika", variant: "destructive" }),
   });
 
   const photoInputRef = useRef<HTMLInputElement>(null);

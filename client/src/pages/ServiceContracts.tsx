@@ -91,6 +91,7 @@ export default function ServiceContracts() {
       queryClient.invalidateQueries({ queryKey: ["/api/service-contracts"] });
       toast({ title: "Sukces", description: "Umowa usunięta" });
     },
+    onError: () => toast({ title: "Błąd", description: "Nie udało się usunąć umowy", variant: "destructive" }),
   });
 
   const isLoading = loadingContracts || loadingCats;
@@ -567,6 +568,7 @@ function ContractAttachmentsSection({ contractId }: { contractId: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/service-contract-attachments/all'] });
       toast({ title: "Sukces", description: "Załącznik usunięty" });
     },
+    onError: () => toast({ title: "Błąd", description: "Nie udało się usunąć załącznika", variant: "destructive" }),
   });
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {

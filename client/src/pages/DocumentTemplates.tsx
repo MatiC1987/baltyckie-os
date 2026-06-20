@@ -73,6 +73,7 @@ export default function DocumentTemplates() {
       setCatDialogOpen(false);
       setCatName("");
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się dodać kategorii", variant: "destructive" }),
   });
 
   const updateCatMut = useMutation({
@@ -86,6 +87,7 @@ export default function DocumentTemplates() {
       setEditCatId(null);
       setCatName("");
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się zaktualizować kategorii", variant: "destructive" }),
   });
 
   const deleteCatMut = useMutation({
@@ -95,6 +97,7 @@ export default function DocumentTemplates() {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
       toast({ title: "Usunięto kategorię" });
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się usunąć kategorii", variant: "destructive" }),
   });
 
   const deleteTemplateMut = useMutation({
@@ -103,6 +106,7 @@ export default function DocumentTemplates() {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
       toast({ title: "Usunięto dokument" });
     },
+    onError: (err: any) => toast({ title: "Błąd", description: err.message || "Nie udało się usunąć dokumentu", variant: "destructive" }),
   });
 
   const updateTemplateMut = useMutation({
