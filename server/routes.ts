@@ -9442,11 +9442,15 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const yearB = Number(req.query.yearB) || new Date().getFullYear();
 
       const allApartments = (await storage.getApartments()).filter(a => a.active !== false);
+      const activeAptIds = new Set(allApartments.map(a => a.id));
       const allLocations = await storage.getLocations();
       const allReservations = await storage.getReservations();
       const forecastsA = await storage.getRevenueForecasts(yearA);
       const forecastsB = await storage.getRevenueForecasts(yearB);
       const allExpenses = await storage.getExpenses();
+
+      // Exclude per-apartment forecasts for inactive apartments; keep location/RAZEM-level records
+      const filterActiveForecasts = (fcs: any[]) => fcs.filter(f => !f.apartmentId || activeAptIds.has(f.apartmentId));
 
       const buildYearData = (year: number, forecasts: any[]) => {
         const monthlyRevenue: number[] = new Array(12).fill(0);
@@ -9474,8 +9478,8 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         return { monthlyRevenue, monthlyExpenses, monthlyForecast };
       };
 
-      const dataA = buildYearData(yearA, forecastsA);
-      const dataB = buildYearData(yearB, forecastsB);
+      const dataA = buildYearData(yearA, filterActiveForecasts(forecastsA));
+      const dataB = buildYearData(yearB, filterActiveForecasts(forecastsB));
 
       const months = [];
       for (let m = 0; m < 12; m++) {
