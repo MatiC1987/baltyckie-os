@@ -216,22 +216,29 @@ export default function PriceSeasonality() {
       <Card data-testid="card-per-apartment">
         <CardHeader className="space-y-4">
           <CardTitle className="text-base">Ceny najem - widok na apartamenty</CardTitle>
-          <div>
-            <label className="text-sm font-medium">Wybierz apartament:</label>
-            <Select value={selectedApartmentId} onValueChange={setSelectedApartmentId}>
-              <SelectTrigger className="w-full max-w-xs" data-testid="select-apartment">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {apartments.map((apt) => (
-                  <SelectItem key={apt.apartmentId} value={String(apt.apartmentId)}>
-                    {apt.apartmentName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {apartments.length > 0 && (
+            <div>
+              <label className="text-sm font-medium">Wybierz apartament:</label>
+              <Select value={selectedApartmentId} onValueChange={setSelectedApartmentId}>
+                <SelectTrigger className="w-full max-w-xs" data-testid="select-apartment">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {apartments.map((apt) => (
+                    <SelectItem key={apt.apartmentId} value={String(apt.apartmentId)}>
+                      {apt.apartmentName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardHeader>
+        {apartments.length === 0 ? (
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Brak danych o cenach na poziomie apartamentów
+          </CardContent>
+        ) : (
         <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
@@ -272,6 +279,7 @@ export default function PriceSeasonality() {
             </TableBody>
           </Table>
         </CardContent>
+        )}
       </Card>
     </div>
   );

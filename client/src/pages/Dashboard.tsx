@@ -223,9 +223,12 @@ export default function Dashboard() {
     const totalAptNights = activeApts.length * daysInMonth;
     if (totalAptNights === 0) return 0;
 
+    const activeAptIds = new Set(activeApts.map(a => a.id));
+
     let occupiedNights = 0;
     reservations.forEach(r => {
       if (r.status === "ANULOWANA" || !r.startDate || !r.endDate) return;
+      if (r.apartmentId && !activeAptIds.has(r.apartmentId)) return;
       const start = new Date(r.startDate);
       const end = new Date(r.endDate);
       const monthStart = new Date(year, month, 1);
@@ -248,9 +251,10 @@ export default function Dashboard() {
         const overlapStart = start > monthStart ? start : monthStart;
         const overlapEnd = end < monthEnd ? end : monthEnd;
         if (overlapStart <= overlapEnd) {
-          const aptCount = Array.isArray(s.apartmentIds) && s.apartmentIds.length > 0
-            ? s.apartmentIds.length
-            : (s.apartmentId ? 1 : 0);
+          const activeSubAptIds = Array.isArray(s.apartmentIds) && s.apartmentIds.length > 0
+            ? (s.apartmentIds as number[]).filter(id => activeAptIds.has(id))
+            : (s.apartmentId && activeAptIds.has(s.apartmentId) ? [s.apartmentId] : []);
+          const aptCount = activeSubAptIds.length;
           const nights = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
           if (nights > 0 && aptCount > 0) occupiedNights += nights * aptCount;
         }

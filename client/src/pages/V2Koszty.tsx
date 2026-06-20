@@ -23,8 +23,8 @@ function formatNum(v: number): string {
   return v.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-const COST_WARN_THRESHOLD = 0.85;
-const COST_EXCEEDED_THRESHOLD = 1.0;
+const COST_WARN_THRESHOLD = 0.70;
+const COST_EXCEEDED_THRESHOLD = 0.85;
 
 function costPctColor(pct: number) {
   if (pct <= 0) return { text: "text-muted-foreground", bar: "bg-muted", exceeded: false };
