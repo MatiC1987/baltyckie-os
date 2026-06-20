@@ -190,6 +190,12 @@ export default function Customers() {
   });
 
   useEffect(() => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTop = 0;
+    }
+  }, [queryParams]);
+
+  useEffect(() => {
     const virtualItems = rowVirtualizer.getVirtualItems();
     if (!virtualItems.length) return;
     const lastVirtualItem = virtualItems[virtualItems.length - 1];

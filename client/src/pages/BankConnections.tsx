@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageHeader } from "@/components/PageHeader";
@@ -186,9 +186,17 @@ export default function BankConnections() {
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const successParam = searchParams.get("success");
-  const errorParam = searchParams.get("error");
+  const [successParam] = useState(() => new URLSearchParams(window.location.search).get("success"));
+  const [errorParam] = useState(() => new URLSearchParams(window.location.search).get("error"));
+
+  useEffect(() => {
+    if (successParam || errorParam) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("success");
+      url.searchParams.delete("error");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
 
   const { data: gcStatus } = useQuery<{ configured: boolean }>({
     queryKey: ["/api/gocardless/status"],

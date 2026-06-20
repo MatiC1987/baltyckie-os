@@ -323,6 +323,10 @@ export default function Employees() {
       toast({ title: "Błąd", description: "Wszystkie pola badania są wymagane", variant: "destructive" });
       return;
     }
+    if (examForm.examDate >= examForm.validUntil) {
+      toast({ title: "Błąd", description: "Data ważności musi być późniejsza niż data badania", variant: "destructive" });
+      return;
+    }
     createExamMutation.mutate({ employeeId: previewEmployee.id, data: examForm });
   }
 

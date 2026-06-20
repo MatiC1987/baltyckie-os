@@ -23,7 +23,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { TablePageSkeleton } from "@/components/PageSkeleton";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertLeaseSchema, type InsertLease, type Apartment, type Owner } from "@shared/schema";
+import { insertLeaseSchema, type Apartment, type Owner } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -512,7 +512,7 @@ function LeaseForm({ onSuccess }: { onSuccess: () => void }) {
   });
 
   const onSubmit = (data: LeaseFormValues) => {
-    createLease.mutate(data as InsertLease, {
+    createLease.mutate(data, {
       onSuccess: () => onSuccess()
     });
   };

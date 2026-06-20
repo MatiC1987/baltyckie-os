@@ -175,7 +175,7 @@ export default function ServiceContracts() {
                     <TableCell>{contract.endDate || "—"}</TableCell>
                     <TableCell>{contract.serviceAddress || "—"}</TableCell>
                     <TableCell className="font-semibold">
-                      {contract.monthlyPrice ? `${Number(contract.monthlyPrice).toFixed(2)} PLN` : "—"}
+                      {(() => { const p = Number(contract.monthlyPrice); return contract.monthlyPrice && !isNaN(p) ? `${p.toFixed(2)} PLN` : "—"; })()}
                     </TableCell>
                     <TableCell>
                       {(() => {
