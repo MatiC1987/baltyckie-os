@@ -10878,6 +10878,23 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         }
       }
 
+      const varCostRows = await db.select({
+        year: variableCostForecasts.year,
+        month: variableCostForecasts.month,
+        forecast: variableCostForecasts.forecast,
+        actual: variableCostForecasts.actual,
+      }).from(variableCostForecasts).where(
+        and(gte(variableCostForecasts.year, fetchStartYear - 1), lte(variableCostForecasts.year, fetchEndYear))
+      );
+      const varForecastMap: Record<number, Record<number, number>> = {};
+      const varActualMap: Record<number, Record<number, number>> = {};
+      for (const row of varCostRows) {
+        if (!varForecastMap[row.year]) varForecastMap[row.year] = {};
+        if (!varActualMap[row.year]) varActualMap[row.year] = {};
+        varForecastMap[row.year][row.month] = (varForecastMap[row.year][row.month] || 0) + Number(row.forecast || 0);
+        varActualMap[row.year][row.month] = (varActualMap[row.year][row.month] || 0) + Number(row.actual || 0);
+      }
+
       function getVal(map: Record<number, Record<number, number>>, year: number, month: number): number {
         for (let y = year; y >= year - 4; y--) {
           const v = map[y]?.[month];
@@ -10906,9 +10923,13 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         const opCostActual = opActualMap[year]?.[rfMonth] ?? 0;
         const opCostRemaining = Math.max(0, opCostForecast - opCostActual);
 
+        const varCostForecast = getVal(varForecastMap, year, rfMonth);
+        const varCostActual = varActualMap[year]?.[rfMonth] ?? 0;
+        const varCostRemaining = Math.max(0, varCostForecast - varCostActual);
+
         const surcharges = surchargeMap[year]?.[calMonth] ?? 0;
 
-        const endBalance = Math.round((runningBalance + revenueRemaining + surcharges - aptCostRemaining - opCostRemaining) * 100) / 100;
+        const endBalance = Math.round((runningBalance + revenueRemaining + surcharges - aptCostRemaining - opCostRemaining - varCostRemaining) * 100) / 100;
 
         months.push({
           year,
@@ -10922,6 +10943,9 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
           opCostForecast: Math.round(opCostForecast * 100) / 100,
           opCostActual: Math.round(opCostActual * 100) / 100,
           opCostRemaining: Math.round(opCostRemaining * 100) / 100,
+          varCostForecast: Math.round(varCostForecast * 100) / 100,
+          varCostActual: Math.round(varCostActual * 100) / 100,
+          varCostRemaining: Math.round(varCostRemaining * 100) / 100,
           surcharges: Math.round(surcharges * 100) / 100,
           endBalance,
         });
