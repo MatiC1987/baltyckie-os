@@ -2038,3 +2038,19 @@ export const vectraInvoices = pgTable("vectra_invoices", {
 export const insertVectraInvoiceSchema = createInsertSchema(vectraInvoices).omit({ id: true, downloadedAt: true });
 export type VectraInvoice = typeof vectraInvoices.$inferSelect;
 export type InsertVectraInvoice = z.infer<typeof insertVectraInvoiceSchema>;
+
+// Vectra sync log
+export const vectraSyncLogs = pgTable("vectra_sync_log", {
+  id: serial("id").primaryKey(),
+  syncedAt: timestamp("synced_at").defaultNow().notNull(),
+  mode: text("mode", { enum: ["manual", "auto"] }).notNull().default("manual"),
+  newInvoices: integer("new_invoices").notNull().default(0),
+  skipped: integer("skipped").notNull().default(0),
+  errorCount: integer("error_count").notNull().default(0),
+  errorDetails: text("error_details"),
+  accounts: text("accounts"),
+});
+
+export const insertVectraSyncLogSchema = createInsertSchema(vectraSyncLogs).omit({ id: true, syncedAt: true });
+export type VectraSyncLog = typeof vectraSyncLogs.$inferSelect;
+export type InsertVectraSyncLog = z.infer<typeof insertVectraSyncLogSchema>;

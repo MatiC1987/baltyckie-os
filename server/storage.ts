@@ -78,6 +78,7 @@ import {
   extraRevenues, ExtraRevenue, InsertExtraRevenue,
   vectraAccounts, VectraAccount, InsertVectraAccount,
   vectraInvoices, VectraInvoice, InsertVectraInvoice,
+  vectraSyncLogs, VectraSyncLog, InsertVectraSyncLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, ilike, type SQL } from "drizzle-orm";
@@ -568,6 +569,8 @@ export interface IStorage {
   getVectraInvoices(accountId?: number): Promise<VectraInvoice[]>;
   createVectraInvoice(data: InsertVectraInvoice): Promise<VectraInvoice>;
   getVectraInvoiceByNumber(accountId: number, invoiceNumber: string): Promise<VectraInvoice | undefined>;
+  createVectraSyncLog(data: InsertVectraSyncLog): Promise<VectraSyncLog>;
+  getVectraSyncLogs(limit?: number): Promise<VectraSyncLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2943,6 +2946,17 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select().from(vectraInvoices)
       .where(and(eq(vectraInvoices.vectraAccountId, accountId), eq(vectraInvoices.invoiceNumber, invoiceNumber)));
     return row;
+  }
+
+  async createVectraSyncLog(data: InsertVectraSyncLog): Promise<VectraSyncLog> {
+    const [row] = await db.insert(vectraSyncLogs).values(data).returning();
+    return row;
+  }
+
+  async getVectraSyncLogs(limit = 30): Promise<VectraSyncLog[]> {
+    return db.select().from(vectraSyncLogs)
+      .orderBy(desc(vectraSyncLogs.syncedAt))
+      .limit(limit);
   }
 }
 

@@ -16512,7 +16512,16 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
   app.post('/api/vectra/sync/:accountId', isAuthenticated, async (req, res) => {
     try {
       const { syncVectraAccount } = await import('./vectra-scraper');
+      const account = await storage.getVectraAccount(Number(req.params.accountId));
       const result = await syncVectraAccount(Number(req.params.accountId));
+      await storage.createVectraSyncLog({
+        mode: 'manual',
+        newInvoices: result.newInvoices,
+        skipped: result.skipped,
+        errorCount: result.error ? 1 : 0,
+        errorDetails: result.error || null,
+        accounts: account?.label || String(req.params.accountId),
+      }).catch(() => {});
       res.json(result);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
@@ -16527,7 +16536,26 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
         const result = await syncVectraAccount(account.id);
         results.push(result);
       }
+      const totalNew = results.reduce((s, r) => s + r.newInvoices, 0);
+      const totalSkipped = results.reduce((s, r) => s + r.skipped, 0);
+      const errors = results.filter((r) => r.error);
+      await storage.createVectraSyncLog({
+        mode: 'manual',
+        newInvoices: totalNew,
+        skipped: totalSkipped,
+        errorCount: errors.length,
+        errorDetails: errors.length > 0 ? errors.map((r) => `${r.label}: ${r.error}`).join('; ') : null,
+        accounts: accounts.map((a) => a.label).join(', '),
+      }).catch(() => {});
       res.json({ results });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/vectra/sync-logs
+  app.get('/api/vectra/sync-logs', isAuthenticated, async (_req, res) => {
+    try {
+      const logs = await storage.getVectraSyncLogs(30);
+      res.json(logs);
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 

@@ -2,6 +2,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { appConfig } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import type { SyncResult } from "./vectra-scraper";
 
 export interface VectraScheduleConfig {
   enabled: boolean;
@@ -50,13 +51,17 @@ async function runVectraScheduledSync(): Promise<void> {
     }
 
     let totalNew = 0;
+    let totalSkipped = 0;
     let totalErrors = 0;
     const errorMessages: string[] = [];
+    const results: SyncResult[] = [];
 
     for (const account of accounts) {
       try {
         const result = await syncVectraAccount(account.id);
+        results.push(result);
         totalNew += result.newInvoices;
+        totalSkipped += result.skipped;
         if (result.error) {
           totalErrors++;
           errorMessages.push(`${account.label}: ${result.error}`);
@@ -68,6 +73,14 @@ async function runVectraScheduledSync(): Promise<void> {
     }
 
     console.log(`[vectra-scheduler] Zakończono: ${totalNew} nowych faktur, ${totalErrors} błędów`);
+    await storage.createVectraSyncLog({
+      mode: "auto",
+      newInvoices: totalNew,
+      skipped: totalSkipped,
+      errorCount: totalErrors,
+      errorDetails: errorMessages.length > 0 ? errorMessages.join("; ") : null,
+      accounts: accounts.map((a) => a.label).join(", "),
+    }).catch((e: any) => console.error("[vectra-scheduler] Błąd zapisu logu:", e));
 
     const title = totalErrors === 0
       ? `Vectra: synchronizacja zakończona (${totalNew} nowych faktur)`

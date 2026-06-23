@@ -64,6 +64,9 @@ import {
   Clock,
   CalendarClock,
   BookOpen,
+  History,
+  Zap,
+  User,
 } from "lucide-react";
 
 interface VectraAccount {
@@ -89,6 +92,17 @@ interface VectraInvoice {
 interface VectraScheduleConfig {
   enabled: boolean;
   hour: number;
+}
+
+interface VectraSyncLog {
+  id: number;
+  syncedAt: string;
+  mode: "manual" | "auto";
+  newInvoices: number;
+  skipped: number;
+  errorCount: number;
+  errorDetails: string | null;
+  accounts: string | null;
 }
 
 const accountFormSchema = z.object({
@@ -204,6 +218,101 @@ function ScheduleCard() {
                 <strong>{String(currentHour).padStart(2, "0")}:00</strong>. Po zakończeniu pojawi się powiadomienie w centrum powiadomień.
               </p>
             )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SyncHistoryCard() {
+  const { data: logs = [], isLoading } = useQuery<VectraSyncLog[]>({
+    queryKey: ["/api/vectra/sync-logs"],
+    refetchInterval: 30000,
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <History className="h-5 w-5 text-primary" />
+          Historia synchronizacji
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Ładowanie…</div>
+        ) : logs.length === 0 ? (
+          <div className="text-sm text-muted-foreground py-4 text-center">
+            Brak historii synchronizacji. Historia pojawi się po pierwszej synchronizacji.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data i czas</TableHead>
+                  <TableHead>Tryb</TableHead>
+                  <TableHead>Konta</TableHead>
+                  <TableHead className="text-center">Nowe</TableHead>
+                  <TableHead className="text-center">Pominięte</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log) => (
+                  <TableRow key={log.id} data-testid={`row-sync-log-${log.id}`}>
+                    <TableCell className="text-sm whitespace-nowrap">
+                      {format(new Date(log.syncedAt), "dd.MM.yyyy HH:mm", { locale: pl })}
+                    </TableCell>
+                    <TableCell>
+                      {log.mode === "auto" ? (
+                        <Badge variant="secondary" className="gap-1 text-xs">
+                          <Zap className="h-3 w-3" />
+                          Auto
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 text-xs">
+                          <User className="h-3 w-3" />
+                          Ręczna
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate" title={log.accounts || ""}>
+                      {log.accounts || "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className={`text-sm font-medium ${log.newInvoices > 0 ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+                        {log.newInvoices}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-sm text-muted-foreground">{log.skipped}</span>
+                    </TableCell>
+                    <TableCell>
+                      {log.errorCount > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="destructive" className="gap-1 text-xs w-fit">
+                            <AlertCircle className="h-3 w-3" />
+                            {log.errorCount} {log.errorCount === 1 ? "błąd" : "błędów"}
+                          </Badge>
+                          {log.errorDetails && (
+                            <span className="text-xs text-muted-foreground max-w-[240px] truncate" title={log.errorDetails}>
+                              {log.errorDetails}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <Badge variant="default" className="gap-1 text-xs bg-green-600 hover:bg-green-700">
+                          <CheckCircle className="h-3 w-3" />
+                          OK
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
       </CardContent>
@@ -528,6 +637,9 @@ export function VectraTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Sync History section */}
+      <SyncHistoryCard />
 
       {/* Instrukcja Sheet */}
       <Sheet open={instrukcjaOpen} onOpenChange={setInstrukcjaOpen}>
