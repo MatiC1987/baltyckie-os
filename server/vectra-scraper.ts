@@ -1,5 +1,8 @@
 import * as crypto from "crypto";
+import { Agent } from "undici";
 import { storage } from "./storage";
+
+const vectraAgent = new Agent({ connect: { rejectUnauthorized: false } });
 
 const ALGORITHM = "aes-256-cbc";
 
@@ -140,7 +143,8 @@ async function httpGet(
       ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
       ...extraHeaders,
     },
-  });
+    dispatcher: vectraAgent,
+  } as RequestInit);
   jar.addFromHeaders(response.headers);
   const text = await response.text();
   return { text, finalUrl: response.url, status: response.status, headers: response.headers };
@@ -165,7 +169,8 @@ async function httpPost(
       ...(referer ? { "Referer": referer, "Origin": "https://online.vectra.pl" } : {}),
     },
     body: formBody,
-  });
+    dispatcher: vectraAgent,
+  } as RequestInit);
   jar.addFromHeaders(response.headers);
   const text = await response.text();
   return { text, finalUrl: response.url, status: response.status, headers: response.headers };
@@ -189,7 +194,8 @@ async function httpPostJson(
       ...(referer ? { "Referer": referer, "Origin": "https://online.vectra.pl", "X-Requested-With": "XMLHttpRequest" } : {}),
     },
     body: JSON.stringify(body),
-  });
+    dispatcher: vectraAgent,
+  } as RequestInit);
   jar.addFromHeaders(response.headers);
   const text = await response.text();
   return { text, finalUrl: response.url, status: response.status, headers: response.headers };
@@ -211,7 +217,8 @@ async function httpGetJson(
       ...(bearerToken ? { "Authorization": `Bearer ${bearerToken}` } : {}),
       "X-Requested-With": "XMLHttpRequest",
     },
-  });
+    dispatcher: vectraAgent,
+  } as RequestInit);
   jar.addFromHeaders(response.headers);
   const text = await response.text();
   return { text, finalUrl: response.url, status: response.status, headers: response.headers };
