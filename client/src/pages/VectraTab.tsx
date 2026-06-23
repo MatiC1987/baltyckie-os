@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { getAuthHeaders } from "@/lib/auth-token";
 import { format } from "date-fns";
 import { pl } from "date-fns/locale";
 import {
@@ -120,7 +121,7 @@ export function VectraTab() {
       const url = filterAccount !== "all"
         ? `/api/vectra/invoices?accountId=${filterAccount}`
         : "/api/vectra/invoices";
-      return fetch(url).then((r) => r.json());
+      return fetch(url, { credentials: "include", headers: { ...getAuthHeaders() } }).then((r) => r.json());
     },
   });
 
@@ -167,10 +168,10 @@ export function VectraTab() {
   async function syncAccount(id: number) {
     setSyncingIds((prev) => new Set(prev).add(id));
     try {
-      const res = await fetch(`/api/vectra/sync/${id}`, { method: "POST" });
+      const res = await apiRequest("POST", `/api/vectra/sync/${id}`);
       const data = await res.json();
-      if (data.error) {
-        toast({ title: "Błąd synchronizacji", description: data.error, variant: "destructive" });
+      if (!res.ok || data.error) {
+        toast({ title: "Błąd synchronizacji", description: data.error || data.message || "Nieznany błąd", variant: "destructive" });
       } else {
         toast({ title: `Synchronizacja zakończona`, description: `${data.newInvoices} nowych faktur, ${data.skipped} pominiętych` });
       }
@@ -186,14 +187,18 @@ export function VectraTab() {
   async function syncAll() {
     setSyncingAll(true);
     try {
-      const res = await fetch("/api/vectra/sync-all", { method: "POST" });
+      const res = await apiRequest("POST", "/api/vectra/sync-all");
       const data = await res.json();
-      const total = data.results?.reduce((s: number, r: any) => s + (r.newInvoices || 0), 0) || 0;
-      const errors = data.results?.filter((r: any) => r.error).length || 0;
-      toast({
-        title: "Synchronizacja wszystkich kont",
-        description: `${total} nowych faktur${errors > 0 ? `, ${errors} błędów` : ""}`,
-      });
+      if (!res.ok) {
+        toast({ title: "Błąd synchronizacji", description: data.message || "Nieznany błąd", variant: "destructive" });
+      } else {
+        const total = data.results?.reduce((s: number, r: any) => s + (r.newInvoices || 0), 0) || 0;
+        const errors = data.results?.filter((r: any) => r.error).length || 0;
+        toast({
+          title: "Synchronizacja wszystkich kont",
+          description: `${total} nowych faktur${errors > 0 ? `, ${errors} błędów` : ""}`,
+        });
+      }
     } catch {
       toast({ title: "Błąd połączenia", variant: "destructive" });
     } finally {
