@@ -76,6 +76,8 @@ import {
   dashboardWidgetConfigs,
   gocardlessConnections, GocardlessConnection, InsertGocardlessConnection,
   extraRevenues, ExtraRevenue, InsertExtraRevenue,
+  vectraAccounts, VectraAccount, InsertVectraAccount,
+  vectraInvoices, VectraInvoice, InsertVectraInvoice,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, ilike, type SQL } from "drizzle-orm";
@@ -556,6 +558,16 @@ export interface IStorage {
   createExtraRevenue(data: InsertExtraRevenue): Promise<ExtraRevenue>;
   updateExtraRevenue(id: number, data: Partial<InsertExtraRevenue>): Promise<ExtraRevenue | undefined>;
   deleteExtraRevenue(id: number): Promise<void>;
+
+  // Vectra
+  getVectraAccounts(): Promise<VectraAccount[]>;
+  getVectraAccount(id: number): Promise<VectraAccount | undefined>;
+  createVectraAccount(data: InsertVectraAccount): Promise<VectraAccount>;
+  updateVectraAccount(id: number, data: Partial<VectraAccount>): Promise<VectraAccount>;
+  deleteVectraAccount(id: number): Promise<void>;
+  getVectraInvoices(accountId?: number): Promise<VectraInvoice[]>;
+  createVectraInvoice(data: InsertVectraInvoice): Promise<VectraInvoice>;
+  getVectraInvoiceByNumber(accountId: number, invoiceNumber: string): Promise<VectraInvoice | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2887,6 +2899,50 @@ export class DatabaseStorage implements IStorage {
 
   async deleteExtraRevenue(id: number): Promise<void> {
     await db.delete(extraRevenues).where(eq(extraRevenues.id, id));
+  }
+
+  // Vectra
+  async getVectraAccounts(): Promise<VectraAccount[]> {
+    return db.select().from(vectraAccounts).orderBy(vectraAccounts.label);
+  }
+
+  async getVectraAccount(id: number): Promise<VectraAccount | undefined> {
+    const [row] = await db.select().from(vectraAccounts).where(eq(vectraAccounts.id, id));
+    return row;
+  }
+
+  async createVectraAccount(data: InsertVectraAccount): Promise<VectraAccount> {
+    const [row] = await db.insert(vectraAccounts).values(data).returning();
+    return row;
+  }
+
+  async updateVectraAccount(id: number, data: Partial<VectraAccount>): Promise<VectraAccount> {
+    const [row] = await db.update(vectraAccounts).set(data).where(eq(vectraAccounts.id, id)).returning();
+    return row;
+  }
+
+  async deleteVectraAccount(id: number): Promise<void> {
+    await db.delete(vectraAccounts).where(eq(vectraAccounts.id, id));
+  }
+
+  async getVectraInvoices(accountId?: number): Promise<VectraInvoice[]> {
+    if (accountId) {
+      return db.select().from(vectraInvoices)
+        .where(eq(vectraInvoices.vectraAccountId, accountId))
+        .orderBy(desc(vectraInvoices.downloadedAt));
+    }
+    return db.select().from(vectraInvoices).orderBy(desc(vectraInvoices.downloadedAt));
+  }
+
+  async createVectraInvoice(data: InsertVectraInvoice): Promise<VectraInvoice> {
+    const [row] = await db.insert(vectraInvoices).values(data).returning();
+    return row;
+  }
+
+  async getVectraInvoiceByNumber(accountId: number, invoiceNumber: string): Promise<VectraInvoice | undefined> {
+    const [row] = await db.select().from(vectraInvoices)
+      .where(and(eq(vectraInvoices.vectraAccountId, accountId), eq(vectraInvoices.invoiceNumber, invoiceNumber)));
+    return row;
   }
 }
 

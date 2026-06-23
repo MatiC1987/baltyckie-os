@@ -16432,6 +16432,104 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // ===================== VECTRA =====================
+  // GET /api/vectra/accounts
+  app.get('/api/vectra/accounts', isAuthenticated, async (req, res) => {
+    try {
+      const accounts = await storage.getVectraAccounts();
+      const masked = accounts.map(a => ({ ...a, passwordEncrypted: undefined }));
+      res.json(masked);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/vectra/accounts
+  app.post('/api/vectra/accounts', isAuthenticated, async (req, res) => {
+    try {
+      const { label, username, password } = req.body;
+      if (!label || !username || !password) return res.status(400).json({ message: 'label, username i password są wymagane' });
+      const { encryptPassword } = await import('./vectra-scraper');
+      const passwordEncrypted = encryptPassword(password);
+      const account = await storage.createVectraAccount({ label, username, passwordEncrypted });
+      res.json({ ...account, passwordEncrypted: undefined });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // PUT /api/vectra/accounts/:id
+  app.put('/api/vectra/accounts/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { label, username, password } = req.body;
+      const updates: any = {};
+      if (label) updates.label = label;
+      if (username) updates.username = username;
+      if (password && password.trim()) {
+        const { encryptPassword } = await import('./vectra-scraper');
+        updates.passwordEncrypted = encryptPassword(password);
+      }
+      const account = await storage.updateVectraAccount(id, updates);
+      res.json({ ...account, passwordEncrypted: undefined });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // DELETE /api/vectra/accounts/:id
+  app.delete('/api/vectra/accounts/:id', isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteVectraAccount(Number(req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/vectra/invoices
+  app.get('/api/vectra/invoices', isAuthenticated, async (req, res) => {
+    try {
+      const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
+      const invoices = await storage.getVectraInvoices(accountId);
+      res.json(invoices);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // GET /api/vectra/invoices/:id/download
+  app.get('/api/vectra/invoices/:id/download', isAuthenticated, async (req, res) => {
+    try {
+      const invoices = await storage.getVectraInvoices();
+      const inv = invoices.find(i => i.id === Number(req.params.id));
+      if (!inv || !inv.objectPath) return res.status(404).json({ message: 'Faktura lub plik nie znaleziony' });
+      const parts = inv.objectPath.split('/');
+      const bucketName = parts[0];
+      const objectName = parts.slice(1).join('/');
+      const { objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
+      const file = osClient.bucket(bucketName).file(objectName);
+      const [metadata] = await file.getMetadata().catch(() => [{}]);
+      const [buffer] = await file.download();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="faktura-vectra-${inv.invoiceNumber.replace(/\//g, '-')}.pdf"`);
+      res.send(buffer);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/vectra/sync/:accountId
+  app.post('/api/vectra/sync/:accountId', isAuthenticated, async (req, res) => {
+    try {
+      const { syncVectraAccount } = await import('./vectra-scraper');
+      const result = await syncVectraAccount(Number(req.params.accountId));
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // POST /api/vectra/sync-all
+  app.post('/api/vectra/sync-all', isAuthenticated, async (req, res) => {
+    try {
+      const { syncVectraAccount } = await import('./vectra-scraper');
+      const accounts = await storage.getVectraAccounts();
+      const results = [];
+      for (const account of accounts) {
+        const result = await syncVectraAccount(account.id);
+        results.push(result);
+      }
+      res.json({ results });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   return httpServer;
 }
 

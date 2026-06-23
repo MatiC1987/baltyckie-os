@@ -2008,3 +2008,33 @@ export const scheduleTemplates = pgTable("schedule_templates", {
 export const insertScheduleTemplateSchema = createInsertSchema(scheduleTemplates).omit({ id: true, createdAt: true });
 export type ScheduleTemplate = typeof scheduleTemplates.$inferSelect;
 export type InsertScheduleTemplate = z.infer<typeof insertScheduleTemplateSchema>;
+
+// Vectra accounts and invoices
+export const vectraAccounts = pgTable("vectra_accounts", {
+  id: serial("id").primaryKey(),
+  label: text("label").notNull(),
+  username: text("username").notNull(),
+  passwordEncrypted: text("password_encrypted").notNull(),
+  lastSyncAt: timestamp("last_sync_at"),
+  lastSyncStatus: text("last_sync_status"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertVectraAccountSchema = createInsertSchema(vectraAccounts).omit({ id: true, createdAt: true, lastSyncAt: true, lastSyncStatus: true });
+export type VectraAccount = typeof vectraAccounts.$inferSelect;
+export type InsertVectraAccount = z.infer<typeof insertVectraAccountSchema>;
+
+export const vectraInvoices = pgTable("vectra_invoices", {
+  id: serial("id").primaryKey(),
+  vectraAccountId: integer("vectra_account_id").references(() => vectraAccounts.id, { onDelete: "cascade" }).notNull(),
+  invoiceNumber: text("invoice_number").notNull(),
+  invoiceDate: date("invoice_date"),
+  amount: decimal("amount", { precision: 10, scale: 2 }),
+  period: text("period"),
+  objectPath: text("object_path"),
+  downloadedAt: timestamp("downloaded_at").defaultNow(),
+});
+
+export const insertVectraInvoiceSchema = createInsertSchema(vectraInvoices).omit({ id: true, downloadedAt: true });
+export type VectraInvoice = typeof vectraInvoices.$inferSelect;
+export type InsertVectraInvoice = z.infer<typeof insertVectraInvoiceSchema>;
