@@ -15,6 +15,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import MarkdownViewer from "@/components/MarkdownViewer";
+import instrukcjaContent from "@docs/instrukcja-vectra.md?raw";
+import {
   Form,
   FormControl,
   FormField,
@@ -55,6 +63,7 @@ import {
   AlertCircle,
   Clock,
   CalendarClock,
+  BookOpen,
 } from "lucide-react";
 
 interface VectraAccount {
@@ -206,6 +215,7 @@ export function VectraTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [instrukcjaOpen, setInstrukcjaOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<VectraAccount | null>(null);
   const [filterAccount, setFilterAccount] = useState<string>("all");
   const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set());
@@ -348,6 +358,15 @@ export function VectraTab() {
               Konta Vectra
             </CardTitle>
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setInstrukcjaOpen(true)}
+                data-testid="button-instrukcja"
+              >
+                <BookOpen className="h-4 w-4 mr-2" />
+                Instrukcja
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -509,6 +528,19 @@ export function VectraTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Instrukcja Sheet */}
+      <Sheet open={instrukcjaOpen} onOpenChange={setInstrukcjaOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto" data-testid="sheet-instrukcja">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-primary" />
+              Instrukcja obsługi — Moduł Vectra
+            </SheetTitle>
+          </SheetHeader>
+          <MarkdownViewer content={instrukcjaContent} />
+        </SheetContent>
+      </Sheet>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingAccount(null); }}>
