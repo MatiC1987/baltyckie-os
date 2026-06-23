@@ -37,6 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { getAuthHeaders } from "@/lib/auth-token";
@@ -52,6 +54,7 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
+  CalendarClock,
 } from "lucide-react";
 
 interface VectraAccount {
@@ -72,6 +75,11 @@ interface VectraInvoice {
   period: string | null;
   objectPath: string | null;
   downloadedAt: string;
+}
+
+interface VectraScheduleConfig {
+  enabled: boolean;
+  hour: number;
 }
 
 const accountFormSchema = z.object({
@@ -99,6 +107,98 @@ function SyncStatusBadge({ status, syncAt }: { status: string | null; syncAt: st
         </span>
       )}
     </div>
+  );
+}
+
+function ScheduleCard() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: schedule, isLoading } = useQuery<VectraScheduleConfig>({
+    queryKey: ["/api/vectra/schedule"],
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (config: VectraScheduleConfig) =>
+      apiRequest("PUT", "/api/vectra/schedule", config),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vectra/schedule"] });
+      toast({ title: "Harmonogram zapisany" });
+    },
+    onError: () => toast({ title: "Błąd", description: "Nie udało się zapisać harmonogramu", variant: "destructive" }),
+  });
+
+  const currentEnabled = schedule?.enabled ?? false;
+  const currentHour = schedule?.hour ?? 3;
+
+  function toggleEnabled() {
+    updateMutation.mutate({ enabled: !currentEnabled, hour: currentHour });
+  }
+
+  function changeHour(val: string) {
+    updateMutation.mutate({ enabled: currentEnabled, hour: Number(val) });
+  }
+
+  const hourOptions = Array.from({ length: 24 }, (_, i) => i);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <CalendarClock className="h-5 w-5 text-primary" />
+          Automatyczna synchronizacja
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Ładowanie…</div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="schedule-enabled"
+                checked={currentEnabled}
+                onCheckedChange={toggleEnabled}
+                disabled={updateMutation.isPending}
+                data-testid="switch-schedule-enabled"
+              />
+              <Label htmlFor="schedule-enabled" className="cursor-pointer select-none">
+                {currentEnabled ? "Włączona" : "Wyłączona"}
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Label htmlFor="schedule-hour" className="text-sm whitespace-nowrap">
+                Godzina synchronizacji:
+              </Label>
+              <Select
+                value={String(currentHour)}
+                onValueChange={changeHour}
+                disabled={updateMutation.isPending}
+              >
+                <SelectTrigger id="schedule-hour" className="w-24" data-testid="select-schedule-hour">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {hourOptions.map((h) => (
+                    <SelectItem key={h} value={String(h)}>
+                      {String(h).padStart(2, "0")}:00
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {currentEnabled && (
+              <p className="text-sm text-muted-foreground">
+                Synchronizacja będzie uruchamiana codziennie o godzinie{" "}
+                <strong>{String(currentHour).padStart(2, "0")}:00</strong>. Po zakończeniu pojawi się powiadomienie w centrum powiadomień.
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -236,6 +336,9 @@ export function VectraTab() {
 
   return (
     <div className="space-y-6 pt-4">
+      {/* Schedule settings */}
+      <ScheduleCard />
+
       {/* Accounts section */}
       <Card>
         <CardHeader className="pb-3">

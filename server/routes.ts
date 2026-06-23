@@ -16531,6 +16531,28 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // GET /api/vectra/schedule
+  app.get('/api/vectra/schedule', isAuthenticated, async (_req, res) => {
+    try {
+      const { getVectraScheduleConfig } = await import('./vectra-scheduler');
+      const config = await getVectraScheduleConfig();
+      res.json(config);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // PUT /api/vectra/schedule
+  app.put('/api/vectra/schedule', isAuthenticated, async (req, res) => {
+    try {
+      const { setVectraScheduleConfig } = await import('./vectra-scheduler');
+      const { enabled, hour } = req.body;
+      if (typeof enabled !== 'boolean' || typeof hour !== 'number' || hour < 0 || hour > 23) {
+        return res.status(400).json({ message: 'Nieprawidłowe dane konfiguracji harmonogramu' });
+      }
+      await setVectraScheduleConfig({ enabled, hour });
+      res.json({ enabled, hour });
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   return httpServer;
 }
 
