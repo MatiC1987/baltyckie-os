@@ -713,11 +713,13 @@ function EmployeeDashboard({
   });
 
   type ScheduleEntry = { id: number; date: string; startTime: string; endTime: string; shiftName?: string; shiftColor?: string };
+  const scheduleIsCurrentMonth = scheduleYear === new Date().getFullYear() && scheduleMonth === (new Date().getMonth() + 1);
   const scheduleQuery = useQuery<ScheduleEntry[]>({
-    queryKey: ["/api/time-clock/my-schedule", scheduleYear, scheduleMonth],
+    queryKey: ["/api/time-clock/my-schedule", scheduleYear, scheduleMonth, scheduleIsCurrentMonth],
     enabled: showSchedule,
     queryFn: async () => {
-      const res = await rcpFetch("GET", `/api/time-clock/my-schedule?year=${scheduleYear}&month=${scheduleMonth}`);
+      const extra = scheduleIsCurrentMonth ? "&includeNext=1" : "";
+      const res = await rcpFetch("GET", `/api/time-clock/my-schedule?year=${scheduleYear}&month=${scheduleMonth}${extra}`);
       return await res.json();
     },
   });
@@ -1507,8 +1509,7 @@ function EmployeeDashboard({
 
     if (activeTab === "more") {
       if (moreSubView === "schedule") {
-        const nowRef = new Date();
-        const isCurrentMonth = scheduleYear === nowRef.getFullYear() && scheduleMonth === (nowRef.getMonth() + 1);
+        const isCurrentMonth = scheduleIsCurrentMonth;
 
         const prevScheduleMonth = () => {
           if (scheduleMonth === 1) { setScheduleYear(y => y - 1); setScheduleMonth(12); }
@@ -1533,6 +1534,10 @@ function EmployeeDashboard({
         const schedPct = isHourly ? 0 : Math.min(100, Math.round((schedMonthHours / NORM_HOURS) * 100));
         const schedPctColor = schedPct >= 100 ? "bg-green-500" : schedPct >= 60 ? "bg-blue-500" : "bg-muted-foreground/40";
         const schedDays = new Set((scheduleQuery.data || []).map(s => s.date)).size;
+        const overtimeHours = !isHourly && !isCurrentMonth && schedMonthHours > NORM_HOURS
+          ? +(schedMonthHours - NORM_HOURS).toFixed(1) : 0;
+        const nextMonthName = monthNames[scheduleMonth % 12];
+        const nextMonthYear = scheduleMonth === 12 ? scheduleYear + 1 : scheduleYear;
 
         return (
           <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
@@ -1556,19 +1561,27 @@ function EmployeeDashboard({
             {/* Monthly hours summary */}
             {!scheduleQuery.isLoading && (
               <Card className="p-4 rounded-2xl bg-primary/5" data-testid="card-schedule-summary">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium">Zaplanowane godziny</span>
-                  <span className="text-sm font-bold text-primary">{schedMonthHours.toFixed(1)}h{!isHourly && ` / ${NORM_HOURS}h`}</span>
+                  <span className="text-sm font-bold text-primary">{schedMonthHours.toFixed(1)}h{!isHourly && !isCurrentMonth ? ` / ${NORM_HOURS}h` : ""}</span>
                 </div>
-                {!isHourly && (
+                {isCurrentMonth && (
+                  <p className="text-xs text-muted-foreground mb-2">{monthNames[scheduleMonth - 1]} {scheduleYear} + {nextMonthName} {nextMonthYear}</p>
+                )}
+                {!isHourly && !isCurrentMonth && (
                   <div className="w-full bg-muted rounded-full h-2.5 mb-1">
                     <div className={`h-2.5 rounded-full transition-all ${schedPctColor}`} style={{ width: `${schedPct}%` }} data-testid="progress-schedule-hours" />
                   </div>
                 )}
                 <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                  <span>{schedDays} {schedDays === 1 ? "dzień" : schedDays >= 2 && schedDays <= 4 ? "dni" : "dni"} ze zmianami</span>
-                  {!isHourly && <span>{schedPct}% normy</span>}
+                  <span>{schedDays} {schedDays === 1 ? "dzień" : "dni"} ze zmianami</span>
+                  {!isHourly && !isCurrentMonth && <span>{schedPct}% normy</span>}
                 </div>
+                {overtimeHours > 0 && (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-orange-600 dark:text-orange-400 font-medium" data-testid="text-schedule-overtime">
+                    <span>Nadgodziny: +{overtimeHours}h</span>
+                  </div>
+                )}
               </Card>
             )}
 

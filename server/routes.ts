@@ -11857,8 +11857,16 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         if (!Number.isInteger(month) || month < 1 || month > 12) return res.status(400).json({ message: 'Nieprawidłowy miesiąc' });
         if (!Number.isInteger(year) || year < 2020 || year > 2100) return res.status(400).json({ message: 'Nieprawidłowy rok' });
         from = `${year}-${String(month).padStart(2, '0')}-01`;
-        const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
-        to = new Date(new Date(nextMonth).getTime() - 86400000).toISOString().split('T')[0];
+        const includeNext = req.query.includeNext === '1';
+        if (includeNext) {
+          const twoMonthsAhead = month >= 11
+            ? `${year + 1}-${String((month + 2) > 12 ? (month + 2) - 12 : month + 2).padStart(2, '0')}-01`
+            : `${year}-${String(month + 2).padStart(2, '0')}-01`;
+          to = new Date(new Date(twoMonthsAhead).getTime() - 86400000).toISOString().split('T')[0];
+        } else {
+          const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+          to = new Date(new Date(nextMonth).getTime() - 86400000).toISOString().split('T')[0];
+        }
       } else {
         from = now.toISOString().split('T')[0];
         const toDate = new Date(now.getTime() + 13 * 24 * 60 * 60 * 1000);
