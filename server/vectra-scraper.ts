@@ -50,6 +50,80 @@ async function finishWithStatus(
   return { accountId, label, ...result };
 }
 
+class CookieJar {
+  private cookies: Map<string, string> = new Map();
+
+  addFromHeaders(headers: Headers): void {
+    const setCookieHeaders = headers.getSetCookie?.() ?? [];
+    for (const header of setCookieHeaders) {
+      const [nameValue] = header.split(";");
+      const eqIdx = nameValue.indexOf("=");
+      if (eqIdx < 0) continue;
+      const name = nameValue.slice(0, eqIdx).trim();
+      const value = nameValue.slice(eqIdx + 1).trim();
+      if (name) this.cookies.set(name, value);
+    }
+  }
+
+  toCookieHeader(): string {
+    return Array.from(this.cookies.entries())
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+  }
+
+  isEmpty(): boolean {
+    return this.cookies.size === 0;
+  }
+}
+
+async function httpGet(
+  url: string,
+  jar: CookieJar,
+  extraHeaders: Record<string, string> = {}
+): Promise<{ text: string; finalUrl: string; status: number; headers: Headers }> {
+  const cookieHeader = jar.toCookieHeader();
+  const response = await fetch(url, {
+    method: "GET",
+    redirect: "follow",
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8",
+      ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
+      ...extraHeaders,
+    },
+  });
+  jar.addFromHeaders(response.headers);
+  const text = await response.text();
+  return { text, finalUrl: response.url, status: response.status, headers: response.headers };
+}
+
+async function httpPost(
+  url: string,
+  jar: CookieJar,
+  body: Record<string, string>,
+  referer?: string
+): Promise<{ text: string; finalUrl: string; status: number; headers: Headers }> {
+  const cookieHeader = jar.toCookieHeader();
+  const formBody = new URLSearchParams(body).toString();
+  const response = await fetch(url, {
+    method: "POST",
+    redirect: "follow",
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8",
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
+      ...(referer ? { "Referer": referer } : {}),
+    },
+    body: formBody,
+  });
+  jar.addFromHeaders(response.headers);
+  const text = await response.text();
+  return { text, finalUrl: response.url, status: response.status, headers: response.headers };
+}
+
 export async function syncVectraAccount(accountId: number): Promise<SyncResult> {
   const account = await storage.getVectraAccount(accountId);
   if (!account) throw new Error(`Konto Vectra #${accountId} nie istnieje`);
@@ -65,72 +139,104 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
     });
   }
 
-  let browser: any = null;
   try {
-    const { chromium } = await import("playwright");
+    const { load } = await import("cheerio");
+    const jar = new CookieJar();
 
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    });
+    const LOGIN_URL = "https://online.vectra.pl/logowanie";
+    const INVOICES_URL = "https://online.vectra.pl/faktury";
 
-    const context = await browser.newContext({
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      acceptDownloads: true,
-    });
+    const loginPageRes = await httpGet(LOGIN_URL, jar);
 
-    const page = await context.newPage();
-
-    await page.goto("https://online.vectra.pl/logowanie", { waitUntil: "networkidle", timeout: 30000 });
-
-    const loginField = await page.$('input[type="text"], input[name="login"], input[id*="login"], input[placeholder*="login"]');
-    const passField = await page.$('input[type="password"]');
-
-    if (!loginField || !passField) {
-      await browser.close();
-      return finishWithStatus(accountId, account.label, "Błąd: nie znaleziono formularza logowania", {
-        newInvoices: 0,
-        skipped: 0,
-        error: "Nie znaleziono formularza logowania",
-      });
+    let csrfToken: string | undefined;
+    const $login = load(loginPageRes.text);
+    const csrfInput = $login('input[name="_token"], input[name="csrf_token"], input[name="csrfmiddlewaretoken"], input[name="_csrf"]').first();
+    if (csrfInput.length) {
+      csrfToken = csrfInput.attr("value");
     }
 
-    await loginField.fill(account.username);
-    await passField.fill(password);
-    await page.keyboard.press("Enter");
+    const loginFields: Record<string, string> = {
+      login: account.username,
+      password: password,
+    };
+    if (csrfToken) {
+      const csrfName = $login('input[name="_token"], input[name="csrf_token"], input[name="csrfmiddlewaretoken"], input[name="_csrf"]').first().attr("name") || "_token";
+      loginFields[csrfName] = csrfToken;
+    }
 
-    await page.waitForNavigation({ waitUntil: "networkidle", timeout: 20000 }).catch(() => {});
+    const hiddenInputs = $login('form input[type="hidden"]');
+    hiddenInputs.each((_: number, el: any) => {
+      const name = $login(el).attr("name");
+      const value = $login(el).attr("value") || "";
+      if (name && !loginFields[name]) {
+        loginFields[name] = value;
+      }
+    });
 
-    const currentUrl = page.url();
-    if (currentUrl.includes("logowanie") || currentUrl.includes("login")) {
-      await browser.close();
+    const loginAction = $login("form").first().attr("action") || LOGIN_URL;
+    const resolvedAction = loginAction.startsWith("http") ? loginAction : `https://online.vectra.pl${loginAction}`;
+
+    const loginRes = await httpPost(resolvedAction, jar, loginFields, LOGIN_URL);
+
+    if (loginRes.finalUrl.includes("logowanie") || loginRes.finalUrl.includes("login")) {
+      const $err = load(loginRes.text);
+      const errorMsg = $err(".alert-danger, .error-message, .login-error, [class*='error']").first().text().trim();
       return finishWithStatus(accountId, account.label, "Błąd: nieprawidłowy login lub hasło", {
         newInvoices: 0,
         skipped: 0,
-        error: "Błąd logowania — sprawdź login i hasło",
+        error: errorMsg || "Błąd logowania — sprawdź login i hasło",
       });
     }
 
-    await page.goto("https://online.vectra.pl/faktury", { waitUntil: "networkidle", timeout: 30000 });
+    if (jar.isEmpty()) {
+      return finishWithStatus(accountId, account.label, "Błąd: sesja nie została nawiązana", {
+        newInvoices: 0,
+        skipped: 0,
+        error: "Portal Vectra nie zwrócił cookies sesji — możliwe, że wymaga JavaScript (SPA)",
+      });
+    }
 
-    await page.waitForSelector("table, .invoice, .faktura, [class*='invoice'], [class*='faktura']", { timeout: 15000 }).catch(() => {});
+    const invoicesRes = await httpGet(INVOICES_URL, jar);
 
-    const invoiceRows = await page.$$eval(
-      "table tbody tr, .invoice-row, .faktura-row, [class*='invoice-item'], [class*='faktura-item']",
-      (rows: Element[]) => rows.map((row) => {
-        const cells = Array.from(row.querySelectorAll("td, .cell, [class*='cell']"));
-        const texts = cells.map((c) => c.textContent?.trim() || "");
-        const link = (row.querySelector("a[href*='pdf'], a[href*='faktura'], a[href*='invoice'], button[class*='download'], a[class*='download']") as HTMLAnchorElement | null)?.href || "";
-        return { texts, link };
-      })
-    ).catch(() => [] as { texts: string[]; link: string }[]);
+    const $ = load(invoicesRes.text);
+
+    if (invoicesRes.finalUrl.includes("logowanie") || invoicesRes.finalUrl.includes("login")) {
+      return finishWithStatus(accountId, account.label, "Błąd: sesja wygasła lub odmowa dostępu", {
+        newInvoices: 0,
+        skipped: 0,
+        error: "Sesja wygasła po przekierowaniu do logowania",
+      });
+    }
+
+    const tableRows = $("table tbody tr").toArray();
+    const invoiceItems: { texts: string[]; link: string }[] = [];
+
+    if (tableRows.length > 0) {
+      for (const row of tableRows) {
+        const cells = $(row).find("td").toArray();
+        const texts = cells.map((c) => $(c).text().trim()).filter(Boolean);
+        const link = $(row).find("a[href*='pdf'], a[href*='faktur'], a[href*='invoice'], a[href*='pobierz'], a[href*='download']").first().attr("href") || "";
+        const resolvedLink = link.startsWith("http") ? link : link ? `https://online.vectra.pl${link}` : "";
+        invoiceItems.push({ texts, link: resolvedLink });
+      }
+    } else {
+      const bodyText = $.text();
+      const hasInvoiceContent = bodyText.includes("faktur") || bodyText.includes("FV") || bodyText.includes("dokument");
+      const isLoggedIn = !invoicesRes.finalUrl.includes("logowanie") && (bodyText.includes("wyloguj") || bodyText.includes("Wyloguj") || bodyText.includes("konto") || bodyText.includes("Konto"));
+
+      if (!isLoggedIn && !hasInvoiceContent) {
+        return finishWithStatus(accountId, account.label, "Błąd: portal wymaga JavaScript", {
+          newInvoices: 0,
+          skipped: 0,
+          error: "Portal Vectra wymaga przeglądarki — automatyczna synchronizacja niedostępna w tej wersji",
+        });
+      }
+    }
 
     let newInvoices = 0;
     let skipped = 0;
 
-    const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
-
-    for (const row of invoiceRows) {
+    for (const row of invoiceItems) {
       const { texts, link } = row;
       if (texts.length < 2) continue;
 
@@ -161,12 +267,24 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
       const period = texts.find((t) => /\d{4}[-\/]\d{2}|\b(styczeń|luty|marzec|kwiecień|maj|czerwiec|lipiec|sierpień|wrzesień|październik|listopad|grudzień)\b/i.test(t));
 
       let objectPath: string | null = null;
+      const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
 
       if (link && privateDir) {
         try {
-          const downloadRes = await page.goto(link, { timeout: 30000, waitUntil: "networkidle" });
-          if (downloadRes && downloadRes.headers()["content-type"]?.includes("pdf")) {
-            const pdfBuffer = await downloadRes.body();
+          const cookieHeader = jar.toCookieHeader();
+          const pdfRes = await fetch(link, {
+            method: "GET",
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              "Accept": "application/pdf,*/*",
+              ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
+              "Referer": INVOICES_URL,
+            },
+          });
+          jar.addFromHeaders(pdfRes.headers);
+          const contentType = pdfRes.headers.get("content-type") || "";
+          if (contentType.includes("pdf")) {
+            const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
             const { objectStorageClient: osClient } = await import("./replit_integrations/object_storage/objectStorage");
             const normalizedDir = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
             const pathParts = normalizedDir.split("/");
@@ -195,8 +313,6 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
       newInvoices++;
     }
 
-    await browser.close();
-
     return finishWithStatus(
       accountId,
       account.label,
@@ -204,7 +320,6 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
       { newInvoices, skipped }
     );
   } catch (err: any) {
-    if (browser) await browser.close().catch(() => {});
     const errMsg = err?.message || "Nieznany błąd";
     return finishWithStatus(accountId, account.label, `Błąd: ${errMsg.slice(0, 200)}`, {
       newInvoices: 0,

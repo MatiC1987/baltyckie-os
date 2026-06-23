@@ -149,8 +149,10 @@ Każde konto wyświetla status ostatniej synchronizacji w formie kolorowego znac
 ### Znaczenie poszczególnych błędów
 
 - **`Błąd: deszyfrowanie hasła`** — klucz szyfrowania (`VECTRA_ENCRYPT_KEY`) mógł zostać zmieniony lub hasło jest uszkodzone. Usuń konto i dodaj je ponownie z aktualnym hasłem.
-- **`Błąd: nie znaleziono formularza logowania`** — portal Vectra zmienił strukturę strony logowania. Skontaktuj się z administratorem systemu.
 - **`Błąd: nieprawidłowy login lub hasło`** — login lub hasło jest błędne. Edytuj konto i zaktualizuj dane logowania.
+- **`Błąd: sesja nie została nawiązana`** — portal Vectra nie zwrócił cookies sesji. Możliwe, że strona wymaga JavaScript do zalogowania. Skontaktuj się z administratorem systemu.
+- **`Błąd: portal wymaga JavaScript`** — portal online.vectra.pl działa jako aplikacja SPA i nie zwraca listy faktur bez silnika JavaScript. Automatyczna synchronizacja jest niedostępna w takim przypadku — skontaktuj się z administratorem.
+- **`Błąd: sesja wygasła lub odmowa dostępu`** — logowanie przebiegło, ale strona faktur przekierowała z powrotem do logowania. Sprawdź login i hasło.
 - **`Błąd: timeout`** / błędy sieciowe — portal Vectra był niedostępny podczas synchronizacji. Spróbuj ponownie za kilka minut.
 
 ---
