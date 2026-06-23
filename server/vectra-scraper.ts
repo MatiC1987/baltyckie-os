@@ -37,6 +37,19 @@ export interface SyncResult {
   error?: string;
 }
 
+async function finishWithStatus(
+  accountId: number,
+  label: string,
+  status: string,
+  result: Omit<SyncResult, "accountId" | "label">
+): Promise<SyncResult> {
+  await storage.updateVectraAccount(accountId, {
+    lastSyncAt: new Date(),
+    lastSyncStatus: status,
+  }).catch(() => {});
+  return { accountId, label, ...result };
+}
+
 export async function syncVectraAccount(accountId: number): Promise<SyncResult> {
   const account = await storage.getVectraAccount(accountId);
   if (!account) throw new Error(`Konto Vectra #${accountId} nie istnieje`);
@@ -45,7 +58,11 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
   try {
     password = decryptPassword(account.passwordEncrypted);
   } catch (e) {
-    return { accountId, label: account.label, newInvoices: 0, skipped: 0, error: "Błąd deszyfrowania hasła" };
+    return finishWithStatus(accountId, account.label, "Błąd: deszyfrowanie hasła", {
+      newInvoices: 0,
+      skipped: 0,
+      error: "Błąd deszyfrowania hasła",
+    });
   }
 
   let browser: any = null;
@@ -70,7 +87,12 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
     const passField = await page.$('input[type="password"]');
 
     if (!loginField || !passField) {
-      return { accountId, label: account.label, newInvoices: 0, skipped: 0, error: "Nie znaleziono formularza logowania" };
+      await browser.close();
+      return finishWithStatus(accountId, account.label, "Błąd: nie znaleziono formularza logowania", {
+        newInvoices: 0,
+        skipped: 0,
+        error: "Nie znaleziono formularza logowania",
+      });
     }
 
     await loginField.fill(account.username);
@@ -81,7 +103,12 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
 
     const currentUrl = page.url();
     if (currentUrl.includes("logowanie") || currentUrl.includes("login")) {
-      return { accountId, label: account.label, newInvoices: 0, skipped: 0, error: "Błąd logowania — sprawdź login i hasło" };
+      await browser.close();
+      return finishWithStatus(accountId, account.label, "Błąd: nieprawidłowy login lub hasło", {
+        newInvoices: 0,
+        skipped: 0,
+        error: "Błąd logowania — sprawdź login i hasło",
+      });
     }
 
     await page.goto("https://online.vectra.pl/faktury", { waitUntil: "networkidle", timeout: 30000 });
@@ -169,19 +196,19 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
 
     await browser.close();
 
-    await storage.updateVectraAccount(accountId, {
-      lastSyncAt: new Date(),
-      lastSyncStatus: `OK — ${newInvoices} nowych, ${skipped} pominiętych`,
-    });
-
-    return { accountId, label: account.label, newInvoices, skipped };
+    return finishWithStatus(
+      accountId,
+      account.label,
+      `OK — ${newInvoices} nowych, ${skipped} pominiętych`,
+      { newInvoices, skipped }
+    );
   } catch (err: any) {
     if (browser) await browser.close().catch(() => {});
     const errMsg = err?.message || "Nieznany błąd";
-    await storage.updateVectraAccount(accountId, {
-      lastSyncAt: new Date(),
-      lastSyncStatus: `Błąd: ${errMsg.slice(0, 200)}`,
-    }).catch(() => {});
-    return { accountId, label: account.label, newInvoices: 0, skipped: 0, error: errMsg };
+    return finishWithStatus(accountId, account.label, `Błąd: ${errMsg.slice(0, 200)}`, {
+      newInvoices: 0,
+      skipped: 0,
+      error: errMsg,
+    });
   }
 }
