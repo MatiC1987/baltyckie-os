@@ -38,6 +38,16 @@ export interface SyncResult {
   debugInfo?: string;
 }
 
+export interface ApiProbeAttempt {
+  url: string;
+  method: string;
+  status: number;
+  isJson: boolean;
+  hasToken: boolean;
+  snippet: string;
+  error?: string;
+}
+
 export interface DebugResult {
   loginPageStatus: number;
   loginPageUrl: string;
@@ -56,6 +66,12 @@ export interface DebugResult {
   spaIndicators: string[];
   tableRowCount: number;
   selectorResults: Record<string, number>;
+  isSpa: boolean;
+  apiProbeAttempts: ApiProbeAttempt[];
+  apiFound: boolean;
+  apiBase?: string;
+  apiAuthToken?: string;
+  recommendation: string;
 }
 
 async function finishWithStatus(
@@ -101,6 +117,13 @@ class CookieJar {
   }
 }
 
+const BASE_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Connection": "keep-alive",
+};
+
 async function httpGet(
   url: string,
   jar: CookieJar,
@@ -111,11 +134,8 @@ async function httpGet(
     method: "GET",
     redirect: "follow",
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      ...BASE_HEADERS,
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
-      "Accept-Encoding": "gzip, deflate, br",
-      "Connection": "keep-alive",
       "Upgrade-Insecure-Requests": "1",
       ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
       ...extraHeaders,
@@ -138,15 +158,59 @@ async function httpPost(
     method: "POST",
     redirect: "follow",
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      ...BASE_HEADERS,
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
       "Content-Type": "application/x-www-form-urlencoded",
-      "Connection": "keep-alive",
       ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
       ...(referer ? { "Referer": referer, "Origin": "https://online.vectra.pl" } : {}),
     },
     body: formBody,
+  });
+  jar.addFromHeaders(response.headers);
+  const text = await response.text();
+  return { text, finalUrl: response.url, status: response.status, headers: response.headers };
+}
+
+async function httpPostJson(
+  url: string,
+  jar: CookieJar,
+  body: Record<string, unknown>,
+  referer?: string
+): Promise<{ text: string; finalUrl: string; status: number; headers: Headers }> {
+  const cookieHeader = jar.toCookieHeader();
+  const response = await fetch(url, {
+    method: "POST",
+    redirect: "follow",
+    headers: {
+      ...BASE_HEADERS,
+      "Accept": "application/json, text/plain, */*",
+      "Content-Type": "application/json",
+      ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
+      ...(referer ? { "Referer": referer, "Origin": "https://online.vectra.pl", "X-Requested-With": "XMLHttpRequest" } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  jar.addFromHeaders(response.headers);
+  const text = await response.text();
+  return { text, finalUrl: response.url, status: response.status, headers: response.headers };
+}
+
+async function httpGetJson(
+  url: string,
+  jar: CookieJar,
+  bearerToken?: string
+): Promise<{ text: string; finalUrl: string; status: number; headers: Headers }> {
+  const cookieHeader = jar.toCookieHeader();
+  const response = await fetch(url, {
+    method: "GET",
+    redirect: "follow",
+    headers: {
+      ...BASE_HEADERS,
+      "Accept": "application/json, text/plain, */*",
+      ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
+      ...(bearerToken ? { "Authorization": `Bearer ${bearerToken}` } : {}),
+      "X-Requested-With": "XMLHttpRequest",
+    },
   });
   jar.addFromHeaders(response.headers);
   const text = await response.text();
@@ -256,6 +320,146 @@ function countSelectors($: any): Record<string, number> {
   };
 }
 
+function extractTokenFromJsonResponse(text: string): string | undefined {
+  try {
+    const data = JSON.parse(text);
+    return data?.token
+      || data?.accessToken
+      || data?.access_token
+      || data?.jwt
+      || data?.authToken
+      || data?.data?.token
+      || data?.data?.accessToken
+      || data?.result?.token
+      || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractInvoicesFromJsonResponse(text: string): any[] {
+  try {
+    const data = JSON.parse(text);
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.invoices)) return data.invoices;
+    if (Array.isArray(data?.faktury)) return data.faktury;
+    if (Array.isArray(data?.documents)) return data.documents;
+    if (Array.isArray(data?.result)) return data.result;
+    if (Array.isArray(data?.items)) return data.items;
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+const VECTRA_API_BASE = "https://online.vectra.pl";
+
+const API_AUTH_ENDPOINTS = [
+  { path: "/api/auth/login", loginField: "login" },
+  { path: "/api/auth/login", loginField: "username" },
+  { path: "/api/auth/login", loginField: "email" },
+  { path: "/api/v1/auth/login", loginField: "login" },
+  { path: "/api/v1/auth/login", loginField: "username" },
+  { path: "/api/user/login", loginField: "login" },
+  { path: "/api/user/login", loginField: "username" },
+  { path: "/api/login", loginField: "login" },
+  { path: "/api/login", loginField: "username" },
+  { path: "/api/customers/auth", loginField: "login" },
+  { path: "/api/account/login", loginField: "login" },
+  { path: "/api/session", loginField: "login" },
+];
+
+const API_INVOICES_ENDPOINTS = [
+  "/api/invoices",
+  "/api/v1/invoices",
+  "/api/documents/invoices",
+  "/api/faktury",
+  "/api/v1/faktury",
+  "/api/documents",
+  "/api/billing/invoices",
+  "/api/account/invoices",
+];
+
+export async function probeVectraApi(
+  username: string,
+  password: string
+): Promise<{ found: boolean; authToken?: string; invoicesEndpoint?: string; invoiceItems?: any[]; attempts: ApiProbeAttempt[] }> {
+  const jar = new CookieJar();
+  const attempts: ApiProbeAttempt[] = [];
+  let authToken: string | undefined;
+
+  for (const ep of API_AUTH_ENDPOINTS) {
+    const url = `${VECTRA_API_BASE}${ep.path}`;
+    const attempt: ApiProbeAttempt = { url, method: "POST", status: 0, isJson: false, hasToken: false, snippet: "" };
+
+    try {
+      const body: Record<string, unknown> = { [ep.loginField]: username, password };
+      const res = await httpPostJson(url, jar, body, VECTRA_API_BASE);
+      attempt.status = res.status;
+      attempt.snippet = res.text.slice(0, 200).replace(/\s+/g, " ").trim();
+      const ct = res.headers.get("content-type") || "";
+      attempt.isJson = ct.includes("application/json") || res.text.trim().startsWith("{");
+
+      if (attempt.isJson) {
+        const token = extractTokenFromJsonResponse(res.text);
+        if (token) {
+          attempt.hasToken = true;
+          authToken = token;
+          attempts.push(attempt);
+          console.log(`[vectra] API auth endpoint znaleziony: ${url} (status=${res.status})`);
+          break;
+        }
+      }
+
+      if (res.status === 200 && attempt.isJson) {
+        authToken = undefined;
+        attempts.push(attempt);
+        break;
+      }
+    } catch (e: any) {
+      attempt.error = e?.message?.slice(0, 100);
+    }
+
+    attempts.push(attempt);
+    if (attempts.length >= 6) break;
+  }
+
+  if (!authToken && jar.isEmpty()) {
+    return { found: false, attempts };
+  }
+
+  for (const path of API_INVOICES_ENDPOINTS) {
+    const url = `${VECTRA_API_BASE}${path}`;
+    const attempt: ApiProbeAttempt = { url, method: "GET", status: 0, isJson: false, hasToken: false, snippet: "" };
+
+    try {
+      const res = await httpGetJson(url, jar, authToken);
+      attempt.status = res.status;
+      attempt.snippet = res.text.slice(0, 200).replace(/\s+/g, " ").trim();
+      const ct = res.headers.get("content-type") || "";
+      attempt.isJson = ct.includes("application/json") || res.text.trim().startsWith("{") || res.text.trim().startsWith("[");
+      attempts.push(attempt);
+
+      if (res.status === 200 && attempt.isJson) {
+        const items = extractInvoicesFromJsonResponse(res.text);
+        if (items.length > 0) {
+          console.log(`[vectra] API faktury endpoint znaleziony: ${url}, ${items.length} faktur`);
+          return { found: true, authToken, invoicesEndpoint: path, invoiceItems: items, attempts };
+        }
+        return { found: true, authToken, invoicesEndpoint: path, invoiceItems: [], attempts };
+      }
+    } catch (e: any) {
+      attempt.error = e?.message?.slice(0, 100);
+      attempts.push(attempt);
+    }
+
+    if (attempts.length >= 20) break;
+  }
+
+  return { found: !!authToken, authToken, attempts };
+}
+
 export async function debugVectraAccount(accountId: number): Promise<DebugResult> {
   const account = await storage.getVectraAccount(accountId);
   if (!account) throw new Error(`Konto Vectra #${accountId} nie istnieje`);
@@ -293,12 +497,37 @@ export async function debugVectraAccount(accountId: number): Promise<DebugResult
   const spaIndicators = detectSpaIndicators(invoicesRes.text);
   const selectorResults = countSelectors($);
 
-  const bodyText = $.text().slice(0, 2000);
   let detectedStructure = "unknown";
   if (selectorResults["table tbody tr"] > 0) detectedStructure = `table (${selectorResults["table tbody tr"]} rows)`;
   else if (selectorResults["[class*='invoice']"] > 0) detectedStructure = `div.invoice-* elements (${selectorResults["[class*='invoice']"]})`;
   else if (selectorResults["a[href*='pdf']"] > 0) detectedStructure = `direct PDF links (${selectorResults["a[href*='pdf']"]})`;
   else if (spaIndicators.length > 0) detectedStructure = "SPA — no server-rendered content";
+
+  const isSpa = spaIndicators.length >= 2 || (selectorResults["table tbody tr"] === 0 && spaIndicators.length > 0);
+
+  let apiProbeAttempts: ApiProbeAttempt[] = [];
+  let apiFound = false;
+  let apiBase: string | undefined;
+  let apiAuthToken: string | undefined;
+  let recommendation = "";
+
+  if (isSpa) {
+    console.log(`[vectra] Wykryto SPA — uruchamiam sondę API...`);
+    const probe = await probeVectraApi(account.username, password);
+    apiProbeAttempts = probe.attempts;
+    apiFound = probe.found;
+    apiAuthToken = probe.authToken;
+    if (apiFound) {
+      apiBase = VECTRA_API_BASE;
+      recommendation = `Vectra udostępnia API REST pod ${VECTRA_API_BASE}. Synchronizacja przez API jest możliwa.`;
+    } else {
+      recommendation = "Portal Vectra to SPA i nie wykryto publicznego API REST. Zalecane: ręczne dodawanie faktur przez przycisk 'Dodaj fakturę ręcznie'.";
+    }
+  } else if (selectorResults["table tbody tr"] > 0) {
+    recommendation = "Portal zwraca treść HTML — scraper działa poprawnie.";
+  } else {
+    recommendation = "Niejasna struktura strony — uruchom sync i sprawdź logi serwera.";
+  }
 
   return {
     loginPageStatus: loginPageRes.status,
@@ -318,7 +547,111 @@ export async function debugVectraAccount(accountId: number): Promise<DebugResult
     spaIndicators,
     tableRowCount: selectorResults["table tbody tr"],
     selectorResults,
+    isSpa,
+    apiProbeAttempts,
+    apiFound,
+    apiBase,
+    apiAuthToken,
+    recommendation,
   };
+}
+
+async function syncVectraAccountViaApi(
+  accountId: number,
+  account: { label: string; username: string },
+  password: string,
+  apiToken: string,
+  invoicesEndpoint: string,
+  invoiceItems: any[]
+): Promise<SyncResult> {
+  console.log(`[vectra] Sync przez API: ${invoiceItems.length} faktur z endpointu ${invoicesEndpoint}`);
+
+  const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
+  let newInvoices = 0;
+  let skipped = 0;
+
+  for (const item of invoiceItems) {
+    const invoiceNumber = item.number || item.invoiceNumber || item.numer || item.id
+      || item.documentNumber || item.document_number || String(item.id || "");
+    if (!invoiceNumber || String(invoiceNumber).length < 2) continue;
+
+    const existing = await storage.getVectraInvoiceByNumber(accountId, String(invoiceNumber));
+    if (existing) { skipped++; continue; }
+
+    const rawDate = item.date || item.invoiceDate || item.issued_at || item.issuedAt
+      || item.data || item.dataWystawienia || item.createdAt || null;
+    let invoiceDate: string | null = null;
+    if (rawDate) {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        invoiceDate = d.toISOString().slice(0, 10);
+      }
+    }
+
+    const rawAmount = item.amount || item.total || item.kwota || item.value
+      || item.grossAmount || item.gross_amount || null;
+    let amount: string | null = null;
+    if (rawAmount != null) {
+      const parsed = parseFloat(String(rawAmount).replace(",", ".").replace(/\s/g, ""));
+      if (!isNaN(parsed)) amount = parsed.toFixed(2);
+    }
+
+    const period = item.period || item.okres || item.billing_period || null;
+
+    const pdfUrl = item.pdfUrl || item.pdf_url || item.fileUrl || item.file_url
+      || item.downloadUrl || item.download_url || null;
+
+    let objectPath: string | null = null;
+    if (pdfUrl && privateDir) {
+      try {
+        const jar = new CookieJar();
+        const pdfRes = await fetch(
+          pdfUrl.startsWith("http") ? pdfUrl : `${VECTRA_API_BASE}${pdfUrl}`,
+          {
+            headers: {
+              "Authorization": `Bearer ${apiToken}`,
+              "Accept": "application/pdf,*/*",
+              "User-Agent": BASE_HEADERS["User-Agent"],
+            },
+          }
+        );
+        jar.addFromHeaders(pdfRes.headers);
+        const ct = pdfRes.headers.get("content-type") || "";
+        if (ct.includes("pdf")) {
+          const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
+          const { objectStorageClient: osClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const normalizedDir = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
+          const pathParts = normalizedDir.split("/");
+          const bucketName = pathParts[0];
+          const baseKey = pathParts.slice(1).join("/");
+          const fileName = `vectra-invoices/${accountId}/${String(invoiceNumber).replace(/\//g, "-")}.pdf`;
+          const fullKey = baseKey ? `${baseKey}/${fileName}` : fileName;
+          const file = osClient.bucket(bucketName).file(fullKey);
+          await file.save(pdfBuffer, { contentType: "application/pdf" });
+          objectPath = `${bucketName}/${fullKey}`;
+        }
+      } catch (e) {
+        console.error(`[vectra] Błąd pobierania PDF (API) dla ${invoiceNumber}:`, e);
+      }
+    }
+
+    await storage.createVectraInvoice({
+      vectraAccountId: accountId,
+      invoiceNumber: String(invoiceNumber),
+      invoiceDate,
+      amount,
+      period: period ? String(period) : null,
+      objectPath,
+    });
+
+    console.log(`[vectra] (API) Dodano fakturę: ${invoiceNumber}, data=${invoiceDate}, kwota=${amount}`);
+    newInvoices++;
+  }
+
+  return finishWithStatus(accountId, account.label, `OK — ${newInvoices} nowych, ${skipped} pominiętych (API)`, {
+    newInvoices,
+    skipped,
+  });
 }
 
 export async function syncVectraAccount(accountId: number): Promise<SyncResult> {
@@ -442,13 +775,48 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
       const snippet = htmlSnippet(invoicesRes.text, 600);
       console.log(`[vectra] Brak pozycji faktur. isLoggedIn=${isLoggedIn}, hasInvoiceContent=${hasInvoiceContent}, spaIndicators=${spaIndicators.length}`);
 
-      if (spaIndicators.length >= 2) {
-        return finishWithStatus(accountId, account.label, "Błąd: portal wymaga JavaScript", {
-          newInvoices: 0,
-          skipped: 0,
-          error: `Portal Vectra wymaga przeglądarki (SPA). Wskaźniki: ${spaIndicators.slice(0, 2).join("; ")}`,
-          debugInfo: snippet,
-        });
+      const isSpa = spaIndicators.length >= 2 || (!isLoggedIn && !hasInvoiceContent && spaIndicators.length > 0);
+
+      if (isSpa) {
+        console.log(`[vectra] Portal to SPA — próbuję API REST...`);
+        try {
+          const probe = await probeVectraApi(account.username, password);
+          if (probe.found && probe.invoicesEndpoint) {
+            console.log(`[vectra] API znalezione, endpoint: ${probe.invoicesEndpoint}, faktur: ${probe.invoiceItems?.length ?? 0}`);
+            return await syncVectraAccountViaApi(
+              accountId,
+              account,
+              password,
+              probe.authToken || "",
+              probe.invoicesEndpoint,
+              probe.invoiceItems || []
+            );
+          } else if (probe.found) {
+            console.log(`[vectra] API auth działa, ale nie znaleziono endpointu faktur`);
+            return finishWithStatus(accountId, account.label, "Błąd: API SPA — brak endpointu faktur", {
+              newInvoices: 0,
+              skipped: 0,
+              error: "Portal Vectra wymaga przeglądarki (SPA). API auth działa, ale endpoint faktur nie został zlokalizowany. Dodaj faktury ręcznie.",
+              debugInfo: `spaIndicators=${spaIndicators.join("; ")}; apiProbes=${probe.attempts.length}`,
+            });
+          } else {
+            console.log(`[vectra] API nie znalezione — portal SPA bez dostępnego REST API`);
+            return finishWithStatus(accountId, account.label, "Błąd: portal SPA — dodaj faktury ręcznie", {
+              newInvoices: 0,
+              skipped: 0,
+              error: "Portal online.vectra.pl to aplikacja SPA (React/Angular). Automatyczna synchronizacja jest niedostępna. Pobierz faktury ręcznie z portalu Vectra i dodaj je przez przycisk 'Dodaj fakturę ręcznie'.",
+              debugInfo: `spaIndicators=${spaIndicators.join("; ")}; apiProbes=${probe.attempts.length}`,
+            });
+          }
+        } catch (apiErr: any) {
+          console.error(`[vectra] Błąd sondy API:`, apiErr);
+          return finishWithStatus(accountId, account.label, "Błąd: portal SPA — dodaj faktury ręcznie", {
+            newInvoices: 0,
+            skipped: 0,
+            error: "Portal online.vectra.pl to aplikacja SPA. Dodaj faktury ręcznie przez przycisk 'Dodaj fakturę ręcznie'.",
+            debugInfo: snippet,
+          });
+        }
       }
 
       if (!isLoggedIn && !hasInvoiceContent) {

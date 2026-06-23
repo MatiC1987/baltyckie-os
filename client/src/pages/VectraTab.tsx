@@ -70,6 +70,7 @@ import {
   Info,
   Loader2,
   BarChart2,
+  Upload,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -363,6 +364,16 @@ export function VectraTab() {
   const [diagnosticData, setDiagnosticData] = useState<VectraDebugResult | null>(null);
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
   const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
+  const [manualUploadOpen, setManualUploadOpen] = useState(false);
+  const [manualUploadFile, setManualUploadFile] = useState<File | null>(null);
+  const [manualUploading, setManualUploading] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    vectraAccountId: "",
+    invoiceNumber: "",
+    invoiceDate: "",
+    amount: "",
+    period: "",
+  });
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<VectraAccount[]>({
     queryKey: ["/api/vectra/accounts"],
@@ -465,6 +476,45 @@ export function VectraTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/vectra/accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vectra/invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vectra/sync-stats"] });
+    }
+  }
+
+  async function submitManualUpload() {
+    if (!manualForm.vectraAccountId || !manualForm.invoiceNumber) {
+      toast({ title: "Błąd", description: "Konto i numer faktury są wymagane", variant: "destructive" });
+      return;
+    }
+    setManualUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("vectraAccountId", manualForm.vectraAccountId);
+      formData.append("invoiceNumber", manualForm.invoiceNumber);
+      if (manualForm.invoiceDate) formData.append("invoiceDate", manualForm.invoiceDate);
+      if (manualForm.amount) formData.append("amount", manualForm.amount.replace(",", "."));
+      if (manualForm.period) formData.append("period", manualForm.period);
+      if (manualUploadFile) formData.append("file", manualUploadFile);
+
+      const { getAuthHeaders } = await import("@/lib/auth-token");
+      const res = await fetch("/api/vectra/invoices/manual-upload", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        credentials: "include",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Błąd", description: data.message || "Nie udało się dodać faktury", variant: "destructive" });
+      } else {
+        toast({ title: "Faktura dodana", description: `Faktura ${manualForm.invoiceNumber} została dodana` });
+        setManualUploadOpen(false);
+        setManualForm({ vectraAccountId: "", invoiceNumber: "", invoiceDate: "", amount: "", period: "" });
+        setManualUploadFile(null);
+        queryClient.invalidateQueries({ queryKey: ["/api/vectra/invoices"] });
+      }
+    } catch {
+      toast({ title: "Błąd połączenia", variant: "destructive" });
+    } finally {
+      setManualUploading(false);
     }
   }
 
@@ -661,19 +711,35 @@ export function VectraTab() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle>Pobrane faktury</CardTitle>
-            {accounts.length > 0 && (
-              <Select value={filterAccount} onValueChange={setFilterAccount}>
-                <SelectTrigger className="w-48" data-testid="select-filter-account">
-                  <SelectValue placeholder="Wszystkie konta" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Wszystkie konta</SelectItem>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={String(a.id)}>{a.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <div className="flex flex-wrap gap-2 items-center">
+              {accounts.length > 0 && (
+                <Select value={filterAccount} onValueChange={setFilterAccount}>
+                  <SelectTrigger className="w-48" data-testid="select-filter-account">
+                    <SelectValue placeholder="Wszystkie konta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Wszystkie konta</SelectItem>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setManualForm({ vectraAccountId: accounts[0] ? String(accounts[0].id) : "", invoiceNumber: "", invoiceDate: "", amount: "", period: "" });
+                  setManualUploadFile(null);
+                  setManualUploadOpen(true);
+                }}
+                disabled={accounts.length === 0}
+                data-testid="button-manual-upload"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Dodaj ręcznie
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -739,6 +805,99 @@ export function VectraTab() {
 
       {/* Sync History section */}
       <SyncHistoryCard />
+
+      {/* Manual Invoice Upload Dialog */}
+      <Dialog open={manualUploadOpen} onOpenChange={(open) => { setManualUploadOpen(open); if (!open) setManualUploadFile(null); }}>
+        <DialogContent data-testid="dialog-manual-upload">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-primary" />
+              Ręczne dodanie faktury Vectra
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
+              Użyj tej funkcji gdy portal Vectra nie synchronizuje się automatycznie (np. wymaga JavaScript/SPA). Pobierz fakturę z portalu Vectra i prześlij ją tutaj.
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Konto Vectra *</label>
+              <Select
+                value={manualForm.vectraAccountId}
+                onValueChange={(v) => setManualForm((f) => ({ ...f, vectraAccountId: v }))}
+              >
+                <SelectTrigger data-testid="select-manual-account">
+                  <SelectValue placeholder="Wybierz konto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>{a.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Numer faktury *</label>
+              <Input
+                placeholder="np. FV/2025/01/001"
+                value={manualForm.invoiceNumber}
+                onChange={(e) => setManualForm((f) => ({ ...f, invoiceNumber: e.target.value }))}
+                data-testid="input-manual-invoice-number"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Data faktury</label>
+                <Input
+                  type="date"
+                  value={manualForm.invoiceDate}
+                  onChange={(e) => setManualForm((f) => ({ ...f, invoiceDate: e.target.value }))}
+                  data-testid="input-manual-invoice-date"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Kwota (PLN)</label>
+                <Input
+                  placeholder="np. 89,99"
+                  value={manualForm.amount}
+                  onChange={(e) => setManualForm((f) => ({ ...f, amount: e.target.value }))}
+                  data-testid="input-manual-amount"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Okres rozliczeniowy</label>
+              <Input
+                placeholder="np. 2025-01"
+                value={manualForm.period}
+                onChange={(e) => setManualForm((f) => ({ ...f, period: e.target.value }))}
+                data-testid="input-manual-period"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Plik PDF (opcjonalnie)</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => setManualUploadFile(e.target.files?.[0] ?? null)}
+                  data-testid="input-manual-pdf-file"
+                  className="text-sm"
+                />
+                {manualUploadFile && (
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{manualUploadFile.name}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualUploadOpen(false)}>Anuluj</Button>
+            <Button onClick={submitManualUpload} disabled={manualUploading} data-testid="button-manual-upload-submit">
+              {manualUploading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+              Dodaj fakturę
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Instrukcja Sheet */}
       <Sheet open={instrukcjaOpen} onOpenChange={setInstrukcjaOpen}>

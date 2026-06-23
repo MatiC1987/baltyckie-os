@@ -16561,6 +16561,63 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // POST /api/vectra/invoices/manual-upload — manual PDF invoice upload with metadata
+  app.post('/api/vectra/invoices/manual-upload', isAuthenticated, async (req, res) => {
+    try {
+      const multer = (await import('multer')).default;
+      const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+      await new Promise<void>((resolve, reject) => {
+        upload.single('file')(req as any, res as any, (err: any) => {
+          if (err) reject(err); else resolve();
+        });
+      });
+
+      const { vectraAccountId, invoiceNumber, invoiceDate, amount, period } = req.body;
+      if (!vectraAccountId || !invoiceNumber) {
+        return res.status(400).json({ message: 'vectraAccountId i invoiceNumber są wymagane' });
+      }
+      const accountId = Number(vectraAccountId);
+      const account = await storage.getVectraAccount(accountId);
+      if (!account) return res.status(404).json({ message: 'Konto Vectra nie istnieje' });
+
+      const existing = await storage.getVectraInvoiceByNumber(accountId, invoiceNumber);
+      if (existing) return res.status(409).json({ message: `Faktura ${invoiceNumber} już istnieje dla tego konta` });
+
+      let objectPath: string | null = null;
+      const file = (req as any).file as { buffer: Buffer; mimetype: string } | undefined;
+      const privateDir = process.env.PRIVATE_OBJECT_DIR || '';
+
+      if (file && file.buffer && file.buffer.length > 0 && privateDir) {
+        try {
+          const { objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');
+          const normalizedDir = privateDir.startsWith('/') ? privateDir.slice(1) : privateDir;
+          const pathParts = normalizedDir.split('/');
+          const bucketName = pathParts[0];
+          const baseKey = pathParts.slice(1).join('/');
+          const fileName = `vectra-invoices/${accountId}/${invoiceNumber.replace(/\//g, '-')}.pdf`;
+          const fullKey = baseKey ? `${baseKey}/${fileName}` : fileName;
+          const osFile = osClient.bucket(bucketName).file(fullKey);
+          await osFile.save(file.buffer, { contentType: 'application/pdf' });
+          objectPath = `${bucketName}/${fullKey}`;
+        } catch (e) {
+          console.error('[vectra] Błąd zapisu PDF w manual-upload:', e);
+        }
+      }
+
+      const invoice = await storage.createVectraInvoice({
+        vectraAccountId: accountId,
+        invoiceNumber,
+        invoiceDate: invoiceDate || null,
+        amount: amount || null,
+        period: period || null,
+        objectPath,
+      });
+
+      console.log(`[vectra] Ręcznie dodano fakturę: ${invoiceNumber} (konto #${accountId})`);
+      res.json(invoice);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // GET /api/vectra/debug/:accountId — returns diagnostic info without storing anything
   app.get('/api/vectra/debug/:accountId', isAuthenticated, async (req, res) => {
     try {
