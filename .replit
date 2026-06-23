@@ -47,7 +47,6 @@ integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_database:1.0.
 [userenv.shared]
 VAPID_PUBLIC_KEY = "BBAW7z7LGHt9jGcn3D8JFCGww5VNIPbq2nnrVUGStuhLhgq-j_ouUMOCYREkWcBnxPv4RxbIiQBFwU6m_jY53Xk"
 VAPID_SUBJECT = "mailto:mateusz.cieslak@baltyckie.pl"
-VECTRA_ENCRYPT_KEY = "e8071f37042f5578855a66c5c7e714b29a43762cba5d8ab8d73263badcd6d3e3"
 
 [postMerge]
 path = "scripts/post-merge.sh"
