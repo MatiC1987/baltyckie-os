@@ -76,9 +76,6 @@ import {
   dashboardWidgetConfigs,
   gocardlessConnections, GocardlessConnection, InsertGocardlessConnection,
   extraRevenues, ExtraRevenue, InsertExtraRevenue,
-  vectraAccounts, VectraAccount, InsertVectraAccount,
-  vectraInvoices, VectraInvoice, InsertVectraInvoice,
-  vectraSyncLogs, VectraSyncLog, InsertVectraSyncLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, ilike, count, min, max, type SQL } from "drizzle-orm";
@@ -560,19 +557,6 @@ export interface IStorage {
   updateExtraRevenue(id: number, data: Partial<InsertExtraRevenue>): Promise<ExtraRevenue | undefined>;
   deleteExtraRevenue(id: number): Promise<void>;
 
-  // Vectra
-  getVectraAccounts(): Promise<VectraAccount[]>;
-  getVectraAccount(id: number): Promise<VectraAccount | undefined>;
-  createVectraAccount(data: InsertVectraAccount): Promise<VectraAccount>;
-  updateVectraAccount(id: number, data: Partial<VectraAccount>): Promise<VectraAccount>;
-  deleteVectraAccount(id: number): Promise<void>;
-  getVectraInvoices(accountId?: number): Promise<VectraInvoice[]>;
-  createVectraInvoice(data: InsertVectraInvoice): Promise<VectraInvoice>;
-  getVectraInvoiceByNumber(accountId: number, invoiceNumber: string): Promise<VectraInvoice | undefined>;
-  createVectraSyncLog(data: InsertVectraSyncLog): Promise<VectraSyncLog>;
-  getVectraSyncLogs(limit?: number): Promise<VectraSyncLog[]>;
-  pruneVectraSyncLogs(retentionDays?: number): Promise<number>;
-  getVectraSyncStats(): Promise<{ totalCount: number; firstSyncAt: Date | null; lastSyncAt: Date | null }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2906,88 +2890,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(extraRevenues).where(eq(extraRevenues.id, id));
   }
 
-  // Vectra
-  async getVectraAccounts(): Promise<VectraAccount[]> {
-    return db.select().from(vectraAccounts).orderBy(vectraAccounts.label);
-  }
-
-  async getVectraAccount(id: number): Promise<VectraAccount | undefined> {
-    const [row] = await db.select().from(vectraAccounts).where(eq(vectraAccounts.id, id));
-    return row;
-  }
-
-  async createVectraAccount(data: InsertVectraAccount): Promise<VectraAccount> {
-    const [row] = await db.insert(vectraAccounts).values(data).returning();
-    return row;
-  }
-
-  async updateVectraAccount(id: number, data: Partial<VectraAccount>): Promise<VectraAccount> {
-    const [row] = await db.update(vectraAccounts).set(data).where(eq(vectraAccounts.id, id)).returning();
-    return row;
-  }
-
-  async deleteVectraAccount(id: number): Promise<void> {
-    await db.delete(vectraAccounts).where(eq(vectraAccounts.id, id));
-  }
-
-  async getVectraInvoices(accountId?: number): Promise<VectraInvoice[]> {
-    if (accountId) {
-      return db.select().from(vectraInvoices)
-        .where(eq(vectraInvoices.vectraAccountId, accountId))
-        .orderBy(desc(vectraInvoices.downloadedAt));
-    }
-    return db.select().from(vectraInvoices).orderBy(desc(vectraInvoices.downloadedAt));
-  }
-
-  async createVectraInvoice(data: InsertVectraInvoice): Promise<VectraInvoice> {
-    const [row] = await db.insert(vectraInvoices).values(data).returning();
-    return row;
-  }
-
-  async getVectraInvoiceByNumber(accountId: number, invoiceNumber: string): Promise<VectraInvoice | undefined> {
-    const [row] = await db.select().from(vectraInvoices)
-      .where(and(eq(vectraInvoices.vectraAccountId, accountId), eq(vectraInvoices.invoiceNumber, invoiceNumber)));
-    return row;
-  }
-
-  async createVectraSyncLog(data: InsertVectraSyncLog): Promise<VectraSyncLog> {
-    const [row] = await db.insert(vectraSyncLogs).values(data).returning();
-    this.pruneVectraSyncLogs().catch((e: any) =>
-      console.error("[storage] Błąd czyszczenia logów Vectra:", e.message)
-    );
-    return row;
-  }
-
-  async getVectraSyncLogs(limit = 30): Promise<VectraSyncLog[]> {
-    return db.select().from(vectraSyncLogs)
-      .orderBy(desc(vectraSyncLogs.syncedAt))
-      .limit(limit);
-  }
-
-  async pruneVectraSyncLogs(retentionDays = 90): Promise<number> {
-    const result = await db.delete(vectraSyncLogs)
-      .where(sql`${vectraSyncLogs.syncedAt} < NOW() - (${retentionDays} || ' days')::INTERVAL`)
-      .returning({ id: vectraSyncLogs.id });
-    const deleted = result.length;
-    if (deleted > 0) {
-      console.log(`[storage] Usunięto ${deleted} starych logów synchronizacji Vectra (retencja: ${retentionDays} dni)`);
-    }
-    return deleted;
-  }
-
-  async getVectraSyncStats(): Promise<{ totalCount: number; firstSyncAt: Date | null; lastSyncAt: Date | null }> {
-    const result = await db.select({
-      totalCount: count(),
-      firstSyncAt: min(vectraSyncLogs.syncedAt),
-      lastSyncAt: max(vectraSyncLogs.syncedAt),
-    }).from(vectraSyncLogs);
-    const row = result[0];
-    return {
-      totalCount: Number(row?.totalCount ?? 0),
-      firstSyncAt: row?.firstSyncAt ?? null,
-      lastSyncAt: row?.lastSyncAt ?? null,
-    };
-  }
 }
 
 export const storage = new DatabaseStorage();

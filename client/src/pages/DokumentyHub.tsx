@@ -1,17 +1,15 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnimatedTabContent } from "@/components/AnimatedTabContent";
-import { FileText, FileSpreadsheet, Home, Tv } from "lucide-react";
+import { FileText, FileSpreadsheet, Home } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DokumentyKsiegowe, AirbnbInvoicesTab } from "@/pages/DokumentyKsiegowe";
 import { Invoices } from "@/pages/Invoices";
-import { VectraTab } from "@/pages/VectraTab";
 
 const TABS = [
   { value: "dokumenty", label: "Dokumenty księgowe", icon: FileText },
   { value: "faktury", label: "Faktury", icon: FileSpreadsheet },
   { value: "airbnb", label: "AirBnb", icon: Home },
-  { value: "vectra", label: "Vectra", icon: Tv },
 ];
 
 export default function DokumentyHub() {
@@ -65,9 +63,6 @@ export default function DokumentyHub() {
           </AnimatedTabContent>
           <AnimatedTabContent value="airbnb" activeValue={activeTab}>
             <AirbnbInvoicesTab />
-          </AnimatedTabContent>
-          <AnimatedTabContent value="vectra" activeValue={activeTab}>
-            <VectraTab />
           </AnimatedTabContent>
         </Tabs>
       </div>

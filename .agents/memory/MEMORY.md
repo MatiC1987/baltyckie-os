@@ -2,5 +2,3 @@
 - [pgPool vs db.execute](pgpool-vs-db-execute.md) — parameteryzowane SQL w routes.ts: zawsze pgPool.query(q,params), nigdy db.execute(sql.raw(q,params))
 - [Cennik module](cennik-module.md) — architektura modułu cennika (#154/#155): tabele DB, routes, komponenty UI, zakładka AI
 - [executeSql vs DATABASE_URL](executesql-vs-database-url.md) — executeSql NIE łączy się z Neon; jedyna droga do prod Neon to endpoint + curl
-- [Vectra docs update rule](vectra-docs-update-rule.md) — każda zmiana w module Vectra musi aktualizować docs/instrukcja-vectra.md przed mark_task_complete
-- [Vectra SSL cert fix](vectra-ssl-cert.md) — online.vectra.pl ma wygasły certyfikat SSL; fix: undici Agent z rejectUnauthorized:false jako dispatcher w vectra-scraper.ts
