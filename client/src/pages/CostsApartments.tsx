@@ -1199,12 +1199,15 @@ export function CostsApartmentsContent({ embedded = false, externalYear, onTotal
                     <span className="text-muted-foreground">Zrealizowane: <span className="font-medium">{pct}%</span></span>
                     <span className={`font-semibold tabular-nums ${saldoColor(saldo)}`}>{saldo >= 0 ? "+" : ""}{formatNumCompact(saldo)} zł</span>
                   </div>
-                  {year === currentYear && (
-                    <div className="flex justify-between text-xs pt-1 border-t border-border/50">
-                      <span className="text-muted-foreground">{MONTHS[currentMonth]}: R</span>
-                      <span className="font-semibold tabular-nums">{formatNumCompact(monthTot.r)} zł</span>
-                    </div>
-                  )}
+                  {year === currentYear && (monthTot.p !== 0 || monthTot.r !== 0) && (() => {
+                    const mSaldo = monthTot.p - monthTot.r;
+                    return (
+                      <div className="flex justify-between text-[10px] pt-1 border-t border-dashed border-border/40">
+                        <span className="text-muted-foreground">{MONTHS[currentMonth]}: R:{formatNumCompact(monthTot.r)} / P:{formatNumCompact(monthTot.p)}</span>
+                        <span className={`font-semibold tabular-nums ${saldoColor(mSaldo)}`}>{mSaldo >= 0 ? "+" : ""}{formatNumCompact(mSaldo)}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </CardContent>
             </Card>
