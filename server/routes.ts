@@ -16494,7 +16494,8 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
       const invoices = await storage.getVectraInvoices();
       const inv = invoices.find(i => i.id === Number(req.params.id));
       if (!inv || !inv.objectPath) return res.status(404).json({ message: 'Faktura lub plik nie znaleziony' });
-      const parts = inv.objectPath.split('/');
+      const normalizedPath = inv.objectPath.startsWith('/') ? inv.objectPath.slice(1) : inv.objectPath;
+      const parts = normalizedPath.split('/');
       const bucketName = parts[0];
       const objectName = parts.slice(1).join('/');
       const { objectStorageClient: osClient } = await import('./replit_integrations/object_storage/objectStorage');

@@ -168,7 +168,8 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
           if (downloadRes && downloadRes.headers()["content-type"]?.includes("pdf")) {
             const pdfBuffer = await downloadRes.body();
             const { objectStorageClient: osClient } = await import("./replit_integrations/object_storage/objectStorage");
-            const pathParts = privateDir.split("/");
+            const normalizedDir = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
+            const pathParts = normalizedDir.split("/");
             const bucketName = pathParts[0];
             const baseKey = pathParts.slice(1).join("/");
             const fileName = `vectra-invoices/${accountId}/${invoiceNumber.replace(/\//g, "-")}.pdf`;
