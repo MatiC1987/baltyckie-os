@@ -99,6 +99,12 @@ function formatNum(v: number): string {
   return v.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+function formatNumCompact(v: number): string {
+  if (v === 0) return "0";
+  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return v.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 function deviationColor(v: number): string {
   if (v > 0) return "text-emerald-600 dark:text-emerald-400";
   if (v < 0) return "text-red-600 dark:text-red-400";
@@ -556,6 +562,17 @@ function LocationGroup({ locationName, apartments, expandedAptId, onApartmentCli
     return { forecast: fc, actual: act };
   }, [apartments]);
 
+  const monthTotals = useMemo(() => {
+    if (year !== currentYear) return null;
+    let fc = 0, act = 0;
+    for (const apt of apartments) {
+      fc += apt.months[currentMonth]?.forecast || 0;
+      act += apt.months[currentMonth]?.actual || 0;
+    }
+    if (fc === 0 && act === 0) return null;
+    return { forecast: fc, actual: act };
+  }, [apartments, year, currentYear, currentMonth]);
+
   return (
     <div className="mb-4" data-testid={`location-group-${locationName}`}>
       <button
@@ -570,6 +587,19 @@ function LocationGroup({ locationName, apartments, expandedAptId, onApartmentCli
           Plan: {formatNum(yearTotals.forecast)} PLN | Realizacja: {formatNum(yearTotals.actual)} PLN
         </span>
       </button>
+      {monthTotals && (() => {
+        const mSaldo = monthTotals.actual - monthTotals.forecast;
+        return (
+          <div className="flex justify-between items-center text-[11px] px-3 py-1 border-t border-dashed border-border/40" data-testid={`month-row-${locationName}`}>
+            <span className="text-muted-foreground">
+              {MONTHS[currentMonth]}: R:{formatNumCompact(monthTotals.actual)} / P:{formatNumCompact(monthTotals.forecast)}
+            </span>
+            <span className={`font-semibold tabular-nums ${deviationColor(mSaldo)}`}>
+              {mSaldo >= 0 ? "+" : ""}{formatNumCompact(mSaldo)}
+            </span>
+          </div>
+        );
+      })()}
 
       {open && (
         <>
