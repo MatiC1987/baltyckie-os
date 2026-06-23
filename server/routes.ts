@@ -16508,6 +16508,15 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // GET /api/vectra/debug/:accountId — returns diagnostic info without storing anything
+  app.get('/api/vectra/debug/:accountId', isAuthenticated, async (req, res) => {
+    try {
+      const { debugVectraAccount } = await import('./vectra-scraper');
+      const result = await debugVectraAccount(Number(req.params.accountId));
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // POST /api/vectra/sync/:accountId
   app.post('/api/vectra/sync/:accountId', isAuthenticated, async (req, res) => {
     try {

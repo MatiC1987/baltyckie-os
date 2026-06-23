@@ -157,7 +157,27 @@ Każde konto wyświetla status ostatniej synchronizacji w formie kolorowego znac
 
 ---
 
-## 8. Najczęstsze błędy i rozwiązania
+## 8. Diagnostyka — endpoint debugowania
+
+Jeśli synchronizacja nie działa poprawnie, administrator może uruchomić tryb diagnostyczny dla wybranego konta — bez zapisywania żadnych danych:
+
+```
+GET /api/vectra/debug/:accountId
+```
+
+Odpowiedź zawiera:
+- Statusy HTTP i adresy URL na każdym kroku (strona logowania → formularz → strona faktur)
+- Listę cookies sesji po logowaniu
+- Wyniki każdego selektora HTML (`table tbody tr`, `[class*='row']`, `a[href*='pdf']`, itp.)
+- Wskaźniki SPA (React/Angular/Vue/Next.js — oznaczają brak treści serwer-renderowanej)
+- Snippety HTML (pierwsze 800 znaków każdej strony)
+- Wykrytą strukturę danych (`detectedStructure`)
+
+Dodatkowo każdy sync wypisuje szczegółowe logi do konsoli serwera (prefix `[vectra]`), widoczne w logach deploymentu.
+
+---
+
+## 9. Najczęstsze błędy i rozwiązania
 
 ### Problem: Przycisk „Synchronizuj" jest nieaktywny
 **Rozwiązanie:** Sprawdź, czy lista kont nie jest pusta. Przycisk „Synchronizuj wszystkie" wymaga co najmniej jednego dodanego konta.
