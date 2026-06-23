@@ -67,7 +67,10 @@ import {
   History,
   Zap,
   User,
+  Info,
+  Loader2,
 } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface VectraAccount {
   id: number;
@@ -103,6 +106,26 @@ interface VectraSyncLog {
   errorCount: number;
   errorDetails: string | null;
   accounts: string | null;
+}
+
+interface VectraDebugResult {
+  loginPageStatus: number;
+  loginPageUrl: string;
+  loginPageSnippet: string;
+  hasCsrf: boolean;
+  csrfName?: string;
+  formAction?: string;
+  loginResultStatus: number;
+  loginResultUrl: string;
+  loginResultSnippet: string;
+  cookiesAfterLogin: string[];
+  invoicesPageStatus: number;
+  invoicesPageUrl: string;
+  invoicesPageSnippet: string;
+  detectedStructure: string;
+  spaIndicators: string[];
+  tableRowCount: number;
+  selectorResults: Record<string, number>;
 }
 
 const accountFormSchema = z.object({
@@ -329,6 +352,10 @@ export function VectraTab() {
   const [filterAccount, setFilterAccount] = useState<string>("all");
   const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
+  const [diagnosticAccount, setDiagnosticAccount] = useState<VectraAccount | null>(null);
+  const [diagnosticData, setDiagnosticData] = useState<VectraDebugResult | null>(null);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<VectraAccount[]>({
     queryKey: ["/api/vectra/accounts"],
@@ -451,6 +478,29 @@ export function VectraTab() {
     }
   }
 
+  async function openDiagnostic(account: VectraAccount) {
+    setDiagnosticAccount(account);
+    setDiagnosticData(null);
+    setDiagnosticError(null);
+    setDiagnosticLoading(true);
+    try {
+      const res = await fetch(`/api/vectra/debug/${account.id}`, {
+        credentials: "include",
+        headers: { ...getAuthHeaders() },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDiagnosticError(data.message || "Nieznany błąd");
+      } else {
+        setDiagnosticData(data);
+      }
+    } catch (err: any) {
+      setDiagnosticError(err.message || "Błąd połączenia");
+    } finally {
+      setDiagnosticLoading(false);
+    }
+  }
+
   const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a.label]));
 
   return (
@@ -527,14 +577,25 @@ export function VectraTab() {
                             onClick={() => syncAccount(account.id)}
                             disabled={syncingIds.has(account.id)}
                             data-testid={`button-sync-${account.id}`}
+                            title="Synchronizuj"
                           >
                             <RefreshCw className={`h-3.5 w-3.5 ${syncingIds.has(account.id) ? "animate-spin" : ""}`} />
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => openDiagnostic(account)}
+                            data-testid={`button-diagnostic-${account.id}`}
+                            title="Diagnostyka"
+                          >
+                            <Info className="h-3.5 w-3.5 text-blue-500" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => openEdit(account)}
                             data-testid={`button-edit-${account.id}`}
+                            title="Edytuj"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -543,6 +604,7 @@ export function VectraTab() {
                             size="sm"
                             onClick={() => deleteMutation.mutate(account.id)}
                             data-testid={`button-delete-${account.id}`}
+                            title="Usuń"
                           >
                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
                           </Button>
@@ -722,6 +784,160 @@ export function VectraTab() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diagnostic Modal */}
+      <Dialog open={!!diagnosticAccount} onOpenChange={(open) => { if (!open) { setDiagnosticAccount(null); setDiagnosticData(null); setDiagnosticError(null); } }}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-diagnostic">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5 text-blue-500" />
+              Diagnostyka konta: {diagnosticAccount?.label}
+            </DialogTitle>
+          </DialogHeader>
+
+          {diagnosticLoading && (
+            <div className="flex items-center justify-center py-10 gap-3 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>Pobieranie danych diagnostycznych…</span>
+            </div>
+          )}
+
+          {diagnosticError && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{diagnosticError}</span>
+            </div>
+          )}
+
+          {diagnosticData && (
+            <ScrollArea className="max-h-[60vh]">
+              <div className="space-y-4 pr-2">
+
+                {/* SPA warning */}
+                {diagnosticData.spaIndicators.length > 0 && (
+                  <div className="flex gap-2 rounded-md border border-yellow-400/60 bg-yellow-50 dark:bg-yellow-950/30 p-3 text-sm text-yellow-800 dark:text-yellow-300">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Wykryto wskaźniki SPA — synchronizacja może nie działać</p>
+                      <ul className="mt-1 list-disc list-inside space-y-0.5">
+                        {diagnosticData.spaIndicators.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* HTTP statuses */}
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Statusy HTTP</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: "Strona logowania", status: diagnosticData.loginPageStatus, url: diagnosticData.loginPageUrl },
+                      { label: "Po zalogowaniu", status: diagnosticData.loginResultStatus, url: diagnosticData.loginResultUrl },
+                      { label: "Strona faktur", status: diagnosticData.invoicesPageStatus, url: diagnosticData.invoicesPageUrl },
+                    ].map(({ label, status, url }) => (
+                      <div key={label} className="rounded border p-2 text-sm">
+                        <p className="text-muted-foreground text-xs">{label}</p>
+                        <Badge
+                          variant={status >= 200 && status < 300 ? "default" : "destructive"}
+                          className="mt-1 text-xs"
+                          data-testid={`badge-status-${label}`}
+                        >
+                          {status}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground mt-1 truncate" title={url}>{url}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Login page info */}
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Formularz logowania</p>
+                  <div className="rounded border p-2 text-sm space-y-1">
+                    <div className="flex gap-2 flex-wrap">
+                      <span className="text-muted-foreground">CSRF:</span>
+                      <Badge variant={diagnosticData.hasCsrf ? "default" : "secondary"} className="text-xs">
+                        {diagnosticData.hasCsrf ? `Tak (${diagnosticData.csrfName})` : "Nie wykryto"}
+                      </Badge>
+                    </div>
+                    {diagnosticData.formAction && (
+                      <div className="flex gap-2">
+                        <span className="text-muted-foreground text-xs">Action:</span>
+                        <span className="text-xs font-mono break-all">{diagnosticData.formAction}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cookies */}
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">
+                    Cookies po logowaniu ({diagnosticData.cookiesAfterLogin.length})
+                  </p>
+                  {diagnosticData.cookiesAfterLogin.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">Brak cookies — logowanie mogło się nie udać</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {diagnosticData.cookiesAfterLogin.map((c, i) => (
+                        <Badge key={i} variant="outline" className="text-xs font-mono">{c}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Detected structure */}
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Wykryta struktura strony</p>
+                  <div className="rounded border p-2 text-sm flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">{diagnosticData.detectedStructure}</Badge>
+                    <span className="text-muted-foreground text-xs">Wierszy tabeli: {diagnosticData.tableRowCount}</span>
+                  </div>
+                </div>
+
+                {/* Selector results */}
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Wyniki selektorów HTML</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {Object.entries(diagnosticData.selectorResults).map(([selector, count]) => (
+                      <div key={selector} className="flex justify-between rounded border px-2 py-1 text-xs">
+                        <span className="font-mono text-muted-foreground truncate mr-2" title={selector}>{selector}</span>
+                        <span className={`font-semibold shrink-0 ${count > 0 ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* HTML snippets */}
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Snippet HTML — strona logowania</p>
+                  <pre className="rounded border bg-muted p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{diagnosticData.loginPageSnippet}</pre>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Snippet HTML — po zalogowaniu</p>
+                  <pre className="rounded border bg-muted p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{diagnosticData.loginResultSnippet}</pre>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Snippet HTML — strona faktur</p>
+                  <pre className="rounded border bg-muted p-2 text-xs font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{diagnosticData.invoicesPageSnippet}</pre>
+                </div>
+
+              </div>
+            </ScrollArea>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setDiagnosticAccount(null); setDiagnosticData(null); setDiagnosticError(null); }}
+              data-testid="button-close-diagnostic"
+            >
+              Zamknij
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
