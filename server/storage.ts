@@ -81,7 +81,7 @@ import {
   vectraSyncLogs, VectraSyncLog, InsertVectraSyncLog,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, ilike, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, gte, lte, sql, isNotNull, isNull, inArray, ilike, count, min, max, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // Users (optional if auth handles it separately, but good to have)
@@ -572,6 +572,7 @@ export interface IStorage {
   createVectraSyncLog(data: InsertVectraSyncLog): Promise<VectraSyncLog>;
   getVectraSyncLogs(limit?: number): Promise<VectraSyncLog[]>;
   pruneVectraSyncLogs(retentionDays?: number): Promise<number>;
+  getVectraSyncStats(): Promise<{ totalCount: number; firstSyncAt: Date | null; lastSyncAt: Date | null }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2972,6 +2973,20 @@ export class DatabaseStorage implements IStorage {
       console.log(`[storage] Usunięto ${deleted} starych logów synchronizacji Vectra (retencja: ${retentionDays} dni)`);
     }
     return deleted;
+  }
+
+  async getVectraSyncStats(): Promise<{ totalCount: number; firstSyncAt: Date | null; lastSyncAt: Date | null }> {
+    const result = await db.select({
+      totalCount: count(),
+      firstSyncAt: min(vectraSyncLogs.syncedAt),
+      lastSyncAt: max(vectraSyncLogs.syncedAt),
+    }).from(vectraSyncLogs);
+    const row = result[0];
+    return {
+      totalCount: Number(row?.totalCount ?? 0),
+      firstSyncAt: row?.firstSyncAt ?? null,
+      lastSyncAt: row?.lastSyncAt ?? null,
+    };
   }
 }
 

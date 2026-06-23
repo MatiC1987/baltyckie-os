@@ -69,6 +69,7 @@ import {
   User,
   Info,
   Loader2,
+  BarChart2,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -95,6 +96,12 @@ interface VectraInvoice {
 interface VectraScheduleConfig {
   enabled: boolean;
   hour: number;
+}
+
+interface VectraSyncStats {
+  totalCount: number;
+  firstSyncAt: string | null;
+  lastSyncAt: string | null;
 }
 
 interface VectraSyncLog {
@@ -361,6 +368,11 @@ export function VectraTab() {
     queryKey: ["/api/vectra/accounts"],
   });
 
+  const { data: syncStats } = useQuery<VectraSyncStats>({
+    queryKey: ["/api/vectra/sync-stats"],
+    refetchInterval: 60000,
+  });
+
   const { data: invoices = [], isLoading: invoicesLoading } = useQuery<VectraInvoice[]>({
     queryKey: ["/api/vectra/invoices", filterAccount],
     queryFn: () => {
@@ -427,6 +439,7 @@ export function VectraTab() {
       setSyncingIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
       queryClient.invalidateQueries({ queryKey: ["/api/vectra/accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vectra/invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vectra/sync-stats"] });
     }
   }
 
@@ -451,6 +464,7 @@ export function VectraTab() {
       setSyncingAll(false);
       queryClient.invalidateQueries({ queryKey: ["/api/vectra/accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vectra/invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vectra/sync-stats"] });
     }
   }
 
@@ -558,6 +572,7 @@ export function VectraTab() {
                     <TableHead>Etykieta</TableHead>
                     <TableHead>Login</TableHead>
                     <TableHead>Status synchronizacji</TableHead>
+                    <TableHead>Podsumowanie sync</TableHead>
                     <TableHead className="text-right">Akcje</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -568,6 +583,28 @@ export function VectraTab() {
                       <TableCell className="text-muted-foreground">{account.username}</TableCell>
                       <TableCell>
                         <SyncStatusBadge status={account.lastSyncStatus} syncAt={account.lastSyncAt} />
+                      </TableCell>
+                      <TableCell>
+                        {syncStats ? (
+                          <div className="flex flex-col gap-0.5" data-testid={`sync-stats-${account.id}`}>
+                            <div className="flex items-center gap-1.5">
+                              <BarChart2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                              <span className="text-sm font-medium">
+                                {syncStats.totalCount}{" "}
+                                <span className="text-muted-foreground font-normal">
+                                  {syncStats.totalCount === 1 ? "synchronizacja" : syncStats.totalCount < 5 ? "synchronizacje" : "synchronizacji"}
+                                </span>
+                              </span>
+                            </div>
+                            {syncStats.firstSyncAt && (
+                              <span className="text-xs text-muted-foreground pl-5">
+                                od {format(new Date(syncStats.firstSyncAt), "dd.MM.yyyy", { locale: pl })}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">

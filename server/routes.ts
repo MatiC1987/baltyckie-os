@@ -16621,6 +16621,14 @@ Podaj rekomendacje dla KAŻDEGO dnia z podanego zakresu. Bez dodatkowego tekstu 
     } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
+  // GET /api/vectra/sync-stats
+  app.get('/api/vectra/sync-stats', isAuthenticated, async (_req, res) => {
+    try {
+      const stats = await storage.getVectraSyncStats();
+      res.json(stats);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
   // GET /api/vectra/schedule
   app.get('/api/vectra/schedule', isAuthenticated, async (_req, res) => {
     try {
