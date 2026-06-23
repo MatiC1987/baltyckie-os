@@ -380,12 +380,18 @@ const API_AUTH_ENDPOINTS = [
 const API_INVOICES_ENDPOINTS = [
   "/api/invoices",
   "/api/v1/invoices",
+  "/api/v2/invoices",
   "/api/documents/invoices",
+  "/api/payments/invoices",
+  "/api/payment/invoices",
+  "/api/billing/invoices",
+  "/api/billing",
+  "/api/account/invoices",
   "/api/faktury",
   "/api/v1/faktury",
   "/api/documents",
-  "/api/billing/invoices",
-  "/api/account/invoices",
+  "/api/contracts/invoices",
+  "/api/finance/invoices",
 ];
 
 export async function probeVectraApi(
@@ -475,8 +481,8 @@ export async function debugVectraAccount(accountId: number): Promise<DebugResult
   const { load } = await import("cheerio");
   const jar = new CookieJar();
 
-  const LOGIN_URL = "https://ebok.vectra.pl/logowanie";
-  const INVOICES_URL = "https://ebok.vectra.pl/faktury";
+  const LOGIN_URL = "https://ebok.vectra.pl/login";
+  const INVOICES_URL = "https://ebok.vectra.pl/invoice";
 
   const loginPageRes = await httpGet(LOGIN_URL, jar);
   const $login = load(loginPageRes.text);
@@ -620,7 +626,8 @@ async function syncVectraAccountViaApi(
               "Accept": "application/pdf,*/*",
               "User-Agent": BASE_HEADERS["User-Agent"],
             },
-          }
+            dispatcher: vectraAgent,
+          } as RequestInit
         );
         jar.addFromHeaders(pdfRes.headers);
         const ct = pdfRes.headers.get("content-type") || "";
@@ -682,8 +689,8 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
     const { load } = await import("cheerio");
     const jar = new CookieJar();
 
-    const LOGIN_URL = "https://ebok.vectra.pl/logowanie";
-    const INVOICES_URL = "https://ebok.vectra.pl/faktury";
+    const LOGIN_URL = "https://ebok.vectra.pl/login";
+    const INVOICES_URL = "https://ebok.vectra.pl/invoice";
 
     console.log(`[vectra] Pobieram stronę logowania: ${LOGIN_URL}`);
     const loginPageRes = await httpGet(LOGIN_URL, jar);
