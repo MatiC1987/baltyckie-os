@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -49,7 +49,7 @@ import type { Reservation, Lease } from "@shared/schema";
 import { Link } from "wouter";
 
 import {
-  loadWidgetPrefs, saveWidgetPrefs, calcRemaining, getGreeting,
+  loadWidgetPrefs, saveWidgetPrefs, mergeWidgetPrefs, calcRemaining, getGreeting,
   type WidgetPrefs, type CompanyBalance, type SubleasePaymentExtended, type DashboardReminders,
 } from "@/components/dashboard/widget-utils";
 import { QuickActions } from "@/components/dashboard/QuickActions";
@@ -121,13 +121,26 @@ export default function Dashboard() {
   const { data: balanceForecastData } = useQuery<{ currentBalance: number; months: { year: number; month: number; endBalance: number; revenueForecast: number; revenueActual: number; aptCostRemaining: number; opCostRemaining: number; surcharges: number }[] }>({ queryKey: ["/api/balance-forecast"] });
 
   const { data: reminders } = useQuery<DashboardReminders>({ queryKey: ["/api/dashboard-reminders"] });
+  const { data: dbWidgetPrefs } = useQuery<WidgetPrefs | null>({ queryKey: ["/api/dashboard-widgets"] });
 
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingBalance, setEditingBalance] = useState("");
   const [widgetPrefs, setWidgetPrefs] = useState(loadWidgetPrefs);
   const [showWidgetSettings, setShowWidgetSettings] = useState(false);
+  const dbPrefsApplied = useRef(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (dbPrefsApplied.current) return;
+    if (dbWidgetPrefs === undefined) return;
+    dbPrefsApplied.current = true;
+    if (dbWidgetPrefs && typeof dbWidgetPrefs === "object") {
+      const merged = mergeWidgetPrefs(dbWidgetPrefs);
+      saveWidgetPrefs(merged);
+      setWidgetPrefs(merged);
+    }
+  }, [dbWidgetPrefs]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

@@ -62,6 +62,18 @@ export function saveWidgetPrefs(prefs: WidgetPrefs) {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 }
 
+export function mergeWidgetPrefs(saved: Partial<WidgetPrefs>): WidgetPrefs {
+  const defaults = getDefaultPrefs();
+  const order = [...(saved.order || [])];
+  for (const w of WIDGET_REGISTRY) {
+    if (!order.includes(w.id)) order.push(w.id);
+  }
+  return {
+    visible: { ...defaults.visible, ...(saved.visible || {}) },
+    order: order.filter(id => WIDGET_REGISTRY.some(w => w.id === id)),
+  };
+}
+
 export type CompanyBalanceAccount = {
   id: number;
   name: string;
