@@ -1423,6 +1423,59 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Link a reservation to a customer manually
+  app.patch("/api/reservations/:id/link-customer", isAuthenticated, async (req, res) => {
+    try {
+      const reservationId = Number(req.params.id);
+      const { customerId } = req.body;
+      if (!customerId || isNaN(Number(customerId))) {
+        return res.status(400).json({ message: "customerId jest wymagane" });
+      }
+      const customerIdNum = Number(customerId);
+      const allReservations = await storage.getReservations();
+      const reservation = allReservations.find(r => r.id === reservationId);
+      if (!reservation) return res.status(404).json({ message: "Nie znaleziono rezerwacji" });
+      const customer = await storage.getCustomer(customerIdNum);
+      if (!customer) return res.status(404).json({ message: "Nie znaleziono klienta" });
+
+      const updated = await storage.updateReservation(reservationId, { ...reservation, customerId: customerIdNum });
+      logActivity(req, "update", "reservation", reservationId, reservation.guestName, `Przypisano do klienta ${customer.firstName} ${customer.lastName}`);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Search reservations by guest name or reservation number (for manual linking)
+  app.get("/api/reservations/search", isAuthenticated, async (req, res) => {
+    try {
+      const q = ((req.query.q as string) || "").trim().toLowerCase();
+      if (!q || q.length < 2) return res.json([]);
+      const allReservations = await storage.getReservations();
+      const apartments = await storage.getApartments();
+      const aptMap = new Map(apartments.map(a => [a.id, a.name]));
+      const matches = allReservations
+        .filter(r =>
+          (r.guestName || "").toLowerCase().includes(q) ||
+          (r.reservationNumber || "").toLowerCase().includes(q)
+        )
+        .slice(0, 20)
+        .map(r => ({
+          id: r.id,
+          reservationNumber: r.reservationNumber,
+          guestName: r.guestName,
+          apartmentName: r.apartmentId ? aptMap.get(r.apartmentId) || "Nieznane" : "Nieznane",
+          startDate: r.startDate,
+          endDate: r.endDate,
+          status: r.status,
+          customerId: r.customerId ?? null,
+        }));
+      res.json(matches);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Leases
   app.get(api.leases.list.path, isAuthenticated, async (req, res) => {
     const leases = await storage.getLeases(req.query.apartmentId ? Number(req.query.apartmentId) : undefined);

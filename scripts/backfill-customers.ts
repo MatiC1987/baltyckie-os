@@ -60,13 +60,24 @@ async function main() {
     const guestName = (res.guestName || "").trim();
     if (!guestName || guestName === "NIEZNANY") { skipped++; continue; }
 
-    // Parse name: assume "LASTNAME FIRSTNAME" or "FIRSTNAME LASTNAME"
+    // Parse name: HotRes format "LASTNAME FIRSTNAME" with support for multi-part surnames
+    // e.g. "DE VRIES ANNA" → lastName="De Vries", firstName="Anna"
     const parts = guestName.split(/\s+/).filter(Boolean);
     if (parts.length < 2) { skipped++; continue; }
 
-    // Treat first token as lastName, rest as firstName (HotRes uses UPPERCASE LASTNAME)
-    const lastName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase();
-    const firstName = parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
+    const PARTICLES = new Set(["DE", "VAN", "DER", "VON", "DI", "DEL", "DELLA", "DOS", "DA", "LA", "LE", "LO", "ZU", "VOM", "TEN", "TER", "MC", "MAC", "O"]);
+    const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+    // Accumulate leading particles + the first non-particle token as the last name
+    let i = 0;
+    while (i < parts.length - 1 && PARTICLES.has(parts[i].toUpperCase())) i++;
+    // Ensure at least one token for last name and at least one for first name
+    const lastNameParts = parts.slice(0, i + 1);
+    const firstNameParts = parts.slice(i + 1);
+    if (firstNameParts.length === 0) { skipped++; continue; }
+
+    const lastName = lastNameParts.map(capitalize).join(" ");
+    const firstName = firstNameParts.map(capitalize).join(" ");
 
     try {
       const { id: customerId, isNew } = await upsertCustomerLocal({

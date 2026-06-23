@@ -7,7 +7,7 @@ import {
   Search, RefreshCw, Download, Users, Mail, Phone, Globe,
   CheckCircle2, XCircle, ChevronRight, Tag, X, Building2,
   CalendarDays, Loader2, MoreHorizontal, Pencil, Trash2,
-  Filter, ArrowUpDown, Plus, BarChart3, ArrowUp, ArrowDown, Upload
+  Filter, ArrowUpDown, Plus, BarChart3, ArrowUp, ArrowDown, Upload, Link2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,17 @@ interface StayHistoryItem {
   source: string | null;
 }
 
+interface LinkSearchResult {
+  id: number;
+  reservationNumber: string;
+  guestName: string;
+  apartmentName: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  customerId: number | null;
+}
+
 interface StayHistoryData {
   history: StayHistoryItem[];
   totalRevenue: number;
@@ -119,6 +130,11 @@ export default function Customers() {
   const [isBackfilling, setIsBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{ updated: number; skipped: number; total: number } | null>(null);
   const backfillFileRef = useRef<HTMLInputElement | null>(null);
+  const [linkSearchOpen, setLinkSearchOpen] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkSearchResults, setLinkSearchResults] = useState<LinkSearchResult[]>([]);
+  const [isLinkSearching, setIsLinkSearching] = useState(false);
+  const linkDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
@@ -244,6 +260,40 @@ export default function Customers() {
     },
     onError: (e: any) => toast({ title: "Błąd usuwania", description: e.message, variant: "destructive" }),
   });
+
+  const linkReservationMutation = useMutation({
+    mutationFn: ({ reservationId, customerId }: { reservationId: number; customerId: number }) =>
+      apiRequest("PATCH", `/api/reservations/${reservationId}/link-customer`, { customerId }),
+    onSuccess: () => {
+      if (selectedCustomer) {
+        qc.invalidateQueries({ queryKey: ["/api/customers", selectedCustomer.id, "reservations"] });
+        qc.invalidateQueries({ queryKey: ["/api/customers"] });
+      }
+      toast({ title: "Rezerwacja przypisana", description: "Rezerwacja została pomyślnie przypisana do klienta." });
+      setLinkSearch("");
+      setLinkSearchResults([]);
+      setLinkSearchOpen(false);
+    },
+    onError: (e: any) => toast({ title: "Błąd przypisania", description: e.message, variant: "destructive" }),
+  });
+
+  const handleLinkSearchChange = (v: string) => {
+    setLinkSearch(v);
+    if (linkDebounceRef.current) clearTimeout(linkDebounceRef.current);
+    if (v.trim().length < 2) { setLinkSearchResults([]); return; }
+    linkDebounceRef.current = setTimeout(async () => {
+      setIsLinkSearching(true);
+      try {
+        const res = await fetch(`/api/reservations/search?q=${encodeURIComponent(v.trim())}`, { credentials: "include" });
+        if (!res.ok) throw new Error(await res.text());
+        setLinkSearchResults(await res.json());
+      } catch (e: any) {
+        toast({ title: "Błąd wyszukiwania", description: e.message, variant: "destructive" });
+      } finally {
+        setIsLinkSearching(false);
+      }
+    }, 350);
+  };
 
   const handleRecalculateStats = async () => {
     setIsRecalculating(true);
@@ -839,9 +889,68 @@ export default function Customers() {
 
                     <Separator className="bg-white/10" />
                     <div>
-                      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <CalendarDays className="h-3.5 w-3.5" /> Historia pobytów
-                      </h3>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                          <CalendarDays className="h-3.5 w-3.5" /> Rezerwacje
+                        </h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs text-[#5ADBFA] hover:text-[#5ADBFA] px-2"
+                          onClick={() => { setLinkSearchOpen(o => !o); setLinkSearch(""); setLinkSearchResults([]); }}
+                          data-testid="button-link-reservation"
+                        >
+                          <Link2 className="h-3 w-3 mr-1" />
+                          Przypisz
+                        </Button>
+                      </div>
+
+                      {linkSearchOpen && (
+                        <div className="mb-3 space-y-2">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                            <Input
+                              value={linkSearch}
+                              onChange={e => handleLinkSearchChange(e.target.value)}
+                              placeholder="Szukaj po nazwisku lub nr rezerwacji..."
+                              className="pl-8 h-8 text-xs"
+                              data-testid="input-link-search"
+                              autoFocus
+                            />
+                            {isLinkSearching && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-slate-400" />}
+                          </div>
+                          {linkSearchResults.length > 0 && (
+                            <div className="border border-white/10 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                              {linkSearchResults.map(r => (
+                                <button
+                                  key={r.id}
+                                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700/60 transition-colors border-b border-white/5 last:border-b-0"
+                                  onClick={() => selectedCustomer && linkReservationMutation.mutate({ reservationId: r.id, customerId: selectedCustomer.id })}
+                                  disabled={linkReservationMutation.isPending}
+                                  data-testid={`button-link-res-${r.id}`}
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-white truncate">{r.guestName}</div>
+                                    <div className="text-[10px] text-slate-400">{r.apartmentName} · {fmtDate(r.startDate)}–{fmtDate(r.endDate)}</div>
+                                    {r.reservationNumber && <div className="text-[10px] text-slate-500"># {r.reservationNumber}</div>}
+                                  </div>
+                                  <div className="shrink-0 ml-2 flex flex-col items-end gap-1">
+                                    {r.customerId ? (
+                                      <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">już przypisana</span>
+                                    ) : (
+                                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5">wolna</span>
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {linkSearch.trim().length >= 2 && !isLinkSearching && linkSearchResults.length === 0 && (
+                            <p className="text-xs text-slate-500 italic text-center py-1">Brak wyników</p>
+                          )}
+                        </div>
+                      )}
+
                       {isLoadingHistory ? (
                         <div className="flex items-center gap-2 text-slate-400 text-sm">
                           <Loader2 className="h-4 w-4 animate-spin" /> Ładowanie...
