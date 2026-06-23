@@ -11301,10 +11301,10 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const employeeId = Number(req.params.employeeId);
       if (employeeId !== tokenEmployeeId) return res.status(403).json({ message: 'Brak dostępu' });
       const now = new Date();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
       const entries = await storage.getTimeEntries({
         employeeId,
-        from: weekAgo.toISOString().split('T')[0],
+        from: twoWeeksAgo.toISOString().split('T')[0],
         to: now.toISOString().split('T')[0],
       });
       res.json(entries);
@@ -11850,9 +11850,20 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
       const employeeId = getRcpEmployeeId(req);
       if (!employeeId) return res.status(401).json({ message: 'Brak autoryzacji' });
       const now = new Date();
-      const from = now.toISOString().split('T')[0];
-      const toDate = new Date(now.getTime() + 13 * 24 * 60 * 60 * 1000);
-      const to = toDate.toISOString().split('T')[0];
+      let from: string, to: string;
+      if (req.query.year && req.query.month) {
+        const year = Number(req.query.year);
+        const month = Number(req.query.month);
+        if (!Number.isInteger(month) || month < 1 || month > 12) return res.status(400).json({ message: 'Nieprawidłowy miesiąc' });
+        if (!Number.isInteger(year) || year < 2020 || year > 2100) return res.status(400).json({ message: 'Nieprawidłowy rok' });
+        from = `${year}-${String(month).padStart(2, '0')}-01`;
+        const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        to = new Date(new Date(nextMonth).getTime() - 86400000).toISOString().split('T')[0];
+      } else {
+        from = now.toISOString().split('T')[0];
+        const toDate = new Date(now.getTime() + 13 * 24 * 60 * 60 * 1000);
+        to = toDate.toISOString().split('T')[0];
+      }
       const schedules = await storage.getWorkSchedules({ employeeId, from, to });
       res.json(schedules);
     } catch (err: any) {

@@ -438,6 +438,9 @@ function EmployeeDashboard({
   const [activeTab, setActiveTab] = useState<"today" | "tasks" | "km" | "history" | "more" | "usterki">("today");
   const [moreSubView, setMoreSubView] = useState<"menu" | "schedule" | "summary" | "leaves" | "instrukcja">("menu");
   const [showNewLeaveDialog, setShowNewLeaveDialog] = useState(false);
+  const nowForSchedule = new Date();
+  const [scheduleYear, setScheduleYear] = useState(nowForSchedule.getFullYear());
+  const [scheduleMonth, setScheduleMonth] = useState(nowForSchedule.getMonth() + 1);
   const [taskDate, setTaskDate] = useState(new Date().toISOString().slice(0, 10));
   const [showMileageForm, setShowMileageForm] = useState(false);
   const [mileageFrom, setMileageFrom] = useState("");
@@ -711,10 +714,10 @@ function EmployeeDashboard({
 
   type ScheduleEntry = { id: number; date: string; startTime: string; endTime: string; shiftName?: string; shiftColor?: string };
   const scheduleQuery = useQuery<ScheduleEntry[]>({
-    queryKey: ["/api/time-clock/my-schedule"],
+    queryKey: ["/api/time-clock/my-schedule", scheduleYear, scheduleMonth],
     enabled: showSchedule,
     queryFn: async () => {
-      const res = await rcpFetch("GET", "/api/time-clock/my-schedule");
+      const res = await rcpFetch("GET", `/api/time-clock/my-schedule?year=${scheduleYear}&month=${scheduleMonth}`);
       return await res.json();
     },
   });
@@ -1272,7 +1275,7 @@ function EmployeeDashboard({
     if (activeTab === "history") {
       return (
         <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
-          <h2 className="text-lg font-bold">Historia (7 dni)</h2>
+          <h2 className="text-lg font-bold">Historia (14 dni)</h2>
           {historyQuery.isLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
           ) : !historyQuery.data?.length ? (
@@ -1504,12 +1507,71 @@ function EmployeeDashboard({
 
     if (activeTab === "more") {
       if (moreSubView === "schedule") {
+        const nowRef = new Date();
+        const isCurrentMonth = scheduleYear === nowRef.getFullYear() && scheduleMonth === (nowRef.getMonth() + 1);
+
+        const prevScheduleMonth = () => {
+          if (scheduleMonth === 1) { setScheduleYear(y => y - 1); setScheduleMonth(12); }
+          else setScheduleMonth(m => m - 1);
+        };
+        const nextScheduleMonth = () => {
+          if (scheduleMonth === 12) { setScheduleYear(y => y + 1); setScheduleMonth(1); }
+          else setScheduleMonth(m => m + 1);
+        };
+
+        const schedMonthHours = (scheduleQuery.data || []).reduce((sum, s) => {
+          if (s.startTime && s.endTime) {
+            const [sh, sm] = s.startTime.split(':').map(Number);
+            const [eh, em] = s.endTime.split(':').map(Number);
+            let diff = (eh * 60 + em) - (sh * 60 + sm);
+            if (diff < 0) diff += 24 * 60;
+            return sum + diff / 60;
+          }
+          return sum;
+        }, 0);
+        const NORM_HOURS = 168;
+        const schedPct = isHourly ? 0 : Math.min(100, Math.round((schedMonthHours / NORM_HOURS) * 100));
+        const schedPctColor = schedPct >= 100 ? "bg-green-500" : schedPct >= 60 ? "bg-blue-500" : "bg-muted-foreground/40";
+        const schedDays = new Set((scheduleQuery.data || []).map(s => s.date)).size;
+
         return (
           <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" onClick={() => setMoreSubView("menu")} data-testid="button-back-from-schedule"><ChevronLeft /></Button>
-              <h2 className="text-lg font-bold">Mój grafik (14 dni)</h2>
+              <h2 className="text-lg font-bold flex-1">Mój grafik</h2>
+              {isCurrentMonth && <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30 rounded-xl">Bieżący</Badge>}
             </div>
+
+            {/* Month navigation */}
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="ghost" size="icon" className="rounded-xl" onClick={prevScheduleMonth} data-testid="button-schedule-prev-month">
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <span className="font-semibold text-base" data-testid="text-schedule-month">{monthNames[scheduleMonth - 1]} {scheduleYear}</span>
+              <Button variant="ghost" size="icon" className="rounded-xl" onClick={nextScheduleMonth} data-testid="button-schedule-next-month">
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Monthly hours summary */}
+            {!scheduleQuery.isLoading && (
+              <Card className="p-4 rounded-2xl bg-primary/5" data-testid="card-schedule-summary">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Zaplanowane godziny</span>
+                  <span className="text-sm font-bold text-primary">{schedMonthHours.toFixed(1)}h{!isHourly && ` / ${NORM_HOURS}h`}</span>
+                </div>
+                {!isHourly && (
+                  <div className="w-full bg-muted rounded-full h-2.5 mb-1">
+                    <div className={`h-2.5 rounded-full transition-all ${schedPctColor}`} style={{ width: `${schedPct}%` }} data-testid="progress-schedule-hours" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                  <span>{schedDays} {schedDays === 1 ? "dzień" : schedDays >= 2 && schedDays <= 4 ? "dni" : "dni"} ze zmianami</span>
+                  {!isHourly && <span>{schedPct}% normy</span>}
+                </div>
+              </Card>
+            )}
+
             {scheduleQuery.isLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
             ) : sortedDates.length === 0 ? (
