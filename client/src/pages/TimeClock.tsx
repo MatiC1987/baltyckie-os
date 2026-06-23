@@ -740,6 +740,47 @@ function EmployeeDashboard({
     },
   });
 
+  // Dashboard widgets queries (enabled on "Dziś" tab)
+  const dashSummaryQuery = useQuery<MonthlySummary>({
+    queryKey: ["/api/time-clock/my-summary", "dashboard"],
+    enabled: activeTab === "today",
+    queryFn: async () => {
+      const res = await rcpFetch("GET", "/api/time-clock/my-summary");
+      return await res.json();
+    },
+  });
+  const _dashNow = new Date();
+  const dashShiftsQuery = useQuery<ScheduleEntry[]>({
+    queryKey: ["/api/time-clock/my-schedule", "dashboard"],
+    enabled: activeTab === "today",
+    queryFn: async () => {
+      const y = _dashNow.getFullYear();
+      const m = _dashNow.getMonth() + 1;
+      const res = await rcpFetch("GET", `/api/time-clock/my-schedule?year=${y}&month=${m}&includeNext=1`);
+      return await res.json();
+    },
+  });
+  const _dashTodayStr = _dashNow.toISOString().slice(0, 10);
+  const _dashWorkedHours = dashSummaryQuery.data?.workedHours ?? 0;
+  const _dashNormHours = dashSummaryQuery.data?.normHours ?? 168;
+  const _dashMonthPct = _dashNormHours > 0 ? Math.min(100, Math.round((_dashWorkedHours / _dashNormHours) * 100)) : 0;
+  const _dashDayOfMonth = _dashNow.getDate();
+  const _dashDaysInMonth = new Date(_dashNow.getFullYear(), _dashNow.getMonth() + 1, 0).getDate();
+  const _dashPace = (_dashDayOfMonth / _dashDaysInMonth) * _dashNormHours;
+  const _dashMonthPctColor = _dashWorkedHours >= _dashPace ? "bg-green-500" : "bg-orange-500";
+  const _dashDayNamesShort = ["Nd", "Pn", "Wt", "Śr", "Cz", "Pt", "So"];
+  const _formatShiftDate = (dateStr: string) => {
+    const d = new Date(dateStr + "T12:00:00");
+    const dayName = _dashDayNamesShort[d.getDay()];
+    const dd = d.getDate().toString().padStart(2, "0");
+    const mm = (d.getMonth() + 1).toString().padStart(2, "0");
+    return `${dayName} ${dd}.${mm}`;
+  };
+  const _upcomingShifts = (dashShiftsQuery.data || [])
+    .filter(s => s.date >= _dashTodayStr)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || "").localeCompare(b.startTime || ""))
+    .slice(0, 3);
+
   const createLeaveMutation = useMutation({
     mutationFn: async (data: { type: string; startDate: string; endDate: string; days: number; comment: string }) => {
       const res = await rcpFetch("POST", "/api/time-clock/leave-requests", data);
@@ -1084,6 +1125,99 @@ function EmployeeDashboard({
               </div>
             </div>
           </Card>
+
+          {/* ── Widgety miesięczne ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            {/* Karta: Miesiąc */}
+            {dashSummaryQuery.isLoading ? (
+              <Card className="p-4 rounded-2xl flex items-center justify-center min-h-[100px]" data-testid="card-dashboard-month-loading">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </Card>
+            ) : dashSummaryQuery.data ? (
+              <Card className="p-4 rounded-2xl" data-testid="card-dashboard-month">
+                <div className="flex items-center gap-2 mb-3">
+                  <BarChart3 className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Miesiąc</h3>
+                </div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground">Przepracowane</span>
+                  <span className="text-sm font-bold" data-testid="text-dash-hours">{_dashWorkedHours.toFixed(1)}h / {_dashNormHours}h</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2.5 mb-2">
+                  <div
+                    className={`h-2.5 rounded-full transition-all ${_dashMonthPctColor}`}
+                    style={{ width: `${_dashMonthPct}%` }}
+                    data-testid="progress-dashboard-month"
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span data-testid="text-dash-days">{dashSummaryQuery.data.daysWorked} {dashSummaryQuery.data.daysWorked === 1 ? "dzień" : "dni"} w pracy</span>
+                  <span>{_dashMonthPct}% normy</span>
+                </div>
+              </Card>
+            ) : null}
+
+            {/* Karta: Nadchodzące zmiany */}
+            <Card className="p-4 rounded-2xl" data-testid="card-upcoming-shifts">
+              <div className="flex items-center gap-2 mb-3">
+                <CalendarDays className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">Nadchodzące zmiany</h3>
+              </div>
+              {dashShiftsQuery.isLoading ? (
+                <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+              ) : _upcomingShifts.length === 0 ? (
+                <p className="text-xs text-muted-foreground" data-testid="text-no-upcoming-shifts">Brak zaplanowanych zmian</p>
+              ) : (
+                <div className="space-y-2">
+                  {_upcomingShifts.map(shift => (
+                    <div key={shift.id} className="flex items-center justify-between" data-testid={`row-upcoming-shift-${shift.id}`}>
+                      <span className="text-sm font-medium">{_formatShiftDate(shift.date)}</span>
+                      <Badge variant="outline" className="text-xs font-mono">{shift.startTime}–{shift.endTime}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {/* Karta: Urlopy (tylko etat, tylko gdy są dane) */}
+            {!isHourly && dashSummaryQuery.data && dashSummaryQuery.data.leaveBalance.allocated > 0 && (
+              <Card className="p-4 rounded-2xl sm:col-span-2" data-testid="card-leave-balance">
+                <div className="flex items-center gap-2 mb-3">
+                  <TreePalm className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Urlopy</h3>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-leave-remaining">
+                      {dashSummaryQuery.data.leaveBalance.remaining}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Pozostałe</p>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-muted-foreground" data-testid="text-leave-used">
+                      {dashSummaryQuery.data.leaveBalance.used}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Wykorzystane</p>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400" data-testid="text-leave-pending">
+                      {dashSummaryQuery.data.leaveBalance.pending}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Oczekujące</p>
+                  </div>
+                </div>
+                <button
+                  className="mt-3 text-xs text-primary hover:underline"
+                  onClick={() => { setActiveTab("more"); setMoreSubView("leaves"); }}
+                  data-testid="link-go-to-leaves"
+                >
+                  Zarządzaj urlopami →
+                </button>
+              </Card>
+            )}
+
+          </div>
         </div>
       );
     }
