@@ -1520,7 +1520,9 @@ function EmployeeDashboard({
           else setScheduleMonth(m => m + 1);
         };
 
-        const schedMonthHours = (scheduleQuery.data || []).reduce((sum, s) => {
+        const selectedMonthPrefix = `${scheduleYear}-${String(scheduleMonth).padStart(2, '0')}`;
+        const schedMonthData = (scheduleQuery.data || []).filter(s => s.date.startsWith(selectedMonthPrefix));
+        const schedMonthHours = schedMonthData.reduce((sum, s) => {
           if (s.startTime && s.endTime) {
             const [sh, sm] = s.startTime.split(':').map(Number);
             const [eh, em] = s.endTime.split(':').map(Number);
@@ -1531,10 +1533,10 @@ function EmployeeDashboard({
           return sum;
         }, 0);
         const NORM_HOURS = 168;
-        const schedPct = isHourly ? 0 : Math.min(100, Math.round((schedMonthHours / NORM_HOURS) * 100));
+        const schedPct = Math.min(100, Math.round((schedMonthHours / NORM_HOURS) * 100));
         const schedPctColor = schedPct >= 100 ? "bg-green-500" : schedPct >= 60 ? "bg-blue-500" : "bg-muted-foreground/40";
-        const schedDays = new Set((scheduleQuery.data || []).map(s => s.date)).size;
-        const overtimeHours = !isHourly && !isCurrentMonth && schedMonthHours > NORM_HOURS
+        const schedDays = new Set(schedMonthData.map(s => s.date)).size;
+        const overtimeHours = schedMonthHours > NORM_HOURS
           ? +(schedMonthHours - NORM_HOURS).toFixed(1) : 0;
         const nextMonthName = monthNames[scheduleMonth % 12];
         const nextMonthYear = scheduleMonth === 12 ? scheduleYear + 1 : scheduleYear;
@@ -1563,19 +1565,17 @@ function EmployeeDashboard({
               <Card className="p-4 rounded-2xl bg-primary/5" data-testid="card-schedule-summary">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium">Zaplanowane godziny</span>
-                  <span className="text-sm font-bold text-primary">{schedMonthHours.toFixed(1)}h{!isHourly && !isCurrentMonth ? ` / ${NORM_HOURS}h` : ""}</span>
+                  <span className="text-sm font-bold text-primary">{schedMonthHours.toFixed(1)}h / {NORM_HOURS}h</span>
                 </div>
                 {isCurrentMonth && (
                   <p className="text-xs text-muted-foreground mb-2">{monthNames[scheduleMonth - 1]} {scheduleYear} + {nextMonthName} {nextMonthYear}</p>
                 )}
-                {!isHourly && !isCurrentMonth && (
-                  <div className="w-full bg-muted rounded-full h-2.5 mb-1">
-                    <div className={`h-2.5 rounded-full transition-all ${schedPctColor}`} style={{ width: `${schedPct}%` }} data-testid="progress-schedule-hours" />
-                  </div>
-                )}
+                <div className="w-full bg-muted rounded-full h-2.5 mb-1">
+                  <div className={`h-2.5 rounded-full transition-all ${schedPctColor}`} style={{ width: `${schedPct}%` }} data-testid="progress-schedule-hours" />
+                </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                   <span>{schedDays} {schedDays === 1 ? "dzień" : "dni"} ze zmianami</span>
-                  {!isHourly && !isCurrentMonth && <span>{schedPct}% normy</span>}
+                  <span>{schedPct}% normy</span>
                 </div>
                 {overtimeHours > 0 && (
                   <div className="mt-2 flex items-center gap-1.5 text-xs text-orange-600 dark:text-orange-400 font-medium" data-testid="text-schedule-overtime">
