@@ -22,7 +22,7 @@
 
 ## 1. Czym jest moduł Vectra?
 
-Moduł Vectra automatycznie loguje się do panelu klienta **online.vectra.pl** dla każdego skonfigurowanego konta i pobiera faktury PDF. Pobrane faktury są przechowywane w systemie i dostępne do podglądu oraz pobrania bez konieczności logowania się do portalu Vectra.
+Moduł Vectra automatycznie loguje się do panelu klienta **ebok.vectra.pl** dla każdego skonfigurowanego konta i pobiera faktury PDF. Pobrane faktury są przechowywane w systemie i dostępne do podglądu oraz pobrania bez konieczności logowania się do portalu Vectra.
 
 **Główne możliwości:**
 - Obsługa 25–30 kont Vectra jednocześnie
@@ -43,7 +43,7 @@ Moduł Vectra automatycznie loguje się do panelu klienta **online.vectra.pl** d
 2. W sekcji **Konta Vectra** kliknij przycisk **Dodaj konto**.
 3. Wypełnij formularz:
    - **Etykieta** — dowolna nazwa identyfikująca konto, np. `Apartament 101 – Jan Kowalski`
-   - **Login** — adres e-mail lub login używany na online.vectra.pl
+   - **Login** — adres e-mail lub login używany na ebok.vectra.pl
    - **Hasło** — hasło do portalu Vectra (jest szyfrowane przed zapisem — nigdy nie jest przechowywane w postaci jawnej)
 4. Kliknij **Dodaj konto**.
 
@@ -156,7 +156,7 @@ Każde konto wyświetla status ostatniej synchronizacji w formie kolorowego znac
 - **`Błąd: deszyfrowanie hasła`** — klucz szyfrowania (`VECTRA_ENCRYPT_KEY`) mógł zostać zmieniony lub hasło jest uszkodzone. Usuń konto i dodaj je ponownie z aktualnym hasłem.
 - **`Błąd: nieprawidłowy login lub hasło`** — login lub hasło jest błędne. Edytuj konto i zaktualizuj dane logowania.
 - **`Błąd: sesja nie została nawiązana`** — portal Vectra nie zwrócił cookies sesji. Możliwe, że strona wymaga JavaScript do zalogowania. Skontaktuj się z administratorem systemu.
-- **`Błąd: portal SPA — dodaj faktury ręcznie`** — portal online.vectra.pl działa jako aplikacja SPA i nie zwraca listy faktur bez silnika JavaScript. System próbował automatycznie wykryć API REST Vectry, ale bezskutecznie. Dodaj faktury ręcznie przez przycisk **Dodaj ręcznie**.
+- **`Błąd: portal SPA — dodaj faktury ręcznie`** — portal ebok.vectra.pl działa jako aplikacja SPA i nie zwraca listy faktur bez silnika JavaScript. System próbował automatycznie wykryć API REST Vectry, ale bezskutecznie. Dodaj faktury ręcznie przez przycisk **Dodaj ręcznie**.
 - **`Błąd: API SPA — brak endpointu faktur`** — System wykrył API Vectry i uwierzytelnił się, ale nie znalazł endpointu faktur. Skontaktuj się z administratorem.
 - **`Błąd: sesja wygasła lub odmowa dostępu`** — logowanie przebiegło, ale strona faktur przekierowała z powrotem do logowania. Sprawdź login i hasło.
 - **`Błąd: timeout`** / błędy sieciowe — portal Vectra był niedostępny podczas synchronizacji. Spróbuj ponownie za kilka minut.
@@ -165,7 +165,7 @@ Każde konto wyświetla status ostatniej synchronizacji w formie kolorowego znac
 
 ## 8. Obsługa portalu SPA — fallback API i ręczne dodawanie
 
-Portal **online.vectra.pl** może działać jako aplikacja SPA (Single Page Application — React/Angular), która wymaga przeglądarki z obsługą JavaScript do renderowania treści. Tradycyjny scraper HTTP nie jest wtedy w stanie odczytać listy faktur.
+Portal **ebok.vectra.pl** może działać jako aplikacja SPA (Single Page Application — React/Angular), która wymaga przeglądarki z obsługą JavaScript do renderowania treści. Tradycyjny scraper HTTP nie jest wtedy w stanie odczytać listy faktur.
 
 ### Automatyczny fallback — sonda API REST
 
@@ -193,7 +193,7 @@ Gdy automatyczna synchronizacja jest niemożliwa, skorzystaj z przycisku **Dodaj
 
 ### Jak pobrać fakturę z portalu Vectra ręcznie
 
-1. Otwórz **online.vectra.pl** w przeglądarce i zaloguj się na konto najemcy.
+1. Otwórz **ebok.vectra.pl** w przeglądarce i zaloguj się na konto najemcy.
 2. Przejdź do sekcji **Faktury** lub **Dokumenty**.
 3. Pobierz plik PDF faktury na komputer.
 4. Wróć do systemu i użyj przycisku **Dodaj ręcznie**, aby dodać fakturę z metadanymi i plikiem PDF.
@@ -230,10 +230,10 @@ Dodatkowo każdy sync wypisuje szczegółowe logi do konsoli serwera (prefix `[v
 **Rozwiązanie:** Sprawdź, czy lista kont nie jest pusta. Przycisk „Synchronizuj wszystkie" wymaga co najmniej jednego dodanego konta.
 
 ### Problem: Synchronizacja kończy się błędem „portal SPA — dodaj faktury ręcznie"
-**Rozwiązanie:** Portal online.vectra.pl działa jako aplikacja JavaScript (SPA). System automatycznie próbował wykryć API — bez powodzenia. Skorzystaj z przycisku **Dodaj ręcznie** w sekcji Pobrane faktury, aby ręcznie wprowadzić faktury pobrane bezpośrednio z portalu Vectra.
+**Rozwiązanie:** Portal ebok.vectra.pl działa jako aplikacja JavaScript (SPA). System automatycznie próbował wykryć API — bez powodzenia. Skorzystaj z przycisku **Dodaj ręcznie** w sekcji Pobrane faktury, aby ręcznie wprowadzić faktury pobrane bezpośrednio z portalu Vectra.
 
 ### Problem: Synchronizacja kończy się błędem „nieprawidłowy login lub hasło" dla wszystkich kont
-**Rozwiązanie:** Sprawdź, czy portal online.vectra.pl jest dostępny (otwórz go w przeglądarce). Jeśli Vectra wprowadza weryfikację dwuetapową lub CAPTCHA, automatyczne logowanie może przestać działać — skontaktuj się z administratorem systemu.
+**Rozwiązanie:** Sprawdź, czy portal ebok.vectra.pl jest dostępny (otwórz go w przeglądarce). Jeśli Vectra wprowadza weryfikację dwuetapową lub CAPTCHA, automatyczne logowanie może przestać działać — skontaktuj się z administratorem systemu.
 
 ### Problem: Faktury pobierają się, ale brak pliku PDF (brak przycisku ⬇️)
 **Rozwiązanie:** Faktura mogła być dostępna na liście, ale plik PDF nie był jeszcze gotowy na portalu Vectra. Spróbuj ponownie zsynchronizować to konto po kilku godzinach. Jeśli problem dotyczy wielu faktur, sprawdź czy magazyn obiektów (`PRIVATE_OBJECT_DIR`) jest skonfigurowany.

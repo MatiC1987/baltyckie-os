@@ -166,7 +166,7 @@ async function httpPost(
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
       "Content-Type": "application/x-www-form-urlencoded",
       ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
-      ...(referer ? { "Referer": referer, "Origin": "https://online.vectra.pl" } : {}),
+      ...(referer ? { "Referer": referer, "Origin": "https://ebok.vectra.pl" } : {}),
     },
     body: formBody,
     dispatcher: vectraAgent,
@@ -191,7 +191,7 @@ async function httpPostJson(
       "Accept": "application/json, text/plain, */*",
       "Content-Type": "application/json",
       ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
-      ...(referer ? { "Referer": referer, "Origin": "https://online.vectra.pl", "X-Requested-With": "XMLHttpRequest" } : {}),
+      ...(referer ? { "Referer": referer, "Origin": "https://ebok.vectra.pl", "X-Requested-With": "XMLHttpRequest" } : {}),
     },
     body: JSON.stringify(body),
     dispatcher: vectraAgent,
@@ -247,7 +247,7 @@ function extractInvoicesFromPage($: any): { texts: string[]; link: string }[] {
     const href = $(el).find("a[href*='pdf'], a[href*='faktur'], a[href*='invoice'], a[href*='pobierz'], a[href*='download'], a[href*='.pdf']").first().attr("href")
       || $(el).find("a").first().attr("href")
       || "";
-    return href.startsWith("http") ? href : href ? `https://online.vectra.pl${href}` : "";
+    return href.startsWith("http") ? href : href ? `https://ebok.vectra.pl${href}` : "";
   };
 
   const extractTexts = (el: any): string[] =>
@@ -360,7 +360,7 @@ function extractInvoicesFromJsonResponse(text: string): any[] {
   }
 }
 
-const VECTRA_API_BASE = "https://online.vectra.pl";
+const VECTRA_API_BASE = "https://ebok.vectra.pl";
 
 const API_AUTH_ENDPOINTS = [
   { path: "/api/auth/login", loginField: "login" },
@@ -475,8 +475,8 @@ export async function debugVectraAccount(accountId: number): Promise<DebugResult
   const { load } = await import("cheerio");
   const jar = new CookieJar();
 
-  const LOGIN_URL = "https://online.vectra.pl/logowanie";
-  const INVOICES_URL = "https://online.vectra.pl/faktury";
+  const LOGIN_URL = "https://ebok.vectra.pl/logowanie";
+  const INVOICES_URL = "https://ebok.vectra.pl/faktury";
 
   const loginPageRes = await httpGet(LOGIN_URL, jar);
   const $login = load(loginPageRes.text);
@@ -493,7 +493,7 @@ export async function debugVectraAccount(accountId: number): Promise<DebugResult
   });
 
   const resolvedAction = formAction
-    ? (formAction.startsWith("http") ? formAction : `https://online.vectra.pl${formAction}`)
+    ? (formAction.startsWith("http") ? formAction : `https://ebok.vectra.pl${formAction}`)
     : LOGIN_URL;
 
   const loginRes = await httpPost(resolvedAction, jar, loginFields, LOGIN_URL);
@@ -682,8 +682,8 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
     const { load } = await import("cheerio");
     const jar = new CookieJar();
 
-    const LOGIN_URL = "https://online.vectra.pl/logowanie";
-    const INVOICES_URL = "https://online.vectra.pl/faktury";
+    const LOGIN_URL = "https://ebok.vectra.pl/logowanie";
+    const INVOICES_URL = "https://ebok.vectra.pl/faktury";
 
     console.log(`[vectra] Pobieram stronę logowania: ${LOGIN_URL}`);
     const loginPageRes = await httpGet(LOGIN_URL, jar);
@@ -718,7 +718,7 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
     });
 
     const loginAction = $login("form").first().attr("action") || LOGIN_URL;
-    const resolvedAction = loginAction.startsWith("http") ? loginAction : `https://online.vectra.pl${loginAction}`;
+    const resolvedAction = loginAction.startsWith("http") ? loginAction : `https://ebok.vectra.pl${loginAction}`;
     console.log(`[vectra] Wysyłam formularz logowania do: ${resolvedAction}, pola: ${Object.keys(loginFields).join(", ")}`);
 
     const loginRes = await httpPost(resolvedAction, jar, loginFields, LOGIN_URL);
@@ -811,7 +811,7 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
             return finishWithStatus(accountId, account.label, "Błąd: portal SPA — dodaj faktury ręcznie", {
               newInvoices: 0,
               skipped: 0,
-              error: "Portal online.vectra.pl to aplikacja SPA (React/Angular). Automatyczna synchronizacja jest niedostępna. Pobierz faktury ręcznie z portalu Vectra i dodaj je przez przycisk 'Dodaj fakturę ręcznie'.",
+              error: "Portal ebok.vectra.pl to aplikacja SPA (React/Angular). Automatyczna synchronizacja jest niedostępna. Pobierz faktury ręcznie z portalu Vectra i dodaj je przez przycisk 'Dodaj fakturę ręcznie'.",
               debugInfo: `spaIndicators=${spaIndicators.join("; ")}; apiProbes=${probe.attempts.length}`,
             });
           }
@@ -820,7 +820,7 @@ export async function syncVectraAccount(accountId: number): Promise<SyncResult> 
           return finishWithStatus(accountId, account.label, "Błąd: portal SPA — dodaj faktury ręcznie", {
             newInvoices: 0,
             skipped: 0,
-            error: "Portal online.vectra.pl to aplikacja SPA. Dodaj faktury ręcznie przez przycisk 'Dodaj fakturę ręcznie'.",
+            error: "Portal ebok.vectra.pl to aplikacja SPA. Dodaj faktury ręcznie przez przycisk 'Dodaj fakturę ręcznie'.",
             debugInfo: snippet,
           });
         }
