@@ -571,6 +571,7 @@ export interface IStorage {
   getVectraInvoiceByNumber(accountId: number, invoiceNumber: string): Promise<VectraInvoice | undefined>;
   createVectraSyncLog(data: InsertVectraSyncLog): Promise<VectraSyncLog>;
   getVectraSyncLogs(limit?: number): Promise<VectraSyncLog[]>;
+  pruneVectraSyncLogs(retentionDays?: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2950,6 +2951,9 @@ export class DatabaseStorage implements IStorage {
 
   async createVectraSyncLog(data: InsertVectraSyncLog): Promise<VectraSyncLog> {
     const [row] = await db.insert(vectraSyncLogs).values(data).returning();
+    this.pruneVectraSyncLogs().catch((e: any) =>
+      console.error("[storage] Błąd czyszczenia logów Vectra:", e.message)
+    );
     return row;
   }
 
@@ -2957,6 +2961,17 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(vectraSyncLogs)
       .orderBy(desc(vectraSyncLogs.syncedAt))
       .limit(limit);
+  }
+
+  async pruneVectraSyncLogs(retentionDays = 90): Promise<number> {
+    const result = await db.delete(vectraSyncLogs)
+      .where(sql`${vectraSyncLogs.syncedAt} < NOW() - (${retentionDays} || ' days')::INTERVAL`)
+      .returning({ id: vectraSyncLogs.id });
+    const deleted = result.length;
+    if (deleted > 0) {
+      console.log(`[storage] Usunięto ${deleted} starych logów synchronizacji Vectra (retencja: ${retentionDays} dni)`);
+    }
+    return deleted;
   }
 }
 
