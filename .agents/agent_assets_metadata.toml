@@ -18,3 +18,9 @@ id = "cy38oSWE17NNrGzeH3Yhd"
 uri = "file://docs/instrukcja-rcp-pracownik-godzinowy.md"
 type = "text"
 title = "Instrukcja RCP — Pracownik godzinowy"
+
+[[outputs]]
+id = "tszT9D8bxH7qWv0FGUCht"
+uri = "file://baltyckie-finanse.zip"
+type = "unspecified"
+title = "Baltyckie Finanse — kod źródłowy"
