@@ -6,12 +6,21 @@ export default {
   theme: {
     extend: {
       borderRadius: {
-        lg: ".5625rem", /* 9px */
-        md: ".375rem", /* 6px */
-        sm: ".1875rem", /* 3px */
+        "2xl": "1rem",      /* 16px — large panels */
+        xl:    "0.75rem",   /* 12px — cards (Apple standard) */
+        lg:    "0.625rem",  /* 10px — medium elements */
+        md:    "0.5rem",    /* 8px  — inputs, small cards */
+        sm:    "0.25rem",   /* 4px  — badges, tiny elements */
+      },
+      boxShadow: {
+        "os-xs":  "0 1px 2px rgba(0,0,0,0.04), 0 1px 1px rgba(0,0,0,0.03)",
+        "os-sm":  "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+        "os-md":  "0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04)",
+        "os-lg":  "0 8px 24px rgba(0,0,0,0.07), 0 3px 8px rgba(0,0,0,0.04)",
+        "os-xl":  "0 16px 40px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04)",
+        "os-focus": "0 0 0 3px hsl(var(--primary) / 0.18)",
       },
       colors: {
-        // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
         border: "hsl(var(--border) / <alpha-value>)",
