@@ -65,6 +65,7 @@ import { RcpSummaryWidget } from "@/components/dashboard/RcpSummaryWidget";
 import { RecentActivityWidget } from "@/components/dashboard/RecentActivityWidget";
 import { BalanceForecastChartWidget } from "@/components/dashboard/BalanceForecastChartWidget";
 import { TodayReservationsWidget } from "@/components/dashboard/TodayReservationsWidget";
+import { CeoDecisionCenter } from "@/components/dashboard/CeoDecisionCenter";
 
 function SortableWidget({ id, isEditMode, children }: { id: string; isEditMode: boolean; children: React.ReactNode }) {
   const {
@@ -493,6 +494,16 @@ export default function Dashboard() {
         </div>
       </div>
 
+
+      <CeoDecisionCenter
+        companyBalance={companyBalance}
+        forecastData={forecastData || []}
+        balanceForecastData={balanceForecastData}
+        kpiStats={kpiStats}
+        occupancyPct={occupancyPct}
+        allSubleasePayments={allSubleasePayments || []}
+        reminders={reminders}
+      />
 
       <DndContext
         sensors={sensors}
