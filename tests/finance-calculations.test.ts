@@ -6,6 +6,9 @@ import {
   isSubleaseActive,
   resolveSubleaseEnd,
   isContractExpiring,
+  getPaymentDatesForFrequency,
+  generateRecurrenceDates,
+  computeMonthResult,
   type MonthlyForecastMap,
 } from "../shared/finance-calculations";
 
@@ -257,5 +260,164 @@ describe("resolveSubleaseEnd", () => {
     const subEnd = resolveSubleaseEnd(null, PERIOD_END);
     const totalDays = Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1;
     expect(totalDays).toBeGreaterThan(0);
+  });
+});
+
+// ─── getPaymentDatesForFrequency (F-01) ───────────────────────────────────────
+
+describe("getPaymentDatesForFrequency", () => {
+  const d = (s: string) => new Date(s);
+
+  it("monthly: generates one date per month within range", () => {
+    const dates = getPaymentDatesForFrequency("MIESIECZNIE", d("2026-01-01"), d("2026-03-31"), 10);
+    expect(dates).toHaveLength(3);
+    // Use local date getters — function returns local-time Date objects
+    expect(dates[0].getFullYear()).toBe(2026); expect(dates[0].getMonth()).toBe(0); expect(dates[0].getDate()).toBe(10);
+    expect(dates[1].getFullYear()).toBe(2026); expect(dates[1].getMonth()).toBe(1); expect(dates[1].getDate()).toBe(10);
+    expect(dates[2].getFullYear()).toBe(2026); expect(dates[2].getMonth()).toBe(2); expect(dates[2].getDate()).toBe(10);
+  });
+
+  it("quarterly: generates one date per quarter", () => {
+    const dates = getPaymentDatesForFrequency("KWARTALNIE", d("2026-01-01"), d("2026-12-31"), 15);
+    expect(dates).toHaveLength(4);
+    expect(dates[0].getMonth()).toBe(0); // January
+    expect(dates[1].getMonth()).toBe(3); // April
+    expect(dates[2].getMonth()).toBe(6); // July
+    expect(dates[3].getMonth()).toBe(9); // October
+  });
+
+  it("yearly: generates one date per year", () => {
+    const dates = getPaymentDatesForFrequency("ROCZNIE", d("2025-03-01"), d("2027-12-31"), 1);
+    expect(dates).toHaveLength(2);
+    expect(dates[0].getFullYear()).toBe(2026);
+    expect(dates[1].getFullYear()).toBe(2027);
+  });
+
+  it("NIEREGULARNE: returns empty array", () => {
+    const dates = getPaymentDatesForFrequency("NIEREGULARNE", d("2026-01-01"), d("2026-12-31"), 10);
+    expect(dates).toHaveLength(0);
+  });
+
+  it("payDay capped at 28 (Math.min intentional — end-of-month safety)", () => {
+    const dates = getPaymentDatesForFrequency("MIESIECZNIE", d("2026-02-01"), d("2026-02-28"), 31);
+    expect(dates).toHaveLength(1);
+    expect(dates[0].getDate()).toBe(28);
+  });
+
+  it("returns empty when range is zero-length and payDay is before start", () => {
+    const dates = getPaymentDatesForFrequency("MIESIECZNIE", d("2026-06-15"), d("2026-06-14"), 10);
+    expect(dates).toHaveLength(0);
+  });
+
+  it("defaults to MIESIECZNIE for unknown frequency string", () => {
+    const dates = getPaymentDatesForFrequency("", d("2026-01-01"), d("2026-02-28"), 5);
+    expect(dates).toHaveLength(2);
+  });
+});
+
+// ─── generateRecurrenceDates (F-02) ───────────────────────────────────────────
+
+describe("generateRecurrenceDates", () => {
+  it("monthly: generates dates starting from next occurrence after startDate", () => {
+    const dates = generateRecurrenceDates("2026-01-15", "2026-04-15", "MIESIECZNIE");
+    expect(dates).toEqual(["2026-02-15", "2026-03-15", "2026-04-15"]);
+  });
+
+  it("quarterly: generates dates every 3 months", () => {
+    const dates = generateRecurrenceDates("2026-01-01", "2026-12-31", "KWARTALNIE");
+    expect(dates).toEqual(["2026-04-01", "2026-07-01", "2026-10-01"]);
+  });
+
+  it("yearly: generates one date per year", () => {
+    const dates = generateRecurrenceDates("2024-06-01", "2026-06-01", "ROCZNIE");
+    expect(dates).toEqual(["2025-06-01", "2026-06-01"]);
+  });
+
+  it("returns [] for unsupported recurrence type", () => {
+    expect(generateRecurrenceDates("2026-01-01", "2026-12-31", "TYGODNIOWO")).toEqual([]);
+  });
+
+  it("returns [] when endDate < startDate", () => {
+    expect(generateRecurrenceDates("2026-06-01", "2026-05-01", "MIESIECZNIE")).toEqual([]);
+  });
+
+  it("clamps day to last day of month (e.g. Jan 31 → Feb 28)", () => {
+    const dates = generateRecurrenceDates("2026-01-31", "2026-03-31", "MIESIECZNIE");
+    expect(dates).toEqual(["2026-02-28", "2026-03-31"]);
+  });
+
+  it("returns [] when no occurrence fits within range", () => {
+    // startDate and endDate same month — next occurrence is next month, beyond endDate
+    const dates = generateRecurrenceDates("2026-06-01", "2026-06-30", "MIESIECZNIE");
+    expect(dates).toEqual([]);
+  });
+});
+
+// ─── computeMonthResult (F-05) ────────────────────────────────────────────────
+
+describe("computeMonthResult", () => {
+  const base = {
+    revenueForecast: 20000,
+    actualRevenue: 12000,
+    pendingPayments: 3000,
+    subleaseRevenue: 2000,
+    actualExpenses: 8000,
+    totalCostForecast: 10000,
+  };
+
+  it("past: actual revenue + sublease - actual expenses only", () => {
+    const result = computeMonthResult({ ...base, periodType: "past" });
+    // 12000 + 2000 - 8000 = 6000
+    expect(result).toBe(6000);
+  });
+
+  it("future: forecast revenue + sublease - cost forecast", () => {
+    const result = computeMonthResult({ ...base, periodType: "future" });
+    // 20000 + 2000 - 10000 = 12000
+    expect(result).toBe(12000);
+  });
+
+  it("current: blends actuals with remaining forecast", () => {
+    const result = computeMonthResult({ ...base, periodType: "current" });
+    // unrealizedRevenue = max(0, 20000 - 12000 - 3000) = 5000
+    // unrealizedCosts   = max(0, 10000 - 8000)         = 2000
+    // result = 5000 + 3000 + 2000 + 12000 - 8000 - 2000 = 12000
+    expect(result).toBe(12000);
+  });
+
+  it("current: unrealizedRevenue floors at 0 when actuals + pending exceed forecast", () => {
+    const result = computeMonthResult({
+      ...base,
+      periodType: "current",
+      actualRevenue: 15000,
+      pendingPayments: 8000, // 15000 + 8000 > 20000 forecast
+    });
+    // unrealizedRevenue = max(0, 20000 - 15000 - 8000) = 0
+    // unrealizedCosts   = max(0, 10000 - 8000)         = 2000
+    // result = 0 + 8000 + 2000 + 15000 - 8000 - 2000 = 15000
+    expect(result).toBe(15000);
+  });
+
+  it("past: negative result when expenses exceed revenue (loss month)", () => {
+    const result = computeMonthResult({
+      ...base,
+      periodType: "past",
+      actualRevenue: 3000,
+      subleaseRevenue: 0,
+      actualExpenses: 10000,
+    });
+    // 3000 + 0 - 10000 = -7000
+    expect(result).toBe(-7000);
+  });
+
+  it("future: zero result when forecast revenue equals forecast costs", () => {
+    const result = computeMonthResult({
+      ...base,
+      periodType: "future",
+      revenueForecast: 10000,
+      subleaseRevenue: 0,
+      totalCostForecast: 10000,
+    });
+    expect(result).toBe(0);
   });
 });
