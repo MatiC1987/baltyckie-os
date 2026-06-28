@@ -405,20 +405,6 @@ export const api = {
       },
     },
   },
-  stats: {
-    dashboard: {
-      method: 'GET' as const,
-      path: '/api/stats/dashboard',
-      responses: {
-        200: z.object({
-          totalRevenue: z.number(),
-          totalExpenses: z.number(),
-          netIncome: z.number(),
-          occupancyRate: z.number(),
-        }),
-      }
-    }
-  }
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

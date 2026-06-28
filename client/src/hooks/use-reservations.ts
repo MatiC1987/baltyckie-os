@@ -41,7 +41,6 @@ export function useCreateReservation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.reservations.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
       toast({ title: "Sukces", description: "Rezerwacja została dodana" });
     },
     onError: () => {
@@ -68,7 +67,6 @@ export function useUpdateReservation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.reservations.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
       queryClient.invalidateQueries({ queryKey: ["/api/company-balance"] });
     },
     onError: () => {
@@ -92,7 +90,6 @@ export function useDeleteReservation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.reservations.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
       toast({ title: "Sukces", description: "Rezerwacja została usunięta" });
     },
     onError: () => {
