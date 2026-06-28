@@ -1994,6 +1994,171 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/apartments/:id/center', isAuthenticated, async (req, res) => {
+    try {
+      const aptId = Number(req.params.id);
+      const currentYear = new Date().getFullYear();
+      const prevYear = currentYear - 1;
+      const today = new Date();
+
+      // Reservations
+      const allReservations = await storage.getReservations({ apartmentId: aptId });
+      const currentYearRes = allReservations.filter(r => r.startDate?.startsWith(String(currentYear)) && r.status !== 'ANULOWANA');
+      const prevYearRes = allReservations.filter(r => r.startDate?.startsWith(String(prevYear)) && r.status !== 'ANULOWANA');
+      const sumPaid = (list: any[]) => list.reduce((s, r) => s + Number(r.paidAmount || 0), 0);
+      const rentalRevenue = sumPaid(currentYearRes);
+      const revenuePrevYear = sumPaid(prevYearRes);
+
+      // Sublease revenue (payments with status oplacona)
+      const subRows = await db.select().from(subleasePayments)
+        .where(and(
+          eq(subleasePayments.apartmentId, aptId),
+          eq(subleasePayments.status, 'oplacona')
+        ));
+      const subleaseRevCurrentYear = subRows
+        .filter(p => p.dueDate?.startsWith(String(currentYear)))
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
+      const totalRevenue = rentalRevenue + subleaseRevCurrentYear;
+
+      // Revenue forecasts
+      const allRevForecasts = await storage.getRevenueForecasts();
+      const aptRevForecasts = allRevForecasts.filter(f => f.apartmentId === aptId && f.year === currentYear);
+      const forecastRevenue = aptRevForecasts.reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+      // Cost forecasts
+      const allCostForecasts = await storage.getCostForecasts();
+      const aptCostsCurrent = allCostForecasts.filter(f => f.apartmentId === aptId && f.year === currentYear);
+      const aptCostsPrev = allCostForecasts.filter(f => f.apartmentId === aptId && f.year === prevYear);
+      const costsCurrent = aptCostsCurrent.reduce((s, f) => s + Number(f.forecast || 0), 0);
+      const costsPrev = aptCostsPrev.reduce((s, f) => s + Number(f.forecast || 0), 0);
+
+      // Monthly breakdown
+      const monthlyBreakdown: { month: number; rentalRevenue: number; subleaseRevenue: number; costs: number }[] = [];
+      for (let m = 0; m < 12; m++) {
+        const monthRes = currentYearRes.filter(r => {
+          const d = r.startDate ? new Date(r.startDate) : null;
+          return d && d.getMonth() === m;
+        });
+        const monthSubPay = subRows.filter(p => {
+          if (!p.dueDate?.startsWith(String(currentYear))) return false;
+          const d = new Date(p.dueDate);
+          return d.getMonth() === m;
+        });
+        const monthCosts = aptCostsCurrent.filter(f => f.month === m + 1);
+        monthlyBreakdown.push({
+          month: m + 1,
+          rentalRevenue: sumPaid(monthRes),
+          subleaseRevenue: monthSubPay.reduce((s, p) => s + Number(p.amount || 0), 0),
+          costs: monthCosts.reduce((s, f) => s + Number(f.forecast || 0), 0),
+        });
+      }
+
+      // Occupancy
+      const occupiedDays = currentYearRes.reduce((total, r) => {
+        const start = new Date(r.startDate);
+        const end = new Date(r.endDate);
+        return total + Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      }, 0);
+      const occupancyRate = Math.min(100, Math.round((occupiedDays / 365) * 100));
+
+      // Active subleases for this apartment
+      const allSubleases = await storage.getSubleases();
+      const aptSubleases = allSubleases.filter(s => {
+        const ids: number[] = s.apartmentIds && s.apartmentIds.length > 0 ? s.apartmentIds : (s.apartmentId ? [s.apartmentId] : []);
+        return ids.includes(aptId);
+      });
+
+      // Contracts + rent history
+      const directContracts = await storage.getOwnerContracts({ apartmentId: aptId });
+      const aptAllocations = await storage.getOwnerContractApartmentsByApartment(aptId);
+      const allocContractIds = aptAllocations.map(a => a.contractId);
+      const allContracts = allocContractIds.length > 0 ? await storage.getOwnerContracts() : [];
+      const allocContracts = allContracts.filter(c => allocContractIds.includes(c.id) && !directContracts.some(dc => dc.id === c.id));
+      const contracts = [...directContracts, ...allocContracts];
+      const activeContract = contracts.find(c => c.status === 'AKTYWNA' && c.contractType === 'UMOWA');
+      const activeAlloc = activeContract ? aptAllocations.find(a => a.contractId === activeContract.id) : null;
+      const rentHistory = contracts
+        .filter(c => c.startDate)
+        .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
+        .map(c => {
+          const alloc = aptAllocations.find(a => a.contractId === c.id);
+          const rent = alloc ? Number(alloc.rentAmount || 0) : Number(c.monthlyRent || 0);
+          return { date: c.startDate, rent, type: c.contractType, id: c.id };
+        }).filter(r => r.rent > 0);
+
+      // Owner info
+      let owner = null;
+      if (activeContract?.ownerId) {
+        const ownerRows = await db.select().from(owners).where(eq(owners.id, activeContract.ownerId));
+        if (ownerRows.length > 0) {
+          const o = ownerRows[0];
+          owner = { id: o.id, name: o.name, phone: o.phone, email: o.email };
+        }
+      }
+
+      // Payment schedule (owner payments) with overdue calculation
+      const rawPayments = await storage.getOwnerPayments(aptId);
+      const paymentSchedule = rawPayments.map(p => {
+        const due = p.paymentDate ? new Date(p.paymentDate) : null;
+        const daysOverdue = due && !p.isPaid ? Math.max(0, Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+        return {
+          id: p.id,
+          title: p.title,
+          category: p.category,
+          amount: p.amount,
+          paymentDate: p.paymentDate,
+          isPaid: p.isPaid || false,
+          daysOverdue,
+        };
+      }).sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
+
+      // Unpaid reservations
+      const unpaidReservations = currentYearRes
+        .filter(r => r.status === 'DO_OPLACENIA')
+        .map(r => ({ id: r.id, reservationNumber: r.reservationNumber, guestName: r.guestName, startDate: r.startDate, endDate: r.endDate, price: r.price, paidAmount: r.paidAmount }));
+
+      res.json({
+        currentYear,
+        forecastRevenue,
+        rentalRevenue,
+        subleaseRevenue: subleaseRevCurrentYear,
+        totalRevenue,
+        forecastRealization: forecastRevenue > 0 ? Math.round((totalRevenue / forecastRevenue) * 100) : 0,
+        costsCurrent,
+        costsPrev,
+        profit: totalRevenue - costsCurrent,
+        profitPrev: revenuePrevYear - costsPrev,
+        profitMargin: totalRevenue > 0 ? Math.round(((totalRevenue - costsCurrent) / totalRevenue) * 100) : 0,
+        occupancyRate,
+        revenuePrevYear,
+        monthlyBreakdown,
+        activeSubleases: aptSubleases.map(s => ({
+          id: s.id,
+          tenantName: s.companyName || `${s.firstName || ''} ${s.lastName || ''}`.trim() || '—',
+          monthlyAmount: Number(s.rentAmount || 0),
+          additionalFees: Number(s.additionalFees || 0),
+          status: s.status,
+          startDate: s.startDate,
+          endDate: s.endDate,
+        })),
+        activeContract: activeContract ? {
+          monthlyRent: activeAlloc ? activeAlloc.rentAmount : activeContract.monthlyRent,
+          startDate: activeContract.startDate,
+          endDate: activeContract.endDate,
+          status: activeContract.status,
+          ownerId: activeContract.ownerId,
+        } : null,
+        rentHistory,
+        owner,
+        paymentSchedule,
+        unpaidReservations,
+      });
+    } catch (err: any) {
+      console.error('Apartment center error:', err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/owner-contracts', isAuthenticated, async (req, res) => {
     try {
       const body = { ...req.body };

@@ -1,5 +1,6 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useApartments, useCreateApartment, useUpdateApartment, useDeleteApartment } from "@/hooks/use-apartments";
+import { ApartmentCenter } from "@/components/apartments/ApartmentCenter";
 import { DataTable } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/LoadingButton";
@@ -61,6 +62,7 @@ export default function Apartments() {
   const deleteApartmentMutation = useDeleteApartment();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
+  const [editingApartmentTab, setEditingApartmentTab] = useState("dashboard");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const { toast } = useToast();
@@ -552,16 +554,16 @@ export default function Apartments() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) setEditingApartment(null); }}>
+      <Dialog open={!!editingApartment} onOpenChange={(open) => { if (!open) { setEditingApartment(null); setEditingApartmentTab("dashboard"); } }}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg">Apartament — {editingApartment?.name}</DialogTitle>
           </DialogHeader>
           {editingApartment && (
-            <Tabs defaultValue="dashboard">
+            <Tabs value={editingApartmentTab} onValueChange={setEditingApartmentTab}>
               <TabsList className="w-full flex-wrap">
                 <TabsTrigger value="dashboard" className="flex-1" data-testid="tab-edit-dashboard">
-                  <BarChart3 className="h-4 w-4 mr-1" /> Dashboard
+                  <BarChart3 className="h-4 w-4 mr-1" /> Center
                 </TabsTrigger>
                 <TabsTrigger value="details" className="flex-1" data-testid="tab-edit-details">Dane</TabsTrigger>
                 <TabsTrigger value="costs" className="flex-1" data-testid="tab-edit-costs">
@@ -575,7 +577,14 @@ export default function Apartments() {
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="dashboard">
-                <ApartmentDashboard apartment={editingApartment} />
+                <ApartmentCenter
+                  apartment={editingApartment}
+                  onAddContract={() => setEditingApartmentTab("contracts")}
+                  onAddAnnex={() => setEditingApartmentTab("contracts")}
+                  onAddSublease={() => setEditingApartmentTab("contracts")}
+                  onAddCost={() => setEditingApartmentTab("costs")}
+                  onOpenForecast={() => setEditingApartmentTab("forecast")}
+                />
               </TabsContent>
               <TabsContent value="details">
                 <EditApartmentForm
