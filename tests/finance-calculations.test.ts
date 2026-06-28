@@ -3,6 +3,8 @@ import {
   getForecastValue,
   computeRemaining,
   computeMonthEndBalance,
+  isSubleaseActive,
+  resolveSubleaseEnd,
   isContractExpiring,
   type MonthlyForecastMap,
 } from "../shared/finance-calculations";
@@ -174,5 +176,86 @@ describe("isContractExpiring", () => {
   it("handles end-of-year boundary correctly", () => {
     expect(isContractExpiring("2026-12-31", "2026-10-01", "2026-12-31")).toBe(true);
     expect(isContractExpiring("2027-01-01", "2026-10-01", "2026-12-31")).toBe(false);
+  });
+});
+
+// ─── isSubleaseActive (F-03: BUG #2 regression) ──────────────────────────────
+// AUDIT_FINANCIAL.md BUG #2: null >= "2026-06-28" === false in JS,
+// so indefinite subleases were silently excluded from settlement view.
+
+describe("isSubleaseActive", () => {
+  const TODAY = "2026-06-28";
+
+  it("BUG #2 regression: null endDate (indefinite) must be active, not excluded", () => {
+    // This was the exact bug: null >= today === false, sublease disappeared
+    expect(isSubleaseActive(null, TODAY)).toBe(true);
+  });
+
+  it("returns true when sublease ends today (boundary inclusive)", () => {
+    expect(isSubleaseActive(TODAY, TODAY)).toBe(true);
+  });
+
+  it("returns true when sublease ends in the future", () => {
+    expect(isSubleaseActive("2026-12-31", TODAY)).toBe(true);
+    expect(isSubleaseActive("2027-01-01", TODAY)).toBe(true);
+  });
+
+  it("returns false when sublease ended yesterday", () => {
+    expect(isSubleaseActive("2026-06-27", TODAY)).toBe(false);
+  });
+
+  it("returns false when sublease ended long ago", () => {
+    expect(isSubleaseActive("2025-01-01", TODAY)).toBe(false);
+  });
+
+  it("returns true for empty string endDate (treated as no date = indefinite)", () => {
+    // Edge case: empty string is falsy in JS, same as null
+    expect(isSubleaseActive("", TODAY)).toBe(true);
+  });
+});
+
+// ─── resolveSubleaseEnd (F-07: BUG #3 regression) ────────────────────────────
+// AUDIT_FINANCIAL.md BUG #3: new Date(null) === new Date(0) === 1970-01-01,
+// making totalDays negative → sublease revenue was 0 for indefinite subleases.
+
+describe("resolveSubleaseEnd", () => {
+  const PERIOD_END = new Date("2026-12-31");
+
+  it("BUG #3 regression: null endDate must return periodEnd, not epoch 1970", () => {
+    const result = resolveSubleaseEnd(null, PERIOD_END);
+    // Before fix: new Date(null) = 1970-01-01T00:00:00.000Z
+    expect(result.getFullYear()).not.toBe(1970);
+    expect(result).toEqual(PERIOD_END);
+  });
+
+  it("returns periodEnd for null endDate (indefinite sublease)", () => {
+    expect(resolveSubleaseEnd(null, PERIOD_END)).toEqual(PERIOD_END);
+  });
+
+  it("returns parsed Date when endDate is provided", () => {
+    const result = resolveSubleaseEnd("2026-09-30", PERIOD_END);
+    expect(result).toEqual(new Date("2026-09-30"));
+    // Must NOT return periodEnd when there is an explicit date
+    expect(result).not.toEqual(PERIOD_END);
+  });
+
+  it("respects endDate even when it's before periodEnd", () => {
+    const earlyEnd = "2026-03-15";
+    const result = resolveSubleaseEnd(earlyEnd, PERIOD_END);
+    expect(result).toEqual(new Date(earlyEnd));
+  });
+
+  it("respects endDate even when it's after periodEnd", () => {
+    const lateEnd = "2027-06-30";
+    const result = resolveSubleaseEnd(lateEnd, PERIOD_END);
+    expect(result).toEqual(new Date(lateEnd));
+  });
+
+  it("totalDays is positive for indefinite sublease starting mid-year", () => {
+    // Simulates the actual calculation that was broken: totalDays was negative
+    const subStart = new Date("2026-03-01");
+    const subEnd = resolveSubleaseEnd(null, PERIOD_END);
+    const totalDays = Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1;
+    expect(totalDays).toBeGreaterThan(0);
   });
 });
