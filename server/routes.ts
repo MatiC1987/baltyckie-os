@@ -8,7 +8,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema, employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema, mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema } from "@shared/schema";
-import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between, isNull } from "drizzle-orm";
+import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between, isNull, isNotNull } from "drizzle-orm";
 import { db, pool as pgPool } from "./db";
 import { z } from "zod";
 import multer from "multer";
@@ -783,7 +783,7 @@ export async function registerRoutes(
           apartmentId: leases.apartmentId,
         })
           .from(leases)
-          .where(and(lte(leases.endDate, in30days), gte(leases.endDate, today)));
+          .where(and(isNotNull(leases.endDate), lte(leases.endDate, in30days), gte(leases.endDate, today)));
       } catch (e) { /* ignore */ }
 
       try {
@@ -7150,7 +7150,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         endDate: leases.endDate,
       })
         .from(leases)
-        .where(and(lte(leases.endDate, in30days), gte(leases.endDate, today)));
+        .where(and(isNotNull(leases.endDate), lte(leases.endDate, in30days), gte(leases.endDate, today)));
 
       for (const l of expiringLeasesList) {
         if (!existingKeys.has(`lease:${l.id}`)) {
@@ -7200,6 +7200,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
         .from(ownerContracts)
         .where(and(
           eq(ownerContracts.status, 'AKTYWNA'),
+          isNotNull(ownerContracts.endDate),
           lte(ownerContracts.endDate, in90days),
           gte(ownerContracts.endDate, today)
         ));
