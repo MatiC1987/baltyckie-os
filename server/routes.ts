@@ -6,6 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
+import { getForecastValue, computeRemaining, computeMonthEndBalance } from "@shared/finance-calculations";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema, employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema, mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between, isNull, isNotNull } from "drizzle-orm";
@@ -10943,14 +10944,6 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         varActualMap[row.year][row.month] = (varActualMap[row.year][row.month] || 0) + Number(row.actual || 0);
       }
 
-      function getVal(map: Record<number, Record<number, number>>, year: number, month: number): number {
-        for (let y = year; y >= year - 4; y--) {
-          const v = map[y]?.[month];
-          if (v !== undefined && v > 0) return v;
-        }
-        return 0;
-      }
-
       let runningBalance = Math.round(currentBalance * 100) / 100;
       const months: any[] = [];
       for (let i = 0; i < 60; i++) {
@@ -10959,25 +10952,32 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         const calMonth = d.getMonth() + 1;
         const rfMonth = d.getMonth();
 
-        const revForecast = getVal(revForecastMap, year, rfMonth);
+        const revForecast = getForecastValue(revForecastMap, year, rfMonth);
         const revActual = revActualMap[year]?.[calMonth] ?? 0;
-        const revenueRemaining = Math.max(0, revForecast - revActual);
+        const revenueRemaining = computeRemaining(revForecast, revActual);
 
-        const aptCostForecast = getVal(aptForecastMap, year, rfMonth);
+        const aptCostForecast = getForecastValue(aptForecastMap, year, rfMonth);
         const aptCostActual = aptActualMap[year]?.[rfMonth] ?? 0;
-        const aptCostRemaining = Math.max(0, aptCostForecast - aptCostActual);
+        const aptCostRemaining = computeRemaining(aptCostForecast, aptCostActual);
 
-        const opCostForecast = getVal(opForecastMap, year, rfMonth);
+        const opCostForecast = getForecastValue(opForecastMap, year, rfMonth);
         const opCostActual = opActualMap[year]?.[rfMonth] ?? 0;
-        const opCostRemaining = Math.max(0, opCostForecast - opCostActual);
+        const opCostRemaining = computeRemaining(opCostForecast, opCostActual);
 
-        const varCostForecast = getVal(varForecastMap, year, rfMonth);
+        const varCostForecast = getForecastValue(varForecastMap, year, rfMonth);
         const varCostActual = varActualMap[year]?.[rfMonth] ?? 0;
-        const varCostRemaining = Math.max(0, varCostForecast - varCostActual);
+        const varCostRemaining = computeRemaining(varCostForecast, varCostActual);
 
         const surcharges = surchargeMap[year]?.[calMonth] ?? 0;
 
-        const endBalance = Math.round((runningBalance + revenueRemaining + surcharges - aptCostRemaining - opCostRemaining - varCostRemaining) * 100) / 100;
+        const endBalance = computeMonthEndBalance({
+          runningBalance,
+          revenueRemaining,
+          surcharges,
+          aptCostRemaining,
+          opCostRemaining,
+          varCostRemaining,
+        });
 
         months.push({
           year,
