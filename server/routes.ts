@@ -5990,12 +5990,6 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
     res.status(204).send();
   });
 
-  // Stats
-  app.get(api.stats.dashboard.path, isAuthenticated, async (req, res) => {
-    const stats = await storage.getDashboardStats();
-    res.json(stats);
-  });
-
   app.get("/api/dashboard/all-sublease-payments", isAuthenticated, async (req, res) => {
     const subleases = await storage.getSubleases();
     const allPayments: any[] = [];

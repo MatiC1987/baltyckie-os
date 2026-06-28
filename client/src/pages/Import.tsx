@@ -71,7 +71,6 @@ export default function Import() {
       queryClient.invalidateQueries({ queryKey: ['/api/leases'] });
       queryClient.invalidateQueries({ queryKey: ['/api/accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/snapshots'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
 
     } catch (e: any) {
       setError(e.message);
@@ -435,7 +434,6 @@ function HotResApiSyncCard() {
         });
         queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
         queryClient.invalidateQueries({ queryKey: ["/api/apartments"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/stats/dashboard"] });
         queryClient.invalidateQueries({ queryKey: ["/api/hotres/sync-status"] });
       } else {
         toast({ title: "Błąd synchronizacji", description: data.error, variant: "destructive" });
@@ -625,7 +623,6 @@ function HotResSection() {
       if (data.success) {
         toast({ title: "Import XLS zakończony", description: data.message });
         queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
       } else {
         toast({ title: "Problem", description: data.message, variant: "destructive" });
       }
@@ -646,7 +643,6 @@ function HotResSection() {
       if (data.success || data.imported >= 0) {
         toast({ title: "Deep Sync zakończony", description: `Nowe: ${data.imported}, zaktualizowane: ${data.updated}, stron: ${data.pagesProcessed ?? "?"}` });
         queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
         queryClient.invalidateQueries({ queryKey: ['/api/import-metadata/last/hotres_api'] });
       } else {
         toast({ title: "Błąd", description: data.error || data.message || "Nieznany błąd", variant: "destructive" });
@@ -665,7 +661,6 @@ function HotResSection() {
       if (data.success) {
         toast({ title: "Naprawiono ceny", description: data.message });
         queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
       } else {
         toast({ title: "Błąd", description: data.message, variant: "destructive" });
       }
@@ -703,7 +698,6 @@ function HotResSection() {
         toast({ title: "Sukces", description: data.message });
         queryClient.invalidateQueries({ queryKey: ['/api/reservations'] });
         queryClient.invalidateQueries({ queryKey: ['/api/apartments'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/stats/dashboard'] });
         queryClient.invalidateQueries({ queryKey: ['/api/import-metadata/last/hotres_csv'] });
       } else {
         toast({

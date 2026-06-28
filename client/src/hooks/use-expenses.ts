@@ -39,7 +39,6 @@ export function useCreateExpense() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
       toast({ title: "Sukces", description: "Koszt został dodany" });
     },
     onError: () => {
@@ -65,7 +64,6 @@ export function useUpdateExpense() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
       toast({ title: "Sukces", description: "Koszt został zaktualizowany" });
     },
     onError: () => {
@@ -88,7 +86,6 @@ export function useDeleteExpense() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.stats.dashboard.path] });
       toast({ title: "Sukces", description: "Koszt został usunięty" });
     },
     onError: () => {

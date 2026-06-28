@@ -434,14 +434,6 @@ export interface IStorage {
   deleteCustomer(id: number): Promise<void>;
   upsertCustomer(data: InsertCustomer): Promise<{ customer: Customer; isNew: boolean }>;
 
-  // Stats
-  getDashboardStats(): Promise<{
-    totalRevenue: number;
-    totalExpenses: number;
-    netIncome: number;
-    occupancyRate: number;
-  }>;
-
   // Apt Cost Data
   getAptCostData(year: number): Promise<AptCostData[]>;
   upsertAptCostCells(cells: InsertAptCostData[]): Promise<void>;
@@ -1178,31 +1170,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(technicalInspections).where(eq(technicalInspections.id, id));
   }
 
-  // Simple Stats (mocked or basic calculation for now, can be optimized with SQL aggregations)
-  async getDashboardStats(): Promise<{
-    totalRevenue: number;
-    totalExpenses: number;
-    netIncome: number;
-    occupancyRate: number;
-  }> {
-    // This is a placeholder for complex logic requested by user. 
-    // In a real app we'd run aggregations.
-    // For now, let's just return some basic sums or 0s if empty.
-    
-    // We can do real SQL sums here easily
-    const revenueResult = await db.select({ value: sql<number>`sum(${reservations.price})` }).from(reservations).where(eq(reservations.status, 'PRZYJETA'));
-    const expenseResult = await db.select({ value: sql<number>`sum(${expenses.amount})` }).from(expenses);
-    
-    const totalRevenue = Number(revenueResult[0]?.value || 0);
-    const totalExpenses = Number(expenseResult[0]?.value || 0);
-    
-    return {
-      totalRevenue,
-      totalExpenses,
-      netIncome: totalRevenue - totalExpenses,
-      occupancyRate: 0, // Needs complex date range calculation
-    };
-  }
   // Subleases
   async getSubleases(): Promise<Sublease[]> {
     return db.select().from(subleases).orderBy(desc(subleases.id));
