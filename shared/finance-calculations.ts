@@ -72,6 +72,39 @@ export function computeMonthEndBalance(params: MonthBalanceParams): number {
 }
 
 /**
+ * Whether a sublease is active as of a given date.
+ *
+ * Fixes AUDIT_FINANCIAL.md BUG #2 (SubrentSettlement.tsx:162):
+ *   BEFORE: s.endDate >= today          — null >= "2026-..." === false in JS
+ *           → indefinite subleases silently excluded from settlement view
+ *   AFTER:  !endDate || endDate >= today — null means indefinite = always active
+ *
+ * @param endDate  ISO date string "YYYY-MM-DD" or null for indefinite subleases
+ * @param today    ISO date string to compare against
+ */
+export function isSubleaseActive(endDate: string | null, today: string): boolean {
+  return !endDate || endDate >= today;
+}
+
+/**
+ * Resolve the effective end date for a sublease within a calculation period.
+ *
+ * Fixes AUDIT_FINANCIAL.md BUG #3 (routes.ts:~893, ~1027, ~1182, ~6673):
+ *   Historical bug (already fixed prior to this extraction):
+ *           s.endDate ? new Date(s.endDate) : new Date(null)
+ *           → new Date(null) === new Date(0) === 1970-01-01
+ *           → totalDays was negative → sublease contribution was 0
+ *   Correct: s.endDate ? new Date(s.endDate) : periodEnd
+ *           → indefinite subleases extend to the end of the period
+ *
+ * @param endDate   ISO date string or null (indefinite)
+ * @param periodEnd fallback Date when endDate is null
+ */
+export function resolveSubleaseEnd(endDate: string | null, periodEnd: Date): Date {
+  return endDate ? new Date(endDate) : periodEnd;
+}
+
+/**
  * Whether a contract should appear in an "expiring soon" list.
  *
  * Business rule (PROJECT_HANDOVER.md §4.6 + PR 1 fix):

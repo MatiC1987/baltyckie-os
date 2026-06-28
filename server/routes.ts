@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { getForecastValue, computeRemaining, computeMonthEndBalance } from "@shared/finance-calculations";
+import { getForecastValue, computeRemaining, computeMonthEndBalance, resolveSubleaseEnd } from "@shared/finance-calculations";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema, employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema, mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between, isNull, isNotNull } from "drizzle-orm";
@@ -891,7 +891,7 @@ export async function registerRoutes(
       const subleaseOccByApt: Record<number, Set<number>> = {};
       for (const s of activeSubleases) {
         const subStart = new Date(s.startDate);
-        const subEnd = s.endDate ? new Date(s.endDate) : occPeriodEnd;
+        const subEnd = resolveSubleaseEnd(s.endDate, occPeriodEnd);
 
         const baseIds: number[] = s.apartmentIds && s.apartmentIds.length > 0
           ? [...s.apartmentIds]
@@ -1024,7 +1024,7 @@ export async function registerRoutes(
 
       for (const sub of yearSubleases) {
         const subStart = new Date(sub.startDate);
-        const subEnd = sub.endDate ? new Date(sub.endDate) : yearEndDate;
+        const subEnd = resolveSubleaseEnd(sub.endDate, yearEndDate);
         const totalDays = Math.max(0, Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1);
         if (totalDays === 0) continue;
 
@@ -1179,7 +1179,7 @@ export async function registerRoutes(
           const monthlyRent = Number(sub.rentAmount || 0);
           if (monthlyRent <= 0) continue;
           const subStart = new Date(sub.startDate);
-          const subEnd = sub.endDate ? new Date(sub.endDate) : yearEndBoundary;
+          const subEnd = resolveSubleaseEnd(sub.endDate, yearEndBoundary);
 
           for (let m = 0; m < 12; m++) {
             const monthStart = new Date(year, m, 1);
@@ -6670,7 +6670,7 @@ Odpowiedz TYLKO prawidłowym JSON w formacie:
 
       for (const sub of yearSubleases) {
         const subStart = new Date(sub.startDate);
-        const subEnd = sub.endDate ? new Date(sub.endDate) : compYearEnd;
+        const subEnd = resolveSubleaseEnd(sub.endDate, compYearEnd);
         const totalDays = Math.max(0, Math.floor((subEnd.getTime() - subStart.getTime()) / 86400000) + 1);
         if (totalDays === 0) continue;
 

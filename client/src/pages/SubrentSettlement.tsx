@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { isSubleaseActive } from "@shared/finance-calculations";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -159,7 +160,7 @@ export default function SubrentSettlement() {
 
   const activeSubleases = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
-    return subleases.filter(s => !s.endDate || s.endDate >= today);
+    return subleases.filter(s => isSubleaseActive(s.endDate, today));
   }, [subleases]);
 
   const subleaseIds = useMemo(() => activeSubleases.map(s => s.id), [activeSubleases]);
