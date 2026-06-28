@@ -6,7 +6,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
-import { getForecastValue, computeRemaining, computeMonthEndBalance, resolveSubleaseEnd } from "@shared/finance-calculations";
+import { getForecastValue, computeRemaining, computeMonthEndBalance, resolveSubleaseEnd, getPaymentDatesForFrequency, generateRecurrenceDates, computeMonthResult } from "@shared/finance-calculations";
 import webpush from "web-push";
 import { insertBlockadeSchema, insertSaldoEntrySchema, insertSubleaseSchema, insertSubleasePaymentSchema, insertSubleaseApartmentChangeSchema, insertDocumentCategorySchema, insertDocumentTemplateSchema, insertSubleaseMeterReadingSchema, insertSubleaseMeterSettingSchema, insertSubleaseMeterPriceSchema, insertSubleaseElectricityChargeSchema, insertMediaSettlementReportSchema, insertCostScheduleSchema, insertCostSchedulePaymentSchema, insertInstallmentScheduleSchema, insertInstallmentPaymentSchema, insertServiceContractAttachmentSchema, insertInvoiceSchema, insertRevenueForecastSchema, insertCostForecastSchema, insertOperationalCostForecastSchema, insertVariableCostForecastSchema, insertOwnerContractSchema, insertHandoverProtocolSchema, insertHandoverProtocolRoomSchema, insertHandoverProtocolItemSchema, insertHandoverProtocolMeterSchema, insertTechnicalInspectionSchema, insertLoanSchema, insertLoanPaymentSchema, insertCustomerSchema, insertWorkScheduleSchema, insertLeaveRequestSchema, insertLegalCaseSchema, insertLegalCaseEventSchema, legalCases, legalCaseEvents, userPreferences, costSchedulePayments, subleasePayments, medicalExams, employees, leases, subleases, reservations, apartments, expenses, accounts, accountSnapshots, activityLogs, owners, blockades, locations, serviceContracts, serviceContractCategories, saldoEntries, saldoInitialBalances, saldoCategories, installmentPayments, installmentSchedules, costSchedules, documentCategories, documentTemplates, appUsers, attachments, subleaseAttachments, subleaseApartmentChanges, subleaseMeterReadings, subleaseMeterSettings, subleaseMeterPrices, subleaseElectricityCharges, mediaSettlementReports, ownerPayments, ownerContracts, ownerContractApartments, costForecasts, revenueForecasts, operationalCostForecasts, variableCostForecasts, serviceContractAttachments, importMetadata, invoices, notifications, handoverProtocols, handoverProtocolRooms, handoverProtocolItems, handoverProtocolMeters, loans, loanPayments, users, bankTransactions, appConfig, aptCostData, opCostData, issues, locationLogs, insertIssueSchema, employeeTrainings, insertEmployeeTrainingSchema, employeeContracts, insertEmployeeContractSchema, webauthnCredentials, payrollPeriods, payrollEntries, extraRevenues, insertExtraRevenueSchema, employeeTasks, insertEmployeeTaskSchema, taskComments, insertTaskCommentSchema, mileageEntries, insertMileageEntrySchema, scheduleTemplates, insertScheduleTemplateSchema } from "@shared/schema";
 import { eq, and, lt, lte, gte, ne, sql, count, desc, ilike, or, asc, inArray, between, isNull, isNotNull } from "drizzle-orm";
@@ -96,33 +96,6 @@ function convertPdfToImages(
   }
 
   return result;
-}
-
-function generateRecurrenceDates(startDate: string, endDate: string, recurrenceType: string): string[] {
-  const VALID_TYPES = ["MIESIECZNIE", "KWARTALNIE", "ROCZNIE"];
-  if (!VALID_TYPES.includes(recurrenceType)) return [];
-  if (endDate < startDate) return [];
-
-  const dates: string[] = [];
-  const startParts = startDate.split("-").map(Number);
-  const origYear = startParts[0], origMonth = startParts[1], origDay = startParts[2];
-  const end = new Date(endDate + "T12:00:00Z");
-  const monthStep = recurrenceType === "MIESIECZNIE" ? 1 : recurrenceType === "KWARTALNIE" ? 3 : 12;
-
-  let step = 1;
-  while (true) {
-    const totalMonths = (origMonth - 1) + step * monthStep;
-    const targetYear = origYear + Math.floor(totalMonths / 12);
-    const targetMonth = (totalMonths % 12) + 1;
-    const lastDayOfMonth = new Date(targetYear, targetMonth, 0).getDate();
-    const day = Math.min(origDay, lastDayOfMonth);
-    const dateStr = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const d = new Date(dateStr + "T12:00:00Z");
-    if (d > end) break;
-    dates.push(dateStr);
-    step++;
-  }
-  return dates;
 }
 
 async function logActivity(req: any, action: string, entityType: string, entityId?: number, entityName?: string, details?: string) {
@@ -298,33 +271,6 @@ async function syncApartmentAddressAndLocation(apartmentId: number, parsedData: 
   } catch (err) {
     console.error('Error syncing apartment address/location:', err);
   }
-}
-
-function getPaymentDatesForFrequency(
-  frequency: string,
-  startDate: Date,
-  endDate: Date,
-  payDay: number
-): Date[] {
-  const dates: Date[] = [];
-  const freq = (frequency || 'MIESIECZNIE').toUpperCase();
-
-  if (freq === 'NIEREGULARNE') return [];
-
-  let monthStep = 1;
-  if (freq === 'KWARTALNIE') monthStep = 3;
-  else if (freq === 'POLROCZNIE') monthStep = 6;
-  else if (freq === 'ROCZNIE') monthStep = 12;
-
-  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-  while (current <= endDate) {
-    const paymentDate = new Date(current.getFullYear(), current.getMonth(), Math.min(payDay, 28));
-    if (paymentDate >= startDate && paymentDate <= endDate) {
-      dates.push(paymentDate);
-    }
-    current.setMonth(current.getMonth() + monthStep);
-  }
-  return dates;
 }
 
 async function syncContractPaymentSchedule(contract: any) {
@@ -9699,17 +9645,18 @@ Odpowiedz TYLKO czystym JSON bez zadnych komentarzy ani markdown.`;
         const totalCostForecast = apartmentCostForecast + operationalCostForecast + variableCostForecast;
         const totalRevenueForecast = revenueForecast;
 
-        let monthResult: number;
+        const monthResult = computeMonthResult({
+          periodType: isCurrent ? "current" : isPast ? "past" : "future",
+          revenueForecast: totalRevenueForecast,
+          actualRevenue,
+          pendingPayments,
+          subleaseRevenue,
+          actualExpenses,
+          totalCostForecast,
+        });
         if (isCurrent) {
-          const unrealizedRevenue = Math.max(0, revenueForecast - actualRevenue - pendingPayments);
-          const unrealizedCosts = Math.max(0, totalCostForecast - actualExpenses);
-          monthResult = unrealizedRevenue + pendingPayments + subleaseRevenue + actualRevenue - actualExpenses - unrealizedCosts;
           runningBalance = companyBalance;
-        } else if (isPast) {
-          monthResult = actualRevenue + subleaseRevenue - actualExpenses;
-          runningBalance += monthResult;
         } else {
-          monthResult = totalRevenueForecast + subleaseRevenue - totalCostForecast;
           runningBalance += monthResult;
         }
 

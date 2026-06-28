@@ -123,3 +123,140 @@ export function isContractExpiring(
   if (endDate === null) return false;
   return endDate >= today && endDate <= windowEnd;
 }
+
+// ─── Payment schedule ──────────────────────────────────────────────────────────
+
+/**
+ * Generate payment dates for a contract based on frequency, date range and payment day.
+ *
+ * Extracted from server/routes.ts (top-level function before registerRoutes).
+ *
+ * Design note (AUDIT_FINANCIAL.md F-01): Math.min(payDay, 28) is intentional —
+ * prevents end-of-month problems. For payDay=31 payments fall on the 28th.
+ * This is a known, accepted trade-off, not a bug.
+ *
+ * Supported frequencies: MIESIECZNIE, KWARTALNIE, POLROCZNIE, ROCZNIE, NIEREGULARNE.
+ */
+export function getPaymentDatesForFrequency(
+  frequency: string,
+  startDate: Date,
+  endDate: Date,
+  payDay: number
+): Date[] {
+  const dates: Date[] = [];
+  const freq = (frequency || "MIESIECZNIE").toUpperCase();
+
+  if (freq === "NIEREGULARNE") return [];
+
+  let monthStep = 1;
+  if (freq === "KWARTALNIE") monthStep = 3;
+  else if (freq === "POLROCZNIE") monthStep = 6;
+  else if (freq === "ROCZNIE") monthStep = 12;
+
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  while (current <= endDate) {
+    const paymentDate = new Date(current.getFullYear(), current.getMonth(), Math.min(payDay, 28));
+    if (paymentDate >= startDate && paymentDate <= endDate) {
+      dates.push(paymentDate);
+    }
+    current.setMonth(current.getMonth() + monthStep);
+  }
+  return dates;
+}
+
+/**
+ * Generate all recurrence dates for a repeating cost entry.
+ *
+ * Extracted from server/routes.ts (top-level function before registerRoutes).
+ * Returns dates starting from the first recurrence AFTER startDate (not startDate itself).
+ *
+ * Supported types: MIESIECZNIE, KWARTALNIE, ROCZNIE.
+ * Returns [] for unknown types or when endDate < startDate.
+ */
+export function generateRecurrenceDates(
+  startDate: string,
+  endDate: string,
+  recurrenceType: string
+): string[] {
+  const VALID_TYPES = ["MIESIECZNIE", "KWARTALNIE", "ROCZNIE"];
+  if (!VALID_TYPES.includes(recurrenceType)) return [];
+  if (endDate < startDate) return [];
+
+  const dates: string[] = [];
+  const startParts = startDate.split("-").map(Number);
+  const origYear = startParts[0], origMonth = startParts[1], origDay = startParts[2];
+  const end = new Date(endDate + "T12:00:00Z");
+  const monthStep = recurrenceType === "MIESIECZNIE" ? 1 : recurrenceType === "KWARTALNIE" ? 3 : 12;
+
+  let step = 1;
+  while (true) {
+    const totalMonths = (origMonth - 1) + step * monthStep;
+    const targetYear = origYear + Math.floor(totalMonths / 12);
+    const targetMonth = (totalMonths % 12) + 1;
+    const lastDayOfMonth = new Date(targetYear, targetMonth, 0).getDate();
+    const day = Math.min(origDay, lastDayOfMonth);
+    const dateStr = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const d = new Date(dateStr + "T12:00:00Z");
+    if (d > end) break;
+    dates.push(dateStr);
+    step++;
+  }
+  return dates;
+}
+
+// ─── V2 monthly result ─────────────────────────────────────────────────────────
+
+export type MonthPeriodType = "past" | "current" | "future";
+
+export interface MonthResultParams {
+  periodType: MonthPeriodType;
+  revenueForecast: number;
+  actualRevenue: number;
+  pendingPayments: number;
+  subleaseRevenue: number;
+  actualExpenses: number;
+  totalCostForecast: number;
+}
+
+/**
+ * Compute the monthly result (wynik miesięczny) for the V2 financial forecast.
+ *
+ * Extracted from server/routes.ts (~line 9702). Three variants based on period type:
+ *
+ * past:    actualRevenue + subleaseRevenue - actualExpenses
+ *          (only what actually happened)
+ *
+ * current: unrealizedRevenue + pendingPayments + subleaseRevenue
+ *          + actualRevenue - actualExpenses - unrealizedCosts
+ *          where unrealizedRevenue = max(0, forecast - actual - pending)
+ *                unrealizedCosts   = max(0, costForecast - actualExpenses)
+ *
+ * future:  totalRevenueForecast + subleaseRevenue - totalCostForecast
+ *          (pure forecast, no actuals)
+ *
+ * Verified correct in AUDIT_FINANCIAL.md (F-05).
+ */
+export function computeMonthResult(params: MonthResultParams): number {
+  const {
+    periodType,
+    revenueForecast,
+    actualRevenue,
+    pendingPayments,
+    subleaseRevenue,
+    actualExpenses,
+    totalCostForecast,
+  } = params;
+
+  if (periodType === "past") {
+    return actualRevenue + subleaseRevenue - actualExpenses;
+  }
+
+  if (periodType === "current") {
+    const unrealizedRevenue = Math.max(0, revenueForecast - actualRevenue - pendingPayments);
+    const unrealizedCosts = Math.max(0, totalCostForecast - actualExpenses);
+    return unrealizedRevenue + pendingPayments + subleaseRevenue + actualRevenue - actualExpenses - unrealizedCosts;
+  }
+
+  // future
+  return revenueForecast + subleaseRevenue - totalCostForecast;
+}
