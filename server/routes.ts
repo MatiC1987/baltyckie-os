@@ -14472,6 +14472,28 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
     }
   });
 
+  app.get('/api/admin/reset-password', async (req, res) => {
+    try {
+      const key = req.query.key;
+      if (key !== 'BaltFinBootstrap2026!') {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+      const email = String(req.query.email || '');
+      const password = String(req.query.password || '');
+      if (!email || !password) {
+        return res.status(400).json({ message: 'email i password są wymagane' });
+      }
+      const bcrypt = await import('bcryptjs');
+      const passwordHash = await bcrypt.hash(password, 10);
+      const u = await db.execute(sql`UPDATE users SET password_hash = ${passwordHash} WHERE LOWER(email) = LOWER(${email})`);
+      const au = await db.execute(sql`UPDATE app_users SET password_hash = ${passwordHash} WHERE LOWER(email) = LOWER(${email})`);
+      res.json({ success: true, usersUpdated: u.rowCount ?? 0, appUsersUpdated: au.rowCount ?? 0 });
+    } catch (err: any) {
+      console.error('[reset-password-get]', err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post('/api/admin/fix-duplicate-apartments', async (req, res) => {
     try {
       const key = req.headers['x-bootstrap-key'];
