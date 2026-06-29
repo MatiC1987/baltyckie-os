@@ -73,7 +73,7 @@ export function BalanceForecastChartWidget({ data }: { data?: BalanceForecastDat
   const chartData = useMemo(() => {
     if (!data?.months) return [];
     return data.months.map(m => ({
-      label: `${MONTH_NAMES_SHORT[m.month]} ${m.year}`,
+      label: `${MONTH_NAMES_SHORT[m.month - 1]} ${m.year}`,
       endBalance: m.endBalance,
     }));
   }, [data]);

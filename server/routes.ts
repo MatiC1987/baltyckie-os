@@ -676,6 +676,7 @@ export async function registerRoutes(
       let overdueSubleaseCount = 0;
       let upcomingArrivalsResult: any[] = [];
       let expiringLeasesResult: any[] = [];
+      let expiredLeasesResult: any[] = [];
       let expiringSubleaseResult: any[] = [];
       let upcomingInspectionsResult: any[] = [];
 
@@ -701,9 +702,15 @@ export async function registerRoutes(
       } catch (e) { /* ignore */ }
 
       try {
+        const currentYear = new Date().getFullYear();
+        const yearStart = `${currentYear}-01-01`;
         const rows = await db.select({ count: sql<number>`count(*)` })
           .from(subleasePayments)
-          .where(and(ne(subleasePayments.status, "oplacone"), lt(subleasePayments.dueDate, today)));
+          .where(and(
+            eq(subleasePayments.status, "do_oplacenia"),
+            lt(subleasePayments.dueDate, today),
+            gte(subleasePayments.dueDate, yearStart),
+          ));
         overdueSubleaseCount = Number(rows[0]?.count || 0);
       } catch (e) { /* ignore */ }
 
@@ -731,6 +738,17 @@ export async function registerRoutes(
         })
           .from(leases)
           .where(and(isNotNull(leases.endDate), lte(leases.endDate, in30days), gte(leases.endDate, today)));
+      } catch (e) { /* ignore */ }
+
+      try {
+        expiredLeasesResult = await db.select({
+          id: leases.id,
+          tenantName: leases.tenantName,
+          endDate: leases.endDate,
+          apartmentId: leases.apartmentId,
+        })
+          .from(leases)
+          .where(and(isNotNull(leases.endDate), lt(leases.endDate, today)));
       } catch (e) { /* ignore */ }
 
       try {
@@ -769,6 +787,7 @@ export async function registerRoutes(
         overdueSubleasePayments: overdueSubleaseCount,
         upcomingArrivals: upcomingArrivalsResult.length,
         expiringLeases: expiringLeasesResult,
+        expiredLeases: expiredLeasesResult,
         expiringSubleases: expiringSubleaseResult,
         upcomingInspections: upcomingInspectionsResult,
       });
