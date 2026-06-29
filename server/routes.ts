@@ -14485,9 +14485,37 @@ Odpowiedz TYLKO jako JSON array z obiektami { "index": number, "category": strin
       }
       const bcrypt = await import('bcryptjs');
       const passwordHash = await bcrypt.hash(password, 10);
-      const u = await db.execute(sql`UPDATE users SET password_hash = ${passwordHash} WHERE LOWER(email) = LOWER(${email})`);
-      const au = await db.execute(sql`UPDATE app_users SET password_hash = ${passwordHash} WHERE LOWER(email) = LOWER(${email})`);
-      res.json({ success: true, usersUpdated: u.rowCount ?? 0, appUsersUpdated: au.rowCount ?? 0 });
+      const actions: string[] = [];
+
+      const firstName = String(req.query.fname || 'Mateusz');
+      const lastName = String(req.query.lname || 'Cieślak');
+
+      const existingUser = await db.execute(sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${email})`);
+      if (existingUser.rows.length === 0) {
+        const newId = 'usr-' + email.split('@')[0].replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        await db.execute(sql`
+          INSERT INTO users (id, email, first_name, last_name, password_hash, created_at, updated_at)
+          VALUES (${newId}, ${email}, ${firstName}, ${lastName}, ${passwordHash}, NOW(), NOW())
+        `);
+        actions.push('users: created');
+      } else {
+        await db.execute(sql`UPDATE users SET password_hash = ${passwordHash}, updated_at = NOW() WHERE LOWER(email) = LOWER(${email})`);
+        actions.push('users: updated');
+      }
+
+      const existingAppUser = await db.execute(sql`SELECT id FROM app_users WHERE LOWER(email) = LOWER(${email})`);
+      if (existingAppUser.rows.length === 0) {
+        await db.execute(sql`
+          INSERT INTO app_users (email, first_name, last_name, password_hash, active, permissions)
+          VALUES (${email}, ${firstName}, ${lastName}, ${passwordHash}, true, ARRAY['admin'])
+        `);
+        actions.push('app_users: created');
+      } else {
+        await db.execute(sql`UPDATE app_users SET password_hash = ${passwordHash} WHERE LOWER(email) = LOWER(${email})`);
+        actions.push('app_users: updated');
+      }
+
+      res.json({ success: true, actions });
     } catch (err: any) {
       console.error('[reset-password-get]', err);
       res.status(500).json({ message: err.message });
