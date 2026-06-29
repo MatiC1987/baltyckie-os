@@ -109,6 +109,7 @@ export type DashboardReminders = {
   overdueSubleasePayments: number;
   upcomingArrivals: number;
   expiringLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[];
+  expiredLeases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[];
   expiringSubleases: { id: number; tenantName: string | null; endDate: string | null; apartmentId: number | null }[];
   upcomingInspections?: { id: number; inspectionType: string; nextDate: string; apartmentId: number | null; isOverdue: boolean }[];
 };

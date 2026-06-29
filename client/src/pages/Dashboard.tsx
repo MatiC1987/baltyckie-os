@@ -435,7 +435,7 @@ export default function Dashboard() {
       case "unpaid-subleases":
         return <UnpaidSubleasesTab payments={allSubleasePayments || []} apartments={apartments || []} />;
       case "expiring-leases":
-        return <ExpiringLeasesTab leases={leases || []} apartments={apartments || []} />;
+        return <ExpiringLeasesTab leases={leases || []} apartments={apartments || []} expiredLeases={reminders?.expiredLeases || []} expiringLeases={reminders?.expiringLeases} />;
       case "rcp-summary":
         return <RcpSummaryWidget />;
       case "recent-activity":
